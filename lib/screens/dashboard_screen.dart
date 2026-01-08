@@ -1,0 +1,434 @@
+import 'package:apartment_management_project_2/models/membership_model.dart';
+import 'package:apartment_management_project_2/models/organization_model.dart';
+import 'package:apartment_management_project_2/models/owner_model.dart';
+import 'package:apartment_management_project_2/services/auth_service.dart';
+import 'package:apartment_management_project_2/services/organization_service.dart';
+import 'package:apartment_management_project_2/utils/app_router.dart';
+import 'package:apartment_management_project_2/widgets/loading.dart';
+import 'package:flutter/material.dart';
+
+class DashboardScreen extends StatefulWidget {
+  const DashboardScreen({super.key});
+
+  @override
+  State<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  // Create instance of AuthService
+  final AuthService _authService = AuthService();
+  final OrganizationService _organizationService = OrganizationService();
+
+  Future<void> _showCreateOrganizationDialog() async {
+    final nameController = TextEditingController();
+
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Tạo Tổ Chức Mới'),
+        content: TextField(
+          controller: nameController,
+          decoration: InputDecoration(
+            labelText: 'Tên tổ chức',
+            hintText: 'VD: Chung cư ABC',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Hủy'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              if (nameController.text.trim().isEmpty) return;
+              
+              final owner = await _authService.getCurrentOwner();
+              if (owner == null) return;
+              
+              await _organizationService.createOrganization(
+                name: nameController.text.trim(),
+                ownerId: owner.id,
+              );
+              
+              if (mounted) {
+                Navigator.pop(context);
+                setState(() {}); // Refresh list
+              }
+            },
+            child: Text('Tạo'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Show dialog to join an existing organization with invite code
+  Future<void> _showJoinOrganizationDialog() async {
+    // Controller to get invite code from user
+    final inviteCodeController = TextEditingController();
+    
+    // Show a dialog with text field
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Tham Gia Tổ Chức'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min, // Make dialog only as tall as needed
+          children: [
+            Text(
+              'Nhập mã mời để tham gia tổ chức',
+              style: TextStyle(fontSize: 14),
+            ),
+            SizedBox(height: 16),
+            TextField(
+              controller: inviteCodeController,
+              decoration: InputDecoration(
+                labelText: 'Mã mời',
+                hintText: 'VD: A3F7B2C9',
+                border: OutlineInputBorder(),
+              ),
+              // Convert to uppercase as user types
+              textCapitalization: TextCapitalization.characters,
+              // Limit to 8 characters
+              maxLength: 8,
+              autofocus: true,
+            ),
+          ],
+        ),
+        actions: [
+          // Cancel button
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Hủy'),
+          ),
+          // Join button
+          ElevatedButton(
+            onPressed: () async {
+              // Get the invite code and remove any spaces
+              final inviteCode = inviteCodeController.text.trim();
+              
+              // Check if user entered a code
+              if (inviteCode.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Vui lòng nhập mã mời')),
+                );
+                return;
+              }
+              
+              // Check if code is 8 characters
+              if (inviteCode.length != 8) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Mã mời phải có 8 ký tự')),
+                );
+                return;
+              }
+              
+              // Get current user data
+              final owner = await _authService.getCurrentOwner();
+              if (owner == null) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Không thể lấy thông tin người dùng')),
+                  );
+                }
+                return;
+              }
+              
+              // Try to join the organization
+              final success = await _organizationService.joinOrganization(
+                ownerID: owner.id,
+                inviteCode: inviteCode,
+              );
+              
+              // Check if join was successful
+              if (mounted) {
+                Navigator.pop(context); // Close dialog
+                
+                if (success) {
+                  // Show success message
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Tham gia tổ chức thành công!'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                  setState(() {}); // Refresh the organization list
+                } else {
+                  // Show error message
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Mã mời không hợp lệ hoặc bạn đã là thành viên'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
+            },
+            child: Text('Tham Gia'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _handleLogout() async {
+    try {
+      await _authService.signOut();
+      if (mounted) {
+        Navigator.pushReplacementNamed(context, AppRouter.loginScreen);
+      }
+    } catch(e) {
+      print('Logout error: $e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Trang chủ'),
+        actions: [
+          IconButton(
+            onPressed: _handleLogout, 
+            icon: Icon(Icons.logout),
+          ),
+        ],
+      ),
+      body: FutureBuilder<Owner?>(
+        future: _authService.getCurrentOwner(), 
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return Center(child: Loading3(size: 50,));
+          }
+
+          if (snapshot.hasError) {
+            return Center(
+              child: Text(
+                'Lỗi: ${snapshot.error}',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.error,
+                  fontSize: 50,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            );
+          }
+          
+          // Get the owner data
+          final owner = snapshot.data;
+          
+          // Show error if can't get user data
+          if (owner == null) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'Không tìm thấy dữ liệu người dùng',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                  SizedBox(height: 16,),
+                  ElevatedButton(
+                    onPressed: _handleLogout, 
+                    child: Text('Đăng xuất'),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          // Main content - show user info and organizations
+          return Column(
+            children: [
+              // User info section
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Greeting
+                    Text(
+                      'Xin chào, ${owner.name}',
+                      style: Theme.of(context).textTheme.headlineMedium,
+                    ),
+                    SizedBox(height: 8),
+                    // User email
+                    Text(
+                      'Email: ${owner.email}' 
+                    ),
+                    SizedBox(height: 4,),
+                    Text('Tạo lúc: ${_formatDate(owner.createdAt)}'),
+                  ],
+                ),
+              ),
+              Divider(),
+              // Organizations section header with buttons
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // Section title
+                    Text(
+                      'Tổ Chức Của Bạn',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    // Action buttons
+                    Row(
+                      children: [
+                        // Join organization button
+                        IconButton(
+                          icon: Icon(Icons.group_add),
+                          onPressed: _showJoinOrganizationDialog,
+                          tooltip: 'Tham gia tổ chức',
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                        // Create organization button
+                        IconButton(
+                          icon: Icon(Icons.add),
+                          onPressed: _showCreateOrganizationDialog,
+                          tooltip: 'Tạo tổ chức mới',
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: FutureBuilder<List<Organization>>(
+                  // Fetch user's organizations
+                  future: _organizationService.getUserOrganizations(owner.id),
+                  builder: (context, orgSnapshot) {
+
+                    // Show loading indicator while fetching organizations
+                    if (orgSnapshot.connectionState == ConnectionState.waiting) {
+                      return Center(child: CircularProgressIndicator());
+                    }
+
+                    // Get the organizations list
+                    final organizations = orgSnapshot.data ?? [];
+
+                     // Show empty state if no organizations
+                    if (organizations.isEmpty) {
+                      return Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.business, size: 64, color: Colors.grey),
+                            SizedBox(height: 16),
+                            Text('Chưa có tổ chức nào'),
+                            SizedBox(height: 8),
+                            ElevatedButton.icon(
+                              onPressed: _showCreateOrganizationDialog,
+                              icon: Icon(Icons.add),
+                              label: Text('Tạo Tổ Chức'),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+
+                    // Show list of organizations
+                    return ListView.builder(
+                      itemCount: organizations.length,
+                      itemBuilder: (context, index) {
+                        final org = organizations[index];
+                        return Card(
+                          margin: EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
+                          child: FutureBuilder<Membership?>(
+                            // Fetch the user's membership to get their role
+                            future: _organizationService.getUserMembership(owner.id, org.id),
+                            builder: (context, membershipSnapshot) {
+                              // Get the role (default to 'member' if not loaded yet)
+                              final role = membershipSnapshot.data?.role ?? 'member';
+                              
+                              // Convert role to Vietnamese
+                              final roleText = role == 'admin' ? 'Quản trị viên' : 'Thành viên';
+                              
+                              return ListTile(
+                                // Organization icon with first letter
+                                leading: CircleAvatar(
+                                  backgroundColor: Theme.of(context).colorScheme.primary,
+                                  child: Text(
+                                    org.name[0].toUpperCase(),
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                                // Organization name
+                                title: Text(
+                                  org.name,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                // Created date + Role
+                                subtitle: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text('Tạo lúc: ${_formatDate(org.createdAt)}'),
+                                    SizedBox(height: 4),
+                                    // Show role with badge
+                                    Row(
+                                      children: [
+                                        Icon(
+                                          role == 'admin' ? Icons.admin_panel_settings : Icons.person,
+                                          size: 16,
+                                          color: role == 'admin' ? Colors.amber : Colors.grey,
+                                        ),
+                                        SizedBox(width: 4),
+                                        Text(
+                                          roleText,
+                                          style: TextStyle(
+                                            color: role == 'admin' ? Colors.amber[700] : Colors.grey[600],
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                                // Arrow icon
+                                trailing: Icon(Icons.chevron_right),
+                                // Handle tap
+                                onTap: () {
+                                  Navigator.pushNamed(
+                                    context, 
+                                    AppRouter.oranizationScreen,
+                                    arguments: org,
+                                  );
+                                },
+                              );
+                            },
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  /// Format DateTime to readable string
+  /// Example: "06/01/2026 14:30"
+  String _formatDate(DateTime date) {
+    return '${date.day.toString().padLeft(2, '0')}/'
+        '${date.month.toString().padLeft(2, '0')}/'
+        '${date.year} '
+        '${date.hour.toString().padLeft(2, '0')}:'
+        '${date.minute.toString().padLeft(2, '0')}';
+  }
+}
