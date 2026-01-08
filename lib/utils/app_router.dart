@@ -2,6 +2,7 @@ import 'package:apartment_management_project_2/screens/building_room.dart';
 import 'package:apartment_management_project_2/screens/dashboard_screen.dart';
 import 'package:apartment_management_project_2/screens/login_screen.dart';
 import 'package:apartment_management_project_2/screens/organization_screen.dart';
+import 'package:apartment_management_project_2/screens/room_detail.dart';
 import 'package:apartment_management_project_2/screens/splash_screen.dart';
 import 'package:flutter/material.dart';
 
@@ -12,6 +13,7 @@ class AppRouter {
   static const String dashboardScreen = '/dashboard';
   static const String oranizationScreen = '/organization';
   static const String buildingRoomScreen = '/building-rooms';
+  static const String roomDetailScreen = '/room-detail';
 
   static Route<dynamic> generateRoute(RouteSettings settings) {
     // settings.name tells us which screen they want
@@ -25,7 +27,9 @@ class AppRouter {
       case oranizationScreen:
         return MaterialPageRoute(builder: (_) => OrganizationScreen(), settings: settings,);
       case buildingRoomScreen:
-        return MaterialPageRoute(builder: (_) => BuildingRoomScreen());
+        return MaterialPageRoute(builder: (_) => BuildingRoomScreen(), settings: settings,);
+      case roomDetailScreen:
+        return MaterialPageRoute(builder: (_) => RoomDetailScreen());
       default:
         // If the route doesn't exist, show an error
         return MaterialPageRoute(builder: (_) => Scaffold(

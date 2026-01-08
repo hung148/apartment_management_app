@@ -628,17 +628,151 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
                                   ),
                               ],
                             ),
-                            trailing: member.status == 'active'
-                                ? const Icon(
+                            // REPLACE THE TRAILING PROPERTY WITH THIS:
+                            trailing: FutureBuilder<Membership?>(
+                              future: _getMyMembership(),
+                              builder: (context, myMembershipSnapshot) {
+                                if (!myMembershipSnapshot.hasData) {
+                                  return member.status == 'active'
+                                      ? const Icon(
+                                          Icons.check_circle,
+                                          color: Colors.green,
+                                          size: 20,
+                                        )
+                                      : const Icon(
+                                          Icons.pending,
+                                          color: Colors.orange,
+                                          size: 20,
+                                        );
+                                }
+                                
+                                final myMembership = myMembershipSnapshot.data!;
+                                
+                                // Only show actions if current user is admin
+                                if (myMembership.role != 'admin') {
+                                  return member.status == 'active'
+                                      ? const Icon(
+                                          Icons.check_circle,
+                                          color: Colors.green,
+                                          size: 20,
+                                        )
+                                      : const Icon(
+                                          Icons.pending,
+                                          color: Colors.orange,
+                                          size: 20,
+                                        );
+                                }
+                                
+                                // Don't show promote/demote for yourself
+                                if (member.ownerId == myMembership.ownerId) {
+                                  return const Icon(
                                     Icons.check_circle,
                                     color: Colors.green,
                                     size: 20,
-                                  )
-                                : const Icon(
-                                    Icons.pending,
-                                    color: Colors.orange,
-                                    size: 20,
-                                  ),
+                                  );
+                                }
+                                
+                                // Show popup menu for other members
+                                return Builder(
+                                  builder: (BuildContext context) {
+                                    return IconButton(
+                                      icon: const Icon(Icons.more_vert),
+                                      onPressed: () {
+                                        // CAPTURE ScaffoldMessenger BEFORE async operations
+                                        final scaffoldMessenger = ScaffoldMessenger.of(context);
+
+                                        // Get the position of the button
+                                        final RenderBox button = context.findRenderObject() as RenderBox;
+                                        final RenderBox overlay = Navigator.of(context).overlay!.context.findRenderObject() as RenderBox;
+                                        final RelativeRect position = RelativeRect.fromRect(
+                                          Rect.fromPoints(
+                                            button.localToGlobal(Offset.zero, ancestor: overlay) + const Offset(0, 48),
+                                            button.localToGlobal(button.size.bottomRight(Offset.zero), ancestor: overlay),
+                                          ),
+                                          Offset.zero & overlay.size,
+                                        );
+
+                                        // Show menu at button position
+                                        showMenu<String>(
+                                          context: context,
+                                          position: position,
+                                          items: [
+                                            if (member.role == 'member')
+                                              const PopupMenuItem(
+                                                value: 'promote',
+                                                child: Row(
+                                                  children: [
+                                                    Icon(Icons.arrow_upward, size: 20),
+                                                    SizedBox(width: 8),
+                                                    Text('Thăng cấp Admin'),
+                                                  ],
+                                                ),
+                                              ),
+                                            if (member.role == 'admin')
+                                            const PopupMenuItem(
+                                              value: 'remove',
+                                              child: Row(
+                                                children: [
+                                                  Icon(Icons.remove_circle, size: 20, color: Colors.red),
+                                                  SizedBox(width: 8),
+                                                  Text('Xóa khỏi tổ chức', style: TextStyle(color: Colors.red)),
+                                                ],
+                                              ),
+                                            ), // required majority vote
+                                          ],
+                                        ).then((value) async {
+                                          if (value == 'promote') {
+                                            final success = await _orgService.promoteMemberToAdmin(
+                                              currentAdminId: myMembership.ownerId,
+                                              memberIdToPromote: member.ownerId,
+                                              orgId: _organization.id,
+                                            );
+                                            if (success && mounted) {
+                                              scaffoldMessenger.showSnackBar(
+                                                const SnackBar(content: Text('Đã thăng cấp thành admin')),
+                                              );
+                                              setState(() {});
+                                            }
+                                          } else if (value == 'remove') {
+                                            // Show confirmation dialog
+                                            final confirm = await showDialog<bool>(
+                                              context: context,
+                                              builder: (context) => AlertDialog(
+                                                title: const Text('Xác nhận xóa'),
+                                                content: Text('Bạn có chắc muốn xóa $ownerName khỏi tổ chức?'),
+                                                actions: [
+                                                  TextButton(
+                                                    onPressed: () => Navigator.pop(context, false),
+                                                    child: const Text('Hủy'),
+                                                  ),
+                                                  TextButton(
+                                                    onPressed: () => Navigator.pop(context, true),
+                                                    child: const Text('Xóa', style: TextStyle(color: Colors.red)),
+                                                  ),
+                                                ],
+                                              ),
+                                            );
+                                            
+                                            if (confirm == true) {
+                                              final success = await _orgService.leaveOrganization(
+                                                member.ownerId,
+                                                _organization.id,
+                                              );
+                                              if (success && mounted) {
+                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                  const SnackBar(content: Text('Đã xóa thành viên')),
+                                                );
+                                                setState(() {});
+                                              }
+                                            }
+                                          }
+                                        });
+                                      },
+                                    );
+                                  },
+                                );
+                              },
+                            ),
                           ),
                         );
                       },

@@ -336,4 +336,64 @@ class OrganizationService {
       return false;
     }
   }
+
+  // Promote a member to admin
+// Only existing admins can promote members
+Future<bool> promoteMemberToAdmin({
+  required String currentAdminId,
+  required String memberIdToPromote,
+  required String orgId,
+}) async {
+    try {
+      // Verify that the current user is an admin
+      final currentAdminMembership = await getUserMembership(currentAdminId, orgId);
+      
+      if (currentAdminMembership == null || currentAdminMembership.role != 'admin') {
+        print('❌ Only admins can promote members');
+        return false;
+      }
+
+      // Get the membership of the user to be promoted
+      final memberMembershipId = '${memberIdToPromote}_${orgId}';
+      final memberDoc = await _firestore
+          .collection('memberships')
+          .doc(memberMembershipId)
+          .get();
+
+      // Check if the membership exists
+      if (!memberDoc.exists) {
+        print('❌ Member not found in this organization');
+        return false;
+      }
+
+      final memberMembership = Membership.fromMap(
+        memberDoc.id,
+        memberDoc.data()!,
+      );
+
+      // Check if member is already an admin
+      if (memberMembership.role == 'admin') {
+        print('⚠️ User is already an admin');
+        return false;
+      }
+
+      // Check if membership is active
+      if (memberMembership.status != 'active') {
+        print('❌ Cannot promote inactive member');
+        return false;
+      }
+
+      // Update the role to admin
+      await _firestore
+          .collection('memberships')
+          .doc(memberMembershipId)
+          .update({'role': 'admin'});
+
+      print('✅ Member promoted to admin successfully');
+      return true;
+    } catch (e) {
+      print('❌ Error promoting member to admin: $e');
+      return false;
+    }
+  }
 }
