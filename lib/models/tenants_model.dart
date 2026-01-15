@@ -50,6 +50,10 @@ class Tenant {
   final bool isMainTenant;               // Người thuê chính hay người ở cùng
   final String? mainTenantId;            // Nếu không phải người thuê chính
   
+  // Last Known Location (for moved-out tenants)
+  final String? lastBuildingName;        // Tên toà nhà trước khi chuyển đi
+  final String? lastRoomNumber;          // Số phòng trước khi chuyển đi
+  
   // Documents & Files
   final List<String>? documentUrls;      // URLs of uploaded documents (ID card, contract, etc.)
   final String? contractUrl;             // Contract file URL
@@ -61,6 +65,7 @@ class Tenant {
   // Additional Information
   final String? occupation;              // Nghề nghiệp
   final String? workplace;               // Nơi làm việc
+  final List<PreviousRentalHistory>? previousRentals;  // Lịch sử thuê trước đây
   final String? notes;                   // Ghi chú
   final Map<String, dynamic>? metadata;  // Extra data
   
@@ -98,12 +103,15 @@ class Tenant {
     this.deposit,
     this.isMainTenant = true,
     this.mainTenantId,
+    this.lastBuildingName,
+    this.lastRoomNumber,
     this.documentUrls,
     this.contractUrl,
     this.profileImageUrl,
     this.vehicles,
     this.occupation,
     this.workplace,
+    this.previousRentals,
     this.notes,
     this.metadata,
     required this.createdAt,
@@ -148,6 +156,17 @@ class Tenant {
     }
     return age;
   }
+  
+  // Get total time lived across all rentals
+  int get totalDaysLiving {
+    int total = daysLiving;
+    if (previousRentals != null) {
+      for (var rental in previousRentals!) {
+        total += rental.duration;
+      }
+    }
+    return total;
+  }
 
   Map<String, dynamic> toMap() {
     return {
@@ -187,12 +206,15 @@ class Tenant {
       'deposit': deposit,
       'isMainTenant': isMainTenant,
       'mainTenantId': mainTenantId,
+      'lastBuildingName': lastBuildingName,
+      'lastRoomNumber': lastRoomNumber,
       'documentUrls': documentUrls,
       'contractUrl': contractUrl,
       'profileImageUrl': profileImageUrl,
       'vehicles': vehicles?.map((v) => v.toMap()).toList(),
       'occupation': occupation,
       'workplace': workplace,
+      'previousRentals': previousRentals?.map((r) => r.toMap()).toList(),
       'notes': notes,
       'metadata': metadata,
       'createdAt': Timestamp.fromDate(createdAt),
@@ -251,6 +273,8 @@ class Tenant {
       deposit: (map['deposit'] as num?)?.toDouble(),
       isMainTenant: map['isMainTenant'] ?? true,
       mainTenantId: map['mainTenantId'],
+      lastBuildingName: map['lastBuildingName'],
+      lastRoomNumber: map['lastRoomNumber'],
       documentUrls: map['documentUrls'] != null
           ? List<String>.from(map['documentUrls'])
           : null,
@@ -263,6 +287,11 @@ class Tenant {
           : null,
       occupation: map['occupation'],
       workplace: map['workplace'],
+      previousRentals: map['previousRentals'] != null
+          ? (map['previousRentals'] as List)
+              .map((r) => PreviousRentalHistory.fromMap(r))
+              .toList()
+          : null,
       notes: map['notes'],
       metadata: map['metadata'],
       createdAt: (map['createdAt'] as Timestamp).toDate(),
@@ -303,12 +332,15 @@ class Tenant {
     double? deposit,
     bool? isMainTenant,
     String? mainTenantId,
+    String? lastBuildingName,
+    String? lastRoomNumber,
     List<String>? documentUrls,
     String? contractUrl,
     String? profileImageUrl,
     List<VehicleInfo>? vehicles,
     String? occupation,
     String? workplace,
+    List<PreviousRentalHistory>? previousRentals,
     String? notes,
     Map<String, dynamic>? metadata,
     DateTime? createdAt,
@@ -344,12 +376,15 @@ class Tenant {
       deposit: deposit ?? this.deposit,
       isMainTenant: isMainTenant ?? this.isMainTenant,
       mainTenantId: mainTenantId ?? this.mainTenantId,
+      lastBuildingName: lastBuildingName ?? this.lastBuildingName,
+      lastRoomNumber: lastRoomNumber ?? this.lastRoomNumber,
       documentUrls: documentUrls ?? this.documentUrls,
       contractUrl: contractUrl ?? this.contractUrl,
       profileImageUrl: profileImageUrl ?? this.profileImageUrl,
       vehicles: vehicles ?? this.vehicles,
       occupation: occupation ?? this.occupation,
       workplace: workplace ?? this.workplace,
+      previousRentals: previousRentals ?? this.previousRentals,
       notes: notes ?? this.notes,
       metadata: metadata ?? this.metadata,
       createdAt: createdAt ?? this.createdAt,
@@ -383,6 +418,69 @@ class Tenant {
       case Gender.other:
         return 'Khác';
     }
+  }
+}
+
+// ============================================
+// PREVIOUS RENTAL HISTORY MODEL
+// ============================================
+class PreviousRentalHistory {
+  final String buildingName;           // Tên toà nhà
+  final String? buildingAddress;       // Địa chỉ toà nhà
+  final String roomNumber;             // Số phòng
+  final DateTime moveInDate;           // Ngày chuyển vào
+  final DateTime moveOutDate;          // Ngày chuyển đi
+  final double? monthlyRent;           // Tiền thuê hàng tháng
+  final String? moveOutReason;         // Lý do chuyển đi
+  final String? landlordName;          // Tên chủ nhà
+  final String? landlordPhone;         // Số điện thoại chủ nhà
+  final String? notes;                 // Ghi chú
+
+  PreviousRentalHistory({
+    required this.buildingName,
+    this.buildingAddress,
+    required this.roomNumber,
+    required this.moveInDate,
+    required this.moveOutDate,
+    this.monthlyRent,
+    this.moveOutReason,
+    this.landlordName,
+    this.landlordPhone,
+    this.notes,
+  });
+
+  int get duration {
+    return moveOutDate.difference(moveInDate).inDays;
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'buildingName': buildingName,
+      'buildingAddress': buildingAddress,
+      'roomNumber': roomNumber,
+      'moveInDate': Timestamp.fromDate(moveInDate),
+      'moveOutDate': Timestamp.fromDate(moveOutDate),
+      'monthlyRent': monthlyRent,
+      'moveOutReason': moveOutReason,
+      'landlordName': landlordName,
+      'landlordPhone': landlordPhone,
+      'notes': notes,
+    };
+  }
+
+  factory PreviousRentalHistory.fromMap(Map<String, dynamic> map) {
+    return PreviousRentalHistory(
+      buildingName: map['buildingName'] ?? '',
+      buildingAddress: map['buildingAddress'],
+      roomNumber: map['roomNumber'] ?? '',
+      moveInDate: (map['moveInDate'] as Timestamp).toDate(),
+      moveOutDate: (map['moveOutDate'] as Timestamp).toDate(),
+      monthlyRent: (map['monthlyRent'] as num?)?.toDouble(),
+      moveOutReason: map['moveOutReason'],
+      landlordName: map['landlordName'],
+      landlordPhone: map['landlordPhone'],
+      notes: map['notes'],
+    );
   }
 }
 

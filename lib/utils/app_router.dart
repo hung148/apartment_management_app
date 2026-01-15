@@ -14,7 +14,9 @@ class AppRouter {
   static const String oranizationScreen = '/organization';
   static const String buildingRoomScreen = '/building-rooms';
   static const String roomDetailScreen = '/room-detail';
-
+  static const String paymentScreen = '/payemts';
+  static const String tenantScreen = '/tenants';
+  static const String reportScreen = '/report';
   static Route<dynamic> generateRoute(RouteSettings settings) {
     // settings.name tells us which screen they want
     switch (settings.name) {
@@ -29,7 +31,7 @@ class AppRouter {
       case buildingRoomScreen:
         return MaterialPageRoute(builder: (_) => BuildingRoomScreen(), settings: settings,);
       case roomDetailScreen:
-        return MaterialPageRoute(builder: (_) => RoomDetailScreen());
+        return MaterialPageRoute(builder: (_) => RoomDetailScreen(), settings: settings,);
       default:
         // If the route doesn't exist, show an error
         return MaterialPageRoute(builder: (_) => Scaffold(

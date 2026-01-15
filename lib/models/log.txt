@@ -454,12 +454,6 @@ class TenantService {
         'roomId': newRoomId,
         'moveInDate': Timestamp.now(),
         'previousRentals': previousRentals.map((r) => r.toMap()).toList(),
-        // Reactivate tenant
-        'status': TenantStatus.active.name,
-        'moveOutDate': null,
-        'lastBuildingName': null,
-        'lastRoomNumber': null,
-        'updatedAt': Timestamp.now(),
       });
     } catch (e) {
       print('Error moving tenant to room: $e');

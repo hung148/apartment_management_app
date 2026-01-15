@@ -1,4 +1,5 @@
 import 'package:apartment_management_project_2/models/buildings_model.dart';
+import 'package:apartment_management_project_2/services/tenants_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class BuildingService {
@@ -191,6 +192,49 @@ class BuildingService {
     } catch (e) {
       print('Error searching buildings: $e');
       return [];
+    }
+  }
+
+  // ========================================
+  // DELETE - Delete building with rooms and mark tenants as moved out
+  // ========================================
+  Future<Map<String, int>> deleteBuildingWithRoomsAndTenants(String buildingId) async {
+    try {
+      final tenantService = TenantService();
+      
+      // Step 1: Mark all tenants as moved out (preserve data)
+      final tenantsAffected = await tenantService.markBuildingTenantsAsMovedOut(buildingId);
+      
+      // Step 2: Delete all rooms in this building
+      final roomsSnapshot = await _firestore
+          .collection('rooms')
+          .where('buildingId', isEqualTo: buildingId)
+          .get();
+
+      final batch = _firestore.batch();
+      for (var doc in roomsSnapshot.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+
+      // Step 3: Delete the building itself
+      await _firestore
+          .collection('buildings')
+          .doc(buildingId)
+          .delete();
+      
+      print('✅ Building deleted: ${roomsSnapshot.docs.length} rooms, $tenantsAffected tenants marked as moved out');
+      
+      return {
+        'rooms': roomsSnapshot.docs.length,
+        'tenants': tenantsAffected,
+      };
+    } catch (e) {
+      print('❌ Error deleting building: $e');
+      return {
+        'rooms': 0,
+        'tenants': 0,
+      };
     }
   }
 }

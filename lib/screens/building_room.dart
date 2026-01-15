@@ -35,12 +35,33 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> {
     print('BuildingRoomScreen: didChangeDependencies called');
     
     try {
-      final args = ModalRoute.of(context)?.settings.arguments;
+      final modalRoute = ModalRoute.of(context);
+      print('ModalRoute: $modalRoute');
+      print('Route name: ${modalRoute?.settings.name}');
+      
+      final args = modalRoute?.settings.arguments;
+      print('Arguments type: ${args.runtimeType}');
+      print('Arguments value: $args');
       
       if (args == null) {
         print('❌ ERROR: No arguments passed to route');
+        print('This usually means:');
+        print('  1. You navigated without passing arguments');
+        print('  2. Route configuration is incorrect');
+        print('  3. MaterialApp routes are not set up properly');
         setState(() {
-          _errorMessage = 'No building data received';
+          _errorMessage = 'No building data received. Check navigation code.';
+          _isLoading = false;
+        });
+        return;
+      }
+      
+      if (args is! Building) {
+        print('❌ ERROR: Arguments are not of type Building!');
+        print('   Expected: Building');
+        print('   Got: ${args.runtimeType}');
+        setState(() {
+          _errorMessage = 'Invalid data type received: ${args.runtimeType}';
           _isLoading = false;
         });
         return;
@@ -400,17 +421,42 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> {
               'ID: ${room.id}',
               style: const TextStyle(fontSize: 11, color: Colors.grey),
             ),
+            // Add onTap to navigate to room detail
+            onTap: () {
+              print('Navigating to room detail: ${room.roomNumber}');
+              Navigator.pushNamed(
+                context,
+                '/room-detail',
+                arguments: room,
+              );
+            },
             trailing: PopupMenuButton<String>(
               onSelected: (value) {
                 print('Menu selected: $value for room ${room.roomNumber}');
                 
-                if (value == 'edit') {
+                if (value == 'view') {
+                  Navigator.pushNamed(
+                    context,
+                    '/room-detail',
+                    arguments: room,
+                  );
+                } else if (value == 'edit') {
                   _showRoomDialog(room: room);
                 } else if (value == 'delete') {
                   _deleteRoom(room);
                 }
               },
               itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: 'view',
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline, size: 20),
+                      SizedBox(width: 8),
+                      Text('Chi tiết'),
+                    ],
+                  ),
+                ),
                 PopupMenuItem(
                   value: 'edit',
                   child: Row(

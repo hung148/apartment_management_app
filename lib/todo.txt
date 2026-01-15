@@ -1,0 +1,9 @@
+add more field to add dialog and add chinh sua, xoa in tenant
+
+In building room stop display room ID, them, xoa phong kiem tra if there is tenant in there mark them move out save their last location
+
+Add vehicle service to tenant, fix room detail
+
+Make oraganization screen shorter
+
+work on hoa don
