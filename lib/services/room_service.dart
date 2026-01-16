@@ -2,7 +2,7 @@ import 'package:apartment_management_project_2/models/rooms_model.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class RoomService {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  FirebaseFirestore get _firestore => FirebaseFirestore.instance;
 
   // ========================================
   // CREATE - Add a new room

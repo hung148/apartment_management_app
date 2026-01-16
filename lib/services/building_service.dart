@@ -3,7 +3,7 @@ import 'package:apartment_management_project_2/services/tenants_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class BuildingService {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  FirebaseFirestore get _firestore => FirebaseFirestore.instance;
 
   // ========================================
   // CREATE - Add a new building

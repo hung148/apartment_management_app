@@ -5,7 +5,7 @@ import 'package:uuid/uuid.dart';
 
 class OrganizationService {
   // Create instance of Firestore to interact with the database
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  FirebaseFirestore get _firestore => FirebaseFirestore.instance;
 
   // UUID generator for creating unique invite codes
   final Uuid _uuid = Uuid();

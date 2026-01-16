@@ -2,7 +2,7 @@ import 'package:apartment_management_project_2/models/tenants_model.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class TenantService {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  FirebaseFirestore get _firestore => FirebaseFirestore.instance;
 
   // ========================================
   // CREATE - Add a new tenant
@@ -398,6 +398,7 @@ class TenantService {
 
   // ========================================
   // UPDATE - Move tenant to different room and record history
+  // FIXED: Prevents duplicate history when moving after "moved out"
   // ========================================
   Future<bool> moveTenantToRoom(
     String tenantId,
@@ -410,43 +411,51 @@ class TenantService {
       final tenant = await getTenantById(tenantId);
       if (tenant == null) return false;
 
-      // Get current building and room info
-      final oldBuilding = await _firestore
-          .collection('buildings')
-          .doc(tenant.buildingId)
-          .get();
-      
-      final oldRoom = await _firestore
-          .collection('rooms')
-          .doc(tenant.roomId)
-          .get();
-
-      final oldBuildingName = oldBuilding.exists && oldBuilding.data()?['name'] != null
-          ? oldBuilding.data()!['name'] as String
-          : 'Không xác định';
-      
-      final oldBuildingAddress = oldBuilding.exists && oldBuilding.data()?['address'] != null
-          ? oldBuilding.data()!['address'] as String
-          : null;
-
-      final oldRoomNumber = oldRoom.exists && oldRoom.data()?['roomNumber'] != null
-          ? oldRoom.data()!['roomNumber'] as String
-          : '?';
-
-      // Create rental history entry for old location
-      final previousRental = PreviousRentalHistory(
-        buildingName: oldBuildingName,
-        buildingAddress: oldBuildingAddress,
-        roomNumber: oldRoomNumber,
-        moveInDate: tenant.moveInDate,
-        moveOutDate: DateTime.now(),
-        monthlyRent: tenant.monthlyRent,
-        moveOutReason: moveOutReason ?? 'Chuyển phòng',
-      );
-
-      // Update previous rentals list
+      // Start with existing rental history
       final previousRentals = tenant.previousRentals ?? [];
-      previousRentals.add(previousRental);
+
+      // ⚠️ KEY FIX: Only add a new history entry if the tenant is NOT already marked as "moved out"
+      // If they're already moved out, that status change already created a history entry
+      if (tenant.status != TenantStatus.moveOut) {
+        // Get current building and room info
+        final oldBuilding = await _firestore
+            .collection('buildings')
+            .doc(tenant.buildingId)
+            .get();
+        
+        final oldRoom = await _firestore
+            .collection('rooms')
+            .doc(tenant.roomId)
+            .get();
+
+        final oldBuildingName = oldBuilding.exists && oldBuilding.data()?['name'] != null
+            ? oldBuilding.data()!['name'] as String
+            : 'Không xác định';
+        
+        final oldBuildingAddress = oldBuilding.exists && oldBuilding.data()?['address'] != null
+            ? oldBuilding.data()!['address'] as String
+            : null;
+
+        final oldRoomNumber = oldRoom.exists && oldRoom.data()?['roomNumber'] != null
+            ? oldRoom.data()!['roomNumber'] as String
+            : '?';
+
+        // Create rental history entry for old location
+        final previousRental = PreviousRentalHistory(
+          buildingName: oldBuildingName,
+          buildingAddress: oldBuildingAddress,
+          roomNumber: oldRoomNumber,
+          moveInDate: tenant.moveInDate,
+          moveOutDate: DateTime.now(),
+          monthlyRent: tenant.monthlyRent,
+          moveOutReason: moveOutReason ?? 'Chuyển phòng',
+        );
+
+        // Add to history
+        previousRentals.add(previousRental);
+      }
+      // If status IS moveOut, we skip adding a new history entry
+      // because markTenantAsMovedOut() already added one
 
       // Update tenant with new room and history
       return updateTenant(tenantId, {
@@ -454,6 +463,12 @@ class TenantService {
         'roomId': newRoomId,
         'moveInDate': Timestamp.now(),
         'previousRentals': previousRentals.map((r) => r.toMap()).toList(),
+        // Reactivate tenant
+        'status': TenantStatus.active.name,
+        'moveOutDate': null,
+        'lastBuildingName': null, // Clear moved-out metadata
+        'lastRoomNumber': null,
+        'updatedAt': Timestamp.now(),
       });
     } catch (e) {
       print('Error moving tenant to room: $e');
@@ -899,62 +914,125 @@ class TenantService {
     }
   }
     // ========================================
-  // VEHICLE - Add vehicle to tenant (transactional)
+  // VEHICLE - Add vehicle to tenant (simpler approach without transaction)
   // ========================================
   Future<bool> addVehicle(String tenantId, VehicleInfo vehicle) async {
     try {
+      print('=== Starting addVehicle ===');
+      print('Tenant ID: $tenantId');
+      print('Vehicle: ${vehicle.licensePlate}');
+      
       final tenantRef = _firestore.collection('tenants').doc(tenantId);
+      print('Got tenant reference');
 
-      await _firestore.runTransaction((tx) async {
-        final snapshot = await tx.get(tenantRef);
-        if (!snapshot.exists) throw Exception('Tenant not found');
+      // First, get the current tenant document
+      print('Fetching current tenant...');
+      final snapshot = await tenantRef.get();
+      
+      if (!snapshot.exists) {
+        print('Error: Tenant not found with ID: $tenantId');
+        return false;
+      }
 
-        final data = snapshot.data()!;
-        final vehiclesList = data['vehicles'] != null
-            ? List<Map<String, dynamic>>.from(data['vehicles'] as List)
-            : <Map<String, dynamic>>[];
+      final data = snapshot.data() as Map<String, dynamic>;
+      print('Got tenant data');
+      
+      // Get existing vehicles
+      List<Map<String, dynamic>> vehiclesList = [];
+      
+      if (data.containsKey('vehicles') && data['vehicles'] != null) {
+        print('Vehicles field exists');
+        if (data['vehicles'] is List) {
+          print('Converting vehicles list...');
+          try {
+            vehiclesList = (data['vehicles'] as List)
+                .map((item) {
+                  if (item is Map<String, dynamic>) {
+                    return item;
+                  }
+                  return Map<String, dynamic>.from(item as Map);
+                })
+                .toList();
+            print('Converted ${vehiclesList.length} existing vehicles');
+          } catch (e) {
+            print('Error converting vehicles: $e');
+            vehiclesList = [];
+          }
+        }
+      } else {
+        print('No existing vehicles');
+      }
 
-        vehiclesList.add(vehicle.toMap());
+      // Create the vehicle map
+      final vehicleMap = {
+        'type': vehicle.type.name,
+        'licensePlate': vehicle.licensePlate,
+        'brand': vehicle.brand,
+        'model': vehicle.model,
+        'color': vehicle.color,
+        'isParkingRegistered': vehicle.isParkingRegistered,
+        'parkingSpot': vehicle.parkingSpot,
+      };
+      print('Vehicle map: $vehicleMap');
+      
+      vehiclesList.add(vehicleMap);
+      print('Vehicle added, new count: ${vehiclesList.length}');
 
-        tx.update(tenantRef, {
-          'vehicles': vehiclesList,
-          'updatedAt': Timestamp.now(),
-        });
+      // Update the tenant with new vehicles list
+      print('Updating tenant...');
+      await tenantRef.update({
+        'vehicles': vehiclesList,
+        'updatedAt': FieldValue.serverTimestamp(),
       });
-
+      
+      print('Vehicle added successfully');
       return true;
-    } catch (e) {
-      print('Error adding vehicle: $e');
+    } catch (e, stackTrace) {
+      print('=== Error adding vehicle ===');
+      print('Error: $e');
+      print('Stack trace: $stackTrace');
       return false;
     }
   }
 
   // ========================================
-  // VEHICLE - Update vehicle by index (transactional)
+  // VEHICLE - Update vehicle by index (simplified approach without transaction)
   // ========================================
   Future<bool> updateVehicle(String tenantId, int index, VehicleInfo vehicle) async {
     try {
       final tenantRef = _firestore.collection('tenants').doc(tenantId);
 
-      await _firestore.runTransaction((tx) async {
-        final snapshot = await tx.get(tenantRef);
-        if (!snapshot.exists) throw Exception('Tenant not found');
+      // Get current tenant
+      final snapshot = await tenantRef.get();
+      if (!snapshot.exists) return false;
 
-        final data = snapshot.data()!;
-        final vehiclesList = data['vehicles'] != null
-            ? List<Map<String, dynamic>>.from(data['vehicles'] as List)
-            : <Map<String, dynamic>>[];
+      final data = snapshot.data() as Map<String, dynamic>;
+      
+      // Get vehicles list
+      List<Map<String, dynamic>> vehiclesList = [];
+      if (data.containsKey('vehicles') && data['vehicles'] != null && data['vehicles'] is List) {
+        vehiclesList = (data['vehicles'] as List)
+            .map((item) => item is Map<String, dynamic> ? item : Map<String, dynamic>.from(item as Map))
+            .toList();
+      }
 
-        if (index < 0 || index >= vehiclesList.length) {
-          throw Exception('Invalid vehicle index');
-        }
+      if (index < 0 || index >= vehiclesList.length) {
+        return false;
+      }
 
-        vehiclesList[index] = vehicle.toMap();
+      vehiclesList[index] = {
+        'type': vehicle.type.name,
+        'licensePlate': vehicle.licensePlate,
+        'brand': vehicle.brand,
+        'model': vehicle.model,
+        'color': vehicle.color,
+        'isParkingRegistered': vehicle.isParkingRegistered,
+        'parkingSpot': vehicle.parkingSpot,
+      };
 
-        tx.update(tenantRef, {
-          'vehicles': vehiclesList,
-          'updatedAt': Timestamp.now(),
-        });
+      await tenantRef.update({
+        'vehicles': vehiclesList,
+        'updatedAt': FieldValue.serverTimestamp(),
       });
 
       return true;
@@ -965,31 +1043,35 @@ class TenantService {
   }
 
   // ========================================
-  // VEHICLE - Remove vehicle by index (transactional)
+  // VEHICLE - Remove vehicle by index (simplified approach without transaction)
   // ========================================
   Future<bool> removeVehicle(String tenantId, int index) async {
     try {
       final tenantRef = _firestore.collection('tenants').doc(tenantId);
 
-      await _firestore.runTransaction((tx) async {
-        final snapshot = await tx.get(tenantRef);
-        if (!snapshot.exists) throw Exception('Tenant not found');
+      // Get current tenant
+      final snapshot = await tenantRef.get();
+      if (!snapshot.exists) return false;
 
-        final data = snapshot.data()!;
-        final vehiclesList = data['vehicles'] != null
-            ? List<Map<String, dynamic>>.from(data['vehicles'] as List)
-            : <Map<String, dynamic>>[];
+      final data = snapshot.data() as Map<String, dynamic>;
+      
+      // Get vehicles list
+      List<Map<String, dynamic>> vehiclesList = [];
+      if (data.containsKey('vehicles') && data['vehicles'] != null && data['vehicles'] is List) {
+        vehiclesList = (data['vehicles'] as List)
+            .map((item) => item is Map<String, dynamic> ? item : Map<String, dynamic>.from(item as Map))
+            .toList();
+      }
 
-        if (index < 0 || index >= vehiclesList.length) {
-          throw Exception('Invalid vehicle index');
-        }
+      if (index < 0 || index >= vehiclesList.length) {
+        return false;
+      }
 
-        vehiclesList.removeAt(index);
+      vehiclesList.removeAt(index);
 
-        tx.update(tenantRef, {
-          'vehicles': vehiclesList,
-          'updatedAt': Timestamp.now(),
-        });
+      await tenantRef.update({
+        'vehicles': vehiclesList,
+        'updatedAt': FieldValue.serverTimestamp(),
       });
 
       return true;
@@ -1046,7 +1128,7 @@ class TenantService {
   }
 
   // ========================================
-  // VEHICLE - Register parking spot for a vehicle (transactional)
+  // VEHICLE - Register parking spot for a vehicle (simplified approach without transaction)
   // ========================================
   Future<bool> registerParkingSpot(
     String tenantId,
@@ -1056,28 +1138,31 @@ class TenantService {
     try {
       final tenantRef = _firestore.collection('tenants').doc(tenantId);
 
-      await _firestore.runTransaction((tx) async {
-        final snapshot = await tx.get(tenantRef);
-        if (!snapshot.exists) throw Exception('Tenant not found');
+      // Get current tenant
+      final snapshot = await tenantRef.get();
+      if (!snapshot.exists) return false;
 
-        final data = snapshot.data()!;
-        final vehiclesList = data['vehicles'] != null
-            ? List<Map<String, dynamic>>.from(data['vehicles'] as List)
-            : <Map<String, dynamic>>[];
+      final data = snapshot.data() as Map<String, dynamic>;
+      
+      // Get vehicles list
+      List<Map<String, dynamic>> vehiclesList = [];
+      if (data.containsKey('vehicles') && data['vehicles'] != null && data['vehicles'] is List) {
+        vehiclesList = (data['vehicles'] as List)
+            .map((item) => item is Map<String, dynamic> ? item : Map<String, dynamic>.from(item as Map))
+            .toList();
+      }
 
-        if (vehicleIndex < 0 || vehicleIndex >= vehiclesList.length) {
-          throw Exception('Invalid vehicle index');
-        }
+      if (vehicleIndex < 0 || vehicleIndex >= vehiclesList.length) {
+        return false;
+      }
 
-        final vehicleMap = Map<String, dynamic>.from(vehiclesList[vehicleIndex]);
-        vehicleMap['isParkingRegistered'] = true;
-        vehicleMap['parkingSpot'] = parkingSpot;
-        vehiclesList[vehicleIndex] = vehicleMap;
+      // Update the vehicle
+      vehiclesList[vehicleIndex]['isParkingRegistered'] = true;
+      vehiclesList[vehicleIndex]['parkingSpot'] = parkingSpot;
 
-        tx.update(tenantRef, {
-          'vehicles': vehiclesList,
-          'updatedAt': Timestamp.now(),
-        });
+      await tenantRef.update({
+        'vehicles': vehiclesList,
+        'updatedAt': FieldValue.serverTimestamp(),
       });
 
       return true;
@@ -1088,7 +1173,7 @@ class TenantService {
   }
 
   // ========================================
-  // VEHICLE - Unregister parking spot for a vehicle (transactional)
+  // VEHICLE - Unregister parking spot for a vehicle (simplified approach without transaction)
   // ========================================
   Future<bool> unregisterParkingSpot(
     String tenantId,
@@ -1097,28 +1182,31 @@ class TenantService {
     try {
       final tenantRef = _firestore.collection('tenants').doc(tenantId);
 
-      await _firestore.runTransaction((tx) async {
-        final snapshot = await tx.get(tenantRef);
-        if (!snapshot.exists) throw Exception('Tenant not found');
+      // Get current tenant
+      final snapshot = await tenantRef.get();
+      if (!snapshot.exists) return false;
 
-        final data = snapshot.data()!;
-        final vehiclesList = data['vehicles'] != null
-            ? List<Map<String, dynamic>>.from(data['vehicles'] as List)
-            : <Map<String, dynamic>>[];
+      final data = snapshot.data() as Map<String, dynamic>;
+      
+      // Get vehicles list
+      List<Map<String, dynamic>> vehiclesList = [];
+      if (data.containsKey('vehicles') && data['vehicles'] != null && data['vehicles'] is List) {
+        vehiclesList = (data['vehicles'] as List)
+            .map((item) => item is Map<String, dynamic> ? item : Map<String, dynamic>.from(item as Map))
+            .toList();
+      }
 
-        if (vehicleIndex < 0 || vehicleIndex >= vehiclesList.length) {
-          throw Exception('Invalid vehicle index');
-        }
+      if (vehicleIndex < 0 || vehicleIndex >= vehiclesList.length) {
+        return false;
+      }
 
-        final vehicleMap = Map<String, dynamic>.from(vehiclesList[vehicleIndex]);
-        vehicleMap['isParkingRegistered'] = false;
-        vehicleMap['parkingSpot'] = null;
-        vehiclesList[vehicleIndex] = vehicleMap;
+      // Update the vehicle
+      vehiclesList[vehicleIndex]['isParkingRegistered'] = false;
+      vehiclesList[vehicleIndex]['parkingSpot'] = null;
 
-        tx.update(tenantRef, {
-          'vehicles': vehiclesList,
-          'updatedAt': Timestamp.now(),
-        });
+      await tenantRef.update({
+        'vehicles': vehiclesList,
+        'updatedAt': FieldValue.serverTimestamp(),
       });
 
       return true;
