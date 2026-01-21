@@ -1,4 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:pdf/widgets.dart' as pw;
+
+class PdfFontService {
+  static pw.Font? _cachedFont;
+
+  static Future<pw.Font> getFont() async {
+    if (_cachedFont != null) return _cachedFont!;
+    final fontData = await rootBundle.load('assets/fonts/NotoSans-Regular.ttf');
+    _cachedFont = pw.Font.ttf(fontData);
+    return _cachedFont!;
+  }
+}
+
 
 // text fields
 Widget inputField({

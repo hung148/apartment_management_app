@@ -142,12 +142,15 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
   
   void _showAddEditTenantDialog({Tenant? tenant}) {
     final isEditing = tenant != null;
+    final isPhone = MediaQuery.of(context).size.width < 600;
     
     // Controllers
     final nameController = TextEditingController(text: tenant?.fullName ?? '');
     final phoneController = TextEditingController(text: tenant?.phoneNumber ?? '');
     final emailController = TextEditingController(text: tenant?.email ?? '');
     final nationalIdController = TextEditingController(text: tenant?.nationalId ?? '');
+    final occupationController = TextEditingController(text: tenant?.occupation ?? '');
+    final workplaceController = TextEditingController(text: tenant?.workplace ?? '');
     final rentController = TextEditingController(
       text: tenant?.monthlyRent?.toString() ?? '',
     );
@@ -166,7 +169,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
       builder: (dialogContext) => Dialog(
         child: ConstrainedBox(
           constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(context).size.width * 2 / 3,
+            maxWidth: isPhone ? MediaQuery.of(context).size.width * 0.95 : MediaQuery.of(context).size.width * 0.7,
             maxHeight: MediaQuery.of(context).size.height * 0.9,
           ),
           child: StatefulBuilder(
@@ -218,6 +221,26 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                       decoration: const InputDecoration(
                         labelText: 'CMND/CCCD',
                         prefixIcon: Icon(Icons.credit_card),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    
+                    // Occupation
+                    TextField(
+                      controller: occupationController,
+                      decoration: const InputDecoration(
+                        labelText: 'Nghề nghiệp',
+                        prefixIcon: Icon(Icons.work),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    
+                    // Workplace
+                    TextField(
+                      controller: workplaceController,
+                      decoration: const InputDecoration(
+                        labelText: 'Nơi làm việc',
+                        prefixIcon: Icon(Icons.business),
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -409,6 +432,12 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                         nationalId: nationalIdController.text.trim().isNotEmpty
                             ? nationalIdController.text.trim()
                             : null,
+                        occupation: occupationController.text.trim().isNotEmpty
+                            ? occupationController.text.trim()
+                            : null,
+                        workplace: workplaceController.text.trim().isNotEmpty
+                            ? workplaceController.text.trim()
+                            : null,
                         gender: selectedGender,
                         isMainTenant: isMainTenant,
                         monthlyRent: rentController.text.isNotEmpty
@@ -433,6 +462,8 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                             'phoneNumber': newTenant.phoneNumber,
                             'email': newTenant.email,
                             'nationalId': newTenant.nationalId,
+                            'occupation': newTenant.occupation,
+                            'workplace': newTenant.workplace,
                             'gender': newTenant.gender?.name,
                             'isMainTenant': newTenant.isMainTenant,
                             'monthlyRent': newTenant.monthlyRent,
@@ -496,12 +527,14 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
   }
 
   void _showTenantDetailDialog(Tenant tenant) {
+    final isPhone = MediaQuery.of(context).size.width < 600;
+    
     showDialog(
       context: context,
       builder: (context) => Dialog(
         child: ConstrainedBox(
           constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(context).size.width * 2 / 3,
+            maxWidth: isPhone ? MediaQuery.of(context).size.width * 0.95 : MediaQuery.of(context).size.width * 0.7,
             maxHeight: MediaQuery.of(context).size.height * 0.9,
           ),
           child: AlertDialog(
@@ -561,6 +594,10 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                       _buildDetailRow('Giới tính', tenant.getGenderDisplayName()!),
                     if (tenant.nationalId != null)
                       _buildDetailRow('CMND/CCCD', tenant.nationalId!),
+                    if (tenant.occupation != null)
+                      _buildDetailRow('Nghề nghiệp', tenant.occupation!),
+                    if (tenant.workplace != null)
+                      _buildDetailRow('Nơi làm việc', tenant.workplace!),
                   ]),
                   const Divider(),
                   _buildDetailSection('Thông tin thuê', [
@@ -586,6 +623,97 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                       ],
                     ]),
                   ],
+                  // Vehicle information
+                  if (tenant.vehicles != null && tenant.vehicles!.isNotEmpty) ...[
+                    const Divider(),
+                    _buildDetailSection('Phương tiện (${tenant.vehicles!.length})', [
+                      ...tenant.vehicles!.map((vehicle) => Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.purple.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(_getVehicleIcon(vehicle.type), 
+                                       size: 16, 
+                                       color: Colors.purple.shade700),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    vehicle.licensePlate,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.purple.shade900,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              if (vehicle.brand != null || vehicle.model != null)
+                                Text(
+                                  '${vehicle.brand ?? ''} ${vehicle.model ?? ''}'.trim(),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey.shade700,
+                                  ),
+                                ),
+                              if (vehicle.isParkingRegistered && vehicle.parkingSpot != null)
+                                Text(
+                                  'Bãi đỗ: ${vehicle.parkingSpot}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.green.shade700,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      )),
+                    ]),
+                  ],
+                  // Rental History
+                  if (tenant.previousRentals != null && tenant.previousRentals!.isNotEmpty) ...[
+                    const Divider(),
+                    _buildDetailSection('Lịch sử thuê (${tenant.previousRentals!.length})', [
+                      ...tenant.previousRentals!.map((rental) => Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '${rental.buildingName} - Phòng ${rental.roomNumber}',
+                                style: const TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              Text(
+                                'Từ ${_formatDate(rental.moveInDate)} đến ${_formatDate(rental.moveOutDate)}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade700,
+                                ),
+                              ),
+                              Text(
+                                '${rental.duration} ngày',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )),
+                    ]),
+                  ],
                   const Divider(),
                   _buildDetailRow('Trạng thái', tenant.getStatusDisplayName()),
                 ],
@@ -600,15 +728,30 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
               TextButton(
                 onPressed: () {
                   Navigator.pop(context);
-                  _showAddEditTenantDialog(tenant: tenant);
+                  _showTenantOptionsMenu(tenant);
                 },
-                child: const Text('Chỉnh sửa'),
+                child: const Text('Tùy chọn'),
               ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  IconData _getVehicleIcon(VehicleType type) {
+    switch (type) {
+      case VehicleType.motorcycle:
+        return Icons.two_wheeler;
+      case VehicleType.car:
+        return Icons.directions_car;
+      case VehicleType.bicycle:
+        return Icons.pedal_bike;
+      case VehicleType.electricBike:
+        return Icons.electric_bike;
+      case VehicleType.other:
+        return Icons.local_shipping;
+    }
   }
 
   Widget _buildDetailSection(String title, List<Widget> children) {
@@ -629,13 +772,695 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
     );
   }
 
+  // =========================
+  // TENANT OPTIONS MENU
+  // =========================
+  Future<void> _showTenantOptionsMenu(Tenant tenant) async {
+    await showModalBottomSheet(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.edit),
+              title: const Text('Chỉnh sửa thông tin'),
+              onTap: () {
+                Navigator.pop(context);
+                _showAddEditTenantDialog(tenant: tenant);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.directions_car),
+              title: const Text('Quản lý phương tiện'),
+              subtitle: tenant.vehicles != null && tenant.vehicles!.isNotEmpty
+                  ? Text('${tenant.vehicles!.length} phương tiện')
+                  : null,
+              onTap: () {
+                Navigator.pop(context);
+                _showVehicleManagementDialog(tenant);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.history),
+              title: const Text('Lịch sử thuê phòng'),
+              onTap: () {
+                Navigator.pop(context);
+                _showRentalHistoryDialog(tenant);
+              },
+            ),
+            if (tenant.status != TenantStatus.moveOut)
+              ListTile(
+                leading: const Icon(Icons.logout),
+                title: const Text('Đánh dấu đã chuyển đi'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _confirmMoveOut(tenant);
+                },
+              ),
+            ListTile(
+              leading: Icon(Icons.delete, color: Colors.red.shade700),
+              title: Text('Xóa', style: TextStyle(color: Colors.red.shade700)),
+              onTap: () {
+                Navigator.pop(context);
+                _deleteTenant(tenant);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // =========================
+  // VEHICLE MANAGEMENT
+  // =========================
+  Future<void> _showVehicleManagementDialog(Tenant tenant) async {
+    final isPhone = MediaQuery.of(context).size.width < 600;
+    
+    await showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: isPhone ? MediaQuery.of(context).size.width * 0.95 : MediaQuery.of(context).size.width * 0.7,
+            maxHeight: MediaQuery.of(context).size.height * 0.85,
+          ),
+          child: StatefulBuilder(
+            builder: (context, setDialogState) {
+              return FutureBuilder<Tenant?>(
+                future: _tenantService.getTenantById(tenant.id),
+                builder: (context, snapshot) {
+                  final currentTenant = snapshot.data ?? tenant;
+                  
+                  return Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.directions_car),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Quản lý phương tiện',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  Text(
+                                    currentTenant.fullName,
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: Colors.grey.shade600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.add),
+                              onPressed: () async {
+                                final vehicle = await _showAddVehicleDialog();
+                                if (vehicle != null) {
+                                  final success = await _tenantService.addVehicle(
+                                    currentTenant.id,
+                                    vehicle,
+                                  );
+                                  if (success) {
+                                    setDialogState(() {});
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(content: Text('Đã thêm phương tiện')),
+                                      );
+                                    }
+                                  }
+                                }
+                              },
+                              tooltip: 'Thêm phương tiện',
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.close),
+                              onPressed: () => Navigator.pop(context),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Divider(height: 1),
+                      Expanded(
+                        child: currentTenant.vehicles == null || currentTenant.vehicles!.isEmpty
+                            ? const Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.directions_car_outlined, size: 48, color: Colors.grey),
+                                    SizedBox(height: 12),
+                                    Text('Chưa có phương tiện nào'),
+                                  ],
+                                ),
+                              )
+                            : ListView.separated(
+                                padding: const EdgeInsets.all(16),
+                                itemCount: currentTenant.vehicles!.length,
+                                separatorBuilder: (_, __) => const Divider(),
+                                itemBuilder: (context, index) {
+                                  final vehicle = currentTenant.vehicles![index];
+                                  return ListTile(
+                                    leading: CircleAvatar(
+                                      backgroundColor: Colors.purple.shade100,
+                                      child: Icon(
+                                        _getVehicleIcon(vehicle.type),
+                                        color: Colors.purple.shade700,
+                                      ),
+                                    ),
+                                    title: Text(
+                                      vehicle.licensePlate,
+                                      style: const TextStyle(fontWeight: FontWeight.bold),
+                                    ),
+                                    subtitle: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text('${_getVehicleTypeDisplayName(vehicle.type)}${vehicle.brand != null ? ' • ${vehicle.brand}' : ''}'),
+                                        if (vehicle.isParkingRegistered && vehicle.parkingSpot != null)
+                                          Text(
+                                            'Bãi đỗ: ${vehicle.parkingSpot}',
+                                            style: TextStyle(
+                                              color: Colors.green.shade700,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                    trailing: PopupMenuButton(
+                                      itemBuilder: (context) => [
+                                        const PopupMenuItem(
+                                          value: 'edit',
+                                          child: Row(
+                                            children: [
+                                              Icon(Icons.edit, size: 20),
+                                              SizedBox(width: 8),
+                                              Text('Chỉnh sửa'),
+                                            ],
+                                          ),
+                                        ),
+                                        if (!vehicle.isParkingRegistered)
+                                          const PopupMenuItem(
+                                            value: 'parking',
+                                            child: Row(
+                                              children: [
+                                                Icon(Icons.local_parking, size: 20),
+                                                SizedBox(width: 8),
+                                                Text('Đăng ký bãi đỗ'),
+                                              ],
+                                            ),
+                                          )
+                                        else
+                                          const PopupMenuItem(
+                                            value: 'unparking',
+                                            child: Row(
+                                              children: [
+                                                Icon(Icons.cancel, size: 20),
+                                                SizedBox(width: 8),
+                                                Text('Hủy bãi đỗ'),
+                                              ],
+                                            ),
+                                          ),
+                                        const PopupMenuItem(
+                                          value: 'delete',
+                                          child: Row(
+                                            children: [
+                                              Icon(Icons.delete, size: 20, color: Colors.red),
+                                              SizedBox(width: 8),
+                                              Text('Xóa', style: TextStyle(color: Colors.red)),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                      onSelected: (value) async {
+                                        if (value == 'edit') {
+                                          final result = await _showEditVehicleDialog(vehicle);
+                                          if (result != null) {
+                                            final success = await _tenantService.updateVehicle(
+                                              currentTenant.id,
+                                              index,
+                                              result,
+                                            );
+                                            if (success) {
+                                              setDialogState(() {});
+                                              if (mounted) {
+                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                  const SnackBar(content: Text('Đã cập nhật')),
+                                                );
+                                              }
+                                            }
+                                          }
+                                        } else if (value == 'parking') {
+                                          final spot = await _showParkingSpotDialog();
+                                          if (spot != null) {
+                                            final success = await _tenantService.registerParkingSpot(
+                                              currentTenant.id,
+                                              index,
+                                              spot,
+                                            );
+                                            if (success) {
+                                              setDialogState(() {});
+                                              if (mounted) {
+                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                  const SnackBar(content: Text('Đã đăng ký bãi đỗ')),
+                                                );
+                                              }
+                                            }
+                                          }
+                                        } else if (value == 'unparking') {
+                                          final success = await _tenantService.unregisterParkingSpot(
+                                            currentTenant.id,
+                                            index,
+                                          );
+                                          if (success) {
+                                            setDialogState(() {});
+                                            if (mounted) {
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                const SnackBar(content: Text('Đã hủy bãi đỗ')),
+                                              );
+                                            }
+                                          }
+                                        } else if (value == 'delete') {
+                                          final ok = await showDialog<bool>(
+                                            context: context,
+                                            builder: (context) => AlertDialog(
+                                              title: const Text('Xóa phương tiện'),
+                                              content: Text('Xóa phương tiện ${vehicle.licensePlate}?'),
+                                              actions: [
+                                                TextButton(
+                                                  onPressed: () => Navigator.pop(context, false),
+                                                  child: const Text('Hủy'),
+                                                ),
+                                                ElevatedButton(
+                                                  onPressed: () => Navigator.pop(context, true),
+                                                  child: const Text('Xóa'),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                          if (ok == true) {
+                                            final success = await _tenantService.removeVehicle(
+                                              currentTenant.id,
+                                              index,
+                                            );
+                                            if (success) {
+                                              setDialogState(() {});
+                                              if (mounted) {
+                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                  const SnackBar(content: Text('Đã xóa phương tiện')),
+                                                );
+                                              }
+                                            }
+                                          }
+                                        }
+                                      },
+                                    ),
+                                  );
+                                },
+                              ),
+                      ),
+                    ],
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<VehicleInfo?> _showAddVehicleDialog() async {
+    final licensePlateController = TextEditingController();
+    final brandController = TextEditingController();
+    final modelController = TextEditingController();
+    final colorController = TextEditingController();
+    VehicleType selectedType = VehicleType.motorcycle;
+
+    return await showDialog<VehicleInfo>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: const Text('Thêm phương tiện'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: licensePlateController,
+                    decoration: const InputDecoration(
+                      labelText: 'Biển số xe *',
+                      hintText: '29A-12345',
+                    ),
+                    textCapitalization: TextCapitalization.characters,
+                  ),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<VehicleType>(
+                    value: selectedType,
+                    decoration: const InputDecoration(labelText: 'Loại xe *'),
+                    items: VehicleType.values.map((type) {
+                      return DropdownMenuItem(
+                        value: type,
+                        child: Text(_getVehicleTypeDisplayName(type)),
+                      );
+                    }).toList(),
+                    onChanged: (value) {
+                      if (value != null) {
+                        setDialogState(() {
+                          selectedType = value;
+                        });
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: brandController,
+                    decoration: const InputDecoration(
+                      labelText: 'Hãng xe',
+                      hintText: 'Honda, Yamaha, Toyota...',
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: modelController,
+                    decoration: const InputDecoration(
+                      labelText: 'Model',
+                      hintText: 'Wave, Vision, Vios...',
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: colorController,
+                    decoration: const InputDecoration(
+                      labelText: 'Màu sắc',
+                      hintText: 'Đen, Trắng, Xanh...',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Hủy'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  if (licensePlateController.text.trim().isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Vui lòng nhập biển số xe')),
+                    );
+                    return;
+                  }
+
+                  final vehicle = VehicleInfo(
+                    licensePlate: licensePlateController.text.trim().toUpperCase(),
+                    type: selectedType,
+                    brand: brandController.text.trim().isEmpty ? null : brandController.text.trim(),
+                    model: modelController.text.trim().isEmpty ? null : modelController.text.trim(),
+                    color: colorController.text.trim().isEmpty ? null : colorController.text.trim(),
+                  );
+
+                  Navigator.pop(context, vehicle);
+                },
+                child: const Text('Thêm'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Future<VehicleInfo?> _showEditVehicleDialog(VehicleInfo vehicle) async {
+    final licensePlateController = TextEditingController(text: vehicle.licensePlate);
+    final brandController = TextEditingController(text: vehicle.brand);
+    final modelController = TextEditingController(text: vehicle.model);
+    final colorController = TextEditingController(text: vehicle.color);
+    VehicleType selectedType = vehicle.type;
+
+    return await showDialog<VehicleInfo>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: const Text('Chỉnh sửa phương tiện'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: licensePlateController,
+                    decoration: const InputDecoration(labelText: 'Biển số xe *'),
+                    textCapitalization: TextCapitalization.characters,
+                  ),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<VehicleType>(
+                    value: selectedType,
+                    decoration: const InputDecoration(labelText: 'Loại xe *'),
+                    items: VehicleType.values.map((type) {
+                      return DropdownMenuItem(
+                        value: type,
+                        child: Text(_getVehicleTypeDisplayName(type)),
+                      );
+                    }).toList(),
+                    onChanged: (value) {
+                      if (value != null) {
+                        setDialogState(() {
+                          selectedType = value;
+                        });
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: brandController,
+                    decoration: const InputDecoration(labelText: 'Hãng xe'),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: modelController,
+                    decoration: const InputDecoration(labelText: 'Model'),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: colorController,
+                    decoration: const InputDecoration(labelText: 'Màu sắc'),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Hủy'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  if (licensePlateController.text.trim().isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Vui lòng nhập biển số xe')),
+                    );
+                    return;
+                  }
+
+                  final updatedVehicle = VehicleInfo(
+                    licensePlate: licensePlateController.text.trim().toUpperCase(),
+                    type: selectedType,
+                    brand: brandController.text.trim().isEmpty ? null : brandController.text.trim(),
+                    model: modelController.text.trim().isEmpty ? null : modelController.text.trim(),
+                    color: colorController.text.trim().isEmpty ? null : colorController.text.trim(),
+                    isParkingRegistered: vehicle.isParkingRegistered,
+                    parkingSpot: vehicle.parkingSpot,
+                  );
+
+                  Navigator.pop(context, updatedVehicle);
+                },
+                child: const Text('Lưu'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Future<String?> _showParkingSpotDialog() async {
+    final controller = TextEditingController();
+    return await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Đăng ký bãi đỗ'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            labelText: 'Vị trí bãi đỗ',
+            hintText: 'A1, B2, C3...',
+          ),
+          textCapitalization: TextCapitalization.characters,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Hủy'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (controller.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Vui lòng nhập vị trí')),
+                );
+                return;
+              }
+              Navigator.pop(context, controller.text.trim().toUpperCase());
+            },
+            child: const Text('Đăng ký'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _getVehicleTypeDisplayName(VehicleType type) {
+    switch (type) {
+      case VehicleType.motorcycle:
+        return 'Xe máy';
+      case VehicleType.car:
+        return 'Ô tô';
+      case VehicleType.bicycle:
+        return 'Xe đạp';
+      case VehicleType.electricBike:
+        return 'Xe đạp điện';
+      case VehicleType.other:
+        return 'Khác';
+    }
+  }
+
+  // =========================
+  // RENTAL HISTORY
+  // =========================
+  Future<void> _showRentalHistoryDialog(Tenant tenant) async {
+    final isPhone = MediaQuery.of(context).size.width < 600;
+    
+    await showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: isPhone ? MediaQuery.of(context).size.width * 0.95 : MediaQuery.of(context).size.width * 0.7,
+            maxHeight: MediaQuery.of(context).size.height * 0.8,
+          ),
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    const Icon(Icons.history),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        'Lịch sử thuê phòng',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: tenant.previousRentals == null || tenant.previousRentals!.isEmpty
+                    ? const Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.history, size: 48, color: Colors.grey),
+                            SizedBox(height: 12),
+                            Text('Không có lịch sử thuê'),
+                          ],
+                        ),
+                      )
+                    : ListView.separated(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: tenant.previousRentals!.length,
+                        separatorBuilder: (_, __) => const Divider(),
+                        itemBuilder: (context, i) {
+                          final r = tenant.previousRentals![i];
+                          final durationDays = r.duration;
+                          return ListTile(
+                            title: Text('${r.buildingName} - Phòng ${r.roomNumber}'),
+                            subtitle: Text(
+                              'Từ ${DateFormat.yMd().format(r.moveInDate)} đến ${DateFormat.yMd().format(r.moveOutDate)} • $durationDays ngày',
+                            ),
+                          );
+                        },
+                      ),
+              ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // =========================
+  // MOVE OUT CONFIRMATION
+  // =========================
+  Future<void> _confirmMoveOut(Tenant tenant) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Đánh dấu đã chuyển đi'),
+        content: Text('Đánh dấu ${tenant.fullName} là đã chuyển đi?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Hủy'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Xác nhận'),
+          ),
+        ],
+      ),
+    );
+
+    if (ok == true) {
+      final success = await _tenantService.markTenantAsMovedOut(tenant.id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(success ? 'Đã đánh dấu chuyển đi' : 'Thất bại')),
+        );
+      }
+    }
+  }
+
   void _deleteTenant(Tenant tenant) {
+    final isPhone = MediaQuery.of(context).size.width < 600;
+    
     showDialog(
       context: context,
       builder: (dialogContext) => Dialog(
         child: ConstrainedBox(
           constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(context).size.width * 2 / 3,
+            maxWidth: isPhone ? MediaQuery.of(context).size.width * 0.95 : MediaQuery.of(context).size.width * 0.6,
           ),
           child: AlertDialog(
             title: const Text('Xóa người thuê'),
@@ -731,154 +1556,207 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
       itemCount: _tenants!.length,
       itemBuilder: (context, index) {
         final tenant = _tenants![index];
-        
-        return Card(
-          margin: const EdgeInsets.only(bottom: 12),
-          child: ListTile(
-            contentPadding: const EdgeInsets.all(16),
-            leading: CircleAvatar(
-              radius: 30,
-              backgroundColor: tenant.isMainTenant 
-                  ? Colors.blue.shade100 
-                  : Colors.grey.shade200,
-              child: Text(
-                tenant.fullName.isNotEmpty ? tenant.fullName[0].toUpperCase() : '?',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: tenant.isMainTenant 
-                      ? Colors.blue.shade700 
-                      : Colors.grey.shade700,
+        return _buildTenantCard(tenant);
+      },
+    );
+  }
+
+  Widget _buildTenantCard(Tenant tenant) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: InkWell(
+        onTap: () => _showTenantDetailDialog(tenant),
+        onLongPress: () => _showTenantOptionsMenu(tenant),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CircleAvatar(
+                radius: 30,
+                backgroundColor: tenant.isMainTenant 
+                    ? Colors.blue.shade100 
+                    : Colors.grey.shade200,
+                child: Text(
+                  tenant.fullName.isNotEmpty ? tenant.fullName[0].toUpperCase() : '?',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: tenant.isMainTenant 
+                        ? Colors.blue.shade700 
+                        : Colors.grey.shade700,
+                  ),
                 ),
               ),
-            ),
-            title: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    tenant.fullName,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            tenant.fullName,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 18,
+                            ),
+                          ),
+                        ),
+                        if (tenant.isMainTenant)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.shade100,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              'Chủ phòng',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.blue.shade700,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
-                  ),
-                ),
-                if (tenant.isMainTenant)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.shade100,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      'Chủ phòng',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.blue.shade700,
-                        fontWeight: FontWeight.w600,
+                    const SizedBox(height: 8),
+                    
+                    if (tenant.occupation != null) ...[
+                      Row(
+                        children: [
+                          Icon(Icons.work, size: 16, color: Colors.grey.shade700),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              tenant.occupation!,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.grey.shade700,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
                       ),
+                      const SizedBox(height: 8),
+                    ],
+                    
+                    Row(
+                      children: [
+                        Icon(Icons.phone, size: 16, color: Colors.grey.shade700),
+                        const SizedBox(width: 6),
+                        Text(
+                          tenant.phoneNumber,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-              ],
-            ),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Icon(Icons.phone, size: 14, color: Colors.grey[600]),
-                    const SizedBox(width: 4),
-                    Text(tenant.phoneNumber),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(Icons.calendar_today, size: 14, color: Colors.grey[600]),
+                        const SizedBox(width: 4),
+                        Text('Vào ở: ${_formatDate(tenant.moveInDate)}'),
+                      ],
+                    ),
+                    if (tenant.monthlyRent != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        _formatCurrency(tenant.monthlyRent!),
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green.shade700,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: _getTenantStatusColor(tenant.status).withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            tenant.getStatusDisplayName(),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: _getTenantStatusColor(tenant.status),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        if (tenant.vehicles != null && tenant.vehicles!.isNotEmpty)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.purple.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.directions_car, size: 12, color: Colors.purple.shade700),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '${tenant.vehicles!.length}',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.purple.shade700,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        const Spacer(),
+                        if (tenant.previousRentals != null && tenant.previousRentals!.isNotEmpty)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.shade100,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.history, size: 12, color: Colors.orange.shade700),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '${tenant.previousRentals!.length}',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.orange.shade700,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
                   ],
                 ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Icon(Icons.calendar_today, size: 14, color: Colors.grey[600]),
-                    const SizedBox(width: 4),
-                    Text('Vào ở: ${_formatDate(tenant.moveInDate)}'),
-                  ],
-                ),
-                if (tenant.monthlyRent != null) ...[
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Icon(Icons.attach_money, size: 14, color: Colors.grey[600]),
-                      const SizedBox(width: 4),
-                      Text('Tiền thuê: ${_formatCurrency(tenant.monthlyRent!)}'),
-                    ],
-                  ),
-                ],
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: _getTenantStatusColor(tenant.status).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    tenant.getStatusDisplayName(),
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: _getTenantStatusColor(tenant.status),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            trailing: PopupMenuButton<String>(
-              onSelected: (value) {
-                switch (value) {
-                  case 'view':
-                    _showTenantDetailDialog(tenant);
-                    break;
-                  case 'edit':
-                    _showAddEditTenantDialog(tenant: tenant);
-                    break;
-                  case 'delete':
-                    _deleteTenant(tenant);
-                    break;
-                }
-              },
-              itemBuilder: (_) => const [
-                PopupMenuItem(
-                  value: 'view',
-                  child: Row(
-                    children: [
-                      Icon(Icons.info_outline, size: 20),
-                      SizedBox(width: 8),
-                      Text('Chi tiết'),
-                    ],
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'edit',
-                  child: Row(
-                    children: [
-                      Icon(Icons.edit, size: 20),
-                      SizedBox(width: 8),
-                      Text('Chỉnh sửa'),
-                    ],
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'delete',
-                  child: Row(
-                    children: [
-                      Icon(Icons.delete, size: 20, color: Colors.red),
-                      SizedBox(width: 8),
-                      Text('Xóa', style: TextStyle(color: Colors.red)),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            onTap: () => _showTenantDetailDialog(tenant),
+              ),
+              IconButton(
+                icon: Icon(Icons.more_vert, color: Colors.grey.shade600),
+                onPressed: () => _showTenantOptionsMenu(tenant),
+                tooltip: 'Tùy chọn',
+              ),
+            ],
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 
@@ -896,28 +1774,42 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
   }
 
   void _showAddPaymentDialog() async {
+    final isPhone = MediaQuery.of(context).size.width < 600;
+    
     final amountController = TextEditingController();
     final notesController = TextEditingController();
+    final electricityController = TextEditingController();
+    final waterController = TextEditingController();
 
-    PaymentType selectedType = PaymentType.other;
+    PaymentType selectedType = PaymentType.rent;
     Tenant? selectedTenant;
+    DateTime dueDate = DateTime.now().add(const Duration(days: 7));
+    DateTime billingStart = DateTime(DateTime.now().year, DateTime.now().month, 1);
+    DateTime billingEnd = DateTime(DateTime.now().year, DateTime.now().month + 1, 0);
 
     // Load tenants BEFORE showing dialog
     final tenants = await _tenantService.getActiveRoomTenants(room!.id);
 
+    if (tenants.isEmpty && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Không có người thuê nào trong phòng này')),
+      );
+      return;
+    }
+
     showDialog(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return Dialog(
           child: ConstrainedBox(
             constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(context).size.width * 2 / 3,
+              maxWidth: isPhone ? MediaQuery.of(context).size.width * 0.95 : MediaQuery.of(context).size.width * 0.7,
               maxHeight: MediaQuery.of(context).size.height * 0.9,
             ),
             child: StatefulBuilder(
-              builder: (context, setState) {
+              builder: (context, setDialogState) {
                 return AlertDialog(
-                  title: const Text('Thêm khoản thanh toán'),
+                  title: const Text('Tạo hóa đơn mới'),
                   contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
                   content: SizedBox(
                     width: double.maxFinite,
@@ -926,63 +1818,228 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                        // ------------------------------------
-                        // TENANT DROPDOWN
-                        // ------------------------------------
+                        // Tenant Selection
                         DropdownButtonFormField<Tenant>(
+                          value: selectedTenant,
                           decoration: const InputDecoration(
-                            labelText: 'Người thuê',
+                            labelText: 'Người thuê *',
+                            prefixIcon: Icon(Icons.person),
                           ),
                           items: tenants.map((tenant) {
                             return DropdownMenuItem(
                               value: tenant,
-                              child: Text(
-                                tenant.fullName +
-                                    (tenant.isMainTenant == true ? ' (Chính)' : ''),
+                              child: Row(
+                                children: [
+                                  Text(tenant.fullName),
+                                  if (tenant.isMainTenant) ...[
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: Colors.blue.shade100,
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Text(
+                                        'Chính',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: Colors.blue.shade700,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
                               ),
                             );
                           }).toList(),
                           onChanged: (value) {
-                            setState(() {
+                            setDialogState(() {
                               selectedTenant = value;
+                              // Auto-fill monthly rent if available
+                              if (value?.monthlyRent != null && selectedType == PaymentType.rent) {
+                                amountController.text = value!.monthlyRent.toString();
+                              }
                             });
                           },
                         ),
-                    
                         const SizedBox(height: 16),
                     
-                        // ------------------------------------
-                        // PAYMENT TYPE
-                        // ------------------------------------
+                        // Payment Type
                         DropdownButtonFormField<PaymentType>(
                           value: selectedType,
-                          decoration: const InputDecoration(labelText: 'Loại thanh toán'),
+                          decoration: const InputDecoration(
+                            labelText: 'Loại hóa đơn *',
+                            prefixIcon: Icon(Icons.receipt),
+                          ),
                           items: PaymentType.values.map((type) {
                             return DropdownMenuItem(
                               value: type,
-                              child: Text(type.name),
+                              child: Row(
+                                children: [
+                                  Icon(_getPaymentTypeIcon(type), size: 20),
+                                  const SizedBox(width: 8),
+                                  Text(_getPaymentTypeDisplayName(type)),
+                                ],
+                              ),
                             );
                           }).toList(),
                           onChanged: (value) {
-                            setState(() {
+                            setDialogState(() {
                               selectedType = value!;
+                              // Auto-fill rent amount
+                              if (value == PaymentType.rent && selectedTenant?.monthlyRent != null) {
+                                amountController.text = selectedTenant!.monthlyRent.toString();
+                              } else if (value != PaymentType.rent) {
+                                amountController.clear();
+                              }
                             });
                           },
                         ),
-                    
                         const SizedBox(height: 16),
                     
+                        // Amount
                         TextField(
                           controller: amountController,
-                          decoration: const InputDecoration(labelText: 'Số tiền'),
+                          decoration: const InputDecoration(
+                            labelText: 'Số tiền *',
+                            prefixIcon: Icon(Icons.attach_money),
+                            suffixText: 'VND',
+                            hintText: '0',
+                          ),
                           keyboardType: TextInputType.number,
                         ),
+                        const SizedBox(height: 16),
+
+                        // Additional fields for utility bills
+                        if (selectedType == PaymentType.electricity) ...[
+                          TextField(
+                            controller: electricityController,
+                            decoration: const InputDecoration(
+                              labelText: 'Số điện (kWh)',
+                              prefixIcon: Icon(Icons.electrical_services),
+                              hintText: 'Nhập số kWh tiêu thụ',
+                            ),
+                            keyboardType: TextInputType.number,
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+
+                        if (selectedType == PaymentType.water) ...[
+                          TextField(
+                            controller: waterController,
+                            decoration: const InputDecoration(
+                              labelText: 'Số nước (m³)',
+                              prefixIcon: Icon(Icons.water_drop),
+                              hintText: 'Nhập số m³ tiêu thụ',
+                            ),
+                            keyboardType: TextInputType.number,
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+
+                        // Billing Period (for recurring payments)
+                        if (selectedType == PaymentType.rent || 
+                            selectedType == PaymentType.electricity || 
+                            selectedType == PaymentType.water ||
+                            selectedType == PaymentType.internet) ...[
+                          const Text(
+                            'Kỳ thanh toán',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: ListTile(
+                                  contentPadding: EdgeInsets.zero,
+                                  leading: const Icon(Icons.calendar_today, size: 20),
+                                  title: const Text('Từ ngày', style: TextStyle(fontSize: 13)),
+                                  subtitle: Text(
+                                    _formatDate(billingStart),
+                                    style: const TextStyle(fontWeight: FontWeight.w600),
+                                  ),
+                                  onTap: () async {
+                                    final date = await showDatePicker(
+                                      context: context,
+                                      initialDate: billingStart,
+                                      firstDate: DateTime(2020),
+                                      lastDate: DateTime.now().add(const Duration(days: 365)),
+                                    );
+                                    if (date != null) {
+                                      setDialogState(() {
+                                        billingStart = date;
+                                      });
+                                    }
+                                  },
+                                ),
+                              ),
+                              Expanded(
+                                child: ListTile(
+                                  contentPadding: EdgeInsets.zero,
+                                  leading: const Icon(Icons.event, size: 20),
+                                  title: const Text('Đến ngày', style: TextStyle(fontSize: 13)),
+                                  subtitle: Text(
+                                    _formatDate(billingEnd),
+                                    style: const TextStyle(fontWeight: FontWeight.w600),
+                                  ),
+                                  onTap: () async {
+                                    final date = await showDatePicker(
+                                      context: context,
+                                      initialDate: billingEnd,
+                                      firstDate: billingStart,
+                                      lastDate: DateTime.now().add(const Duration(days: 365)),
+                                    );
+                                    if (date != null) {
+                                      setDialogState(() {
+                                        billingEnd = date;
+                                      });
+                                    }
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                        ],
                     
+                        // Due Date
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.event_available),
+                          title: const Text('Hạn thanh toán'),
+                          subtitle: Text(
+                            _formatDate(dueDate),
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          trailing: const Icon(Icons.edit_calendar),
+                          onTap: () async {
+                            final date = await showDatePicker(
+                              context: context,
+                              initialDate: dueDate,
+                              firstDate: DateTime.now(),
+                              lastDate: DateTime.now().add(const Duration(days: 365)),
+                            );
+                            if (date != null) {
+                              setDialogState(() {
+                                dueDate = date;
+                              });
+                            }
+                          },
+                        ),
                         const SizedBox(height: 16),
                     
+                        // Notes
                         TextField(
                           controller: notesController,
-                          decoration: const InputDecoration(labelText: 'Ghi chú'),
+                          decoration: const InputDecoration(
+                            labelText: 'Ghi chú',
+                            prefixIcon: Icon(Icons.note),
+                            hintText: 'Thông tin bổ sung...',
+                          ),
+                          maxLines: 3,
                         ),
                       ],
                     ),
@@ -990,17 +2047,39 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                   ),
                   actions: [
                     TextButton(
-                      onPressed: () => Navigator.pop(context),
+                      onPressed: () => Navigator.pop(dialogContext),
                       child: const Text('Hủy'),
                     ),
-
-                    // ------------------------------------
-                    // ADD PAYMENT BUTTON
-                    // ------------------------------------
-                    ElevatedButton(
+                    ElevatedButton.icon(
+                      icon: const Icon(Icons.add),
+                      label: const Text('Tạo hóa đơn'),
                       onPressed: selectedTenant == null
                           ? null
                           : () async {
+                              if (amountController.text.trim().isEmpty) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Vui lòng nhập số tiền')),
+                                );
+                                return;
+                              }
+
+                              final amount = double.tryParse(amountController.text.trim());
+                              if (amount == null || amount <= 0) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Số tiền không hợp lệ')),
+                                );
+                                return;
+                              }
+
+                              // Build notes with additional info
+                              String finalNotes = notesController.text.trim();
+                              if (selectedType == PaymentType.electricity && electricityController.text.isNotEmpty) {
+                                finalNotes = '${electricityController.text} kWh${finalNotes.isNotEmpty ? '\n$finalNotes' : ''}';
+                              }
+                              if (selectedType == PaymentType.water && waterController.text.isNotEmpty) {
+                                finalNotes = '${waterController.text} m³${finalNotes.isNotEmpty ? '\n$finalNotes' : ''}';
+                              }
+
                               final payment = Payment(
                                 id: '',
                                 organizationId: room!.organizationId,
@@ -1010,16 +2089,43 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                                 tenantName: selectedTenant!.fullName,
                                 type: selectedType,
                                 status: PaymentStatus.pending,
-                                amount: double.tryParse(amountController.text) ?? 0,
-                                dueDate: DateTime.now().add(const Duration(days: 7)),
+                                amount: amount,
+                                dueDate: dueDate,
+                                billingStartDate: (selectedType == PaymentType.rent || 
+                                                   selectedType == PaymentType.electricity || 
+                                                   selectedType == PaymentType.water ||
+                                                   selectedType == PaymentType.internet)
+                                    ? billingStart
+                                    : null,
+                                billingEndDate: (selectedType == PaymentType.rent || 
+                                                 selectedType == PaymentType.electricity || 
+                                                 selectedType == PaymentType.water ||
+                                                 selectedType == PaymentType.internet)
+                                    ? billingEnd
+                                    : null,
                                 createdAt: DateTime.now(),
-                                notes: notesController.text.trim(),
+                                notes: finalNotes.isEmpty ? null : finalNotes,
                               );
 
-                              await PaymentService().addPayment(payment);
-                              Navigator.pop(context);
+                              try {
+                                final paymentId = await _paymentService.addPayment(payment);
+                                if (paymentId != null && mounted) {
+                                  Navigator.pop(dialogContext);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Đã tạo hóa đơn thành công')),
+                                  );
+                                }
+                              } catch (e) {
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Lỗi: $e'),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                }
+                              }
                             },
-                      child: const Text('Thêm'),
                     ),
                   ],
                 );
@@ -1029,6 +2135,29 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
         );
       },
     );
+  }
+
+  String _getPaymentTypeDisplayName(PaymentType type) {
+    switch (type) {
+      case PaymentType.rent:
+        return 'Tiền thuê nhà';
+      case PaymentType.electricity:
+        return 'Tiền điện';
+      case PaymentType.water:
+        return 'Tiền nước';
+      case PaymentType.internet:
+        return 'Tiền Internet';
+      case PaymentType.parking:
+        return 'Phí gửi xe';
+      case PaymentType.maintenance:
+        return 'Phí bảo trì';
+      case PaymentType.deposit:
+        return 'Tiền cọc';
+      case PaymentType.penalty:
+        return 'Phí phạt';
+      case PaymentType.other:
+        return 'Khác';
+    }
   }
 
   // =========================
@@ -1152,9 +2281,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: InkWell(
-        onTap: () {
-          _showPaymentDetailDialog(payment);
-        },
+        onTap: () => _showPaymentDetailDialog(payment),
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -1181,7 +2308,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          payment.getTypeDisplayName(),
+                          _getPaymentTypeDisplayName(payment.type),
                           style: const TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 16,
@@ -1189,7 +2316,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Hạn thanh toán: ${_formatDate(payment.dueDate)}',
+                          payment.tenantName ?? 'Không xác định',
                           style: TextStyle(
                             fontSize: 13,
                             color: Colors.grey[600],
@@ -1228,6 +2355,66 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                   ),
                 ],
               ),
+              const SizedBox(height: 12),
+              
+              // Billing period for recurring payments
+              if (payment.billingStartDate != null && payment.billingEndDate != null)
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.calendar_month, size: 14, color: Colors.blue.shade700),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Kỳ: ${_formatDate(payment.billingStartDate!)} - ${_formatDate(payment.billingEndDate!)}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.blue.shade700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              
+              if (payment.billingStartDate != null) const SizedBox(height: 8),
+              
+              // Due date
+              Row(
+                children: [
+                  Icon(Icons.event_available, size: 14, color: Colors.grey[600]),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Hạn: ${_formatDate(payment.dueDate)}',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  const Spacer(),
+                  if (payment.paidAmount > 0 && payment.status != PaymentStatus.paid)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade50,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        'Đã trả: ${_formatCurrency(payment.paidAmount)}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.blue.shade700,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              
+              // Overdue warning
               if (payment.isOverdue) ...[
                 const SizedBox(height: 12),
                 Container(
@@ -1248,6 +2435,53 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                           fontWeight: FontWeight.w600,
                         ),
                       ),
+                      if (payment.lateFee != null && payment.lateFee! > 0) ...[
+                        const Spacer(),
+                        Text(
+                          '+${_formatCurrency(payment.lateFee!)}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.red.shade700,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+              
+              // Payment completed indicator
+              if (payment.status == PaymentStatus.paid && payment.paidAt != null) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.check_circle, size: 16, color: Colors.green.shade700),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Đã thanh toán: ${_formatDate(payment.paidAt!)}',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.green.shade700,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      if (payment.paymentMethod != null) ...[
+                        const Spacer(),
+                        Text(
+                          payment.getPaymentMethodDisplayName() ?? '',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.green.shade700,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -1323,16 +2557,68 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
   }
 
   void _showPaymentDetailDialog(Payment payment) {
+    final isPhone = MediaQuery.of(context).size.width < 600;
+    
     showDialog(
       context: context,
       builder: (context) => Dialog(
         child: ConstrainedBox(
           constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(context).size.width * 2 / 3,
+            maxWidth: isPhone ? MediaQuery.of(context).size.width * 0.95 : MediaQuery.of(context).size.width * 0.7,
             maxHeight: MediaQuery.of(context).size.height * 0.9,
           ),
           child: AlertDialog(
-            title: Text(payment.getTypeDisplayName()),
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: _getPaymentTypeColor(payment.type).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    _getPaymentTypeIcon(payment.type),
+                    color: _getPaymentTypeColor(payment.type),
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _getPaymentTypeDisplayName(payment.type),
+                        style: const TextStyle(fontSize: 18),
+                      ),
+                      Text(
+                        payment.tenantName ?? 'Không xác định',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey.shade600,
+                          fontWeight: FontWeight.normal,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _getPaymentStatusColor(payment.status).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    payment.getStatusDisplayName(),
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: _getPaymentStatusColor(payment.status),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
             contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
             content: SizedBox(
               width: double.maxFinite,
@@ -1341,49 +2627,420 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                  _buildDetailRow('Số tiền', _formatCurrency(payment.amount)),
-                  _buildDetailRow('Đã thanh toán', _formatCurrency(payment.paidAmount)),
-                  _buildDetailRow('Còn lại', _formatCurrency(payment.remainingAmount)),
-                  if (payment.lateFee != null && payment.lateFee! > 0)
-                    _buildDetailRow('Phí phạt', _formatCurrency(payment.lateFee!)),
-                  const Divider(),
-                  _buildDetailRow('Hạn thanh toán', _formatDate(payment.dueDate)),
-                  _buildDetailRow('Trạng thái', payment.getStatusDisplayName()),
-                  if (payment.paidAt != null)
-                    _buildDetailRow('Ngày thanh toán', _formatDate(payment.paidAt!)),
-                  if (payment.paymentMethod != null)
-                    _buildDetailRow('Phương thức', payment.getPaymentMethodDisplayName() ?? ''),
-                  if (payment.transactionId != null)
-                    _buildDetailRow('Mã giao dịch', payment.transactionId!),
-                  if (payment.notes != null) ...[
+                  _buildDetailSection('Thông tin thanh toán', [
+                    _buildDetailRow('Số tiền gốc', _formatCurrency(payment.amount)),
+                    if (payment.lateFee != null && payment.lateFee! > 0)
+                      _buildDetailRow('Phí phạt', _formatCurrency(payment.lateFee!)),
+                    _buildDetailRow('Tổng cộng', _formatCurrency(payment.totalAmount)),
                     const Divider(),
-                    const Text('Ghi chú:', style: TextStyle(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    Text(payment.notes!),
+                    _buildDetailRow('Đã thanh toán', _formatCurrency(payment.paidAmount)),
+                    _buildDetailRow('Còn lại', _formatCurrency(payment.remainingAmount)),
+                  ]),
+                  const Divider(),
+                  _buildDetailSection('Thời gian', [
+                    if (payment.billingStartDate != null && payment.billingEndDate != null) ...[
+                      _buildDetailRow(
+                        'Kỳ thanh toán', 
+                        '${_formatDate(payment.billingStartDate!)} - ${_formatDate(payment.billingEndDate!)}',
+                      ),
+                    ],
+                    _buildDetailRow('Hạn thanh toán', _formatDate(payment.dueDate)),
+                    if (payment.isOverdue)
+                      Container(
+                        margin: const EdgeInsets.only(top: 8),
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.warning, size: 16, color: Colors.red.shade700),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Quá hạn ${payment.daysOverdue} ngày',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.red.shade700,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ]),
+                  if (payment.paidAt != null) ...[
+                    const Divider(),
+                    _buildDetailSection('Thông tin thanh toán', [
+                      _buildDetailRow('Ngày thanh toán', _formatDate(payment.paidAt!)),
+                      if (payment.paymentMethod != null)
+                        _buildDetailRow('Phương thức', payment.getPaymentMethodDisplayName() ?? ''),
+                      if (payment.transactionId != null)
+                        _buildDetailRow('Mã giao dịch', payment.transactionId!),
+                      if (payment.receiptNumber != null)
+                        _buildDetailRow('Số biên lai', payment.receiptNumber!),
+                      if (payment.paidBy != null)
+                        _buildDetailRow('Người thu', payment.paidBy!),
+                    ]),
+                  ],
+                  if (payment.notes != null && payment.notes!.isNotEmpty) ...[
+                    const Divider(),
+                    _buildDetailSection('Ghi chú', [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(payment.notes!),
+                      ),
+                    ]),
                   ],
                 ],
               ),
             ),
             ),
             actions: [
+              if (payment.status == PaymentStatus.pending || payment.status == PaymentStatus.partial)
+                TextButton.icon(
+                  icon: const Icon(Icons.delete_outline, color: Colors.red),
+                  label: const Text('Xóa', style: TextStyle(color: Colors.red)),
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _confirmDeletePayment(payment);
+                  },
+                ),
               TextButton(
                 onPressed: () => Navigator.pop(context),
                 child: const Text('Đóng'),
               ),
-              if (payment.status == PaymentStatus.pending)
-                ElevatedButton(
+              if (payment.status == PaymentStatus.pending || payment.status == PaymentStatus.partial)
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.payment),
+                  label: Text(payment.status == PaymentStatus.partial ? 'Thanh toán tiếp' : 'Thanh toán'),
                   onPressed: () {
                     Navigator.pop(context);
-                    // TODO: Mark as paid
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Chức năng thanh toán đang phát triển')),
-                    );
+                    _showMarkAsPaidDialog(payment);
                   },
-                  child: const Text('Thanh toán'),
                 ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  void _showMarkAsPaidDialog(Payment payment) {
+    final isPhone = MediaQuery.of(context).size.width < 600;
+    
+    final amountController = TextEditingController(
+      text: payment.remainingAmount.toString(),
+    );
+    final transactionIdController = TextEditingController();
+    final receiptNumberController = TextEditingController();
+    final paidByController = TextEditingController();
+    final notesController = TextEditingController();
+    
+    PaymentMethod selectedMethod = PaymentMethod.cash;
+    DateTime paidDate = DateTime.now();
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => Dialog(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: isPhone ? MediaQuery.of(context).size.width * 0.95 : MediaQuery.of(context).size.width * 0.7,
+            maxHeight: MediaQuery.of(context).size.height * 0.9,
+          ),
+          child: StatefulBuilder(
+            builder: (context, setDialogState) => AlertDialog(
+              title: const Text('Xác nhận thanh toán'),
+              contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Payment Summary
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Column(
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text('Tổng cộng:'),
+                                Text(
+                                  _formatCurrency(payment.totalAmount),
+                                  style: const TextStyle(fontWeight: FontWeight.bold),
+                                ),
+                              ],
+                            ),
+                            if (payment.paidAmount > 0) ...[
+                              const SizedBox(height: 4),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text('Đã thanh toán:'),
+                                  Text(
+                                    _formatCurrency(payment.paidAmount),
+                                    style: TextStyle(color: Colors.green.shade700),
+                                  ),
+                                ],
+                              ),
+                            ],
+                            const Divider(),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text('Còn lại:', style: TextStyle(fontWeight: FontWeight.bold)),
+                                Text(
+                                  _formatCurrency(payment.remainingAmount),
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 18,
+                                    color: Colors.red.shade700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Amount to pay
+                      TextField(
+                        controller: amountController,
+                        decoration: const InputDecoration(
+                          labelText: 'Số tiền thanh toán *',
+                          prefixIcon: Icon(Icons.attach_money),
+                          suffixText: 'VND',
+                        ),
+                        keyboardType: TextInputType.number,
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Payment Method
+                      DropdownButtonFormField<PaymentMethod>(
+                        value: selectedMethod,
+                        decoration: const InputDecoration(
+                          labelText: 'Phương thức thanh toán *',
+                          prefixIcon: Icon(Icons.payment),
+                        ),
+                        items: PaymentMethod.values.map((method) {
+                          return DropdownMenuItem(
+                            value: method,
+                            child: Text(_getPaymentMethodDisplayName(method)),
+                          );
+                        }).toList(),
+                        onChanged: (value) {
+                          setDialogState(() {
+                            selectedMethod = value!;
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Transaction ID (for non-cash)
+                      if (selectedMethod != PaymentMethod.cash) ...[
+                        TextField(
+                          controller: transactionIdController,
+                          decoration: const InputDecoration(
+                            labelText: 'Mã giao dịch',
+                            prefixIcon: Icon(Icons.tag),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
+
+                      // Receipt Number
+                      TextField(
+                        controller: receiptNumberController,
+                        decoration: const InputDecoration(
+                          labelText: 'Số biên lai',
+                          prefixIcon: Icon(Icons.receipt_long),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Paid By
+                      TextField(
+                        controller: paidByController,
+                        decoration: const InputDecoration(
+                          labelText: 'Người thu tiền',
+                          prefixIcon: Icon(Icons.person),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Paid Date
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.calendar_today),
+                        title: const Text('Ngày thanh toán'),
+                        subtitle: Text(_formatDate(paidDate)),
+                        trailing: const Icon(Icons.edit),
+                        onTap: () async {
+                          final date = await showDatePicker(
+                            context: context,
+                            initialDate: paidDate,
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime.now(),
+                          );
+                          if (date != null) {
+                            setDialogState(() {
+                              paidDate = date;
+                            });
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Notes
+                      TextField(
+                        controller: notesController,
+                        decoration: const InputDecoration(
+                          labelText: 'Ghi chú',
+                          prefixIcon: Icon(Icons.note),
+                        ),
+                        maxLines: 2,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Hủy'),
+                ),
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.check),
+                  label: const Text('Xác nhận'),
+                  onPressed: () async {
+                    final amount = double.tryParse(amountController.text.trim());
+                    if (amount == null || amount <= 0) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Số tiền không hợp lệ')),
+                      );
+                      return;
+                    }
+
+                    if (amount > payment.remainingAmount) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Số tiền vượt quá số tiền còn lại')),
+                      );
+                      return;
+                    }
+
+                    try {
+                      final success = await _paymentService.markAsPaid(
+                        payment.id,
+                        paidAmount: amount,
+                        paymentMethod: selectedMethod,
+                        transactionId: transactionIdController.text.trim().isEmpty 
+                            ? null 
+                            : transactionIdController.text.trim(),
+                        receiptNumber: receiptNumberController.text.trim().isEmpty 
+                            ? null 
+                            : receiptNumberController.text.trim(),
+                        paidBy: paidByController.text.trim().isEmpty 
+                            ? null 
+                            : paidByController.text.trim(),
+                        notes: notesController.text.trim().isEmpty 
+                            ? null 
+                            : notesController.text.trim(),
+                      );
+
+                      if (success && mounted) {
+                        Navigator.pop(dialogContext);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Đã cập nhật thanh toán thành công')),
+                        );
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Lỗi: $e'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                    }
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _getPaymentMethodDisplayName(PaymentMethod method) {
+    switch (method) {
+      case PaymentMethod.cash:
+        return 'Tiền mặt';
+      case PaymentMethod.bankTransfer:
+        return 'Chuyển khoản';
+      case PaymentMethod.momo:
+        return 'MoMo';
+      case PaymentMethod.zalopay:
+        return 'ZaloPay';
+      case PaymentMethod.creditCard:
+        return 'Thẻ ngân hàng';
+      case PaymentMethod.other:
+        return 'Khác';
+    }
+  }
+
+  void _confirmDeletePayment(Payment payment) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Xóa hóa đơn'),
+        content: Text(
+          'Bạn có chắc muốn xóa hóa đơn "${_getPaymentTypeDisplayName(payment.type)}"?\n\nThao tác này không thể hoàn tác.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Hủy'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () async {
+              try {
+                final success = await _paymentService.deletePayment(payment.id);
+                
+                if (success && mounted) {
+                  Navigator.pop(dialogContext);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Đã xóa hóa đơn thành công')),
+                  );
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Lỗi: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
+            },
+            child: const Text('Xóa'),
+          ),
+        ],
       ),
     );
   }

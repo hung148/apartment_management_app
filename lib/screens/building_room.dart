@@ -417,10 +417,6 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> {
               'Phòng ${room.roomNumber}',
               style: const TextStyle(fontWeight: FontWeight.w500),
             ),
-            subtitle: Text(
-              'ID: ${room.id}',
-              style: const TextStyle(fontSize: 11, color: Colors.grey),
-            ),
             // Add onTap to navigate to room detail
             onTap: () {
               print('Navigating to room detail: ${room.roomNumber}');

@@ -87,6 +87,15 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
     _membership = data[3] as Membership?;
   }
 
+  String _formatCurrency(double value) {
+    final f = NumberFormat.currency(locale: 'vi_VN', symbol: '₫', decimalDigits: 0);
+    return f.format(value);
+  }
+
+  String _formatDate(DateTime date) {
+    return DateFormat('dd/MM/yyyy').format(date);
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -302,7 +311,7 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                   arguments: room,
                 );
               }
-            : null,
+            : () => _showTenantDetailDialog(tenant, displayBuildingName, displayRoomNumber),
         onLongPress: isAdmin ? () => _showTenantOptionsMenu(tenant, isMovedOut) : null,
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -560,6 +569,265 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
     }).toList();
   }
 
+  // =========================
+  // TENANT DETAIL DIALOG (NEW - Enhanced)
+  // =========================
+  void _showTenantDetailDialog(Tenant tenant, String buildingName, String roomNumber) {
+    final isPhone = MediaQuery.of(context).size.width < 600;
+    
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: isPhone ? MediaQuery.of(context).size.width * 0.95 : MediaQuery.of(context).size.width * 0.7,
+            maxHeight: MediaQuery.of(context).size.height * 0.9,
+          ),
+          child: AlertDialog(
+            title: Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: tenant.isMainTenant 
+                      ? Colors.blue.shade100 
+                      : Colors.grey.shade200,
+                  child: Text(
+                    tenant.fullName[0].toUpperCase(),
+                    style: TextStyle(
+                      color: tenant.isMainTenant 
+                          ? Colors.blue.shade700 
+                          : Colors.grey.shade700,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        tenant.fullName,
+                        style: const TextStyle(fontSize: 18),
+                      ),
+                      if (tenant.isMainTenant)
+                        Text(
+                          'Chủ phòng',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.blue.shade700,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _buildDetailSection('Vị trí', [
+                      _buildDetailRow('Toà nhà', buildingName),
+                      _buildDetailRow('Phòng', roomNumber),
+                    ]),
+                    const Divider(),
+                    _buildDetailSection('Thông tin liên hệ', [
+                      _buildDetailRow('Số điện thoại', tenant.phoneNumber),
+                      if (tenant.email != null) _buildDetailRow('Email', tenant.email!),
+                    ]),
+                    const Divider(),
+                    _buildDetailSection('Thông tin cá nhân', [
+                      if (tenant.gender != null) 
+                        _buildDetailRow('Giới tính', tenant.getGenderDisplayName()!),
+                      if (tenant.nationalId != null)
+                        _buildDetailRow('CMND/CCCD', tenant.nationalId!),
+                      if (tenant.occupation != null)
+                        _buildDetailRow('Nghề nghiệp', tenant.occupation!),
+                      if (tenant.workplace != null)
+                        _buildDetailRow('Nơi làm việc', tenant.workplace!),
+                    ]),
+                    const Divider(),
+                    _buildDetailSection('Thông tin thuê', [
+                      _buildDetailRow('Ngày vào ở', _formatDate(tenant.moveInDate)),
+                      _buildDetailRow('Số ngày ở', '${tenant.daysLiving} ngày'),
+                      if (tenant.monthlyRent != null)
+                        _buildDetailRow('Tiền thuê', _formatCurrency(tenant.monthlyRent!)),
+                      if (tenant.deposit != null)
+                        _buildDetailRow('Tiền cọc', _formatCurrency(tenant.deposit!)),
+                    ]),
+                    if (tenant.contractStartDate != null || tenant.contractEndDate != null) ...[
+                      const Divider(),
+                      _buildDetailSection('Hợp đồng', [
+                        if (tenant.contractStartDate != null)
+                          _buildDetailRow('Bắt đầu', _formatDate(tenant.contractStartDate!)),
+                        if (tenant.contractEndDate != null) ...[
+                          _buildDetailRow('Kết thúc', _formatDate(tenant.contractEndDate!)),
+                          if (tenant.daysUntilContractEnd != null)
+                            _buildDetailRow(
+                              'Còn lại',
+                              '${tenant.daysUntilContractEnd} ngày',
+                            ),
+                        ],
+                      ]),
+                    ],
+                    if (tenant.vehicles != null && tenant.vehicles!.isNotEmpty) ...[
+                      const Divider(),
+                      _buildDetailSection('Phương tiện (${tenant.vehicles!.length})', [
+                        ...tenant.vehicles!.map((vehicle) => Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.purple.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(_getVehicleIcon(vehicle.type), 
+                                         size: 16, 
+                                         color: Colors.purple.shade700),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      vehicle.licensePlate,
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.purple.shade900,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                if (vehicle.brand != null || vehicle.model != null)
+                                  Text(
+                                    '${vehicle.brand ?? ''} ${vehicle.model ?? ''}'.trim(),
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey.shade700,
+                                    ),
+                                  ),
+                                if (vehicle.isParkingRegistered && vehicle.parkingSpot != null)
+                                  Text(
+                                    'Bãi đỗ: ${vehicle.parkingSpot}',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.green.shade700,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        )),
+                      ]),
+                    ],
+                    if (tenant.previousRentals != null && tenant.previousRentals!.isNotEmpty) ...[
+                      const Divider(),
+                      _buildDetailSection('Lịch sử thuê (${tenant.previousRentals!.length})', [
+                        ...tenant.previousRentals!.map((rental) => Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '${rental.buildingName} - Phòng ${rental.roomNumber}',
+                                  style: const TextStyle(fontWeight: FontWeight.bold),
+                                ),
+                                Text(
+                                  'Từ ${_formatDate(rental.moveInDate)} đến ${_formatDate(rental.moveOutDate)}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey.shade700,
+                                  ),
+                                ),
+                                Text(
+                                  '${rental.duration} ngày',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey.shade700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )),
+                      ]),
+                    ],
+                    const Divider(),
+                    _buildDetailRow('Trạng thái', tenant.getStatusDisplayName()),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Đóng'),
+              ),
+              if (_membership != null && _membership!.role == 'admin')
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _showTenantOptionsMenu(tenant, tenant.status == TenantStatus.moveOut);
+                  },
+                  child: const Text('Tùy chọn'),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetailSection(String title, List<Widget> children) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 14,
+            color: Colors.grey,
+          ),
+        ),
+        const SizedBox(height: 8),
+        ...children,
+      ],
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: TextStyle(color: Colors.grey[600])),
+          const SizedBox(width: 16),
+          Flexible(
+            child: Text(
+              value,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+              textAlign: TextAlign.right,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _showTenantOptionsMenu(Tenant tenant, bool isMovedOut) async {
     await showModalBottomSheet(
       context: context,
@@ -567,6 +835,34 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            ListTile(
+              leading: const Icon(Icons.info_outline),
+              title: const Text('Xem chi tiết'),
+              onTap: () {
+                Navigator.pop(context);
+                final building = _buildings.firstWhere(
+                  (b) => b.id == tenant.buildingId,
+                  orElse: () => Building(
+                    id: '',
+                    organizationId: '',
+                    name: tenant.lastBuildingName ?? 'Không xác định',
+                    address: '',
+                    createdAt: DateTime.now(),
+                  ),
+                );
+                final room = _rooms.firstWhere(
+                  (r) => r.id == tenant.roomId,
+                  orElse: () => Room(
+                    id: '',
+                    organizationId: '',
+                    buildingId: '',
+                    roomNumber: tenant.lastRoomNumber ?? '?',
+                    createdAt: DateTime.now(),
+                  ),
+                );
+                _showTenantDetailDialog(tenant, building.name, room.roomNumber);
+              },
+            ),
             ListTile(
               leading: const Icon(Icons.edit),
               title: const Text('Chỉnh sửa thông tin'),
@@ -628,13 +924,15 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
 
   // Vehicle Management Dialog
   Future<void> _showVehicleManagementDialog(Tenant tenant) async {
+    final isPhone = MediaQuery.of(context).size.width < 600;
+    
     await showDialog(
       context: context,
       builder: (context) => Dialog(
         child: ConstrainedBox(
           constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(context).size.width * 0.9,
-            maxHeight: MediaQuery.of(context).size.height * 0.8,
+            maxWidth: isPhone ? MediaQuery.of(context).size.width * 0.95 : MediaQuery.of(context).size.width * 0.7,
+            maxHeight: MediaQuery.of(context).size.height * 0.85,
           ),
           child: StatefulBuilder(
             builder: (context, setDialogState) {
@@ -886,6 +1184,7 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                                                   child: const Text('Hủy'),
                                                 ),
                                                 ElevatedButton(
+                                                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
                                                   onPressed: () => Navigator.pop(context, true),
                                                   child: const Text('Xóa'),
                                                 ),
@@ -1210,12 +1509,14 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
   }
 
   Future<void> _showRentalHistoryDialog(Tenant tenant) async {
+    final isPhone = MediaQuery.of(context).size.width < 600;
+    
     await showDialog(
       context: context,
       builder: (context) => Dialog(
         child: ConstrainedBox(
           constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(context).size.width * 0.9,
+            maxWidth: isPhone ? MediaQuery.of(context).size.width * 0.95 : MediaQuery.of(context).size.width * 0.7,
             maxHeight: MediaQuery.of(context).size.height * 0.8,
           ),
           child: Column(
@@ -1263,9 +1564,26 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                           final r = tenant.previousRentals![i];
                           final durationDays = r.duration;
                           return ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: Colors.orange.shade100,
+                              child: Icon(Icons.home, color: Colors.orange.shade700),
+                            ),
                             title: Text('${r.buildingName} - Phòng ${r.roomNumber}'),
-                            subtitle: Text(
-                              'Từ ${DateFormat.yMd().format(r.moveInDate)} đến ${DateFormat.yMd().format(r.moveOutDate)} • $durationDays ngày',
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Từ ${DateFormat.yMd().format(r.moveInDate)} đến ${DateFormat.yMd().format(r.moveOutDate)}',
+                                  style: const TextStyle(fontSize: 13),
+                                ),
+                                Text(
+                                  '$durationDays ngày',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                ),
+                              ],
                             ),
                           );
                         },
@@ -1282,6 +1600,7 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
   Future<void> _showEditTenantDialog(Tenant tenant) async {
     final buildings = await _getBuildings();
     final allRooms = await _getAllRooms();
+    final isPhone = MediaQuery.of(context).size.width < 600;
 
     late final Building currentBuilding;
     late final Room currentRoom;
@@ -1351,8 +1670,8 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
       builder: (context) => Dialog(
         child: ConstrainedBox(
           constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(context).size.width * 0.9,
-            maxHeight: MediaQuery.of(context).size.height * 0.8,
+            maxWidth: isPhone ? MediaQuery.of(context).size.width * 0.95 : MediaQuery.of(context).size.width * 0.7,
+            maxHeight: MediaQuery.of(context).size.height * 0.85,
           ),
           child: AlertDialog(
             title: const Text('Chỉnh sửa thông tin'),
@@ -1623,7 +1942,11 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
         content: Text('Bạn có chắc muốn xóa ${tenant.fullName}? Hành động này không thể hoàn tác.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Hủy')),
-          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Xóa')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true), 
+            child: const Text('Xóa'),
+          ),
         ],
       ),
     );
@@ -1637,6 +1960,8 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
   }
 
   Future<void> _showAddTenantDialog(List<Building> buildings, List<Room> allRooms) async {
+    final isPhone = MediaQuery.of(context).size.width < 600;
+    
     if (buildings.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Vui lòng tạo toà nhà trước')),
@@ -1669,8 +1994,8 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
           return Dialog(
             child: ConstrainedBox(
               constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 0.9,
-                maxHeight: MediaQuery.of(context).size.height * 0.8,
+                maxWidth: isPhone ? MediaQuery.of(context).size.width * 0.95 : MediaQuery.of(context).size.width * 0.7,
+                maxHeight: MediaQuery.of(context).size.height * 0.85,
               ),
               child: AlertDialog(
                 title: const Text('Thêm Người Thuê'),
@@ -1933,10 +2258,5 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
       case TenantStatus.suspended:
         return Colors.orange.shade700;
     }
-  }
-
-  String _formatCurrency(double value) {
-    final f = NumberFormat.currency(locale: 'vi_VN', symbol: '₫', decimalDigits: 0);
-    return f.format(value);
   }
 }
