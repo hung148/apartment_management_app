@@ -1,3 +1,4 @@
+import 'package:apartment_management_project_2/main.dart';
 import 'package:apartment_management_project_2/screens/dashboard_screen.dart';
 import 'package:apartment_management_project_2/services/auth_service.dart';
 import 'package:apartment_management_project_2/utils/app_router.dart';
@@ -57,7 +58,7 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
   bool get wantKeepAlive => true;
 
   // create a AuthService object to access Firebase backend
-  final AuthService _authService = AuthService();
+  final AuthService _authService = getIt<AuthService>();
 
   // loading 
   bool loading = false;

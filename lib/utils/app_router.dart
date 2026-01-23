@@ -17,7 +17,9 @@ class AppRouter {
   static const String paymentScreen = '/payemts';
   static const String tenantScreen = '/tenants';
   static const String reportScreen = '/report';
+
   static Route<dynamic> generateRoute(RouteSettings settings) {
+
     // settings.name tells us which screen they want
     switch (settings.name) {
       case splashScreen:
@@ -27,11 +29,25 @@ class AppRouter {
       case dashboardScreen:
         return MaterialPageRoute(builder: (_) => DashboardScreen());
       case oranizationScreen:
-        return MaterialPageRoute(builder: (_) => OrganizationScreen(), settings: settings,);
+        final args = settings.arguments as Map<String, dynamic>;
+        return MaterialPageRoute(builder: (_) => OrganizationScreen(
+          organization: args['organization'],
+        ), settings: settings,);
       case buildingRoomScreen:
-        return MaterialPageRoute(builder: (_) => BuildingRoomScreen(), settings: settings,);
+        final args = settings.arguments as Map<String, dynamic>;
+        return MaterialPageRoute(builder: (_) => BuildingRoomScreen(
+          building: args['building'],
+          organization: args['organization'],
+        ), settings: settings,);
       case roomDetailScreen:
-        return MaterialPageRoute(builder: (_) => RoomDetailScreen(), settings: settings,);
+        final args = settings.arguments as Map<String, dynamic>;
+        return MaterialPageRoute(
+          builder: (_) => RoomDetailScreen(
+            room: args['room'],
+            organization: args['organization'],
+          ),
+          settings: settings,
+        );
       default:
         // If the route doesn't exist, show an error
         return MaterialPageRoute(builder: (_) => Scaffold(

@@ -1,3 +1,10 @@
+import 'package:apartment_management_project_2/services/auth_service.dart';
+import 'package:apartment_management_project_2/services/building_service.dart';
+import 'package:apartment_management_project_2/services/organization_service.dart';
+import 'package:apartment_management_project_2/services/payments_service.dart';
+import 'package:apartment_management_project_2/services/room_service.dart';
+import 'package:apartment_management_project_2/services/tenants_service.dart';
+import 'package:apartment_management_project_2/services/update_services.dart';
 import 'package:apartment_management_project_2/utils/app_router.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -5,6 +12,19 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'firebase_options.dart';
+import 'package:get_it/get_it.dart';
+
+final getIt = GetIt.instance;
+
+void setup() {
+  getIt.registerLazySingleton(() => AuthService());
+  getIt.registerLazySingleton(() => RoomService());
+  getIt.registerLazySingleton(() => TenantService());
+  getIt.registerLazySingleton(() => BuildingService());
+  getIt.registerLazySingleton(() => OrganizationService());
+  getIt.registerLazySingleton(() => PaymentService());
+  getIt.registerLazySingleton(() => UpdateService());
+}
 
 void main() async {
   // Set up global error handlers to catch uncaught exceptions
@@ -39,6 +59,8 @@ void main() async {
   // Force Firebase Auth to initialize on the main thread
   // This prevents the threading errors
   await FirebaseAuth.instance.authStateChanges().first;
+
+  setup();
 
   runApp(const MyApp());
 }

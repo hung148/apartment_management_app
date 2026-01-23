@@ -11,86 +11,150 @@ import 'package:apartment_management_project_2/services/tenants_service.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-// Helper class for invoice line items
+// Helper class for invoice line items with meter readings
 class InvoiceLineItem {
   String id;
   PaymentType type;
   double amount;
   String? description;
+  
+  // Electricity fields
+  double? electricityStartReading;
+  DateTime? electricityStartDate;
+  double? electricityEndReading;
+  DateTime? electricityEndDate;
+  double? electricityPricePerUnit;
+  
+  // Water fields
+  double? waterStartReading;
+  DateTime? waterStartDate;
+  double? waterEndReading;
+  DateTime? waterEndDate;
+  double? waterPricePerUnit;
+  
+  // Billing period
+  DateTime? billingStartDate;
+  DateTime? billingEndDate;
 
   InvoiceLineItem({
     required this.id,
     required this.type,
     required this.amount,
     this.description,
+    this.electricityStartReading,
+    this.electricityStartDate,
+    this.electricityEndReading,
+    this.electricityEndDate,
+    this.electricityPricePerUnit,
+    this.waterStartReading,
+    this.waterStartDate,
+    this.waterEndReading,
+    this.waterEndDate,
+    this.waterPricePerUnit,
+    this.billingStartDate,
+    this.billingEndDate,
   });
 }
 
-// Parse line items from payment description
+// Parse line items from payment
 List<InvoiceLineItem> _parseLineItems(Payment payment) {
+  // For single-type payments with meter readings, create detailed line item
+  if (payment.type == PaymentType.electricity && payment.electricityStartReading != null) {
+    return [
+      InvoiceLineItem(
+        id: payment.id,
+        type: payment.type,
+        amount: payment.amount,
+        description: payment.description,
+        electricityStartReading: payment.electricityStartReading,
+        electricityStartDate: payment.electricityStartDate,
+        electricityEndReading: payment.electricityEndReading,
+        electricityEndDate: payment.electricityEndDate,
+        electricityPricePerUnit: payment.electricityPricePerUnit,
+      ),
+    ];
+  }
+  
+  if (payment.type == PaymentType.water && payment.waterStartReading != null) {
+    return [
+      InvoiceLineItem(
+        id: payment.id,
+        type: payment.type,
+        amount: payment.amount,
+        description: payment.description,
+        waterStartReading: payment.waterStartReading,
+        waterStartDate: payment.waterStartDate,
+        waterEndReading: payment.waterEndReading,
+        waterEndDate: payment.waterEndDate,
+        waterPricePerUnit: payment.waterPricePerUnit,
+      ),
+    ];
+  }
+  
+  if (payment.type == PaymentType.rent && payment.billingStartDate != null) {
+    return [
+      InvoiceLineItem(
+        id: payment.id,
+        type: payment.type,
+        amount: payment.amount,
+        description: payment.description,
+        billingStartDate: payment.billingStartDate,
+        billingEndDate: payment.billingEndDate,
+      ),
+    ];
+  }
+  
+  // Try to parse multi-line format from description
   final description = payment.description;
-  if (description == null || description.isEmpty) {
-    // Legacy format: single line item
-    return [
-      InvoiceLineItem(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        type: payment.type,
-        amount: payment.amount,
-        description: null,
-      ),
-    ];
-  }
-
-  // Try to parse multi-line format
-  final lines = description.split('\n');
-  final items = <InvoiceLineItem>[];
-  
-  for (var line in lines) {
-    // Format: "Tiền thuê: 5,000,000 VND (description)"
-    final match = RegExp(r'^([^:]+):\s*([\d,]+)\s*VND(?:\s*\((.+)\))?$').firstMatch(line.trim());
-    if (match != null) {
-      final typeLabel = match.group(1)?.trim() ?? '';
-      final amountStr = match.group(2)?.replaceAll(',', '') ?? '0';
-      final desc = match.group(3);
-      
-      // Map label back to PaymentType
-      PaymentType type = PaymentType.other;
-      const labelToType = {
-        'Tiền thuê': PaymentType.rent,
-        'Tiền điện': PaymentType.electricity,
-        'Tiền nước': PaymentType.water,
-        'Tiền internet': PaymentType.internet,
-        'Tiền gửi xe': PaymentType.parking,
-        'Phí bảo trì': PaymentType.maintenance,
-        'Tiền cọc': PaymentType.deposit,
-        'Tiền phạt': PaymentType.penalty,
-        'Khác': PaymentType.other,
-      };
-      
-      type = labelToType[typeLabel] ?? PaymentType.other;
-      
-      items.add(InvoiceLineItem(
-        id: DateTime.now().millisecondsSinceEpoch.toString() + items.length.toString(),
-        type: type,
-        amount: double.tryParse(amountStr) ?? 0,
-        description: desc,
-      ));
+  if (description != null && description.contains('\n')) {
+    final lines = description.split('\n');
+    final items = <InvoiceLineItem>[];
+    
+    for (var line in lines) {
+      final match = RegExp(r'^([^:]+):\s*([\d,]+)\s*VND(?:\s*\((.+)\))?$').firstMatch(line.trim());
+      if (match != null) {
+        final typeLabel = match.group(1)?.trim() ?? '';
+        final amountStr = match.group(2)?.replaceAll(',', '') ?? '0';
+        final desc = match.group(3);
+        
+        PaymentType type = PaymentType.other;
+        const labelToType = {
+          'Tiền thuê': PaymentType.rent,
+          'Tiền điện': PaymentType.electricity,
+          'Tiền nước': PaymentType.water,
+          'Tiền internet': PaymentType.internet,
+          'Tiền gửi xe': PaymentType.parking,
+          'Phí bảo trì': PaymentType.maintenance,
+          'Tiền cọc': PaymentType.deposit,
+          'Tiền phạt': PaymentType.penalty,
+          'Khác': PaymentType.other,
+        };
+        
+        type = labelToType[typeLabel] ?? PaymentType.other;
+        
+        items.add(InvoiceLineItem(
+          id: DateTime.now().millisecondsSinceEpoch.toString() + items.length.toString(),
+          type: type,
+          amount: double.tryParse(amountStr) ?? 0,
+          description: desc,
+        ));
+      }
     }
+    
+    if (items.isNotEmpty) return items;
   }
   
-  // If parsing failed, return single item
-  if (items.isEmpty) {
-    return [
-      InvoiceLineItem(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        type: payment.type,
-        amount: payment.amount,
-        description: description,
-      ),
-    ];
-  }
-  
-  return items;
+  // Default: single line item
+  return [
+    InvoiceLineItem(
+      id: payment.id,
+      type: payment.type,
+      amount: payment.amount,
+      description: description,
+      billingStartDate: payment.billingStartDate,
+      billingEndDate: payment.billingEndDate,
+    ),
+  ];
 }
 
 // ========================================
@@ -153,6 +217,197 @@ class ViewPaymentDetailsDialog extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildLineItemCard(InvoiceLineItem item, int index, BuildContext context) {
+    const labels = {
+      'rent': 'Tiền thuê',
+      'electricity': 'Tiền điện',
+      'water': 'Tiền nước',
+      'internet': 'Tiền internet',
+      'parking': 'Tiền gửi xe',
+      'maintenance': 'Phí bảo trì',
+      'deposit': 'Tiền cọc',
+      'penalty': 'Tiền phạt',
+      'other': 'Khác',
+    };
+    final typeLabel = labels[item.type.name] ?? item.type.name;
+    
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      color: Colors.grey[50],
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 16,
+                  backgroundColor: Theme.of(context).primaryColor.withOpacity(0.1),
+                  child: Text(
+                    '${index + 1}',
+                    style: TextStyle(
+                      color: Theme.of(context).primaryColor,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    typeLabel,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+                Text(
+                  NumberFormat('#,###').format(item.amount) + ' đ',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+            
+            // Electricity meter readings
+            if (item.type == PaymentType.electricity && item.electricityStartReading != null) ...[
+              const SizedBox(height: 8),
+              const Divider(),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Chỉ số đầu',
+                          style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                        ),
+                        Text(
+                          '${item.electricityStartReading} kWh',
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                        ),
+                        if (item.electricityStartDate != null)
+                          Text(
+                            DateFormat('dd/MM/yyyy').format(item.electricityStartDate!),
+                            style: TextStyle(fontSize: 10, color: Colors.grey[500]),
+                          ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Chỉ số cuối',
+                          style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                        ),
+                        Text(
+                          '${item.electricityEndReading} kWh',
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                        ),
+                        if (item.electricityEndDate != null)
+                          Text(
+                            DateFormat('dd/MM/yyyy').format(item.electricityEndDate!),
+                            style: TextStyle(fontSize: 10, color: Colors.grey[500]),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Tiêu thụ: ${((item.electricityEndReading ?? 0) - (item.electricityStartReading ?? 0)).toStringAsFixed(1)} kWh × ${NumberFormat('#,###').format(item.electricityPricePerUnit ?? 0)} đ/kWh',
+                style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+              ),
+            ],
+            
+            // Water meter readings
+            if (item.type == PaymentType.water && item.waterStartReading != null) ...[
+              const SizedBox(height: 8),
+              const Divider(),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Chỉ số đầu',
+                          style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                        ),
+                        Text(
+                          '${item.waterStartReading} m³',
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                        ),
+                        if (item.waterStartDate != null)
+                          Text(
+                            DateFormat('dd/MM/yyyy').format(item.waterStartDate!),
+                            style: TextStyle(fontSize: 10, color: Colors.grey[500]),
+                          ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Chỉ số cuối',
+                          style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                        ),
+                        Text(
+                          '${item.waterEndReading} m³',
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                        ),
+                        if (item.waterEndDate != null)
+                          Text(
+                            DateFormat('dd/MM/yyyy').format(item.waterEndDate!),
+                            style: TextStyle(fontSize: 10, color: Colors.grey[500]),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Tiêu thụ: ${((item.waterEndReading ?? 0) - (item.waterStartReading ?? 0)).toStringAsFixed(1)} m³ × ${NumberFormat('#,###').format(item.waterPricePerUnit ?? 0)} đ/m³',
+                style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+              ),
+            ],
+            
+            // Billing period
+            if (item.billingStartDate != null && item.billingEndDate != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Kỳ: ${DateFormat('dd/MM/yyyy').format(item.billingStartDate!)} - ${DateFormat('dd/MM/yyyy').format(item.billingEndDate!)}',
+                style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+              ),
+            ],
+            
+            // Description
+            if (item.description != null && item.description!.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                item.description!,
+                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -244,75 +499,10 @@ class ViewPaymentDetailsDialog extends StatelessWidget {
                       ),
                       const SizedBox(height: 12),
                       
-                      ...List.generate(lineItems.length, (index) {
-                        final item = lineItems[index];
-                        const labels = {
-                          'rent': 'Tiền thuê',
-                          'electricity': 'Tiền điện',
-                          'water': 'Tiền nước',
-                          'internet': 'Tiền internet',
-                          'parking': 'Tiền gửi xe',
-                          'maintenance': 'Phí bảo trì',
-                          'deposit': 'Tiền cọc',
-                          'penalty': 'Tiền phạt',
-                          'other': 'Khác',
-                        };
-                        final typeLabel = labels[item.type.toString().split('.')[1]] ?? item.type.toString();
-                        
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          color: Colors.grey[50],
-                          child: Padding(
-                            padding: const EdgeInsets.all(12),
-                            child: Row(
-                              children: [
-                                CircleAvatar(
-                                  radius: 16,
-                                  backgroundColor: Theme.of(context).primaryColor.withOpacity(0.1),
-                                  child: Text(
-                                    '${index + 1}',
-                                    style: TextStyle(
-                                      color: Theme.of(context).primaryColor,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        typeLabel,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 14,
-                                        ),
-                                      ),
-                                      if (item.description != null)
-                                        Text(
-                                          item.description!,
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.grey[600],
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                ),
-                                Text(
-                                  NumberFormat('#,###').format(item.amount) + ' đ',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 14,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      }),
+                      ...List.generate(
+                        lineItems.length,
+                        (index) => _buildLineItemCard(lineItems[index], index, context),
+                      ),
                       
                       const SizedBox(height: 8),
                       const Divider(thickness: 2),
@@ -339,6 +529,49 @@ class ViewPaymentDetailsDialog extends StatelessWidget {
                           ),
                         ],
                       ),
+                      
+                      // Late Fee
+                      if (payment.lateFee != null && payment.lateFee! > 0) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'Phí trễ hạn:',
+                              style: TextStyle(fontSize: 14, color: Colors.red),
+                            ),
+                            Text(
+                              NumberFormat('#,###').format(payment.lateFee!) + ' VND',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.red,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const Divider(),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'TỔNG THANH TOÁN:',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Text(
+                              NumberFormat('#,###').format(payment.totalAmount) + ' VND',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(context).primaryColor,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                       
                       // Notes
                       if (payment.notes != null && payment.notes!.isNotEmpty) ...[
@@ -400,11 +633,6 @@ class ViewPaymentDetailsDialog extends StatelessWidget {
                             payment: payment,
                             organization: organization,
                           );
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Tính năng xuất PDF - Xem hướng dẫn tích hợp'),
-                            ),
-                          );
                         },
                         icon: const Icon(Icons.picture_as_pdf),
                         label: const Text('Xuất PDF'),
@@ -418,10 +646,10 @@ class ViewPaymentDetailsDialog extends StatelessWidget {
                     Expanded(
                       child: ElevatedButton.icon(
                         onPressed: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Tính năng xuất PDF - Xem hướng dẫn tích hợp'),
-                            ),
+                          PaymentPDFExporter.showPDFPreview(
+                            context: context,
+                            payment: payment,
+                            organization: organization,
                           );
                         },
                         icon: const Icon(Icons.picture_as_pdf),
@@ -502,11 +730,9 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> {
       setState(() {
         _tenants = tenants;
         
-        // Validate that _selectedTenantId exists in the tenants list
         if (_selectedTenantId != null) {
           final tenantExists = _tenants.any((t) => t.id == _selectedTenantId);
           if (!tenantExists) {
-            // If the tenant ID doesn't exist in the list, set to null
             _selectedTenantId = null;
             _selectedTenantName = null;
           }
@@ -541,10 +767,48 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> {
     final amountController = TextEditingController();
     final descriptionController = TextEditingController();
     
+    // Electricity fields
+    final electricityStartReadingController = TextEditingController();
+    DateTime? electricityStartDate;
+    final electricityEndReadingController = TextEditingController();
+    DateTime? electricityEndDate;
+    final electricityPriceController = TextEditingController();
+    
+    // Water fields
+    final waterStartReadingController = TextEditingController();
+    DateTime? waterStartDate;
+    final waterEndReadingController = TextEditingController();
+    DateTime? waterEndDate;
+    final waterPriceController = TextEditingController();
+    
+    // Billing period
+    DateTime? billingStart;
+    DateTime? billingEnd;
+    
     final result = await showDialog<Map<String, dynamic>?>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
+          void calculateAmount() {
+            if (selectedType == PaymentType.electricity) {
+              final startReading = double.tryParse(electricityStartReadingController.text) ?? 0;
+              final endReading = double.tryParse(electricityEndReadingController.text) ?? 0;
+              final price = double.tryParse(electricityPriceController.text) ?? 0;
+              final usage = endReading - startReading;
+              if (usage > 0 && price > 0) {
+                amountController.text = (usage * price).toStringAsFixed(0);
+              }
+            } else if (selectedType == PaymentType.water) {
+              final startReading = double.tryParse(waterStartReadingController.text) ?? 0;
+              final endReading = double.tryParse(waterEndReadingController.text) ?? 0;
+              final price = double.tryParse(waterPriceController.text) ?? 0;
+              final usage = endReading - startReading;
+              if (usage > 0 && price > 0) {
+                amountController.text = (usage * price).toStringAsFixed(0);
+              }
+            }
+          }
+          
           return AlertDialog(
             title: const Text('Thêm Mục Hóa Đơn'),
             content: SingleChildScrollView(
@@ -571,12 +835,81 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> {
                       };
                       return DropdownMenuItem(
                         value: t, 
-                        child: Text(labels[t.toString().split('.')[1]] ?? ''),
+                        child: Text(labels[t.name] ?? ''),
                       );
                     }).toList(),
                     onChanged: (v) => setDialogState(() => selectedType = v),
                   ),
                   const SizedBox(height: 16),
+                  
+                  // Electricity fields (simplified for edit - just show in view dialog)
+                  if (selectedType == PaymentType.electricity) ...[
+                    TextFormField(
+                      controller: electricityStartReadingController,
+                      decoration: InputDecoration(
+                        labelText: 'Chỉ số đầu',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      keyboardType: TextInputType.number,
+                      onChanged: (_) => calculateAmount(),
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: electricityEndReadingController,
+                      decoration: InputDecoration(
+                        labelText: 'Chỉ số cuối',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      keyboardType: TextInputType.number,
+                      onChanged: (_) => calculateAmount(),
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: electricityPriceController,
+                      decoration: InputDecoration(
+                        labelText: 'Giá điện (VND/kWh)',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      keyboardType: TextInputType.number,
+                      onChanged: (_) => calculateAmount(),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  
+                  // Water fields
+                  if (selectedType == PaymentType.water) ...[
+                    TextFormField(
+                      controller: waterStartReadingController,
+                      decoration: InputDecoration(
+                        labelText: 'Chỉ số đầu',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      keyboardType: TextInputType.number,
+                      onChanged: (_) => calculateAmount(),
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: waterEndReadingController,
+                      decoration: InputDecoration(
+                        labelText: 'Chỉ số cuối',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      keyboardType: TextInputType.number,
+                      onChanged: (_) => calculateAmount(),
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: waterPriceController,
+                      decoration: InputDecoration(
+                        labelText: 'Giá nước (VND/m³)',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      keyboardType: TextInputType.number,
+                      onChanged: (_) => calculateAmount(),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  
                   TextFormField(
                     controller: amountController,
                     decoration: InputDecoration(
@@ -585,6 +918,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> {
                       suffixText: 'VND',
                     ),
                     keyboardType: TextInputType.number,
+                    readOnly: selectedType == PaymentType.electricity || selectedType == PaymentType.water,
                   ),
                   const SizedBox(height: 16),
                   TextFormField(
@@ -608,20 +942,26 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> {
                   if (selectedType != null && amountController.text.isNotEmpty) {
                     final amount = double.tryParse(amountController.text);
                     if (amount != null && amount > 0) {
-                      Navigator.pop(context, {
+                      final result = <String, dynamic>{
                         'type': selectedType!,
                         'amount': amount,
                         'description': descriptionController.text.isEmpty ? null : descriptionController.text,
-                      });
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Vui lòng nhập số tiền hợp lệ')),
-                      );
+                      };
+                      
+                      if (selectedType == PaymentType.electricity) {
+                        result['electricityStartReading'] = double.tryParse(electricityStartReadingController.text);
+                        result['electricityEndReading'] = double.tryParse(electricityEndReadingController.text);
+                        result['electricityPricePerUnit'] = double.tryParse(electricityPriceController.text);
+                      }
+                      
+                      if (selectedType == PaymentType.water) {
+                        result['waterStartReading'] = double.tryParse(waterStartReadingController.text);
+                        result['waterEndReading'] = double.tryParse(waterEndReadingController.text);
+                        result['waterPricePerUnit'] = double.tryParse(waterPriceController.text);
+                      }
+                      
+                      Navigator.pop(context, result);
                     }
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Vui lòng điền đầy đủ thông tin')),
-                    );
                   }
                 },
                 child: const Text('Thêm'),
@@ -639,6 +979,12 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> {
           type: result['type'] as PaymentType,
           amount: result['amount'] as double,
           description: result['description'] as String?,
+          electricityStartReading: result['electricityStartReading'] as double?,
+          electricityEndReading: result['electricityEndReading'] as double?,
+          electricityPricePerUnit: result['electricityPricePerUnit'] as double?,
+          waterStartReading: result['waterStartReading'] as double?,
+          waterEndReading: result['waterEndReading'] as double?,
+          waterPricePerUnit: result['waterPricePerUnit'] as double?,
         ));
       });
     }
@@ -684,7 +1030,18 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> {
             'penalty': 'Tiền phạt',
             'other': 'Khác',
           };
-          final typeLabel = labels[item.type.toString().split('.')[1]] ?? item.type.toString();
+          final typeLabel = labels[item.type.name] ?? item.type.name;
+          
+          String detailText = '';
+          if (item.type == PaymentType.electricity && item.electricityStartReading != null) {
+            final usage = (item.electricityEndReading ?? 0) - (item.electricityStartReading ?? 0);
+            detailText = 'Từ ${item.electricityStartReading} đến ${item.electricityEndReading} (${usage.toStringAsFixed(1)} kWh)';
+          } else if (item.type == PaymentType.water && item.waterStartReading != null) {
+            final usage = (item.waterEndReading ?? 0) - (item.waterStartReading ?? 0);
+            detailText = 'Từ ${item.waterStartReading} đến ${item.waterEndReading} (${usage.toStringAsFixed(1)} m³)';
+          } else if (item.description != null) {
+            detailText = item.description!;
+          }
           
           return Card(
             margin: const EdgeInsets.only(bottom: 8),
@@ -700,8 +1057,8 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> {
                 ),
               ),
               title: Text(typeLabel),
-              subtitle: item.description != null 
-                  ? Text(item.description!, style: const TextStyle(fontSize: 12))
+              subtitle: detailText.isNotEmpty 
+                  ? Text(detailText, style: const TextStyle(fontSize: 12))
                   : null,
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -775,27 +1132,40 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> {
           'penalty': 'Tiền phạt',
           'other': 'Khác',
         };
-        final typeLabel = labels[item.type.toString().split('.')[1]] ?? item.type.toString();
+        final typeLabel = labels[item.type.name] ?? item.type.name;
         final desc = item.description != null ? ' (${item.description})' : '';
         return '${typeLabel}: ${NumberFormat('#,###').format(item.amount)} VND$desc';
       }).join('\n');
 
-      // Update payment
-      await widget.paymentService.updatePayment(
-        widget.payment.id,
-        {
-          'tenantId': _selectedTenantId,
-          'tenantName': _selectedTenantName,
-          'amount': _totalAmount,
-          'dueDate': _dueDate,
-          'status': _selectedPaymentStatus.name,
-          'description': lineItemsDescription,
-          'notes': _notesController.text.isEmpty ? null : _notesController.text,
-        },
-      );
+      final Map<String, dynamic> updates = {
+        'tenantId': _selectedTenantId,
+        'tenantName': _selectedTenantName,
+        'amount': _totalAmount,
+        'dueDate': _dueDate,
+        'status': _selectedPaymentStatus.name,
+        'description': lineItemsDescription,
+        'notes': _notesController.text.isEmpty ? null : _notesController.text,
+      };
+      
+      // If single item with meter readings, preserve those
+      if (_lineItems.length == 1) {
+        final item = _lineItems.first;
+        if (item.electricityStartReading != null) {
+          updates['electricityStartReading'] = item.electricityStartReading;
+          updates['electricityEndReading'] = item.electricityEndReading;
+          updates['electricityPricePerUnit'] = item.electricityPricePerUnit;
+        }
+        if (item.waterStartReading != null) {
+          updates['waterStartReading'] = item.waterStartReading;
+          updates['waterEndReading'] = item.waterEndReading;
+          updates['waterPricePerUnit'] = item.waterPricePerUnit;
+        }
+      }
+
+      await widget.paymentService.updatePayment(widget.payment.id, updates);
       
       if (mounted) {
-        Navigator.pop(context, true); // Return true to indicate success
+        Navigator.pop(context, true);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Đã cập nhật hóa đơn thành công')),
         );
@@ -943,7 +1313,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> {
                                   'refunded': 'Đã hoàn tiền',
                                   'partial': 'Thanh toán 1 phần',
                                 };
-                                return DropdownMenuItem(value: s, child: Text(labels[s.toString().split('.')[1]] ?? ''));
+                                return DropdownMenuItem(value: s, child: Text(labels[s.name] ?? ''));
                               }).toList(),
                               onChanged: (v) => setState(() => _selectedPaymentStatus = v!),
                             ),

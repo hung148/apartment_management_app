@@ -1,3 +1,4 @@
+import 'package:apartment_management_project_2/main.dart';
 import 'package:apartment_management_project_2/utils/app_router.dart';
 import 'package:apartment_management_project_2/widgets/loading.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -12,7 +13,7 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
-  final AuthService _authService = AuthService();
+  final AuthService _authService = getIt<AuthService>();
   // initState runs ONCE when this widget is first created
   // It's like the "start" or "setup" function
   @override

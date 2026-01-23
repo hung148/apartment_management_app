@@ -1,24 +1,45 @@
+import 'package:apartment_management_project_2/main.dart';
+import 'package:apartment_management_project_2/models/membership_model.dart';
 import 'package:apartment_management_project_2/models/rooms_model.dart';
 import 'package:apartment_management_project_2/models/tenants_model.dart';
 import 'package:apartment_management_project_2/models/payment_model.dart';
+import 'package:apartment_management_project_2/models/organization_model.dart';
+import 'package:apartment_management_project_2/screens/improved_delete_payment_dialog.dart';
+import 'package:apartment_management_project_2/screens/improved_payment_dialog.dart';
+import 'package:apartment_management_project_2/screens/improved_view_edit_dialogs.dart';
+import 'package:apartment_management_project_2/services/auth_service.dart';
+import 'package:apartment_management_project_2/services/building_service.dart';
+import 'package:apartment_management_project_2/services/room_service.dart';
 import 'package:apartment_management_project_2/services/tenants_service.dart';
 import 'package:apartment_management_project_2/services/payments_service.dart';
+import 'package:apartment_management_project_2/services/organization_service.dart';
+import 'package:apartment_management_project_2/screens/payment_pdf_export.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:intl/intl.dart';
 
 class RoomDetailScreen extends StatefulWidget {
-  const RoomDetailScreen({super.key});
+  final Room room;
+  final Organization organization;
+  final TenantService tenantService = getIt<TenantService>();
+  final BuildingService buildingService = getIt<BuildingService>();
+  final RoomService roomService = getIt<RoomService>();
+  final OrganizationService organizationService = getIt<OrganizationService>();
+  final AuthService authService = getIt<AuthService>();
+
+  RoomDetailScreen({
+    Key? key,
+    required this.room,
+    required this.organization
+  }) : super(key: key);
+
 
   @override
   State<RoomDetailScreen> createState() => _RoomDetailScreenState();
 }
 
 class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerProviderStateMixin {
-  final TenantService _tenantService = TenantService();
   final PaymentService _paymentService = PaymentService();
-  
-  Room? room;
   late TabController _tabController;
   
   StreamSubscription<List<Tenant>>? _tenantSubscription;
@@ -35,46 +56,15 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    
-    if (_isInitialized) return;
-    
-    print('═══════════════════════════════════════');
-    print('RoomDetailScreen: didChangeDependencies called');
-    
-    try {
-      final args = ModalRoute.of(context)?.settings.arguments;
-      
-      if (args == null) {
-        print('❌ ERROR: No room data received');
-        return;
-      }
-      
-      room = args as Room;
-      print('Room received: ${room!.roomNumber} (ID: ${room!.id})');
-      
-      _isInitialized = true;
-      _initializeStreams();
-      
-    } catch (e, stackTrace) {
-      print('❌ ERROR in didChangeDependencies: $e');
-      print('Stack trace: $stackTrace');
-    }
+    _initializeStreams();
   }
 
   void _initializeStreams() {
-    if (room == null) return;
-    
-    // Stream tenants
-    _tenantSubscription = _tenantService
-        .streamRoomTenants(room!.id)
+    // Initialize tenant stream
+    _tenantSubscription = widget.tenantService
+        .streamRoomTenants(widget.room.id)
         .listen(
           (tenants) {
-            print('✓ Received ${tenants.length} tenants');
             if (mounted) {
               setState(() {
                 _tenants = tenants;
@@ -82,22 +72,23 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
               });
             }
           },
-          onError: (error) {
-            print('❌ Tenant stream error: $error');
+          onError: (error, stackTrace) {
+            print('❌ Stream ERROR for tenants: $error');
+            print('Stack trace: $stackTrace');
             if (mounted) {
               setState(() {
                 _isLoadingTenants = false;
               });
             }
           },
+          cancelOnError: false,
         );
-    
-    // Stream payments
+
+    // Initialize payment stream
     _paymentSubscription = _paymentService
-        .streamRoomPayments(room!.id)
+        .streamRoomPayments(widget.room.id)
         .listen(
           (payments) {
-            print('✓ Received ${payments.length} payments');
             if (mounted) {
               setState(() {
                 _payments = payments;
@@ -105,15 +96,28 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
               });
             }
           },
-          onError: (error) {
-            print('❌ Payment stream error: $error');
+          onError: (error, stackTrace) {
+            print('❌ Stream ERROR for payments: $error');
+            print('Stack trace: $stackTrace');
             if (mounted) {
               setState(() {
                 _isLoadingPayments = false;
               });
             }
           },
+          cancelOnError: false,
         );
+  }
+
+  String? get _userId => widget.authService.currentUser?.uid;
+
+  Future<Membership?> _getMyMembership() {
+    if (_userId == null) return Future.value(null);
+
+    return widget.organizationService.getUserMembership(
+      _userId!,
+      widget.organization.id,
+    );
   }
 
   @override
@@ -421,9 +425,9 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                     try {
                       final newTenant = Tenant(
                         id: tenant?.id ?? '',
-                        organizationId: room!.organizationId,
-                        buildingId: room!.buildingId,
-                        roomId: room!.id,
+                        organizationId: widget.room.organizationId,
+                        buildingId: widget.room.buildingId,
+                        roomId: widget.room.id,
                         fullName: nameController.text.trim(),
                         phoneNumber: phoneController.text.trim(),
                         email: emailController.text.trim().isNotEmpty 
@@ -455,7 +459,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
 
                       if (isEditing) {
                         // Update existing tenant
-                        final success = await _tenantService.updateTenant(
+                        final success = await widget.tenantService.updateTenant(
                           tenant!.id,
                           {
                             'fullName': newTenant.fullName,
@@ -482,7 +486,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                         }
                       } else {
                         // Add new tenant
-                        final tenantId = await _tenantService.addTenant(newTenant);
+                        final tenantId = await widget.tenantService.addTenant(newTenant);
                         
                         if (tenantId != null && mounted) {
                           Navigator.pop(dialogContext);
@@ -849,7 +853,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
           child: StatefulBuilder(
             builder: (context, setDialogState) {
               return FutureBuilder<Tenant?>(
-                future: _tenantService.getTenantById(tenant.id),
+                future: widget.tenantService.getTenantById(tenant.id),
                 builder: (context, snapshot) {
                   final currentTenant = snapshot.data ?? tenant;
                   
@@ -887,7 +891,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                               onPressed: () async {
                                 final vehicle = await _showAddVehicleDialog();
                                 if (vehicle != null) {
-                                  final success = await _tenantService.addVehicle(
+                                  final success = await widget.tenantService.addVehicle(
                                     currentTenant.id,
                                     vehicle,
                                   );
@@ -1004,7 +1008,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                                         if (value == 'edit') {
                                           final result = await _showEditVehicleDialog(vehicle);
                                           if (result != null) {
-                                            final success = await _tenantService.updateVehicle(
+                                            final success = await widget.tenantService.updateVehicle(
                                               currentTenant.id,
                                               index,
                                               result,
@@ -1021,7 +1025,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                                         } else if (value == 'parking') {
                                           final spot = await _showParkingSpotDialog();
                                           if (spot != null) {
-                                            final success = await _tenantService.registerParkingSpot(
+                                            final success = await widget.tenantService.registerParkingSpot(
                                               currentTenant.id,
                                               index,
                                               spot,
@@ -1036,7 +1040,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                                             }
                                           }
                                         } else if (value == 'unparking') {
-                                          final success = await _tenantService.unregisterParkingSpot(
+                                          final success = await widget.tenantService.unregisterParkingSpot(
                                             currentTenant.id,
                                             index,
                                           );
@@ -1067,7 +1071,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                                             ),
                                           );
                                           if (ok == true) {
-                                            final success = await _tenantService.removeVehicle(
+                                            final success = await widget.tenantService.removeVehicle(
                                               currentTenant.id,
                                               index,
                                             );
@@ -1443,7 +1447,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
     );
 
     if (ok == true) {
-      final success = await _tenantService.markTenantAsMovedOut(tenant.id);
+      final success = await widget.tenantService.markTenantAsMovedOut(tenant.id);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(success ? 'Đã đánh dấu chuyển đi' : 'Thất bại')),
@@ -1480,7 +1484,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
                 onPressed: () async {
                   try {
-                    final success = await _tenantService.deleteTenant(tenant.id);
+                    final success = await widget.tenantService.deleteTenant(tenant.id);
                     
                     if (success && mounted) {
                       Navigator.pop(dialogContext);
@@ -1773,391 +1777,49 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
     }
   }
 
+  // =========================
+  // PAYMENT METHODS - USING NEW DIALOGS
+  // =========================
+  
   void _showAddPaymentDialog() async {
-    final isPhone = MediaQuery.of(context).size.width < 600;
-    
-    final amountController = TextEditingController();
-    final notesController = TextEditingController();
-    final electricityController = TextEditingController();
-    final waterController = TextEditingController();
-
-    PaymentType selectedType = PaymentType.rent;
-    Tenant? selectedTenant;
-    DateTime dueDate = DateTime.now().add(const Duration(days: 7));
-    DateTime billingStart = DateTime(DateTime.now().year, DateTime.now().month, 1);
-    DateTime billingEnd = DateTime(DateTime.now().year, DateTime.now().month + 1, 0);
-
-    // Load tenants BEFORE showing dialog
-    final tenants = await _tenantService.getActiveRoomTenants(room!.id);
-
-    if (tenants.isEmpty && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Không có người thuê nào trong phòng này')),
-      );
-      return;
-    }
-
-    showDialog(
+    // Use the new ImprovedPaymentFormDialog
+    await showDialog(
       context: context,
-      builder: (dialogContext) {
-        return Dialog(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: isPhone ? MediaQuery.of(context).size.width * 0.95 : MediaQuery.of(context).size.width * 0.7,
-              maxHeight: MediaQuery.of(context).size.height * 0.9,
-            ),
-            child: StatefulBuilder(
-              builder: (context, setDialogState) {
-                return AlertDialog(
-                  title: const Text('Tạo hóa đơn mới'),
-                  contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
-                  content: SizedBox(
-                    width: double.maxFinite,
-                    child: SingleChildScrollView(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                        // Tenant Selection
-                        DropdownButtonFormField<Tenant>(
-                          value: selectedTenant,
-                          decoration: const InputDecoration(
-                            labelText: 'Người thuê *',
-                            prefixIcon: Icon(Icons.person),
-                          ),
-                          items: tenants.map((tenant) {
-                            return DropdownMenuItem(
-                              value: tenant,
-                              child: Row(
-                                children: [
-                                  Text(tenant.fullName),
-                                  if (tenant.isMainTenant) ...[
-                                    const SizedBox(width: 8),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: Colors.blue.shade100,
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Text(
-                                        'Chính',
-                                        style: TextStyle(
-                                          fontSize: 10,
-                                          color: Colors.blue.shade700,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            );
-                          }).toList(),
-                          onChanged: (value) {
-                            setDialogState(() {
-                              selectedTenant = value;
-                              // Auto-fill monthly rent if available
-                              if (value?.monthlyRent != null && selectedType == PaymentType.rent) {
-                                amountController.text = value!.monthlyRent.toString();
-                              }
-                            });
-                          },
-                        ),
-                        const SizedBox(height: 16),
-                    
-                        // Payment Type
-                        DropdownButtonFormField<PaymentType>(
-                          value: selectedType,
-                          decoration: const InputDecoration(
-                            labelText: 'Loại hóa đơn *',
-                            prefixIcon: Icon(Icons.receipt),
-                          ),
-                          items: PaymentType.values.map((type) {
-                            return DropdownMenuItem(
-                              value: type,
-                              child: Row(
-                                children: [
-                                  Icon(_getPaymentTypeIcon(type), size: 20),
-                                  const SizedBox(width: 8),
-                                  Text(_getPaymentTypeDisplayName(type)),
-                                ],
-                              ),
-                            );
-                          }).toList(),
-                          onChanged: (value) {
-                            setDialogState(() {
-                              selectedType = value!;
-                              // Auto-fill rent amount
-                              if (value == PaymentType.rent && selectedTenant?.monthlyRent != null) {
-                                amountController.text = selectedTenant!.monthlyRent.toString();
-                              } else if (value != PaymentType.rent) {
-                                amountController.clear();
-                              }
-                            });
-                          },
-                        ),
-                        const SizedBox(height: 16),
-                    
-                        // Amount
-                        TextField(
-                          controller: amountController,
-                          decoration: const InputDecoration(
-                            labelText: 'Số tiền *',
-                            prefixIcon: Icon(Icons.attach_money),
-                            suffixText: 'VND',
-                            hintText: '0',
-                          ),
-                          keyboardType: TextInputType.number,
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Additional fields for utility bills
-                        if (selectedType == PaymentType.electricity) ...[
-                          TextField(
-                            controller: electricityController,
-                            decoration: const InputDecoration(
-                              labelText: 'Số điện (kWh)',
-                              prefixIcon: Icon(Icons.electrical_services),
-                              hintText: 'Nhập số kWh tiêu thụ',
-                            ),
-                            keyboardType: TextInputType.number,
-                          ),
-                          const SizedBox(height: 16),
-                        ],
-
-                        if (selectedType == PaymentType.water) ...[
-                          TextField(
-                            controller: waterController,
-                            decoration: const InputDecoration(
-                              labelText: 'Số nước (m³)',
-                              prefixIcon: Icon(Icons.water_drop),
-                              hintText: 'Nhập số m³ tiêu thụ',
-                            ),
-                            keyboardType: TextInputType.number,
-                          ),
-                          const SizedBox(height: 16),
-                        ],
-
-                        // Billing Period (for recurring payments)
-                        if (selectedType == PaymentType.rent || 
-                            selectedType == PaymentType.electricity || 
-                            selectedType == PaymentType.water ||
-                            selectedType == PaymentType.internet) ...[
-                          const Text(
-                            'Kỳ thanh toán',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: ListTile(
-                                  contentPadding: EdgeInsets.zero,
-                                  leading: const Icon(Icons.calendar_today, size: 20),
-                                  title: const Text('Từ ngày', style: TextStyle(fontSize: 13)),
-                                  subtitle: Text(
-                                    _formatDate(billingStart),
-                                    style: const TextStyle(fontWeight: FontWeight.w600),
-                                  ),
-                                  onTap: () async {
-                                    final date = await showDatePicker(
-                                      context: context,
-                                      initialDate: billingStart,
-                                      firstDate: DateTime(2020),
-                                      lastDate: DateTime.now().add(const Duration(days: 365)),
-                                    );
-                                    if (date != null) {
-                                      setDialogState(() {
-                                        billingStart = date;
-                                      });
-                                    }
-                                  },
-                                ),
-                              ),
-                              Expanded(
-                                child: ListTile(
-                                  contentPadding: EdgeInsets.zero,
-                                  leading: const Icon(Icons.event, size: 20),
-                                  title: const Text('Đến ngày', style: TextStyle(fontSize: 13)),
-                                  subtitle: Text(
-                                    _formatDate(billingEnd),
-                                    style: const TextStyle(fontWeight: FontWeight.w600),
-                                  ),
-                                  onTap: () async {
-                                    final date = await showDatePicker(
-                                      context: context,
-                                      initialDate: billingEnd,
-                                      firstDate: billingStart,
-                                      lastDate: DateTime.now().add(const Duration(days: 365)),
-                                    );
-                                    if (date != null) {
-                                      setDialogState(() {
-                                        billingEnd = date;
-                                      });
-                                    }
-                                  },
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                        ],
-                    
-                        // Due Date
-                        ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: const Icon(Icons.event_available),
-                          title: const Text('Hạn thanh toán'),
-                          subtitle: Text(
-                            _formatDate(dueDate),
-                            style: const TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                          trailing: const Icon(Icons.edit_calendar),
-                          onTap: () async {
-                            final date = await showDatePicker(
-                              context: context,
-                              initialDate: dueDate,
-                              firstDate: DateTime.now(),
-                              lastDate: DateTime.now().add(const Duration(days: 365)),
-                            );
-                            if (date != null) {
-                              setDialogState(() {
-                                dueDate = date;
-                              });
-                            }
-                          },
-                        ),
-                        const SizedBox(height: 16),
-                    
-                        // Notes
-                        TextField(
-                          controller: notesController,
-                          decoration: const InputDecoration(
-                            labelText: 'Ghi chú',
-                            prefixIcon: Icon(Icons.note),
-                            hintText: 'Thông tin bổ sung...',
-                          ),
-                          maxLines: 3,
-                        ),
-                      ],
-                    ),
-                  ),
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(dialogContext),
-                      child: const Text('Hủy'),
-                    ),
-                    ElevatedButton.icon(
-                      icon: const Icon(Icons.add),
-                      label: const Text('Tạo hóa đơn'),
-                      onPressed: selectedTenant == null
-                          ? null
-                          : () async {
-                              if (amountController.text.trim().isEmpty) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('Vui lòng nhập số tiền')),
-                                );
-                                return;
-                              }
-
-                              final amount = double.tryParse(amountController.text.trim());
-                              if (amount == null || amount <= 0) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('Số tiền không hợp lệ')),
-                                );
-                                return;
-                              }
-
-                              // Build notes with additional info
-                              String finalNotes = notesController.text.trim();
-                              if (selectedType == PaymentType.electricity && electricityController.text.isNotEmpty) {
-                                finalNotes = '${electricityController.text} kWh${finalNotes.isNotEmpty ? '\n$finalNotes' : ''}';
-                              }
-                              if (selectedType == PaymentType.water && waterController.text.isNotEmpty) {
-                                finalNotes = '${waterController.text} m³${finalNotes.isNotEmpty ? '\n$finalNotes' : ''}';
-                              }
-
-                              final payment = Payment(
-                                id: '',
-                                organizationId: room!.organizationId,
-                                buildingId: room!.buildingId,
-                                roomId: room!.id,
-                                tenantId: selectedTenant!.id,
-                                tenantName: selectedTenant!.fullName,
-                                type: selectedType,
-                                status: PaymentStatus.pending,
-                                amount: amount,
-                                dueDate: dueDate,
-                                billingStartDate: (selectedType == PaymentType.rent || 
-                                                   selectedType == PaymentType.electricity || 
-                                                   selectedType == PaymentType.water ||
-                                                   selectedType == PaymentType.internet)
-                                    ? billingStart
-                                    : null,
-                                billingEndDate: (selectedType == PaymentType.rent || 
-                                                 selectedType == PaymentType.electricity || 
-                                                 selectedType == PaymentType.water ||
-                                                 selectedType == PaymentType.internet)
-                                    ? billingEnd
-                                    : null,
-                                createdAt: DateTime.now(),
-                                notes: finalNotes.isEmpty ? null : finalNotes,
-                              );
-
-                              try {
-                                final paymentId = await _paymentService.addPayment(payment);
-                                if (paymentId != null && mounted) {
-                                  Navigator.pop(dialogContext);
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Đã tạo hóa đơn thành công')),
-                                  );
-                                }
-                              } catch (e) {
-                                if (mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text('Lỗi: $e'),
-                                      backgroundColor: Colors.red,
-                                    ),
-                                  );
-                                }
-                              }
-                            },
-                    ),
-                  ],
-                );
-              },
-            ),
-          ),
-        );
-      },
+      builder: (context) => ImprovedPaymentFormDialog(
+        organization: widget.organization,
+        buildingService: widget.buildingService,
+        roomService: widget.roomService,
+        tenantService: widget.tenantService,
+        paymentService: _paymentService,
+      ),
     );
   }
 
-  String _getPaymentTypeDisplayName(PaymentType type) {
-    switch (type) {
-      case PaymentType.rent:
-        return 'Tiền thuê nhà';
-      case PaymentType.electricity:
-        return 'Tiền điện';
-      case PaymentType.water:
-        return 'Tiền nước';
-      case PaymentType.internet:
-        return 'Tiền Internet';
-      case PaymentType.parking:
-        return 'Phí gửi xe';
-      case PaymentType.maintenance:
-        return 'Phí bảo trì';
-      case PaymentType.deposit:
-        return 'Tiền cọc';
-      case PaymentType.penalty:
-        return 'Phí phạt';
-      case PaymentType.other:
-        return 'Khác';
-    }
+  void _showPaymentDetailDialog(Payment payment, bool isAdmin) {
+    showDialog(
+      context: context,
+      builder: (context) => ViewPaymentDetailsDialog(
+        payment: payment,
+        isAdmin: isAdmin,
+        organization: widget.organization,
+        onEdit: () => _showEditPaymentDialog(payment),
+      ),
+    );
+  }
+
+  void _showEditPaymentDialog(Payment payment) {
+
+    showDialog(
+      context: context,
+      builder: (context) => EditPaymentDialog(
+        payment: payment,
+        organization: widget.organization,
+        buildingService: widget.buildingService,
+        roomService: widget.roomService,
+        tenantService: widget.tenantService,
+        paymentService: _paymentService,
+      ),
+    );
   }
 
   // =========================
@@ -2186,9 +1848,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
             ),
             const SizedBox(height: 24),
             ElevatedButton.icon(
-              onPressed: () {
-                _showAddPaymentDialog();
-              },
+              onPressed: _showAddPaymentDialog,
               icon: const Icon(Icons.add),
               label: const Text('Tạo hóa đơn'),
             ),
@@ -2278,218 +1938,226 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
   Widget _buildPaymentCard(Payment payment) {
     final statusColor = _getPaymentStatusColor(payment.status);
     
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: InkWell(
-        onTap: () => _showPaymentDetailDialog(payment),
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+    return FutureBuilder<Membership?>(
+      future: _getMyMembership(),
+      builder: (context, membershipSnapshot) {
+      final isAdmin = membershipSnapshot.hasData &&
+            membershipSnapshot.data!.role == 'admin';
+          
+        return Card(
+          margin: const EdgeInsets.only(bottom: 12),
+          child: InkWell(
+            onTap: () => _showPaymentDetailDialog(payment, isAdmin),
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: _getPaymentTypeColor(payment.type).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(
-                      _getPaymentTypeIcon(payment.type),
-                      color: _getPaymentTypeColor(payment.type),
-                      size: 24,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _getPaymentTypeDisplayName(payment.type),
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          payment.tenantName ?? 'Không xác định',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
+                  Row(
                     children: [
-                      Text(
-                        _formatCurrency(payment.totalAmount),
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: statusColor.withOpacity(0.1),
+                          color: _getPaymentTypeColor(payment.type).withOpacity(0.1),
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: Text(
-                          payment.getStatusDisplayName(),
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: statusColor,
-                            fontWeight: FontWeight.w600,
+                        child: Icon(
+                          _getPaymentTypeIcon(payment.type),
+                          color: _getPaymentTypeColor(payment.type),
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _getPaymentTypeDisplayName(payment.type),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              payment.tenantName ?? 'Không xác định',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            _formatCurrency(payment.totalAmount),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
                           ),
-                        ),
+                          const SizedBox(height: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: statusColor.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              payment.getStatusDisplayName(),
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: statusColor,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              
-              // Billing period for recurring payments
-              if (payment.billingStartDate != null && payment.billingEndDate != null)
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.calendar_month, size: 14, color: Colors.blue.shade700),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Kỳ: ${_formatDate(payment.billingStartDate!)} - ${_formatDate(payment.billingEndDate!)}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.blue.shade700,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              
-              if (payment.billingStartDate != null) const SizedBox(height: 8),
-              
-              // Due date
-              Row(
-                children: [
-                  Icon(Icons.event_available, size: 14, color: Colors.grey[600]),
-                  const SizedBox(width: 6),
-                  Text(
-                    'Hạn: ${_formatDate(payment.dueDate)}',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                  const Spacer(),
-                  if (payment.paidAmount > 0 && payment.status != PaymentStatus.paid)
+                  const SizedBox(height: 12),
+                  
+                  // Billing period for recurring payments
+                  if (payment.billingStartDate != null && payment.billingEndDate != null)
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
                         color: Colors.blue.shade50,
-                        borderRadius: BorderRadius.circular(6),
+                        borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Text(
-                        'Đã trả: ${_formatCurrency(payment.paidAmount)}',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.blue.shade700,
-                          fontWeight: FontWeight.w600,
-                        ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.calendar_month, size: 14, color: Colors.blue.shade700),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Kỳ: ${_formatDate(payment.billingStartDate!)} - ${_formatDate(payment.billingEndDate!)}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.blue.shade700,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
+                  
+                  if (payment.billingStartDate != null) const SizedBox(height: 8),
+                  
+                  // Due date
+                  Row(
+                    children: [
+                      Icon(Icons.event_available, size: 14, color: Colors.grey[600]),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Hạn: ${_formatDate(payment.dueDate)}',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                      const Spacer(),
+                      if (payment.paidAmount > 0 && payment.status != PaymentStatus.paid)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.shade50,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            'Đã trả: ${_formatCurrency(payment.paidAmount)}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.blue.shade700,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  
+                  // Overdue warning
+                  if (payment.isOverdue) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.warning, size: 16, color: Colors.red.shade700),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Quá hạn ${payment.daysOverdue} ngày',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.red.shade700,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          if (payment.lateFee != null && payment.lateFee! > 0) ...[
+                            const Spacer(),
+                            Text(
+                              '+${_formatCurrency(payment.lateFee!)}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.red.shade700,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                  
+                  // Payment completed indicator
+                  if (payment.status == PaymentStatus.paid && payment.paidAt != null) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.green.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.check_circle, size: 16, color: Colors.green.shade700),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Đã thanh toán: ${_formatDate(payment.paidAt!)}',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.green.shade700,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          if (payment.paymentMethod != null) ...[
+                            const Spacer(),
+                            Text(
+                              payment.getPaymentMethodDisplayName() ?? '',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.green.shade700,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
               ),
-              
-              // Overdue warning
-              if (payment.isOverdue) ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.red.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.warning, size: 16, color: Colors.red.shade700),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Quá hạn ${payment.daysOverdue} ngày',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Colors.red.shade700,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      if (payment.lateFee != null && payment.lateFee! > 0) ...[
-                        const Spacer(),
-                        Text(
-                          '+${_formatCurrency(payment.lateFee!)}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.red.shade700,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
-              
-              // Payment completed indicator
-              if (payment.status == PaymentStatus.paid && payment.paidAt != null) ...[
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.green.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.check_circle, size: 16, color: Colors.green.shade700),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Đã thanh toán: ${_formatDate(payment.paidAt!)}',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Colors.green.shade700,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      if (payment.paymentMethod != null) ...[
-                        const Spacer(),
-                        Text(
-                          payment.getPaymentMethodDisplayName() ?? '',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.green.shade700,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
-            ],
+            ),
           ),
-        ),
-      ),
+        );
+      }
     );
   }
 
@@ -2556,493 +2224,27 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
     }
   }
 
-  void _showPaymentDetailDialog(Payment payment) {
-    final isPhone = MediaQuery.of(context).size.width < 600;
-    
-    showDialog(
-      context: context,
-      builder: (context) => Dialog(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: isPhone ? MediaQuery.of(context).size.width * 0.95 : MediaQuery.of(context).size.width * 0.7,
-            maxHeight: MediaQuery.of(context).size.height * 0.9,
-          ),
-          child: AlertDialog(
-            title: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: _getPaymentTypeColor(payment.type).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(
-                    _getPaymentTypeIcon(payment.type),
-                    color: _getPaymentTypeColor(payment.type),
-                    size: 24,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _getPaymentTypeDisplayName(payment.type),
-                        style: const TextStyle(fontSize: 18),
-                      ),
-                      Text(
-                        payment.tenantName ?? 'Không xác định',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Colors.grey.shade600,
-                          fontWeight: FontWeight.normal,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: _getPaymentStatusColor(payment.status).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    payment.getStatusDisplayName(),
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: _getPaymentStatusColor(payment.status),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
-            content: SizedBox(
-              width: double.maxFinite,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                  _buildDetailSection('Thông tin thanh toán', [
-                    _buildDetailRow('Số tiền gốc', _formatCurrency(payment.amount)),
-                    if (payment.lateFee != null && payment.lateFee! > 0)
-                      _buildDetailRow('Phí phạt', _formatCurrency(payment.lateFee!)),
-                    _buildDetailRow('Tổng cộng', _formatCurrency(payment.totalAmount)),
-                    const Divider(),
-                    _buildDetailRow('Đã thanh toán', _formatCurrency(payment.paidAmount)),
-                    _buildDetailRow('Còn lại', _formatCurrency(payment.remainingAmount)),
-                  ]),
-                  const Divider(),
-                  _buildDetailSection('Thời gian', [
-                    if (payment.billingStartDate != null && payment.billingEndDate != null) ...[
-                      _buildDetailRow(
-                        'Kỳ thanh toán', 
-                        '${_formatDate(payment.billingStartDate!)} - ${_formatDate(payment.billingEndDate!)}',
-                      ),
-                    ],
-                    _buildDetailRow('Hạn thanh toán', _formatDate(payment.dueDate)),
-                    if (payment.isOverdue)
-                      Container(
-                        margin: const EdgeInsets.only(top: 8),
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.red.shade50,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.warning, size: 16, color: Colors.red.shade700),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Quá hạn ${payment.daysOverdue} ngày',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: Colors.red.shade700,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                  ]),
-                  if (payment.paidAt != null) ...[
-                    const Divider(),
-                    _buildDetailSection('Thông tin thanh toán', [
-                      _buildDetailRow('Ngày thanh toán', _formatDate(payment.paidAt!)),
-                      if (payment.paymentMethod != null)
-                        _buildDetailRow('Phương thức', payment.getPaymentMethodDisplayName() ?? ''),
-                      if (payment.transactionId != null)
-                        _buildDetailRow('Mã giao dịch', payment.transactionId!),
-                      if (payment.receiptNumber != null)
-                        _buildDetailRow('Số biên lai', payment.receiptNumber!),
-                      if (payment.paidBy != null)
-                        _buildDetailRow('Người thu', payment.paidBy!),
-                    ]),
-                  ],
-                  if (payment.notes != null && payment.notes!.isNotEmpty) ...[
-                    const Divider(),
-                    _buildDetailSection('Ghi chú', [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade100,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(payment.notes!),
-                      ),
-                    ]),
-                  ],
-                ],
-              ),
-            ),
-            ),
-            actions: [
-              if (payment.status == PaymentStatus.pending || payment.status == PaymentStatus.partial)
-                TextButton.icon(
-                  icon: const Icon(Icons.delete_outline, color: Colors.red),
-                  label: const Text('Xóa', style: TextStyle(color: Colors.red)),
-                  onPressed: () {
-                    Navigator.pop(context);
-                    _confirmDeletePayment(payment);
-                  },
-                ),
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Đóng'),
-              ),
-              if (payment.status == PaymentStatus.pending || payment.status == PaymentStatus.partial)
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.payment),
-                  label: Text(payment.status == PaymentStatus.partial ? 'Thanh toán tiếp' : 'Thanh toán'),
-                  onPressed: () {
-                    Navigator.pop(context);
-                    _showMarkAsPaidDialog(payment);
-                  },
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showMarkAsPaidDialog(Payment payment) {
-    final isPhone = MediaQuery.of(context).size.width < 600;
-    
-    final amountController = TextEditingController(
-      text: payment.remainingAmount.toString(),
-    );
-    final transactionIdController = TextEditingController();
-    final receiptNumberController = TextEditingController();
-    final paidByController = TextEditingController();
-    final notesController = TextEditingController();
-    
-    PaymentMethod selectedMethod = PaymentMethod.cash;
-    DateTime paidDate = DateTime.now();
-
-    showDialog(
-      context: context,
-      builder: (dialogContext) => Dialog(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: isPhone ? MediaQuery.of(context).size.width * 0.95 : MediaQuery.of(context).size.width * 0.7,
-            maxHeight: MediaQuery.of(context).size.height * 0.9,
-          ),
-          child: StatefulBuilder(
-            builder: (context, setDialogState) => AlertDialog(
-              title: const Text('Xác nhận thanh toán'),
-              contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
-              content: SizedBox(
-                width: double.maxFinite,
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // Payment Summary
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.blue.shade50,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Column(
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                const Text('Tổng cộng:'),
-                                Text(
-                                  _formatCurrency(payment.totalAmount),
-                                  style: const TextStyle(fontWeight: FontWeight.bold),
-                                ),
-                              ],
-                            ),
-                            if (payment.paidAmount > 0) ...[
-                              const SizedBox(height: 4),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  const Text('Đã thanh toán:'),
-                                  Text(
-                                    _formatCurrency(payment.paidAmount),
-                                    style: TextStyle(color: Colors.green.shade700),
-                                  ),
-                                ],
-                              ),
-                            ],
-                            const Divider(),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                const Text('Còn lại:', style: TextStyle(fontWeight: FontWeight.bold)),
-                                Text(
-                                  _formatCurrency(payment.remainingAmount),
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 18,
-                                    color: Colors.red.shade700,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Amount to pay
-                      TextField(
-                        controller: amountController,
-                        decoration: const InputDecoration(
-                          labelText: 'Số tiền thanh toán *',
-                          prefixIcon: Icon(Icons.attach_money),
-                          suffixText: 'VND',
-                        ),
-                        keyboardType: TextInputType.number,
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Payment Method
-                      DropdownButtonFormField<PaymentMethod>(
-                        value: selectedMethod,
-                        decoration: const InputDecoration(
-                          labelText: 'Phương thức thanh toán *',
-                          prefixIcon: Icon(Icons.payment),
-                        ),
-                        items: PaymentMethod.values.map((method) {
-                          return DropdownMenuItem(
-                            value: method,
-                            child: Text(_getPaymentMethodDisplayName(method)),
-                          );
-                        }).toList(),
-                        onChanged: (value) {
-                          setDialogState(() {
-                            selectedMethod = value!;
-                          });
-                        },
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Transaction ID (for non-cash)
-                      if (selectedMethod != PaymentMethod.cash) ...[
-                        TextField(
-                          controller: transactionIdController,
-                          decoration: const InputDecoration(
-                            labelText: 'Mã giao dịch',
-                            prefixIcon: Icon(Icons.tag),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                      ],
-
-                      // Receipt Number
-                      TextField(
-                        controller: receiptNumberController,
-                        decoration: const InputDecoration(
-                          labelText: 'Số biên lai',
-                          prefixIcon: Icon(Icons.receipt_long),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Paid By
-                      TextField(
-                        controller: paidByController,
-                        decoration: const InputDecoration(
-                          labelText: 'Người thu tiền',
-                          prefixIcon: Icon(Icons.person),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Paid Date
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: const Icon(Icons.calendar_today),
-                        title: const Text('Ngày thanh toán'),
-                        subtitle: Text(_formatDate(paidDate)),
-                        trailing: const Icon(Icons.edit),
-                        onTap: () async {
-                          final date = await showDatePicker(
-                            context: context,
-                            initialDate: paidDate,
-                            firstDate: DateTime(2020),
-                            lastDate: DateTime.now(),
-                          );
-                          if (date != null) {
-                            setDialogState(() {
-                              paidDate = date;
-                            });
-                          }
-                        },
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Notes
-                      TextField(
-                        controller: notesController,
-                        decoration: const InputDecoration(
-                          labelText: 'Ghi chú',
-                          prefixIcon: Icon(Icons.note),
-                        ),
-                        maxLines: 2,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: const Text('Hủy'),
-                ),
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.check),
-                  label: const Text('Xác nhận'),
-                  onPressed: () async {
-                    final amount = double.tryParse(amountController.text.trim());
-                    if (amount == null || amount <= 0) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Số tiền không hợp lệ')),
-                      );
-                      return;
-                    }
-
-                    if (amount > payment.remainingAmount) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Số tiền vượt quá số tiền còn lại')),
-                      );
-                      return;
-                    }
-
-                    try {
-                      final success = await _paymentService.markAsPaid(
-                        payment.id,
-                        paidAmount: amount,
-                        paymentMethod: selectedMethod,
-                        transactionId: transactionIdController.text.trim().isEmpty 
-                            ? null 
-                            : transactionIdController.text.trim(),
-                        receiptNumber: receiptNumberController.text.trim().isEmpty 
-                            ? null 
-                            : receiptNumberController.text.trim(),
-                        paidBy: paidByController.text.trim().isEmpty 
-                            ? null 
-                            : paidByController.text.trim(),
-                        notes: notesController.text.trim().isEmpty 
-                            ? null 
-                            : notesController.text.trim(),
-                      );
-
-                      if (success && mounted) {
-                        Navigator.pop(dialogContext);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Đã cập nhật thanh toán thành công')),
-                        );
-                      }
-                    } catch (e) {
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Lỗi: $e'),
-                            backgroundColor: Colors.red,
-                          ),
-                        );
-                      }
-                    }
-                  },
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  String _getPaymentMethodDisplayName(PaymentMethod method) {
-    switch (method) {
-      case PaymentMethod.cash:
-        return 'Tiền mặt';
-      case PaymentMethod.bankTransfer:
-        return 'Chuyển khoản';
-      case PaymentMethod.momo:
-        return 'MoMo';
-      case PaymentMethod.zalopay:
-        return 'ZaloPay';
-      case PaymentMethod.creditCard:
-        return 'Thẻ ngân hàng';
-      case PaymentMethod.other:
+  String _getPaymentTypeDisplayName(PaymentType type) {
+    switch (type) {
+      case PaymentType.rent:
+        return 'Tiền thuê nhà';
+      case PaymentType.electricity:
+        return 'Tiền điện';
+      case PaymentType.water:
+        return 'Tiền nước';
+      case PaymentType.internet:
+        return 'Tiền Internet';
+      case PaymentType.parking:
+        return 'Phí gửi xe';
+      case PaymentType.maintenance:
+        return 'Phí bảo trì';
+      case PaymentType.deposit:
+        return 'Tiền cọc';
+      case PaymentType.penalty:
+        return 'Phí phạt';
+      case PaymentType.other:
         return 'Khác';
     }
-  }
-
-  void _confirmDeletePayment(Payment payment) {
-    showDialog(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Xóa hóa đơn'),
-        content: Text(
-          'Bạn có chắc muốn xóa hóa đơn "${_getPaymentTypeDisplayName(payment.type)}"?\n\nThao tác này không thể hoàn tác.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Hủy'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () async {
-              try {
-                final success = await _paymentService.deletePayment(payment.id);
-                
-                if (success && mounted) {
-                  Navigator.pop(dialogContext);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Đã xóa hóa đơn thành công')),
-                  );
-                }
-              } catch (e) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Lỗi: $e'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                }
-              }
-            },
-            child: const Text('Xóa'),
-          ),
-        ],
-      ),
-    );
   }
 
   Widget _buildDetailRow(String label, String value) {
@@ -3069,16 +2271,10 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
   // =========================
   @override
   Widget build(BuildContext context) {
-    if (room == null) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Lỗi')),
-        body: const Center(child: Text('Không tìm thấy dữ liệu phòng')),
-      );
-    }
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Phòng ${room!.roomNumber}'),
+        title: Text('Phòng ${widget.room.roomNumber}'),
         bottom: TabBar(
           controller: _tabController,
           tabs: const [

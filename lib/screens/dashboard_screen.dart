@@ -1,3 +1,4 @@
+import 'package:apartment_management_project_2/main.dart';
 import 'package:apartment_management_project_2/models/membership_model.dart';
 import 'package:apartment_management_project_2/models/organization_model.dart';
 import 'package:apartment_management_project_2/models/owner_model.dart';
@@ -17,9 +18,9 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  final AuthService _authService = AuthService();
-  final OrganizationService _organizationService = OrganizationService();
-  final UpdateService _updateService = UpdateService();
+  final AuthService _authService = getIt<AuthService>();
+  final OrganizationService _organizationService = getIt<OrganizationService>();
+  final UpdateService _updateService = getIt<UpdateService>();
 
   final AsyncLock _createOrgLock = AsyncLock();
   final AsyncLock _joinOrgLock = AsyncLock();
@@ -799,7 +800,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       Navigator.pushNamed(
                                         context,
                                         AppRouter.oranizationScreen,
-                                        arguments: org,
+                                        arguments: {
+                                          'organization': org
+                                        },
                                       );
                                     },
                                     child: Padding(

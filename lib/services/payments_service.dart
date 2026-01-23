@@ -19,6 +19,144 @@ class PaymentService {
   }
 
   // ========================================
+  // CREATE - Add electricity payment with meter readings
+  // ========================================
+  Future<String?> addElectricityPayment({
+    required String organizationId,
+    required String buildingId,
+    required String roomId,
+    required String tenantId,
+    required String tenantName,
+    required double startReading,
+    required DateTime startDate,
+    required double endReading,
+    required DateTime endDate,
+    required double pricePerUnit,
+    required DateTime dueDate,
+    String? description,
+  }) async {
+    try {
+      final usage = endReading - startReading;
+      final amount = usage * pricePerUnit;
+
+      final payment = Payment(
+        id: '',
+        organizationId: organizationId,
+        buildingId: buildingId,
+        roomId: roomId,
+        tenantId: tenantId,
+        tenantName: tenantName,
+        type: PaymentType.electricity,
+        status: PaymentStatus.pending,
+        amount: amount,
+        dueDate: dueDate,
+        electricityStartReading: startReading,
+        electricityStartDate: startDate,
+        electricityEndReading: endReading,
+        electricityEndDate: endDate,
+        electricityPricePerUnit: pricePerUnit,
+        description: description ?? 'Tiền điện từ ${_formatDate(startDate)} đến ${_formatDate(endDate)}',
+        createdAt: DateTime.now(),
+      );
+
+      return await addPayment(payment);
+    } catch (e) {
+      print('Error adding electricity payment: $e');
+      return null;
+    }
+  }
+
+  // ========================================
+  // CREATE - Add water payment with meter readings
+  // ========================================
+  Future<String?> addWaterPayment({
+    required String organizationId,
+    required String buildingId,
+    required String roomId,
+    required String tenantId,
+    required String tenantName,
+    required double startReading,
+    required DateTime startDate,
+    required double endReading,
+    required DateTime endDate,
+    required double pricePerUnit,
+    required DateTime dueDate,
+    String? description,
+  }) async {
+    try {
+      final usage = endReading - startReading;
+      final amount = usage * pricePerUnit;
+
+      final payment = Payment(
+        id: '',
+        organizationId: organizationId,
+        buildingId: buildingId,
+        roomId: roomId,
+        tenantId: tenantId,
+        tenantName: tenantName,
+        type: PaymentType.water,
+        status: PaymentStatus.pending,
+        amount: amount,
+        dueDate: dueDate,
+        billingStartDate: startDate,
+        billingEndDate: endDate,
+        waterStartReading: startReading,
+        waterStartDate: startDate,
+        waterEndReading: endReading,
+        waterEndDate: endDate,
+        waterPricePerUnit: pricePerUnit,
+        description: description ?? 'Tiền nước từ ${_formatDate(startDate)} đến ${_formatDate(endDate)}',
+        createdAt: DateTime.now(),
+      );
+
+      return await addPayment(payment);
+    } catch (e) {
+      print('Error adding water payment: $e');
+      return null;
+    }
+  }
+
+  // ========================================
+  // CREATE - Add rent payment with period
+  // ========================================
+  Future<String?> addRentPayment({
+    required String organizationId,
+    required String buildingId,
+    required String roomId,
+    required String tenantId,
+    required String tenantName,
+    required double amount,
+    required DateTime startDate,
+    required DateTime endDate,
+    required DateTime dueDate,
+    String? description,
+  }) async {
+    try {
+      final payment = Payment(
+        id: '',
+        organizationId: organizationId,
+        buildingId: buildingId,
+        roomId: roomId,
+        tenantId: tenantId,
+        tenantName: tenantName,
+        type: PaymentType.rent,
+        status: PaymentStatus.pending,
+        amount: amount,
+        dueDate: dueDate,
+        billingStartDate: startDate,
+        billingEndDate: endDate,
+        description: description ?? 'Tiền thuê từ ${_formatDate(startDate)} đến ${_formatDate(endDate)}',
+        createdAt: DateTime.now(),
+      );
+
+      return await addPayment(payment);
+    } catch (e) {
+      print('Error adding rent payment: $e');
+      return null;
+    }
+  }
+
+  // ========================================
   // CREATE - Create recurring payments (bulk)
   // ========================================
   Future<bool> createRecurringPayments(List<Payment> payments) async {
@@ -259,6 +397,62 @@ class PaymentService {
   }
 
   // ========================================
+  // READ - Get last electricity reading for a room
+  // ========================================
+  Future<Map<String, dynamic>?> getLastElectricityReading(String roomId) async {
+    try {
+      final snapshot = await _firestore
+          .collection('payments')
+          .where('roomId', isEqualTo: roomId)
+          .where('type', isEqualTo: 'electricity')
+          .orderBy('electricityEndDate', descending: true)
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isEmpty) return null;
+
+      final payment = Payment.fromMap(snapshot.docs.first.id, snapshot.docs.first.data());
+      
+      return {
+        'reading': payment.electricityEndReading,
+        'date': payment.electricityEndDate,
+        'pricePerUnit': payment.electricityPricePerUnit,
+      };
+    } catch (e) {
+      print('Error getting last electricity reading: $e');
+      return null;
+    }
+  }
+
+  // ========================================
+  // READ - Get last water reading for a room
+  // ========================================
+  Future<Map<String, dynamic>?> getLastWaterReading(String roomId) async {
+    try {
+      final snapshot = await _firestore
+          .collection('payments')
+          .where('roomId', isEqualTo: roomId)
+          .where('type', isEqualTo: 'water')
+          .orderBy('waterEndDate', descending: true)
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isEmpty) return null;
+
+      final payment = Payment.fromMap(snapshot.docs.first.id, snapshot.docs.first.data());
+      
+      return {
+        'reading': payment.waterEndReading,
+        'date': payment.waterEndDate,
+        'pricePerUnit': payment.waterPricePerUnit,
+      };
+    } catch (e) {
+      print('Error getting last water reading: $e');
+      return null;
+    }
+  }
+
+  // ========================================
   // READ - Stream payments (real-time updates)
   // ========================================
   Stream<List<Payment>> streamRoomPayments(String roomId) {
@@ -304,6 +498,94 @@ class PaymentService {
       return true;
     } catch (e) {
       print('Error updating payment: $e');
+      return false;
+    }
+  }
+
+  // ========================================
+  // UPDATE - Update electricity meter readings
+  // ========================================
+  Future<bool> updateElectricityReadings({
+    required String paymentId,
+    double? startReading,
+    DateTime? startDate,
+    double? endReading,
+    DateTime? endDate,
+    double? pricePerUnit,
+  }) async {
+    try {
+      final payment = await getPaymentById(paymentId);
+      if (payment == null || payment.type != PaymentType.electricity) {
+        print('Payment not found or not an electricity payment');
+        return false;
+      }
+
+      final Map<String, dynamic> updates = {};
+      
+      if (startReading != null) updates['electricityStartReading'] = startReading;
+      if (startDate != null) updates['electricityStartDate'] = Timestamp.fromDate(startDate);
+      if (endReading != null) updates['electricityEndReading'] = endReading;
+      if (endDate != null) updates['electricityEndDate'] = Timestamp.fromDate(endDate);
+      if (pricePerUnit != null) updates['electricityPricePerUnit'] = pricePerUnit;
+
+      // Recalculate amount if readings changed
+      final newStartReading = startReading ?? payment.electricityStartReading ?? 0;
+      final newEndReading = endReading ?? payment.electricityEndReading ?? 0;
+      final newPricePerUnit = pricePerUnit ?? payment.electricityPricePerUnit ?? 0;
+      
+      if (startReading != null || endReading != null || pricePerUnit != null) {
+        final usage = newEndReading - newStartReading;
+        final newAmount = usage * newPricePerUnit;
+        updates['amount'] = newAmount;
+      }
+
+      return await updatePayment(paymentId, updates);
+    } catch (e) {
+      print('Error updating electricity readings: $e');
+      return false;
+    }
+  }
+
+  // ========================================
+  // UPDATE - Update water meter readings
+  // ========================================
+  Future<bool> updateWaterReadings({
+    required String paymentId,
+    double? startReading,
+    DateTime? startDate,
+    double? endReading,
+    DateTime? endDate,
+    double? pricePerUnit,
+  }) async {
+    try {
+      final payment = await getPaymentById(paymentId);
+      if (payment == null || payment.type != PaymentType.water) {
+        print('Payment not found or not a water payment');
+        return false;
+      }
+
+      final Map<String, dynamic> updates = {};
+      
+      if (startReading != null) updates['waterStartReading'] = startReading;
+      if (startDate != null) updates['waterStartDate'] = Timestamp.fromDate(startDate);
+      if (endReading != null) updates['waterEndReading'] = endReading;
+      if (endDate != null) updates['waterEndDate'] = Timestamp.fromDate(endDate);
+      if (pricePerUnit != null) updates['waterPricePerUnit'] = pricePerUnit;
+
+      // Recalculate amount if readings changed
+      final newStartReading = startReading ?? payment.waterStartReading ?? 0;
+      final newEndReading = endReading ?? payment.waterEndReading ?? 0;
+      final newPricePerUnit = pricePerUnit ?? payment.waterPricePerUnit ?? 0;
+      
+      if (startReading != null || endReading != null || pricePerUnit != null) {
+        final usage = newEndReading - newStartReading;
+        final newAmount = usage * newPricePerUnit;
+        updates['amount'] = newAmount;
+      }
+
+      return await updatePayment(paymentId, updates);
+    } catch (e) {
+      print('Error updating water readings: $e');
       return false;
     }
   }
@@ -566,6 +848,58 @@ class PaymentService {
   }
 
   // ========================================
+  // UTILITY - Get utility usage statistics
+  // ========================================
+  Future<Map<String, dynamic>> getUtilityUsageStats(
+    String roomId,
+    DateTime startDate,
+    DateTime endDate,
+  ) async {
+    try {
+      final snapshot = await _firestore
+          .collection('payments')
+          .where('roomId', isEqualTo: roomId)
+          .get();
+
+      final payments = snapshot.docs
+          .map((doc) => Payment.fromMap(doc.id, doc.data()))
+          .where((p) => 
+              p.createdAt.isAfter(startDate) && 
+              p.createdAt.isBefore(endDate))
+          .toList();
+
+      final electricityPayments = payments.where((p) => p.type == PaymentType.electricity).toList();
+      final waterPayments = payments.where((p) => p.type == PaymentType.water).toList();
+
+      final totalElectricityUsage = electricityPayments
+          .fold<double>(0.0, (sum, p) => sum + (p.electricityUsage ?? 0));
+      
+      final totalWaterUsage = waterPayments
+          .fold<double>(0.0, (sum, p) => sum + (p.waterUsage ?? 0));
+
+      final avgElectricityUsage = electricityPayments.isNotEmpty
+          ? totalElectricityUsage / electricityPayments.length
+          : 0.0;
+      
+      final avgWaterUsage = waterPayments.isNotEmpty
+          ? totalWaterUsage / waterPayments.length
+          : 0.0;
+
+      return {
+        'totalElectricityUsage': totalElectricityUsage,
+        'totalWaterUsage': totalWaterUsage,
+        'avgElectricityUsage': avgElectricityUsage,
+        'avgWaterUsage': avgWaterUsage,
+        'electricityPaymentsCount': electricityPayments.length,
+        'waterPaymentsCount': waterPayments.length,
+      };
+    } catch (e) {
+      print('Error getting utility usage stats: $e');
+      return {};
+    }
+  }
+
+  // ========================================
   // UTILITY - Auto-update overdue payments
   // ========================================
   Future<int> updateOverduePayments(String organizationId) async {
@@ -647,6 +981,7 @@ class PaymentService {
           dueDate: dueDate,
           billingStartDate: billingStart,
           billingEndDate: billingEnd,
+          description: 'Tiền thuê từ ${_formatDate(billingStart)} đến ${_formatDate(billingEnd)}',
           createdAt: DateTime.now(),
           isRecurring: true,
         ));
@@ -657,5 +992,12 @@ class PaymentService {
       print('Error generating monthly rent payments: $e');
       return false;
     }
+  }
+
+  // ========================================
+  // HELPER - Format date
+  // ========================================
+  String _formatDate(DateTime date) {
+    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
   }
 }

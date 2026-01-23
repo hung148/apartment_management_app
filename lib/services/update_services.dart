@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:in_app_update/in_app_update.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:io';
@@ -140,44 +142,53 @@ class UpdateService {
   Future<bool> _checkVersionFromBackend() async {
     try {
       // Get current app version
-      PackageInfo packageInfo = await PackageInfo.fromPlatform();
-      String currentVersion = packageInfo.version;
-      String currentBuildNumber = packageInfo.buildNumber;
+      final packageInfo = await PackageInfo.fromPlatform();
+      final currentVersion = packageInfo.version;
+      final currentBuildNumber = packageInfo.buildNumber;
 
-      // Make API request to check latest version
-      final response = await http.get(Uri.parse(_versionCheckUrl));
+      // Make API request to check latest version - with timeout
+      final response = await http
+          .get(Uri.parse(_versionCheckUrl))
+          .timeout(const Duration(seconds: 8));
 
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        
-        // Platform-specific version check
-        String latestVersion;
-        String latestBuildNumber;
-        
-        if (Platform.isIOS) {
-          latestVersion = data['ios']['version'];
-          latestBuildNumber = data['ios']['build_number'];
-        } else if (Platform.isWindows) {
-          latestVersion = data['windows']['version'];
-          latestBuildNumber = data['windows']['build_number'];
-        } else if (Platform.isAndroid) {
-          latestVersion = data['android']['version'];
-          latestBuildNumber = data['android']['build_number'];
-        } else {
-          return false;
-        }
+      if (response.statusCode != 200) return false;
 
-        // Compare versions
-        return _isNewerVersion(
-          currentVersion,
-          currentBuildNumber,
-          latestVersion,
-          latestBuildNumber,
-        );
+      final data = json.decode(response.body);
+
+      String latestVersion;
+      String latestBuildNumber;
+
+      if (Platform.isIOS) {
+        latestVersion = data['ios']['version'];
+        latestBuildNumber = data['ios']['build_number'];
+      } else if (Platform.isAndroid) {
+        latestVersion = data['android']['version'];
+        latestBuildNumber = data['android']['build_number'];
+      } else if (Platform.isWindows) {
+        latestVersion = data['windows']['version'];
+        latestBuildNumber = data['windows']['build_number'];
+      } else {
+        return false;
       }
+
+      return _isNewerVersion(
+        currentVersion,
+        currentBuildNumber,
+        latestVersion,
+        latestBuildNumber,
+      );
+    } 
+    on SocketException catch (e) {
+      debugPrint('Network/DNS error: $e');
       return false;
-    } catch (e) {
-      debugPrint('Error checking version from backend: $e');
+    } 
+    on TimeoutException {
+      debugPrint('Version check timeout');
+      return false;
+    } 
+    catch (e) {
+      // Catch-all for any other unexpected errors (json decode fail, etc.)
+      debugPrint('Unexpected error in version check: $e');
       return false;
     }
   }

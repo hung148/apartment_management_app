@@ -33,42 +33,56 @@ enum PaymentMethod {
 class Payment {
   final String id;
   final String organizationId;
-  final String buildingId;           // NEW: Track which building
+  final String buildingId;
   final String roomId;
-  final String? tenantId;             // NEW: Who made the payment
-  final String? tenantName;           // NEW: Tenant name for easy display
+  final String? tenantId;
+  final String? tenantName;
   
   // Payment details
-  final PaymentType type;             // NEW: Type of payment
-  final PaymentStatus status;         // NEW: Payment status
-  final double amount;                // Total amount to pay
-  final double paidAmount;            // NEW: Amount actually paid (for partial payments)
-  final String currency;              // NEW: Currency (VND, USD, etc.)
+  final PaymentType type;
+  final PaymentStatus status;
+  final double amount;
+  final double paidAmount;
+  final String currency;
   
   // Payment method
-  final PaymentMethod? paymentMethod; // NEW: How was it paid
-  final String? transactionId;        // NEW: Bank transaction ID or reference
-  final String? receiptNumber;        // NEW: Receipt number
+  final PaymentMethod? paymentMethod;
+  final String? transactionId;
+  final String? receiptNumber;
   
   // Billing period (for recurring payments like rent)
-  final DateTime? billingStartDate;   // NEW: Start of billing period
-  final DateTime? billingEndDate;     // NEW: End of billing period
-  final DateTime dueDate;             // NEW: When payment is due
+  final DateTime? billingStartDate;   // Từ ngày (for rent, water)
+  final DateTime? billingEndDate;     // Đến ngày (for rent, water)
+  final DateTime dueDate;
+  
+  // Electricity meter readings (chỉ số điện)
+  final double? electricityStartReading;  // NEW: Chỉ số đầu
+  final DateTime? electricityStartDate;   // NEW: Từ ngày (chỉ số đầu)
+  final double? electricityEndReading;    // NEW: Chỉ số cuối
+  final DateTime? electricityEndDate;     // NEW: Đến ngày (chỉ số cuối)
+  final double? electricityPricePerUnit;  // NEW: Giá điện/kWh
+  
+  // Water meter readings (chỉ số nước)
+  final double? waterStartReading;        // NEW: Chỉ số đầu
+  final DateTime? waterStartDate;         // NEW: Từ ngày (chỉ số đầu)
+  final double? waterEndReading;          // NEW: Chỉ số cuối
+  final DateTime? waterEndDate;           // NEW: Đến ngày (chỉ số cuối)
+  final double? waterPricePerUnit;        // NEW: Giá nước/m³
   
   // Payment tracking
-  final DateTime createdAt;           // When payment record was created
-  final DateTime? paidAt;             // NEW: When payment was actually made
-  final String? paidBy;               // NEW: User ID who recorded the payment
+  final DateTime createdAt;
+  final DateTime? paidAt;
+  final String? paidBy;
   
   // Additional info
-  final String? description;          // NEW: Additional notes
-  final String? notes;                // NEW: Admin notes
-  final Map<String, dynamic>? metadata; // NEW: Extra data (meter readings, etc.)
+  final String? description;
+  final String? notes;
+  final Map<String, dynamic>? metadata;
   
   // Late fee tracking
-  final double? lateFee;              // NEW: Late payment fee
-  final bool isRecurring;             // NEW: Is this a recurring payment
-  final String? recurringParentId;    // NEW: Link to parent recurring payment
+  final double? lateFee;
+  final bool isRecurring;
+  final String? recurringParentId;
 
   Payment({
     required this.id,
@@ -88,6 +102,19 @@ class Payment {
     this.billingStartDate,
     this.billingEndDate,
     required this.dueDate,
+    // Electricity fields
+    this.electricityStartReading,
+    this.electricityStartDate,
+    this.electricityEndReading,
+    this.electricityEndDate,
+    this.electricityPricePerUnit,
+    // Water fields
+    this.waterStartReading,
+    this.waterStartDate,
+    this.waterEndReading,
+    this.waterEndDate,
+    this.waterPricePerUnit,
+    // Payment tracking
     required this.createdAt,
     this.paidAt,
     this.paidBy,
@@ -113,6 +140,22 @@ class Payment {
     if (!isOverdue) return 0;
     return DateTime.now().difference(dueDate).inDays;
   }
+  
+  // NEW: Calculate electricity usage (số điện tiêu thụ)
+  double? get electricityUsage {
+    if (electricityStartReading != null && electricityEndReading != null) {
+      return electricityEndReading! - electricityStartReading!;
+    }
+    return null;
+  }
+  
+  // NEW: Calculate water usage (số nước tiêu thụ)
+  double? get waterUsage {
+    if (waterStartReading != null && waterEndReading != null) {
+      return waterEndReading! - waterStartReading!;
+    }
+    return null;
+  }
 
   Map<String, dynamic> toMap() {
     return {
@@ -136,6 +179,27 @@ class Payment {
           ? Timestamp.fromDate(billingEndDate!) 
           : null,
       'dueDate': Timestamp.fromDate(dueDate),
+      // Electricity fields
+      'electricityStartReading': electricityStartReading,
+      'electricityStartDate': electricityStartDate != null
+          ? Timestamp.fromDate(electricityStartDate!)
+          : null,
+      'electricityEndReading': electricityEndReading,
+      'electricityEndDate': electricityEndDate != null
+          ? Timestamp.fromDate(electricityEndDate!)
+          : null,
+      'electricityPricePerUnit': electricityPricePerUnit,
+      // Water fields
+      'waterStartReading': waterStartReading,
+      'waterStartDate': waterStartDate != null
+          ? Timestamp.fromDate(waterStartDate!)
+          : null,
+      'waterEndReading': waterEndReading,
+      'waterEndDate': waterEndDate != null
+          ? Timestamp.fromDate(waterEndDate!)
+          : null,
+      'waterPricePerUnit': waterPricePerUnit,
+      // Payment tracking
       'createdAt': Timestamp.fromDate(createdAt),
       'paidAt': paidAt != null ? Timestamp.fromDate(paidAt!) : null,
       'paidBy': paidBy,
@@ -182,6 +246,27 @@ class Payment {
           ? (map['billingEndDate'] as Timestamp).toDate()
           : null,
       dueDate: (map['dueDate'] as Timestamp).toDate(),
+      // Electricity fields
+      electricityStartReading: (map['electricityStartReading'] as num?)?.toDouble(),
+      electricityStartDate: map['electricityStartDate'] != null
+          ? (map['electricityStartDate'] as Timestamp).toDate()
+          : null,
+      electricityEndReading: (map['electricityEndReading'] as num?)?.toDouble(),
+      electricityEndDate: map['electricityEndDate'] != null
+          ? (map['electricityEndDate'] as Timestamp).toDate()
+          : null,
+      electricityPricePerUnit: (map['electricityPricePerUnit'] as num?)?.toDouble(),
+      // Water fields
+      waterStartReading: (map['waterStartReading'] as num?)?.toDouble(),
+      waterStartDate: map['waterStartDate'] != null
+          ? (map['waterStartDate'] as Timestamp).toDate()
+          : null,
+      waterEndReading: (map['waterEndReading'] as num?)?.toDouble(),
+      waterEndDate: map['waterEndDate'] != null
+          ? (map['waterEndDate'] as Timestamp).toDate()
+          : null,
+      waterPricePerUnit: (map['waterPricePerUnit'] as num?)?.toDouble(),
+      // Payment tracking
       createdAt: (map['createdAt'] as Timestamp).toDate(),
       paidAt: map['paidAt'] != null 
           ? (map['paidAt'] as Timestamp).toDate() 
@@ -215,6 +300,16 @@ class Payment {
     DateTime? billingStartDate,
     DateTime? billingEndDate,
     DateTime? dueDate,
+    double? electricityStartReading,
+    DateTime? electricityStartDate,
+    double? electricityEndReading,
+    DateTime? electricityEndDate,
+    double? electricityPricePerUnit,
+    double? waterStartReading,
+    DateTime? waterStartDate,
+    double? waterEndReading,
+    DateTime? waterEndDate,
+    double? waterPricePerUnit,
     DateTime? createdAt,
     DateTime? paidAt,
     String? paidBy,
@@ -243,6 +338,16 @@ class Payment {
       billingStartDate: billingStartDate ?? this.billingStartDate,
       billingEndDate: billingEndDate ?? this.billingEndDate,
       dueDate: dueDate ?? this.dueDate,
+      electricityStartReading: electricityStartReading ?? this.electricityStartReading,
+      electricityStartDate: electricityStartDate ?? this.electricityStartDate,
+      electricityEndReading: electricityEndReading ?? this.electricityEndReading,
+      electricityEndDate: electricityEndDate ?? this.electricityEndDate,
+      electricityPricePerUnit: electricityPricePerUnit ?? this.electricityPricePerUnit,
+      waterStartReading: waterStartReading ?? this.waterStartReading,
+      waterStartDate: waterStartDate ?? this.waterStartDate,
+      waterEndReading: waterEndReading ?? this.waterEndReading,
+      waterEndDate: waterEndDate ?? this.waterEndDate,
+      waterPricePerUnit: waterPricePerUnit ?? this.waterPricePerUnit,
       createdAt: createdAt ?? this.createdAt,
       paidAt: paidAt ?? this.paidAt,
       paidBy: paidBy ?? this.paidBy,

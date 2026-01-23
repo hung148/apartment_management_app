@@ -1,11 +1,19 @@
 import 'package:apartment_management_project_2/models/buildings_model.dart';
+import 'package:apartment_management_project_2/models/organization_model.dart';
 import 'package:apartment_management_project_2/models/rooms_model.dart';
 import 'package:apartment_management_project_2/services/room_service.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
 
 class BuildingRoomScreen extends StatefulWidget {
-  const BuildingRoomScreen({super.key});
+  final Organization organization; 
+  final Building building;
+
+  const BuildingRoomScreen({
+    required this.organization,
+    required this.building,
+    super.key
+  });
 
   @override
   State<BuildingRoomScreen> createState() => _BuildingRoomScreenState();
@@ -14,7 +22,6 @@ class BuildingRoomScreen extends StatefulWidget {
 class _BuildingRoomScreenState extends State<BuildingRoomScreen> {
   final RoomService _roomService = RoomService();
   
-  Building? building;  // Made nullable to prevent LateInitializationError
   StreamSubscription<List<Room>>? _roomSubscription;
   List<Room>? _cachedRooms;
   String? _errorMessage;
@@ -22,89 +29,20 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> {
   bool _isInitialized = false;  // Track if we've gotten the building from route
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    
-    // Only initialize once to prevent multiple stream subscriptions
-    if (_isInitialized) {
-      print('BuildingRoomScreen: didChangeDependencies called again, skipping');
-      return;
-    }
-    
-    print('═══════════════════════════════════════');
-    print('BuildingRoomScreen: didChangeDependencies called');
-    
-    try {
-      final modalRoute = ModalRoute.of(context);
-      print('ModalRoute: $modalRoute');
-      print('Route name: ${modalRoute?.settings.name}');
-      
-      final args = modalRoute?.settings.arguments;
-      print('Arguments type: ${args.runtimeType}');
-      print('Arguments value: $args');
-      
-      if (args == null) {
-        print('❌ ERROR: No arguments passed to route');
-        print('This usually means:');
-        print('  1. You navigated without passing arguments');
-        print('  2. Route configuration is incorrect');
-        print('  3. MaterialApp routes are not set up properly');
-        setState(() {
-          _errorMessage = 'No building data received. Check navigation code.';
-          _isLoading = false;
-        });
-        return;
-      }
-      
-      if (args is! Building) {
-        print('❌ ERROR: Arguments are not of type Building!');
-        print('   Expected: Building');
-        print('   Got: ${args.runtimeType}');
-        setState(() {
-          _errorMessage = 'Invalid data type received: ${args.runtimeType}';
-          _isLoading = false;
-        });
-        return;
-      }
-      
-      building = args as Building;
-      
-      print('Building received:');
-      print('  - ID: ${building!.id}');
-      print('  - Name: ${building!.name}');
-      print('  - Organization ID: ${building!.organizationId}');
-      
-      if (building!.id.isEmpty) {
-        print('❌ ERROR: Building ID is EMPTY!');
-        setState(() {
-          _errorMessage = 'Building ID is empty';
-          _isLoading = false;
-        });
-        return;
-      }
-      
-      _isInitialized = true;
-      
-      // Initialize stream subscription
+  void initState() {
+    super.initState();
+    try {  
+      // Initialize stream subscription once on widget creation
       _initializeStream();
-      
     } catch (e, stackTrace) {
-      print('❌ ERROR in didChangeDependencies: $e');
+      print('❌ ERROR in initState: $e');
       print('Stack trace: $stackTrace');
-      setState(() {
-        _errorMessage = 'Error loading building: $e';
-        _isLoading = false;
-      });
     }
   }
 
   void _initializeStream() {
-    if (building == null) {
-      print('❌ Cannot initialize stream: building is null');
-      return;
-    }
     
-    print('Initializing room stream for building: ${building!.id}');
+    print('Initializing room stream for building: ${widget.building.id}');
     
     // Cancel existing subscription if any
     _roomSubscription?.cancel();
@@ -116,7 +54,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> {
     
     try {
       _roomSubscription = _roomService
-          .streamBuildingRooms(building!.id)
+          .streamBuildingRooms(widget.building.id)
           .listen(
             (rooms) {
               print('✓ Stream received ${rooms.length} rooms');
@@ -161,10 +99,6 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> {
   // ADD / EDIT ROOM DIALOG
   // =========================
   void _showRoomDialog({Room? room}) {
-    if (building == null) {
-      print('❌ Cannot show room dialog: building is null');
-      return;
-    }
     
     print('Opening room dialog - Edit mode: ${room != null}');
     
@@ -213,8 +147,8 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> {
                   final roomId = await _roomService.addRoom(
                     Room(
                       id: '',
-                      organizationId: building!.organizationId,
-                      buildingId: building!.id,
+                      organizationId: widget.building.organizationId,
+                      buildingId: widget.building.id,
                       roomNumber: roomNumber,
                       createdAt: DateTime.now(),
                     ),
@@ -423,7 +357,10 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> {
               Navigator.pushNamed(
                 context,
                 '/room-detail',
-                arguments: room,
+                arguments: {
+                  'room': room,
+                  'organization': widget.organization,
+                },
               );
             },
             trailing: PopupMenuButton<String>(
@@ -488,39 +425,9 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> {
   Widget build(BuildContext context) {
     print('BuildingRoomScreen: build called');
     
-    // Handle case where building hasn't been initialized yet
-    if (building == null) {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text('Đang tải...'),
-        ),
-        body: Center(
-          child: _errorMessage != null
-              ? Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.error_outline, size: 64, color: Colors.red),
-                    const SizedBox(height: 16),
-                    Text(
-                      _errorMessage!,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.grey),
-                    ),
-                    const SizedBox(height: 24),
-                    ElevatedButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('Quay lại'),
-                    ),
-                  ],
-                )
-              : const CircularProgressIndicator(),
-        ),
-      );
-    }
-    
     return Scaffold(
       appBar: AppBar(
-        title: Text(building!.name),
+        title: Text(widget.building.name),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
@@ -553,7 +460,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        building!.name,
+                        widget.building.name,
                         style: TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
@@ -570,7 +477,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> {
                     const SizedBox(width: 4),
                     Expanded(
                       child: Text(
-                        building!.address,
+                        widget.building.address,
                         style: const TextStyle(color: Colors.grey),
                       ),
                     ),

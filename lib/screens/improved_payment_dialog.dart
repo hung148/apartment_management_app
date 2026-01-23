@@ -16,12 +16,42 @@ class InvoiceLineItem {
   PaymentType type;
   double amount;
   String? description;
+  
+  // Electricity fields
+  double? electricityStartReading;
+  DateTime? electricityStartDate;
+  double? electricityEndReading;
+  DateTime? electricityEndDate;
+  double? electricityPricePerUnit;
+  
+  // Water fields
+  double? waterStartReading;
+  DateTime? waterStartDate;
+  double? waterEndReading;
+  DateTime? waterEndDate;
+  double? waterPricePerUnit;
+  
+  // Billing period (for rent, water)
+  DateTime? billingStartDate;
+  DateTime? billingEndDate;
 
   InvoiceLineItem({
     required this.id,
     required this.type,
     required this.amount,
     this.description,
+    this.electricityStartReading,
+    this.electricityStartDate,
+    this.electricityEndReading,
+    this.electricityEndDate,
+    this.electricityPricePerUnit,
+    this.waterStartReading,
+    this.waterStartDate,
+    this.waterEndReading,
+    this.waterEndDate,
+    this.waterPricePerUnit,
+    this.billingStartDate,
+    this.billingEndDate,
   });
 }
 
@@ -74,7 +104,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> {
   List<Room> _rooms = [];
   List<Tenant> _tenants = [];
   
-  // NEW: List of invoice line items
+  // List of invoice line items
   List<InvoiceLineItem> _lineItems = [];
   
   // Calculate total amount from all line items
@@ -122,7 +152,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> {
       final rooms = await widget.roomService.getBuildingRooms(_selectedBuildingId!);
       setState(() {
         _rooms = rooms;
-        _selectedRoomId = null; // Reset room selection
+        _selectedRoomId = null;
       });
     } catch (e) {
       if (mounted) {
@@ -176,22 +206,80 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> {
     }
   }
 
-  // NEW: Show dialog to add a line item
+  // Show dialog to add a line item with meter readings support
   Future<void> _showAddLineItemDialog() async {
     PaymentType? selectedType;
     final amountController = TextEditingController();
     final descriptionController = TextEditingController();
     
+    // Electricity fields
+    final electricityStartReadingController = TextEditingController();
+    DateTime? electricityStartDate;
+    final electricityEndReadingController = TextEditingController();
+    DateTime? electricityEndDate;
+    final electricityPriceController = TextEditingController();
+    
+    // Water fields
+    final waterStartReadingController = TextEditingController();
+    DateTime? waterStartDate;
+    final waterEndReadingController = TextEditingController();
+    DateTime? waterEndDate;
+    final waterPriceController = TextEditingController();
+    
+    // Billing period fields
+    DateTime? billingStart;
+    DateTime? billingEnd;
+    
+    // Load last readings if room is selected
+    if (_selectedRoomId != null) {
+      final lastElecReading = await widget.paymentService.getLastElectricityReading(_selectedRoomId!);
+      final lastWaterReading = await widget.paymentService.getLastWaterReading(_selectedRoomId!);
+      
+      if (lastElecReading != null) {
+        electricityStartReadingController.text = lastElecReading['reading']?.toString() ?? '';
+        electricityStartDate = lastElecReading['date'];
+        electricityPriceController.text = lastElecReading['pricePerUnit']?.toString() ?? '';
+      }
+      
+      if (lastWaterReading != null) {
+        waterStartReadingController.text = lastWaterReading['reading']?.toString() ?? '';
+        waterStartDate = lastWaterReading['date'];
+        waterPriceController.text = lastWaterReading['pricePerUnit']?.toString() ?? '';
+      }
+    }
+    
     final result = await showDialog<Map<String, dynamic>?>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
+          // Auto-calculate amount for electricity and water
+          void calculateAmount() {
+            if (selectedType == PaymentType.electricity) {
+              final startReading = double.tryParse(electricityStartReadingController.text) ?? 0;
+              final endReading = double.tryParse(electricityEndReadingController.text) ?? 0;
+              final price = double.tryParse(electricityPriceController.text) ?? 0;
+              final usage = endReading - startReading;
+              if (usage > 0 && price > 0) {
+                amountController.text = (usage * price).toStringAsFixed(0);
+              }
+            } else if (selectedType == PaymentType.water) {
+              final startReading = double.tryParse(waterStartReadingController.text) ?? 0;
+              final endReading = double.tryParse(waterEndReadingController.text) ?? 0;
+              final price = double.tryParse(waterPriceController.text) ?? 0;
+              final usage = endReading - startReading;
+              if (usage > 0 && price > 0) {
+                amountController.text = (usage * price).toStringAsFixed(0);
+              }
+            }
+          }
+          
           return AlertDialog(
             title: const Text('Thêm Mục Hóa Đơn'),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // Payment Type
                   DropdownButtonFormField<PaymentType>(
                     value: selectedType,
                     decoration: InputDecoration(
@@ -212,12 +300,303 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> {
                       };
                       return DropdownMenuItem(
                         value: t, 
-                        child: Text(labels[t.toString().split('.')[1]] ?? ''),
+                        child: Text(labels[t.name] ?? ''),
                       );
                     }).toList(),
                     onChanged: (v) => setDialogState(() => selectedType = v),
                   ),
                   const SizedBox(height: 16),
+                  
+                  // Electricity Fields
+                  if (selectedType == PaymentType.electricity) ...[
+                    const Text(
+                      'Chỉ số điện',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: electricityStartReadingController,
+                            decoration: InputDecoration(
+                              labelText: 'Chỉ số đầu *',
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                            keyboardType: TextInputType.number,
+                            onChanged: (_) => calculateAmount(),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextFormField(
+                            readOnly: true,
+                            decoration: InputDecoration(
+                              labelText: 'Từ ngày',
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                              suffixIcon: IconButton(
+                                icon: const Icon(Icons.calendar_today, size: 20),
+                                onPressed: () async {
+                                  final picked = await showDatePicker(
+                                    context: context,
+                                    initialDate: electricityStartDate ?? DateTime.now(),
+                                    firstDate: DateTime(2020),
+                                    lastDate: DateTime.now(),
+                                  );
+                                  if (picked != null) {
+                                    setDialogState(() => electricityStartDate = picked);
+                                  }
+                                },
+                              ),
+                            ),
+                            controller: TextEditingController(
+                              text: electricityStartDate != null 
+                                  ? DateFormat('dd/MM/yyyy').format(electricityStartDate!) 
+                                  : '',
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: electricityEndReadingController,
+                            decoration: InputDecoration(
+                              labelText: 'Chỉ số cuối *',
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                            keyboardType: TextInputType.number,
+                            onChanged: (_) => calculateAmount(),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextFormField(
+                            readOnly: true,
+                            decoration: InputDecoration(
+                              labelText: 'Đến ngày',
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                              suffixIcon: IconButton(
+                                icon: const Icon(Icons.calendar_today, size: 20),
+                                onPressed: () async {
+                                  final picked = await showDatePicker(
+                                    context: context,
+                                    initialDate: electricityEndDate ?? DateTime.now(),
+                                    firstDate: DateTime(2020),
+                                    lastDate: DateTime.now(),
+                                  );
+                                  if (picked != null) {
+                                    setDialogState(() => electricityEndDate = picked);
+                                  }
+                                },
+                              ),
+                            ),
+                            controller: TextEditingController(
+                              text: electricityEndDate != null 
+                                  ? DateFormat('dd/MM/yyyy').format(electricityEndDate!) 
+                                  : '',
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: electricityPriceController,
+                      decoration: InputDecoration(
+                        labelText: 'Giá điện (VND/kWh) *',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      keyboardType: TextInputType.number,
+                      onChanged: (_) => calculateAmount(),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  
+                  // Water Fields
+                  if (selectedType == PaymentType.water) ...[
+                    const Text(
+                      'Chỉ số nước',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: waterStartReadingController,
+                            decoration: InputDecoration(
+                              labelText: 'Chỉ số đầu *',
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                            keyboardType: TextInputType.number,
+                            onChanged: (_) => calculateAmount(),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextFormField(
+                            readOnly: true,
+                            decoration: InputDecoration(
+                              labelText: 'Từ ngày',
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                              suffixIcon: IconButton(
+                                icon: const Icon(Icons.calendar_today, size: 20),
+                                onPressed: () async {
+                                  final picked = await showDatePicker(
+                                    context: context,
+                                    initialDate: waterStartDate ?? DateTime.now(),
+                                    firstDate: DateTime(2020),
+                                    lastDate: DateTime.now(),
+                                  );
+                                  if (picked != null) {
+                                    setDialogState(() => waterStartDate = picked);
+                                  }
+                                },
+                              ),
+                            ),
+                            controller: TextEditingController(
+                              text: waterStartDate != null 
+                                  ? DateFormat('dd/MM/yyyy').format(waterStartDate!) 
+                                  : '',
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: waterEndReadingController,
+                            decoration: InputDecoration(
+                              labelText: 'Chỉ số cuối *',
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                            keyboardType: TextInputType.number,
+                            onChanged: (_) => calculateAmount(),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextFormField(
+                            readOnly: true,
+                            decoration: InputDecoration(
+                              labelText: 'Đến ngày',
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                              suffixIcon: IconButton(
+                                icon: const Icon(Icons.calendar_today, size: 20),
+                                onPressed: () async {
+                                  final picked = await showDatePicker(
+                                    context: context,
+                                    initialDate: waterEndDate ?? DateTime.now(),
+                                    firstDate: DateTime(2020),
+                                    lastDate: DateTime.now(),
+                                  );
+                                  if (picked != null) {
+                                    setDialogState(() => waterEndDate = picked);
+                                  }
+                                },
+                              ),
+                            ),
+                            controller: TextEditingController(
+                              text: waterEndDate != null 
+                                  ? DateFormat('dd/MM/yyyy').format(waterEndDate!) 
+                                  : '',
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: waterPriceController,
+                      decoration: InputDecoration(
+                        labelText: 'Giá nước (VND/m³) *',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      keyboardType: TextInputType.number,
+                      onChanged: (_) => calculateAmount(),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  
+                  // Billing Period (for Rent and Water)
+                  if (selectedType == PaymentType.rent || selectedType == PaymentType.water) ...[
+                    const Text(
+                      'Kỳ thanh toán',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            readOnly: true,
+                            decoration: InputDecoration(
+                              labelText: 'Từ ngày',
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                              suffixIcon: IconButton(
+                                icon: const Icon(Icons.calendar_today, size: 20),
+                                onPressed: () async {
+                                  final picked = await showDatePicker(
+                                    context: context,
+                                    initialDate: billingStart ?? DateTime.now(),
+                                    firstDate: DateTime(2020),
+                                    lastDate: DateTime(2030),
+                                  );
+                                  if (picked != null) {
+                                    setDialogState(() => billingStart = picked);
+                                  }
+                                },
+                              ),
+                            ),
+                            controller: TextEditingController(
+                              text: billingStart != null 
+                                  ? DateFormat('dd/MM/yyyy').format(billingStart!) 
+                                  : '',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextFormField(
+                            readOnly: true,
+                            decoration: InputDecoration(
+                              labelText: 'Đến ngày',
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                              suffixIcon: IconButton(
+                                icon: const Icon(Icons.calendar_today, size: 20),
+                                onPressed: () async {
+                                  final picked = await showDatePicker(
+                                    context: context,
+                                    initialDate: billingEnd ?? DateTime.now(),
+                                    firstDate: DateTime(2020),
+                                    lastDate: DateTime(2030),
+                                  );
+                                  if (picked != null) {
+                                    setDialogState(() => billingEnd = picked);
+                                  }
+                                },
+                              ),
+                            ),
+                            controller: TextEditingController(
+                              text: billingEnd != null 
+                                  ? DateFormat('dd/MM/yyyy').format(billingEnd!) 
+                                  : '',
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  
+                  // Amount
                   TextFormField(
                     controller: amountController,
                     decoration: InputDecoration(
@@ -226,8 +605,11 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> {
                       suffixText: 'VND',
                     ),
                     keyboardType: TextInputType.number,
+                    readOnly: selectedType == PaymentType.electricity || selectedType == PaymentType.water,
                   ),
                   const SizedBox(height: 16),
+                  
+                  // Description
                   TextFormField(
                     controller: descriptionController,
                     decoration: InputDecoration(
@@ -249,11 +631,37 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> {
                   if (selectedType != null && amountController.text.isNotEmpty) {
                     final amount = double.tryParse(amountController.text);
                     if (amount != null && amount > 0) {
-                      Navigator.pop(context, {
+                      final result = <String, dynamic>{
                         'type': selectedType!,
                         'amount': amount,
                         'description': descriptionController.text.isEmpty ? null : descriptionController.text,
-                      });
+                      };
+                      
+                      // Add electricity data
+                      if (selectedType == PaymentType.electricity) {
+                        result['electricityStartReading'] = double.tryParse(electricityStartReadingController.text);
+                        result['electricityStartDate'] = electricityStartDate;
+                        result['electricityEndReading'] = double.tryParse(electricityEndReadingController.text);
+                        result['electricityEndDate'] = electricityEndDate;
+                        result['electricityPricePerUnit'] = double.tryParse(electricityPriceController.text);
+                      }
+                      
+                      // Add water data
+                      if (selectedType == PaymentType.water) {
+                        result['waterStartReading'] = double.tryParse(waterStartReadingController.text);
+                        result['waterStartDate'] = waterStartDate;
+                        result['waterEndReading'] = double.tryParse(waterEndReadingController.text);
+                        result['waterEndDate'] = waterEndDate;
+                        result['waterPricePerUnit'] = double.tryParse(waterPriceController.text);
+                      }
+                      
+                      // Add billing period
+                      if (selectedType == PaymentType.rent || selectedType == PaymentType.water) {
+                        result['billingStartDate'] = billingStart;
+                        result['billingEndDate'] = billingEnd;
+                      }
+                      
+                      Navigator.pop(context, result);
                     } else {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text('Vui lòng nhập số tiền hợp lệ')),
@@ -280,19 +688,29 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> {
           type: result['type'] as PaymentType,
           amount: result['amount'] as double,
           description: result['description'] as String?,
+          electricityStartReading: result['electricityStartReading'] as double?,
+          electricityStartDate: result['electricityStartDate'] as DateTime?,
+          electricityEndReading: result['electricityEndReading'] as double?,
+          electricityEndDate: result['electricityEndDate'] as DateTime?,
+          electricityPricePerUnit: result['electricityPricePerUnit'] as double?,
+          waterStartReading: result['waterStartReading'] as double?,
+          waterStartDate: result['waterStartDate'] as DateTime?,
+          waterEndReading: result['waterEndReading'] as double?,
+          waterEndDate: result['waterEndDate'] as DateTime?,
+          waterPricePerUnit: result['waterPricePerUnit'] as double?,
+          billingStartDate: result['billingStartDate'] as DateTime?,
+          billingEndDate: result['billingEndDate'] as DateTime?,
         ));
       });
     }
   }
 
-  // NEW: Remove a line item
   void _removeLineItem(String id) {
     setState(() {
       _lineItems.removeWhere((item) => item.id == id);
     });
   }
 
-  // NEW: Build line items list widget
   Widget _buildLineItemsList() {
     if (_lineItems.isEmpty) {
       return Card(
@@ -332,7 +750,21 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> {
             'penalty': 'Tiền phạt',
             'other': 'Khác',
           };
-          final typeLabel = labels[item.type.toString().split('.')[1]] ?? item.type.toString();
+          final typeLabel = labels[item.type.name] ?? item.type.name;
+          
+          // Build detailed description
+          String detailText = '';
+          if (item.type == PaymentType.electricity && item.electricityStartReading != null) {
+            final usage = (item.electricityEndReading ?? 0) - (item.electricityStartReading ?? 0);
+            detailText = 'Từ ${item.electricityStartReading} đến ${item.electricityEndReading} (${usage.toStringAsFixed(1)} kWh)';
+          } else if (item.type == PaymentType.water && item.waterStartReading != null) {
+            final usage = (item.waterEndReading ?? 0) - (item.waterStartReading ?? 0);
+            detailText = 'Từ ${item.waterStartReading} đến ${item.waterEndReading} (${usage.toStringAsFixed(1)} m³)';
+          } else if (item.billingStartDate != null && item.billingEndDate != null) {
+            detailText = '${DateFormat('dd/MM').format(item.billingStartDate!)} - ${DateFormat('dd/MM/yyyy').format(item.billingEndDate!)}';
+          } else if (item.description != null) {
+            detailText = item.description!;
+          }
           
           return Card(
             margin: const EdgeInsets.only(bottom: 8),
@@ -348,8 +780,8 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> {
                 ),
               ),
               title: Text(typeLabel),
-              subtitle: item.description != null 
-                  ? Text(item.description!, style: const TextStyle(fontSize: 12))
+              subtitle: detailText.isNotEmpty 
+                  ? Text(detailText, style: const TextStyle(fontSize: 12))
                   : null,
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -428,58 +860,103 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> {
     }
 
     try {
-      // Create a description from all line items
-      final lineItemsDescription = _lineItems.map((item) {
-        const labels = {
-          'rent': 'Tiền thuê',
-          'electricity': 'Tiền điện',
-          'water': 'Tiền nước',
-          'internet': 'Tiền internet',
-          'parking': 'Tiền gửi xe',
-          'maintenance': 'Phí bảo trì',
-          'deposit': 'Tiền cọc',
-          'penalty': 'Tiền phạt',
-          'other': 'Khác',
-        };
-        final typeLabel = labels[item.type.toString().split('.')[1]] ?? item.type.toString();
-        final desc = item.description != null ? ' (${item.description})' : '';
-        return '${typeLabel}: ${NumberFormat('#,###').format(item.amount)} VND$desc';
-      }).join('\n');
+      // If there's only one line item, create a single payment with full details
+      if (_lineItems.length == 1) {
+        final item = _lineItems.first;
+        
+        final payment = Payment(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          organizationId: widget.organization.id,
+          buildingId: _selectedBuildingId!,
+          roomId: _selectedRoomId!,
+          tenantId: _selectedTenantId,
+          tenantName: _selectedTenantName ?? 'Unknown',
+          type: item.type,
+          status: _selectedPaymentStatus ?? PaymentStatus.pending,
+          amount: item.amount,
+          paidAmount: double.parse(_paidAmountController.text),
+          currency: _currencyController.text,
+          paymentMethod: _selectedPaymentMethod,
+          transactionId: _transactionIdController.text.isEmpty ? null : _transactionIdController.text,
+          receiptNumber: _receiptNumberController.text.isEmpty ? null : _receiptNumberController.text,
+          billingStartDate: item.billingStartDate,
+          billingEndDate: item.billingEndDate,
+          dueDate: _dueDate!,
+          electricityStartReading: item.electricityStartReading,
+          electricityStartDate: item.electricityStartDate,
+          electricityEndReading: item.electricityEndReading,
+          electricityEndDate: item.electricityEndDate,
+          electricityPricePerUnit: item.electricityPricePerUnit,
+          waterStartReading: item.waterStartReading,
+          waterStartDate: item.waterStartDate,
+          waterEndReading: item.waterEndReading,
+          waterEndDate: item.waterEndDate,
+          waterPricePerUnit: item.waterPricePerUnit,
+          createdAt: DateTime.now(),
+          paidAt: _paidAt,
+          paidBy: null,
+          description: item.description,
+          notes: _notesController.text.isEmpty ? null : _notesController.text,
+          metadata: null,
+          lateFee: _lateFeeController.text.isEmpty ? null : double.parse(_lateFeeController.text),
+          isRecurring: _isRecurring,
+          recurringParentId: _recurringParentIdController.text.isEmpty ? null : _recurringParentIdController.text,
+        );
 
-      // Use the first line item's type as the main type, or 'other' if multiple types
-      final uniqueTypes = _lineItems.map((e) => e.type).toSet();
-      final primaryType = uniqueTypes.length == 1 ? _lineItems.first.type : PaymentType.other;
+        await widget.paymentService.addPayment(payment);
+      } else {
+        // Multiple line items: create a combined payment with description
+        final lineItemsDescription = _lineItems.map((item) {
+          const labels = {
+            'rent': 'Tiền thuê',
+            'electricity': 'Tiền điện',
+            'water': 'Tiền nước',
+            'internet': 'Tiền internet',
+            'parking': 'Tiền gửi xe',
+            'maintenance': 'Phí bảo trì',
+            'deposit': 'Tiền cọc',
+            'penalty': 'Tiền phạt',
+            'other': 'Khác',
+          };
+          final typeLabel = labels[item.type.name] ?? item.type.name;
+          final desc = item.description != null ? ' (${item.description})' : '';
+          return '${typeLabel}: ${NumberFormat('#,###').format(item.amount)} VND$desc';
+        }).join('\n');
 
-      final payment = Payment(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        organizationId: widget.organization.id,
-        buildingId: _selectedBuildingId!,
-        roomId: _selectedRoomId!,
-        tenantId: _selectedTenantId,
-        tenantName: _selectedTenantName ?? 'Unknown',
-        type: primaryType,
-        status: _selectedPaymentStatus ?? PaymentStatus.pending,
-        amount: _totalAmount, // Use the calculated total
-        paidAmount: double.parse(_paidAmountController.text),
-        currency: _currencyController.text,
-        paymentMethod: _selectedPaymentMethod,
-        transactionId: _transactionIdController.text.isEmpty ? null : _transactionIdController.text,
-        receiptNumber: _receiptNumberController.text.isEmpty ? null : _receiptNumberController.text,
-        billingStartDate: _billingStartDate,
-        billingEndDate: _billingEndDate,
-        dueDate: _dueDate!,
-        createdAt: DateTime.now(),
-        paidAt: _paidAt,
-        paidBy: null,
-        description: lineItemsDescription, // Save line items as description
-        notes: _notesController.text.isEmpty ? null : _notesController.text,
-        metadata: null,
-        lateFee: _lateFeeController.text.isEmpty ? null : double.parse(_lateFeeController.text),
-        isRecurring: _isRecurring,
-        recurringParentId: _recurringParentIdController.text.isEmpty ? null : _recurringParentIdController.text,
-      );
+        final uniqueTypes = _lineItems.map((e) => e.type).toSet();
+        final primaryType = uniqueTypes.length == 1 ? _lineItems.first.type : PaymentType.other;
 
-      await widget.paymentService.addPayment(payment);
+        final payment = Payment(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          organizationId: widget.organization.id,
+          buildingId: _selectedBuildingId!,
+          roomId: _selectedRoomId!,
+          tenantId: _selectedTenantId,
+          tenantName: _selectedTenantName ?? 'Unknown',
+          type: primaryType,
+          status: _selectedPaymentStatus ?? PaymentStatus.pending,
+          amount: _totalAmount,
+          paidAmount: double.parse(_paidAmountController.text),
+          currency: _currencyController.text,
+          paymentMethod: _selectedPaymentMethod,
+          transactionId: _transactionIdController.text.isEmpty ? null : _transactionIdController.text,
+          receiptNumber: _receiptNumberController.text.isEmpty ? null : _receiptNumberController.text,
+          billingStartDate: _billingStartDate,
+          billingEndDate: _billingEndDate,
+          dueDate: _dueDate!,
+          createdAt: DateTime.now(),
+          paidAt: _paidAt,
+          paidBy: null,
+          description: lineItemsDescription,
+          notes: _notesController.text.isEmpty ? null : _notesController.text,
+          metadata: null,
+          lateFee: _lateFeeController.text.isEmpty ? null : double.parse(_lateFeeController.text),
+          isRecurring: _isRecurring,
+          recurringParentId: _recurringParentIdController.text.isEmpty ? null : _recurringParentIdController.text,
+        );
+
+        await widget.paymentService.addPayment(payment);
+      }
       
       if (mounted) {
         Navigator.pop(context);
@@ -613,7 +1090,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> {
                             ),
                             const SizedBox(height: 24),
                             
-                            // NEW: Line Items Section
+                            // Line Items Section
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
@@ -665,7 +1142,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> {
                                   'refunded': 'Đã hoàn tiền',
                                   'partial': 'Thanh toán 1 phần',
                                 };
-                                return DropdownMenuItem(value: s, child: Text(labels[s.toString().split('.')[1]] ?? ''));
+                                return DropdownMenuItem(value: s, child: Text(labels[s.name] ?? ''));
                               }).toList(),
                               onChanged: (v) => setState(() => _selectedPaymentStatus = v),
                             ),

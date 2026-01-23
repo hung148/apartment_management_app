@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:apartment_management_project_2/main.dart';
 import 'package:apartment_management_project_2/models/buildings_model.dart';
 import 'package:apartment_management_project_2/models/membership_model.dart';
 import 'package:apartment_management_project_2/models/organization_model.dart';
@@ -42,8 +43,9 @@ class InvoiceLineItem {
 }
 
 class OrganizationScreen extends StatefulWidget {
-
+  final Organization organization;
   const OrganizationScreen({
+    required this.organization,
     super.key,
   });
 
@@ -52,21 +54,14 @@ class OrganizationScreen extends StatefulWidget {
 }
 
 class _OrganizationScreenState extends State<OrganizationScreen> {
-  final OrganizationService _orgService = OrganizationService();
-  final AuthService _authService = AuthService();
-  final BuildingService _buildingService = BuildingService();
-  final TenantService _tenantService = TenantService();
-  final PaymentService _paymentService = PaymentService();
-  final RoomService _roomService = RoomService();
+  final OrganizationService _orgService = getIt<OrganizationService>();
+  final AuthService _authService = getIt<AuthService>();
+  final BuildingService _buildingService = getIt<BuildingService>();
+  final TenantService _tenantService = getIt<TenantService>();
+  final PaymentService _paymentService = getIt<PaymentService>();
+  final RoomService _roomService = getIt<RoomService>();
   
-  late Organization _organization;
   String? _selectedBuildingId; // For occupancy trend chart
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _organization =
-        ModalRoute.of(context)!.settings.arguments as Organization;
-  }
 
   final TextEditingController _searchController = TextEditingController();
 
@@ -86,28 +81,28 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
 
     return _orgService.getUserMembership(
       _userId!,
-      _organization.id,
+      widget.organization.id,
     );
   }
 
   Future<List<Membership>> _getMembers() {
-    return _orgService.getOrganizationMembers(_organization.id);
+    return _orgService.getOrganizationMembers(widget.organization.id);
   }
 
   Future<List<Building>> _getBuildings() {
-    return _buildingService.getOrganizationBuildings(_organization.id);
+    return _buildingService.getOrganizationBuildings(widget.organization.id);
   }
 
   Future<List<Tenant>> _getAllTenants() {
-    return _tenantService.getOrganizationTenants(_organization.id);
+    return _tenantService.getOrganizationTenants(widget.organization.id);
   }
 
   Future<List<Payment>> _getAllPayments() {
-    return _paymentService.getOrganizationPayments(_organization.id);
+    return _paymentService.getOrganizationPayments(widget.organization.id);
   }
 
   Future<List<Room>> _getAllRooms() {
-    return _roomService.getOrganizationRooms(_organization.id);
+    return _roomService.getOrganizationRooms(widget.organization.id);
   }
 
   Future<void> _loadInviteCode() async {
@@ -117,7 +112,7 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
 
     final code = await _orgService.getInviteCode(
       _userId!,
-      _organization.id,
+      widget.organization.id,
     );
 
     setState(() {
@@ -400,7 +395,7 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
         // Create building
         final building = Building(
           id: '',
-          organizationId: _organization.id,
+          organizationId: widget.organization.id,
           name: result['name']!,
           address: result['address']!,
           createdAt: DateTime.now(),
@@ -412,7 +407,7 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
           // Generate and add rooms if enabled
           if (result['autoGenerateRooms'] == true) {
             final rooms = await _roomService.generateRoomsForBuilding(
-              organizationId: _organization.id,
+              organizationId: widget.organization.id,
               buildingId: buildingId,
               numberOfFloors: result['floors']!,
               roomsPerFloor: result['roomsPerFloor']!,
@@ -789,7 +784,7 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
           // Generate and add rooms if enabled
           if (result['autoGenerateRooms'] == true) {
             final rooms = await _roomService.generateRoomsForBuilding(
-              organizationId: _organization.id,
+              organizationId: widget.organization.id,
               buildingId: building.id,
               numberOfFloors: result['floors']!,
               roomsPerFloor: result['roomsPerFloor']!,
@@ -1023,7 +1018,7 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
       length: 5,
       child: Scaffold(
         appBar: AppBar(
-          title: Text(_organization.name),
+          title: Text(widget.organization.name),
           bottom: PreferredSize(
             preferredSize: const Size.fromHeight(kToolbarHeight),
             child: LayoutBuilder(
@@ -1054,7 +1049,7 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
           children: [
             _buildBuildingsTab(),
               TenantsTab(
-              organization: _organization,
+              organization: widget.organization,
               tenantService: _tenantService,
               buildingService: _buildingService,
               roomService: _roomService,
@@ -1218,7 +1213,10 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
                                             Navigator.pushNamed(
                                               context,
                                               '/building-rooms',
-                                              arguments: building,
+                                              arguments: {
+                                                'building': building,
+                                                'organization': widget.organization,
+                                              },
                                             );
                                           }
                                         });
@@ -1232,7 +1230,10 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
                                     Navigator.pushNamed(
                                       context,
                                       '/building-rooms',
-                                      arguments: building,
+                                      arguments: {
+                                        'building': building,
+                                        'organization': widget.organization,
+                                      },
                                     );
                                   },
                                 ),
@@ -1240,7 +1241,10 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
                             Navigator.pushNamed(
                               context,
                               '/building-rooms',
-                              arguments: building,
+                              arguments: {
+                                'building': building,
+                                'organization': widget.organization,
+                              },
                             );
                           },
                         ),
@@ -1561,7 +1565,7 @@ Widget _buildPaymentsList(List<Payment> allPayments, String searchText, bool isA
     builder: (context) => ViewPaymentDetailsDialog(
       payment: payment,
       isAdmin: isAdmin,
-      organization: _organization,
+      organization: widget.organization,
       onEdit: () => _showEditPaymentDialog(payment),
     ),
   );
@@ -1571,7 +1575,7 @@ Widget _buildPaymentsList(List<Payment> allPayments, String searchText, bool isA
     showDialog(
       context: context,
       builder: (context) => ImprovedPaymentFormDialog(
-        organization: _organization,
+        organization: widget.organization,
         buildingService: _buildingService,
         roomService: _roomService,
         tenantService: _tenantService,
@@ -1590,7 +1594,7 @@ Widget _buildPaymentsList(List<Payment> allPayments, String searchText, bool isA
       context: context,
       builder: (context) => EditPaymentDialog(
         payment: payment,
-        organization: _organization,
+        organization: widget.organization,
         buildingService: _buildingService,
         roomService: _roomService,
         tenantService: _tenantService,
@@ -1875,7 +1879,7 @@ Widget _buildPaymentsList(List<Payment> allPayments, String searchText, bool isA
                         tenants: tenants, 
                         rooms: rooms, 
                         payments: payments,
-                        organizationName: _organization.name,
+                        organizationName: widget.organization.name,
                       ),
                     ),
                   ),
@@ -1889,7 +1893,7 @@ Widget _buildPaymentsList(List<Payment> allPayments, String searchText, bool isA
                         tenants: tenants, 
                         rooms: rooms, 
                         payments: payments,
-                        organizationName: _organization.name,
+                        organizationName: widget.organization.name,
                       ),
                     ),
                   ),
@@ -3717,7 +3721,7 @@ Future<void> _exportStatisticsToPdf({
                                             final success = await _orgService.promoteMemberToAdmin(
                                               currentAdminId: myMembership.ownerId,
                                               memberIdToPromote: member.ownerId,
-                                              orgId: _organization.id,
+                                              orgId: widget.organization.id,
                                             );
                                             if (success && mounted) {
                                               scaffoldMessenger.showSnackBar(
@@ -3747,7 +3751,7 @@ Future<void> _exportStatisticsToPdf({
                                             if (confirm == true) {
                                               final success = await _orgService.leaveOrganization(
                                                 member.ownerId,
-                                                _organization.id,
+                                                widget.organization.id,
                                               );
                                               if (success && mounted) {
                                                 ScaffoldMessenger.of(context).showSnackBar(
