@@ -1,9 +1,3 @@
-In building room stop display room ID, them, xoa phong kiem tra if there is tenant in there mark them move out save their last location
-
-fix room detail
-
-Make oraganization screen shorter
-
-work on hoa don
+fix room detail hoa don and make look like in hoa don tab
 
 add vehicle management tab where it only dislay tenant vehicle with currently renting status

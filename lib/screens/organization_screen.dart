@@ -6,6 +6,9 @@ import 'package:apartment_management_project_2/models/organization_model.dart';
 import 'package:apartment_management_project_2/models/tenants_model.dart';
 import 'package:apartment_management_project_2/models/payment_model.dart';
 import 'package:apartment_management_project_2/models/rooms_model.dart';
+import 'package:apartment_management_project_2/screens/improved_delete_payment_dialog.dart';
+import 'package:apartment_management_project_2/screens/improved_payment_dialog.dart';
+import 'package:apartment_management_project_2/screens/improved_view_edit_dialogs.dart';
 import 'package:apartment_management_project_2/screens/organizations/tenant_tab.dart';
 import 'package:apartment_management_project_2/services/auth_service.dart';
 import 'package:apartment_management_project_2/services/building_service.dart';
@@ -23,6 +26,20 @@ import 'package:printing/printing.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:path/path.dart' as p;
 
+// Helper class for invoice line items
+class InvoiceLineItem {
+  String id;
+  PaymentType type;
+  double amount;
+  String? description;
+
+  InvoiceLineItem({
+    required this.id,
+    required this.type,
+    required this.amount,
+    this.description,
+  });
+}
 
 class OrganizationScreen extends StatefulWidget {
 
@@ -983,23 +1000,6 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
     return '${formatter.format(amount)} ₫';
   }
 
-  String _formatDateTime(DateTime date) {
-    return DateFormat('dd/MM/yyyy HH:mm').format(date);
-  }
-
-  Color _getTenantStatusColor(TenantStatus status) {
-    switch (status) {
-      case TenantStatus.active:
-        return Colors.green;
-      case TenantStatus.inactive:
-        return Colors.orange;
-      case TenantStatus.moveOut:
-        return Colors.red;
-      case TenantStatus.suspended:
-        return Colors.grey;
-    }
-  }
-
   Color _getPaymentStatusColor(PaymentStatus status) {
     switch (status) {
       case PaymentStatus.pending:
@@ -1260,153 +1260,172 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
   // PAYMENTS TAB
   // ========================================
   Widget _buildPaymentsTab() {
-    return FutureBuilder<List<Payment>>(
-      future: _getAllPayments(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
+  return FutureBuilder<List<Payment>>(
+    future: _getAllPayments(),
+    builder: (context, snapshot) {
+      if (snapshot.connectionState == ConnectionState.waiting) {
+        return const Center(child: CircularProgressIndicator());
+      }
 
-        if (!snapshot.hasData || snapshot.data!.isEmpty) {
-          return Center(
+      if (!snapshot.hasData || snapshot.data!.isEmpty) {
+        return FutureBuilder<Membership?>(
+          future: _getMyMembership(),
+          builder: (context, membershipSnapshot) {
+            final isAdmin = membershipSnapshot.hasData &&
+                membershipSnapshot.data!.role == 'admin';
+
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.receipt_long_outlined, size: 64, color: Colors.grey),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Chưa có hóa đơn nào',
+                    style: TextStyle(color: Colors.grey, fontSize: 16),
+                  ),
+                  const SizedBox(height: 24),
+                  if (isAdmin)
+                    ElevatedButton.icon(
+                      onPressed: _showAddPaymentDialog,
+                      icon: const Icon(Icons.add),
+                      label: const Text('Thêm Hóa Đơn'),
+                    ),
+                ],
+              ),
+            );
+          },
+        );
+      }
+
+      final allPayments = snapshot.data!;
+      allPayments.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+      return FutureBuilder<Membership?>(
+        future: _getMyMembership(),
+        builder: (context, membershipSnapshot) {
+          final isAdmin = membershipSnapshot.hasData &&
+              membershipSnapshot.data!.role == 'admin';
+
+          return Padding(
+            padding: const EdgeInsets.all(16),
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.receipt_long_outlined, size: 64, color: Colors.grey),
-                const SizedBox(height: 16),
-                const Text(
-                  'Chưa có hóa đơn nào',
-                  style: TextStyle(color: Colors.grey, fontSize: 16),
+                // Search with ValueListenableBuilder (no reload on type)
+                ValueListenableBuilder<TextEditingValue>(
+                  valueListenable: _searchController,
+                  builder: (context, value, child) {
+                    return Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _searchController,
+                            decoration: InputDecoration(
+                              hintText: 'Tìm kiếm hóa đơn...',
+                              prefixIcon: const Icon(Icons.search),
+                              suffixIcon: value.text.isNotEmpty
+                                  ? IconButton(
+                                      icon: const Icon(Icons.clear),
+                                      onPressed: () => _searchController.clear(),
+                                    )
+                                  : null,
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        // Only show add button for admins
+                        if (isAdmin)
+                          ElevatedButton.icon(
+                            onPressed: _showAddPaymentDialog,
+                            icon: const Icon(Icons.add),
+                            label: const Text('Thêm'),
+                          ),
+                      ],
+                    );
+                  },
                 ),
-                const SizedBox(height: 24),
-                ElevatedButton.icon(
-                  onPressed: _showAddPaymentDialog,
-                  icon: const Icon(Icons.add),
-                  label: const Text('Thêm Hóa Đơn'),
+                const SizedBox(height: 16),
+                // Payments List
+                Expanded(
+                  child: ValueListenableBuilder<TextEditingValue>(
+                    valueListenable: _searchController,
+                    builder: (context, value, child) {
+                      return _buildPaymentsList(allPayments, value.text, isAdmin);
+                    },
+                  ),
                 ),
               ],
             ),
           );
-        }
+        },
+      );
+    },
+  );
+}
 
-        final allPayments = snapshot.data!;
-        allPayments.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+Widget _buildPaymentsList(List<Payment> allPayments, String searchText, bool isAdmin) {
+  final searchTerm = searchText.toLowerCase();
+  
+  // Filter payments based on search term
+  final filteredPayments = allPayments.where((payment) {
+    if (searchTerm.isEmpty) return true;
+    
+    return (payment.tenantName?.toLowerCase() ?? '').contains(searchTerm) ||
+           payment.totalAmount.toString().contains(searchTerm) ||
+           payment.getTypeDisplayName().toLowerCase().contains(searchTerm);
+  }).toList();
 
-        return Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              // Search with ValueListenableBuilder (no reload on type)
-              ValueListenableBuilder<TextEditingValue>(
-                valueListenable: _searchController,
-                builder: (context, value, child) {
-                  return Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _searchController,
-                          decoration: InputDecoration(
-                            hintText: 'Tìm kiếm hóa đơn...',
-                            prefixIcon: const Icon(Icons.search),
-                            suffixIcon: value.text.isNotEmpty
-                                ? IconButton(
-                                    icon: const Icon(Icons.clear),
-                                    onPressed: () => _searchController.clear(),
-                                  )
-                                : null,
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      ElevatedButton.icon(
-                        onPressed: _showAddPaymentDialog,
-                        icon: const Icon(Icons.add),
-                        label: const Text('Thêm'),
-                      ),
-                    ],
-                  );
-                },
-              ),
-              const SizedBox(height: 16),
-              // Payments List
-              Expanded(
-                child: ValueListenableBuilder<TextEditingValue>(
-                  valueListenable: _searchController,
-                  builder: (context, value, child) {
-                    return _buildPaymentsList(allPayments, value.text);
-                  },
-                ),
-              ),
-            ],
+  if (filteredPayments.isEmpty) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            searchTerm.isEmpty ? Icons.receipt_long_outlined : Icons.search_off,
+            size: 64,
+            color: Colors.grey,
           ),
-        );
-      },
+          const SizedBox(height: 16),
+          Text(
+            searchTerm.isEmpty ? 'Chưa có hóa đơn nào' : 'Không tìm thấy hóa đơn',
+            style: TextStyle(color: Colors.grey[600], fontSize: 16),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildPaymentsList(List<Payment> allPayments, String searchText) {
-    final searchTerm = searchText.toLowerCase();
-    
-    // Filter payments based on search term
-    final filteredPayments = allPayments.where((payment) {
-      if (searchTerm.isEmpty) return true;
-      
-      return (payment.tenantName?.toLowerCase() ?? '').contains(searchTerm) ||
-             payment.totalAmount.toString().contains(searchTerm) ||
-             payment.getTypeDisplayName().toLowerCase().contains(searchTerm);
-    }).toList();
-
-    if (filteredPayments.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              searchTerm.isEmpty ? Icons.receipt_long_outlined : Icons.search_off,
-              size: 64,
-              color: Colors.grey,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              searchTerm.isEmpty ? 'Chưa có hóa đơn nào' : 'Không tìm thấy hóa đơn',
-              style: TextStyle(color: Colors.grey[600], fontSize: 16),
-            ),
-          ],
+  if (searchTerm.isNotEmpty) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
+          child: Row(
+            children: [
+              Icon(Icons.info_outline, size: 16, color: Colors.grey.shade600),
+              const SizedBox(width: 8),
+              Text(
+                'Tìm thấy ${filteredPayments.length} hóa đơn',
+                style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+              ),
+            ],
+          ),
         ),
-      );
-    }
-
-    if (searchTerm.isNotEmpty) {
-      return Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
-            child: Row(
-              children: [
-                Icon(Icons.info_outline, size: 16, color: Colors.grey.shade600),
-                const SizedBox(width: 8),
-                Text(
-                  'Tìm thấy ${filteredPayments.length} hóa đơn',
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: _buildPaymentsListView(filteredPayments),
-          ),
-        ],
-      );
-    }
-
-    return _buildPaymentsListView(filteredPayments);
+        Expanded(
+          child: _buildPaymentsListView(filteredPayments, isAdmin),
+        ),
+      ],
+    );
   }
 
-  Widget _buildPaymentsListView(List<Payment> payments) {
+  return _buildPaymentsListView(filteredPayments, isAdmin);
+}
+
+  Widget _buildPaymentsListView(List<Payment> payments, bool isAdmin) {
     return ListView.builder(
       itemCount: payments.length,
       itemBuilder: (context, index) {
@@ -1460,405 +1479,140 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
                 ),
               ],
             ),
-            trailing: Builder(
-              builder: (BuildContext context) {
-                return IconButton(
-                  icon: const Icon(Icons.more_vert),
-                  onPressed: () {
-                    final RenderBox button = context.findRenderObject() as RenderBox;
-                    final RenderBox overlay = Navigator.of(context).overlay!.context.findRenderObject() as RenderBox;
-                    final RelativeRect position = RelativeRect.fromRect(
-                      Rect.fromPoints(
-                        button.localToGlobal(Offset.zero, ancestor: overlay) + const Offset(0, 48),
-                        button.localToGlobal(button.size.bottomRight(Offset.zero), ancestor: overlay),
-                      ),
-                      Offset.zero & overlay.size,
-                    );
+            trailing: isAdmin
+                ? Builder(
+                    builder: (BuildContext context) {
+                      return IconButton(
+                        icon: const Icon(Icons.more_vert),
+                        onPressed: () {
+                          final RenderBox button = context.findRenderObject() as RenderBox;
+                          final RenderBox overlay = Navigator.of(context).overlay!.context.findRenderObject() as RenderBox;
+                          final RelativeRect position = RelativeRect.fromRect(
+                            Rect.fromPoints(
+                              button.localToGlobal(Offset.zero, ancestor: overlay) + const Offset(0, 48),
+                              button.localToGlobal(button.size.bottomRight(Offset.zero), ancestor: overlay),
+                            ),
+                            Offset.zero & overlay.size,
+                          );
 
-                    showMenu<String>(
-                      context: context,
-                      position: position,
-                      items: [
-                        const PopupMenuItem(
-                          value: 'view',
-                          child: Row(
-                            children: [
-                              Icon(Icons.visibility, size: 20),
-                              SizedBox(width: 8),
-                              Text('Xem Chi Tiết'),
+                          showMenu<String>(
+                            context: context,
+                            position: position,
+                            items: [
+                              const PopupMenuItem(
+                                value: 'view',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.visibility, size: 20),
+                                    SizedBox(width: 8),
+                                    Text('Xem Chi Tiết'),
+                                  ],
+                                ),
+                              ),
+                              const PopupMenuItem(
+                                value: 'edit',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.edit, size: 20),
+                                    SizedBox(width: 8),
+                                    Text('Chỉnh Sửa'),
+                                  ],
+                                ),
+                              ),
+                              const PopupMenuItem(
+                                value: 'delete',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.delete, size: 20, color: Colors.red),
+                                    SizedBox(width: 8),
+                                    Text('Xóa', style: TextStyle(color: Colors.red)),
+                                  ],
+                                ),
+                              ),
                             ],
-                          ),
-                        ),
-                        const PopupMenuItem(
-                          value: 'edit',
-                          child: Row(
-                            children: [
-                              Icon(Icons.edit, size: 20),
-                              SizedBox(width: 8),
-                              Text('Chỉnh Sửa'),
-                            ],
-                          ),
-                        ),
-                        const PopupMenuItem(
-                          value: 'delete',
-                          child: Row(
-                            children: [
-                              Icon(Icons.delete, size: 20, color: Colors.red),
-                              SizedBox(width: 8),
-                              Text('Xóa', style: TextStyle(color: Colors.red)),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ).then((value) {
-                      if (value == 'view') {
-                        _showPaymentDetailsDialog(payment);
-                      } else if (value == 'edit') {
-                        _showEditPaymentDialog(payment);
-                      } else if (value == 'delete') {
-                        _confirmDeletePayment(payment);
-                      }
-                    });
-                  },
-                );
-              },
-            ),
+                          ).then((value) {
+                            if (value == 'view') {
+                              _showPaymentDetailsDialog(payment, isAdmin);
+                            } else if (value == 'edit') {
+                              _showEditPaymentDialog(payment);
+                            } else if (value == 'delete') {
+                              _confirmDeletePayment(payment);
+                            }
+                          });
+                        },
+                      );
+                    },
+                  )
+                : IconButton(
+                    icon: const Icon(Icons.info_outline),
+                    onPressed: () {
+                      _showPaymentDetailsDialog(payment, isAdmin);
+                    },
+                  ),
           ),
         );
       },
     );
   }
 
+  void _showPaymentDetailsDialog(Payment payment, bool isAdmin) {
+  showDialog(
+    context: context,
+    builder: (context) => ViewPaymentDetailsDialog(
+      payment: payment,
+      isAdmin: isAdmin,
+      organization: _organization,
+      onEdit: () => _showEditPaymentDialog(payment),
+    ),
+  );
+}
+
   void _showAddPaymentDialog() {
     showDialog(
       context: context,
-      builder: (context) => _PaymentFormDialog(
+      builder: (context) => ImprovedPaymentFormDialog(
         organization: _organization,
         buildingService: _buildingService,
         roomService: _roomService,
         tenantService: _tenantService,
         paymentService: _paymentService,
       ),
-    );
-  }
-
-  void _showPaymentDetailsDialog(Payment payment) {
-    final isPhone = MediaQuery.of(context).size.width < 600;
-    
-    showDialog(
-      context: context,
-      builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: isPhone ? MediaQuery.of(context).size.width * 0.95 : 600.0,
-            maxHeight: MediaQuery.of(context).size.height * 0.85,
-          ),
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    CircleAvatar(
-                      backgroundColor: _getPaymentStatusColor(payment.status).withOpacity(0.2),
-                      child: Icon(
-                        payment.status == PaymentStatus.paid
-                            ? Icons.check_circle
-                            : Icons.pending,
-                        color: _getPaymentStatusColor(payment.status),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(payment.getTypeDisplayName()),
-                          Text(
-                            payment.getStatusDisplayName(),
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: _getPaymentStatusColor(payment.status),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                  ],
-                ),
-              ),
-              const Divider(height: 1),
-              Expanded(
-                child: SingleChildScrollView(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _buildPaymentDetailRow('Người Thuê', payment.tenantName ?? 'Chưa xác định'),
-                        _buildPaymentDetailRow('Số Tiền', _formatCurrency(payment.amount)),
-                        _buildPaymentDetailRow('Hạn Thanh Toán', DateFormat('dd/MM/yyyy').format(payment.dueDate)),
-                        _buildPaymentDetailRow('Trạng Thái', payment.getStatusDisplayName()),
-                        if (payment.paidAt != null)
-                          _buildPaymentDetailRow('Ngày Thanh Toán', DateFormat('dd/MM/yyyy').format(payment.paidAt!)),
-                        if (payment.notes != null && payment.notes!.isNotEmpty)
-                          _buildPaymentDetailRow('Ghi Chú', payment.notes!),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              const Divider(height: 1),
-              Padding(
-                padding: const EdgeInsets.all(8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text('Đóng'),
-                      ),
-                    ),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () {
-                          Navigator.pop(context);
-                          _showEditPaymentDialog(payment);
-                        },
-                        icon: const Icon(Icons.edit),
-                        label: const Text('Chỉnh Sửa'),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    ).then((result) {
+      if (result == true) {
+        // Refresh the payment list
+        setState(() {});
+      }
+    });
   }
 
   void _showEditPaymentDialog(Payment payment) {
-    final isPhone = MediaQuery.of(context).size.width < 600;
-    final tenantNameController = TextEditingController(text: payment.tenantName ?? '');
-    final amountController = TextEditingController(text: payment.amount.toString());
-    final notesController = TextEditingController(text: payment.notes ?? '');
-    
     showDialog(
       context: context,
-      builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: isPhone ? MediaQuery.of(context).size.width * 0.95 : 600.0,
-            maxHeight: MediaQuery.of(context).size.height * 0.85,
-          ),
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    const Icon(Icons.edit),
-                    const SizedBox(width: 12),
-                    const Expanded(
-                      child: Text(
-                        'Chỉnh Sửa Hóa Đơn',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () {
-                        tenantNameController.dispose();
-                        amountController.dispose();
-                        notesController.dispose();
-                        Navigator.pop(context);
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              const Divider(height: 1),
-              Expanded(
-                child: SingleChildScrollView(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        TextField(
-                          controller: tenantNameController,
-                          decoration: InputDecoration(
-                            labelText: 'Tên Người Thuê',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        TextField(
-                          controller: amountController,
-                          decoration: InputDecoration(
-                            labelText: 'Số Tiền',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            prefixText: '₫ ',
-                          ),
-                          keyboardType: TextInputType.number,
-                        ),
-                        const SizedBox(height: 16),
-                        TextField(
-                          controller: TextEditingController(
-                            text: DateFormat('dd/MM/yyyy').format(payment.dueDate),
-                          ),
-                          decoration: InputDecoration(
-                            labelText: 'Hạn Thanh Toán',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            suffixIcon: const Icon(Icons.calendar_today),
-                          ),
-                          readOnly: true,
-                        ),
-                        const SizedBox(height: 16),
-                        DropdownButtonFormField<PaymentStatus>(
-                          value: payment.status,
-                          decoration: InputDecoration(
-                            labelText: 'Trạng Thái',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                          items: PaymentStatus.values.map((status) {
-                            String label = '';
-                            switch (status) {
-                              case PaymentStatus.pending:
-                                label = 'Chờ thanh toán';
-                                break;
-                              case PaymentStatus.paid:
-                                label = 'Đã thanh toán';
-                                break;
-                              case PaymentStatus.overdue:
-                                label = 'Quá hạn';
-                                break;
-                              case PaymentStatus.cancelled:
-                                label = 'Đã hủy';
-                                break;
-                              case PaymentStatus.refunded:
-                                label = 'Đã hoàn tiền';
-                                break;
-                              case PaymentStatus.partial:
-                                label = 'Thanh toán một phần';
-                                break;
-                            }
-                            return DropdownMenuItem(
-                              value: status,
-                              child: Text(label),
-                            );
-                          }).toList(),
-                          onChanged: (value) {},
-                        ),
-                        const SizedBox(height: 16),
-                        TextField(
-                          controller: notesController,
-                          decoration: InputDecoration(
-                            labelText: 'Ghi Chú',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                          maxLines: 3,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              const Divider(height: 1),
-              Padding(
-                padding: const EdgeInsets.all(8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextButton(
-                        onPressed: () {
-                          tenantNameController.dispose();
-                          amountController.dispose();
-                          notesController.dispose();
-                          Navigator.pop(context);
-                        },
-                        child: const Text('Hủy'),
-                      ),
-                    ),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () {
-                          tenantNameController.dispose();
-                          amountController.dispose();
-                          notesController.dispose();
-                          Navigator.pop(context);
-                        },
-                        child: const Text('Lưu'),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
+      builder: (context) => EditPaymentDialog(
+        payment: payment,
+        organization: _organization,
+        buildingService: _buildingService,
+        roomService: _roomService,
+        tenantService: _tenantService,
+        paymentService: _paymentService,
       ),
-    );
+    ).then((result) {
+      if (result == true) {
+        // Refresh the payment list
+        setState(() {});
+      }
+    });
   }
 
   void _confirmDeletePayment(Payment payment) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Xóa Hóa Đơn'),
-        content: Text('Bạn có chắc muốn xóa hóa đơn của ${payment.tenantName}?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Hủy'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Xóa', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPaymentDetailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 120,
-            child: Text(
-              label,
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ),
-          Expanded(
-            child: Text(value),
-          ),
-        ],
+      builder: (context) => DeletePaymentDialog(
+        payment: payment,
+        paymentService: _paymentService,
+        onDeleted: () {
+          setState(() {}); // Refresh payment list
+        },
       ),
     );
   }
@@ -1889,7 +1643,6 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
         final rooms = snapshot.data![3] as List<Room>;
 
         // Calculate statistics
-        final totalTenants = tenants.length;
         final activeTenants = tenants.where((t) => t.status == TenantStatus.active).length;
         
         final totalPayments = payments.length;
@@ -2164,7 +1917,6 @@ Future<void> _exportStatisticsToPdf({
   required List<Room> rooms,
   required List<Payment> payments,
   String? organizationName,
-  bool showTotalsRow = true,
 }) async {
   final ttf = await PdfFontService.getFont();
   
@@ -2235,10 +1987,10 @@ Future<void> _exportStatisticsToPdf({
     }
 
     for (final pmt in paidPayments) {
-      if (pmt.buildingId != null && pmt.buildingId!.isNotEmpty) {
-        final s = statsByBuilding[pmt.buildingId!];
+      if (pmt.buildingId.isNotEmpty) {
+        final s = statsByBuilding[pmt.buildingId];
         if (s != null) s.revenue += pmt.paidAmount;
-      } else if (pmt.roomId != null && pmt.roomId!.isNotEmpty) {
+      } else if (pmt.roomId.isNotEmpty) {
         final room = rooms.firstWhere(
           (r) => r.id == pmt.roomId, 
           orElse: () => Room(id: '', organizationId: '', buildingId: '', roomNumber: '', createdAt: DateTime.now())
@@ -2814,7 +2566,6 @@ Future<void> _exportStatisticsToPdf({
     required List<Room> rooms,
     required List<Payment> payments,
     String? organizationName,
-    bool showTotalsRow = true,
   }) async {
     // Show progress indicator
     if (mounted) {
@@ -2880,10 +2631,10 @@ Future<void> _exportStatisticsToPdf({
       }
 
       for (final pmt in paidPayments) {
-        if (pmt.buildingId != null && pmt.buildingId!.isNotEmpty) {
-          final s = statsByBuilding[pmt.buildingId!];
+        if (pmt.buildingId.isNotEmpty) {
+          final s = statsByBuilding[pmt.buildingId];
           if (s != null) s.revenue += pmt.paidAmount;
-        } else if (pmt.roomId != null && pmt.roomId!.isNotEmpty) {
+        } else if (pmt.roomId.isNotEmpty) {
           final room = rooms.firstWhere(
             (r) => r.id == pmt.roomId, 
             orElse: () => Room(id: '', organizationId: '', buildingId: '', roomNumber: '', createdAt: DateTime.now())
@@ -3152,8 +2903,8 @@ Future<void> _exportStatisticsToPdf({
       // Payment data - sorted by date (newest first)
       final sortedPayments = List<Payment>.from(payments);
       sortedPayments.sort((a, b) {
-        final dateA = a.createdAt ?? DateTime.now();
-        final dateB = b.createdAt ?? DateTime.now();
+        final dateA = a.createdAt;
+        final dateB = b.createdAt;
         return dateB.compareTo(dateA);
       });
 
@@ -3175,7 +2926,7 @@ Future<void> _exportStatisticsToPdf({
         cell3.value = TextCellValue(paidDateText);
         
         var cell4 = paymentsSheet.cell(CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: row));
-        final dueDateText = payment.dueDate != null ? DateFormat('dd/MM/yyyy').format(payment.dueDate!) : '';
+        final dueDateText = DateFormat('dd/MM/yyyy').format(payment.dueDate);
         cell4.value = TextCellValue(dueDateText);
         
         var cell5 = paymentsSheet.cell(CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: row));
@@ -4051,458 +3802,6 @@ Future<void> _exportStatisticsToPdf({
       final years = (difference.inDays / 365).floor();
       return '$years năm trước';
     }
-  }
-}
-
-// ========================================
-// PAYMENT FORM DIALOG
-// ========================================
-class _PaymentFormDialog extends StatefulWidget {
-  final Organization organization;
-  final BuildingService buildingService;
-  final RoomService roomService;
-  final TenantService tenantService;
-  final PaymentService paymentService;
-
-  const _PaymentFormDialog({
-    required this.organization,
-    required this.buildingService,
-    required this.roomService,
-    required this.tenantService,
-    required this.paymentService,
-  });
-
-  @override
-  State<_PaymentFormDialog> createState() => _PaymentFormDialogState();
-}
-
-class _PaymentFormDialogState extends State<_PaymentFormDialog> {
-  final _formKey = GlobalKey<FormState>();
-  late TextEditingController _amountController;
-  late TextEditingController _paidAmountController;
-  late TextEditingController _currencyController;
-  late TextEditingController _transactionIdController;
-  late TextEditingController _receiptNumberController;
-  late TextEditingController _descriptionController;
-  late TextEditingController _notesController;
-  late TextEditingController _lateFeeController;
-  late TextEditingController _recurringParentIdController;
-
-  String? _selectedBuildingId;
-  String? _selectedRoomId;
-  String? _selectedTenantId;
-  String? _selectedTenantName;
-  PaymentType? _selectedPaymentType;
-  PaymentStatus? _selectedPaymentStatus;
-  PaymentMethod? _selectedPaymentMethod;
-  
-  DateTime? _billingStartDate;
-  DateTime? _billingEndDate;
-  DateTime? _dueDate;
-  DateTime? _paidAt;
-  
-  bool _isRecurring = false;
-
-  List<Building> _buildings = [];
-  List<Room> _rooms = [];
-  List<Tenant> _tenants = [];
-
-  @override
-  void initState() {
-    super.initState();
-    _amountController = TextEditingController();
-    _paidAmountController = TextEditingController(text: '0.0');
-    _currencyController = TextEditingController(text: 'VND');
-    _transactionIdController = TextEditingController();
-    _receiptNumberController = TextEditingController();
-    _descriptionController = TextEditingController();
-    _notesController = TextEditingController();
-    _lateFeeController = TextEditingController(text: '0.0');
-    _recurringParentIdController = TextEditingController();
-    
-    _selectedPaymentStatus = PaymentStatus.pending;
-    _dueDate = DateTime.now().add(const Duration(days: 30));
-    
-    _loadData();
-  }
-
-  Future<void> _loadData() async {
-    try {
-      final buildings = await widget.buildingService.getOrganizationBuildings(widget.organization.id);
-      final tenants = await widget.tenantService.getOrganizationTenants(widget.organization.id);
-      
-      setState(() {
-        _buildings = buildings;
-        _tenants = tenants;
-      });
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error loading data: $e')),
-      );
-    }
-  }
-
-  Future<void> _loadRooms() async {
-    if (_selectedBuildingId == null) return;
-    try {
-      final rooms = await widget.roomService.getBuildingRooms(_selectedBuildingId!);
-      setState(() {
-        _rooms = rooms;
-        _selectedRoomId = null; // Reset room selection
-      });
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error loading rooms: $e')),
-      );
-    }
-  }
-
-  Future<void> _selectDate(String dateType) async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: _getDueDate(dateType),
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2030),
-    );
-    
-    if (picked != null) {
-      setState(() {
-        switch (dateType) {
-          case 'billingStart':
-            _billingStartDate = picked;
-            break;
-          case 'billingEnd':
-            _billingEndDate = picked;
-            break;
-          case 'due':
-            _dueDate = picked;
-            break;
-          case 'paid':
-            _paidAt = picked;
-            break;
-        }
-      });
-    }
-  }
-
-  DateTime _getDueDate(String dateType) {
-    switch (dateType) {
-      case 'billingStart':
-        return _billingStartDate ?? DateTime.now();
-      case 'billingEnd':
-        return _billingEndDate ?? DateTime.now();
-      case 'due':
-        return _dueDate ?? DateTime.now().add(const Duration(days: 30));
-      case 'paid':
-        return _paidAt ?? DateTime.now();
-      default:
-        return DateTime.now();
-    }
-  }
-
-  Future<void> _savePayment() async {
-    if (!_formKey.currentState!.validate()) return;
-    if (_selectedBuildingId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select a building')),
-      );
-      return;
-    }
-    if (_selectedRoomId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select a room')),
-      );
-      return;
-    }
-    if (_selectedPaymentType == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select a payment type')),
-      );
-      return;
-    }
-    if (_dueDate == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select a due date')),
-      );
-      return;
-    }
-
-    try {
-      final payment = Payment(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        organizationId: widget.organization.id,
-        buildingId: _selectedBuildingId!,
-        roomId: _selectedRoomId!,
-        tenantId: _selectedTenantId,
-        tenantName: _selectedTenantName ?? 'Unknown',
-        type: _selectedPaymentType!,
-        status: _selectedPaymentStatus ?? PaymentStatus.pending,
-        amount: double.parse(_amountController.text),
-        paidAmount: double.parse(_paidAmountController.text),
-        currency: _currencyController.text,
-        paymentMethod: _selectedPaymentMethod,
-        transactionId: _transactionIdController.text.isEmpty ? null : _transactionIdController.text,
-        receiptNumber: _receiptNumberController.text.isEmpty ? null : _receiptNumberController.text,
-        billingStartDate: _billingStartDate,
-        billingEndDate: _billingEndDate,
-        dueDate: _dueDate!,
-        createdAt: DateTime.now(),
-        paidAt: _paidAt,
-        paidBy: null, // Can be set to current user ID if needed
-        description: _descriptionController.text.isEmpty ? null : _descriptionController.text,
-        notes: _notesController.text.isEmpty ? null : _notesController.text,
-        metadata: null, // Can be extended later
-        lateFee: _lateFeeController.text.isEmpty ? null : double.parse(_lateFeeController.text),
-        isRecurring: _isRecurring,
-        recurringParentId: _recurringParentIdController.text.isEmpty ? null : _recurringParentIdController.text,
-      );
-
-      await widget.paymentService.addPayment(payment);
-      
-      if (mounted) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Payment created successfully')),
-        );
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error saving payment: $e')),
-      );
-    }
-  }
-
-  @override
-  void dispose() {
-    _amountController.dispose();
-    _notesController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      insetPadding: const EdgeInsets.all(16),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          return ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: constraints.maxWidth,
-              maxHeight: constraints.maxHeight,
-            ),
-            child: Column(
-              children: [
-                // Header (like AppBar)
-                Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Row(
-                    children: [
-                      const SizedBox(width: 8),
-                      const Expanded(
-                        child: Text(
-                          'Thêm Hóa Đơn',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () => Navigator.pop(context),
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(height: 1),
-                // Body
-                Expanded(
-                  child: LayoutBuilder(
-                    builder: (context, bodyConstraints) {
-                      return SingleChildScrollView(
-                        child: ConstrainedBox(
-                          constraints: BoxConstraints(
-                            minHeight: bodyConstraints.maxHeight,
-                          ),
-                            child: Form(
-                              key: _formKey,
-                              child: Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  // Building Selection
-                                  DropdownButtonFormField<String>(
-                                    value: _selectedBuildingId,
-                                    decoration: InputDecoration(
-                                      labelText: 'Toà nhà *',
-                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                                    ),
-                                    items: _buildings.map((b) => DropdownMenuItem(value: b.id, child: Text(b.name))).toList(),
-                                    onChanged: (v) {
-                                      setState(() => _selectedBuildingId = v);
-                                      _loadRooms();
-                                    },
-                                    validator: (v) => v == null ? 'Chọn toà nhà' : null,
-                                  ),
-                                  const SizedBox(height: 12),
-                                  
-                                  // Room Selection
-                                  DropdownButtonFormField<String>(
-                                    initialValue: _selectedRoomId,
-                                    decoration: InputDecoration(
-                                      labelText: 'Phòng *',
-                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                                    ),
-                                    items: _rooms.map((r) => DropdownMenuItem(value: r.id, child: Text(r.roomNumber ?? ''))).toList(),
-                                    onChanged: (v) => setState(() => _selectedRoomId = v),
-                                    validator: (v) => v == null ? 'Chọn phòng' : null,
-                                  ),
-                                  const SizedBox(height: 12),
-                                  
-                                  // Tenant Selection
-                                  DropdownButtonFormField<String>(
-                                    initialValue: _selectedTenantId,
-                                    decoration: InputDecoration(
-                                      labelText: 'Người thuê',
-                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                                    ),
-                                    items: [
-                                      const DropdownMenuItem(value: null, child: Text('Không chọn')),
-                                      ..._tenants.map((t) => DropdownMenuItem(value: t.id, child: Text(t.fullName ?? ''))).toList(),
-                                    ],
-                                    onChanged: (v) {
-                                      if (v != null) {
-                                        final tenant = _tenants.firstWhere((t) => t.id == v, orElse: () => _tenants.first);
-                                        setState(() {
-                                          _selectedTenantId = v;
-                                          _selectedTenantName = tenant.fullName;
-                                        });
-                                      }
-                                    },
-                                  ),
-                                  const SizedBox(height: 12),
-                                  
-                                  // Payment Type
-                                  DropdownButtonFormField<PaymentType>(
-                                    initialValue: _selectedPaymentType,
-                                    decoration: InputDecoration(
-                                      labelText: 'Loại thanh toán *',
-                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                                    ),
-                                    items: PaymentType.values.map((t) {
-                                      const labels = {
-                                        'rent': 'Tiền thuê',
-                                        'electricity': 'Tiền điện',
-                                        'water': 'Tiền nước',
-                                        'internet': 'Tiền internet',
-                                        'parking': 'Tiền gửi xe',
-                                        'maintenance': 'Phí bảo trì',
-                                        'deposit': 'Tiền cọc',
-                                        'penalty': 'Tiền phạt',
-                                        'other': 'Khác',
-                                      };
-                                      return DropdownMenuItem(value: t, child: Text(labels[t.toString().split('.')[1]] ?? ''));
-                                    }).toList(),
-                                    onChanged: (v) => setState(() => _selectedPaymentType = v),
-                                    validator: (v) => v == null ? 'Chọn loại' : null,
-                                  ),
-                                  const SizedBox(height: 12),
-                                  
-                                  // Amount
-                                  TextFormField(
-                                    controller: _amountController,
-                                    decoration: InputDecoration(
-                                      labelText: 'Số tiền *',
-                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                                      suffixText: 'VND',
-                                    ),
-                                    keyboardType: TextInputType.number,
-                                    validator: (v) => (v?.isEmpty ?? true) || double.tryParse(v ?? '') == null ? 'Nhập số tiền' : null,
-                                  ),
-                                  const SizedBox(height: 12),
-                                  
-                                  // Due Date
-                                  TextFormField(
-                                    readOnly: true,
-                                    decoration: InputDecoration(
-                                      labelText: 'Hạn thanh toán *',
-                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                                      suffixIcon: IconButton(
-                                        icon: const Icon(Icons.calendar_today),
-                                        onPressed: () => _selectDate('due'),
-                                      ),
-                                    ),
-                                    controller: TextEditingController(text: _dueDate != null ? DateFormat('dd/MM/yyyy').format(_dueDate!) : ''),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  
-                                  // Status
-                                  DropdownButtonFormField<PaymentStatus>(
-                                    value: _selectedPaymentStatus,
-                                    decoration: InputDecoration(
-                                      labelText: 'Trạng thái *',
-                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                                    ),
-                                    items: PaymentStatus.values.map((s) {
-                                      const labels = {
-                                        'pending': 'Chờ thanh toán',
-                                        'paid': 'Đã thanh toán',
-                                        'overdue': 'Quá hạn',
-                                        'cancelled': 'Đã hủy',
-                                        'refunded': 'Đã hoàn tiền',
-                                        'partial': 'Thanh toán 1 phần',
-                                      };
-                                      return DropdownMenuItem(value: s, child: Text(labels[s.toString().split('.')[1]] ?? ''));
-                                    }).toList(),
-                                    onChanged: (v) => setState(() => _selectedPaymentStatus = v),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  
-                                  // Notes
-                                  TextFormField(
-                                    controller: _notesController,
-                                    decoration: InputDecoration(
-                                      labelText: 'Ghi chú',
-                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                                    ),
-                                    maxLines: 2,
-                                  ),
-                                  const SizedBox(height: 24),
-                                  
-                                  // Action Buttons
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: TextButton(
-                                          onPressed: () => Navigator.pop(context),
-                                          child: const Text('Hủy'),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: ElevatedButton(
-                                          onPressed: _savePayment,
-                                          child: const Text('Lưu'),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
   }
 }
 

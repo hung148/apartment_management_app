@@ -162,7 +162,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // ---------------- CREATE ORG ----------------
 
   Future<void> _showCreateOrganizationDialog() async {
-    final controller = TextEditingController();
+    final nameController = TextEditingController();
+    final addressController = TextEditingController();
+    final phoneController = TextEditingController();
+    final emailController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
 
     await showDialog(
       context: context,
@@ -176,35 +180,132 @@ class _DashboardScreenState extends State<DashboardScreen> {
             const Text('Tạo Tổ Chức Mới'),
           ],
         ),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          textCapitalization: TextCapitalization.words,
-          decoration: InputDecoration(
-            labelText: 'Tên tổ chức',
-            hintText: 'VD: Chung cư ABC',
-            prefixIcon: const Icon(Icons.business),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
+        content: SingleChildScrollView(
+          child: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Organization Name (Required)
+                TextFormField(
+                  controller: nameController,
+                  autofocus: true,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: InputDecoration(
+                    labelText: 'Tên tổ chức *',
+                    hintText: 'VD: Chung cư ABC',
+                    prefixIcon: const Icon(Icons.business),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Vui lòng nhập tên tổ chức';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+                
+                // Address (Optional)
+                TextFormField(
+                  controller: addressController,
+                  textCapitalization: TextCapitalization.words,
+                  maxLines: 2,
+                  decoration: InputDecoration(
+                    labelText: 'Địa chỉ',
+                    hintText: 'VD: 123 Nguyễn Huệ, Q1, TP.HCM',
+                    prefixIcon: const Icon(Icons.location_on),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    helperText: 'Tùy chọn - Hiển thị trên hóa đơn',
+                    helperStyle: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                
+                // Phone (Optional)
+                TextFormField(
+                  controller: phoneController,
+                  keyboardType: TextInputType.phone,
+                  decoration: InputDecoration(
+                    labelText: 'Số điện thoại',
+                    hintText: 'VD: 028-1234-5678',
+                    prefixIcon: const Icon(Icons.phone),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    helperText: 'Tùy chọn - Hiển thị trên hóa đơn',
+                    helperStyle: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                
+                // Email (Optional)
+                TextFormField(
+                  controller: emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: InputDecoration(
+                    labelText: 'Email',
+                    hintText: 'VD: contact@abc.com',
+                    prefixIcon: const Icon(Icons.email),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    helperText: 'Tùy chọn - Hiển thị trên hóa đơn',
+                    helperStyle: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                  ),
+                  validator: (value) {
+                    if (value != null && value.isNotEmpty) {
+                      // Basic email validation
+                      final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+                      if (!emailRegex.hasMatch(value)) {
+                        return 'Email không hợp lệ';
+                      }
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 8),
+                
+                // Info note
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline, size: 20, color: Colors.blue[700]),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Thông tin liên hệ sẽ hiển thị trên hóa đơn PDF',
+                          style: TextStyle(fontSize: 12, color: Colors.blue[700]),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () {
+              Navigator.pop(context);
+            },
             child: const Text('Hủy'),
           ),
           ElevatedButton.icon(
             onPressed: () {
               _createOrgLock.run(() async {
-                final name = controller.text.trim();
-                if (name.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Vui lòng nhập tên tổ chức'),
-                      backgroundColor: Colors.orange,
-                    ),
-                  );
+                if (!formKey.currentState!.validate()) {
                   return;
                 }
                 
@@ -212,11 +313,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 if (owner == null) return;
 
                 await _organizationService.createOrganization(
-                  name: name,
+                  name: nameController.text.trim(),
                   ownerId: owner.id,
+                  address: addressController.text.trim().isEmpty 
+                      ? null 
+                      : addressController.text.trim(),
+                  phone: phoneController.text.trim().isEmpty 
+                      ? null 
+                      : phoneController.text.trim(),
+                  email: emailController.text.trim().isEmpty 
+                      ? null 
+                      : emailController.text.trim(),
                 );
 
                 if (mounted) {
+                  nameController.dispose();
+                  addressController.dispose();
+                  phoneController.dispose();
+                  emailController.dispose();
+                  
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
@@ -233,7 +348,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ],
       ),
-    );
+    ).then((_) {
+      // Cleanup controllers if dialog was dismissed
+      nameController.dispose();
+      addressController.dispose();
+      phoneController.dispose();
+      emailController.dispose();
+    });
   }
 
   // ---------------- JOIN ORG ----------------

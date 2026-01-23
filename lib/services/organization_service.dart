@@ -10,7 +10,7 @@ class OrganizationService {
   // UUID generator for creating unique invite codes
   final Uuid _uuid = Uuid();
 
-  // Gemerate a unique 8-character inivite code
+  // Generate a unique 8-character invite code
   String _generateInviteCode() {
     return _uuid.v4().replaceAll('-', '').substring(0, 8).toUpperCase();
   }
@@ -19,6 +19,9 @@ class OrganizationService {
   Future<Organization?> createOrganization({
     required String name,
     required String ownerId,
+    String? address,      // NEW: Optional address
+    String? phone,        // NEW: Optional phone
+    String? email,        // NEW: Optional email
   }) async {
     try {
       // Create a new document reference in 'organizations' collection
@@ -28,6 +31,9 @@ class OrganizationService {
       final organization = Organization(
         id: orgRef.id, // Use the auto-generated ID
         name: name, // Organization name from parameter
+        address: address, // NEW: Optional address
+        phone: phone,     // NEW: Optional phone
+        email: email,     // NEW: Optional email
         createdBy: ownerId, // Store who created this organization 
         createdAt: DateTime.now(), // Store when it was created
       );
@@ -66,6 +72,52 @@ class OrganizationService {
     }
   }
 
+  // NEW: Update organization details
+  // Only admins can update organization information
+  Future<bool> updateOrganization({
+    required String ownerId,
+    required String orgId,
+    String? name,
+    String? address,
+    String? phone,
+    String? email,
+  }) async {
+    try {
+      // Check if user is admin
+      final membership = await getUserMembership(ownerId, orgId);
+      
+      if (membership == null || membership.role != 'admin') {
+        print('❌ User is not admin');
+        return false;
+      }
+
+      // Build update map with only non-null values
+      final Map<String, dynamic> updates = {};
+      if (name != null) updates['name'] = name;
+      if (address != null) updates['address'] = address;
+      if (phone != null) updates['phone'] = phone;
+      if (email != null) updates['email'] = email;
+
+      // If no updates provided, return early
+      if (updates.isEmpty) {
+        print('⚠️ No updates provided');
+        return false;
+      }
+
+      // Update the organization
+      await _firestore
+          .collection('organizations')
+          .doc(orgId)
+          .update(updates);
+
+      print('✅ Organization updated successfully');
+      return true;
+    } catch (e) {
+      print('❌ Error updating organization: $e');
+      return false;
+    }
+  }
+
   // Get all organizations that a user is a member of
   Future<List<Organization>> getUserOrganizations(String ownerId) async {
     try {
@@ -74,9 +126,9 @@ class OrganizationService {
         .collection('memberships') // Access memberships collection
         .where('ownerId', isEqualTo: ownerId) // Filter by user ID
         .where('status', isEqualTo: 'active') // Only get active member
-        .get(); // Execute the quert and get results
+        .get(); // Execute the query and get results
 
-      // Create ann empty list to store organizations
+      // Create an empty list to store organizations
       List<Organization> organizations = [];
 
       // Loop through all membership documents
@@ -138,19 +190,19 @@ class OrganizationService {
   // Get a user's membership in a specific organization
   Future<Membership?> getUserMembership(String ownerId, String orgId) async {
     try {
-      // Create the membership ID by combining user ID adn org ID
+      // Create the membership ID by combining user ID and org ID
       final membershipId = '${ownerId}_${orgId}';
 
       // Try to get the membership document
       final doc = await _firestore
         .collection('memberships') // Access the memberships collection 
         .doc(membershipId) // Get document with our custom ID
-        .get(); // Fethc the document
+        .get(); // Fetch the document
       
-      // Check if the membership exist
+      // Check if the membership exists
       if (!doc.exists) return null;
 
-      // Convert document to Membership obejct and return it
+      // Convert document to Membership object and return it
       return Membership.fromMap(
         doc.id, 
         doc.data()!
@@ -168,7 +220,7 @@ class OrganizationService {
     required String inviteCode,
   }) async {
     try {
-      // We search in memberships beacuse each org has an invite code stored there
+      // We search in memberships because each org has an invite code stored there
       final membershipSnapshot = await _firestore
         .collection('memberships') // Access memberships collection
         .where('inviteCode', isEqualTo: inviteCode.toUpperCase()) // Find by inviteCode
@@ -338,12 +390,12 @@ class OrganizationService {
   }
 
   // Promote a member to admin
-// Only existing admins can promote members
-Future<bool> promoteMemberToAdmin({
-  required String currentAdminId,
-  required String memberIdToPromote,
-  required String orgId,
-}) async {
+  // Only existing admins can promote members
+  Future<bool> promoteMemberToAdmin({
+    required String currentAdminId,
+    required String memberIdToPromote,
+    required String orgId,
+  }) async {
     try {
       // Verify that the current user is an admin
       final currentAdminMembership = await getUserMembership(currentAdminId, orgId);
