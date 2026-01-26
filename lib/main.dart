@@ -2,6 +2,7 @@ import 'package:apartment_management_project_2/services/auth_service.dart';
 import 'package:apartment_management_project_2/services/building_service.dart';
 import 'package:apartment_management_project_2/services/organization_service.dart';
 import 'package:apartment_management_project_2/services/payments_service.dart';
+import 'package:apartment_management_project_2/services/payments_notifier.dart';
 import 'package:apartment_management_project_2/services/room_service.dart';
 import 'package:apartment_management_project_2/services/tenants_service.dart';
 import 'package:apartment_management_project_2/services/update_services.dart';
@@ -23,6 +24,7 @@ void setup() {
   getIt.registerLazySingleton(() => BuildingService());
   getIt.registerLazySingleton(() => OrganizationService());
   getIt.registerLazySingleton(() => PaymentService());
+  getIt.registerLazySingleton(() => PaymentsNotifier(getIt<PaymentService>()));
   getIt.registerLazySingleton(() => UpdateService());
 }
 

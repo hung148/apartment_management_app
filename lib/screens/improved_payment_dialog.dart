@@ -959,7 +959,8 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> {
       }
       
       if (mounted) {
-        Navigator.pop(context);
+        print('ImprovedPaymentFormDialog: Payment saved successfully, returning true');
+        Navigator.pop(context, true);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Đã tạo hóa đơn thành công')),
         );

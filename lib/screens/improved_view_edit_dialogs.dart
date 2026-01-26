@@ -334,8 +334,7 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog> {
               ],
             ),
             
-            // Electricity meter readings
-            if (item.type == PaymentType.electricity && item.electricityStartReading != null) ...[
+            if (item.type == PaymentType.electricity) ...[
               const SizedBox(height: 8),
               const Divider(),
               const SizedBox(height: 4),
@@ -350,8 +349,14 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog> {
                           style: TextStyle(fontSize: 11, color: Colors.grey[600]),
                         ),
                         Text(
-                          '${item.electricityStartReading} kWh',
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                          item.electricityStartReading != null 
+                              ? '${item.electricityStartReading} kWh'
+                              : 'N/A',
+                          style: TextStyle(
+                            fontSize: 13, 
+                            fontWeight: FontWeight.w500,
+                            color: item.electricityStartReading == null ? Colors.grey : null,
+                          ),
                         ),
                         if (item.electricityStartDate != null)
                           Text(
@@ -370,8 +375,14 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog> {
                           style: TextStyle(fontSize: 11, color: Colors.grey[600]),
                         ),
                         Text(
-                          '${item.electricityEndReading} kWh',
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                          item.electricityEndReading != null 
+                              ? '${item.electricityEndReading} kWh'
+                              : 'N/A',
+                          style: TextStyle(
+                            fontSize: 13, 
+                            fontWeight: FontWeight.w500,
+                            color: item.electricityEndReading == null ? Colors.grey : null,
+                          ),
                         ),
                         if (item.electricityEndDate != null)
                           Text(
@@ -385,13 +396,20 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog> {
               ),
               const SizedBox(height: 4),
               Text(
-                'Tiêu thụ: ${((item.electricityEndReading ?? 0) - (item.electricityStartReading ?? 0)).toStringAsFixed(1)} kWh × ${NumberFormat('#,###').format(item.electricityPricePerUnit ?? 0)} đ/kWh',
-                style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                item.electricityStartReading != null && item.electricityEndReading != null
+                    ? 'Tiêu thụ: ${(item.electricityEndReading! - item.electricityStartReading!).toStringAsFixed(1)} kWh${item.electricityPricePerUnit != null ? " × ${NumberFormat('#,###').format(item.electricityPricePerUnit)} đ/kWh" : ""}'
+                    : 'Tiêu thụ: N/A',
+                style: TextStyle(
+                  fontSize: 11, 
+                  color: item.electricityStartReading != null && item.electricityEndReading != null 
+                      ? Colors.grey[600] 
+                      : Colors.grey[400],
+                ),
               ),
             ],
             
-            // Water meter readings
-            if (item.type == PaymentType.water && item.waterStartReading != null) ...[
+            // FIXED: ALWAYS show meter reading section for water, display N/A for null values
+            if (item.type == PaymentType.water) ...[
               const SizedBox(height: 8),
               const Divider(),
               const SizedBox(height: 4),
@@ -406,8 +424,14 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog> {
                           style: TextStyle(fontSize: 11, color: Colors.grey[600]),
                         ),
                         Text(
-                          '${item.waterStartReading} m³',
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                          item.waterStartReading != null 
+                              ? '${item.waterStartReading} m³'
+                              : 'N/A',
+                          style: TextStyle(
+                            fontSize: 13, 
+                            fontWeight: FontWeight.w500,
+                            color: item.waterStartReading == null ? Colors.grey : null,
+                          ),
                         ),
                         if (item.waterStartDate != null)
                           Text(
@@ -426,8 +450,14 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog> {
                           style: TextStyle(fontSize: 11, color: Colors.grey[600]),
                         ),
                         Text(
-                          '${item.waterEndReading} m³',
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                          item.waterEndReading != null 
+                              ? '${item.waterEndReading} m³'
+                              : 'N/A',
+                          style: TextStyle(
+                            fontSize: 13, 
+                            fontWeight: FontWeight.w500,
+                            color: item.waterEndReading == null ? Colors.grey : null,
+                          ),
                         ),
                         if (item.waterEndDate != null)
                           Text(
@@ -441,8 +471,15 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog> {
               ),
               const SizedBox(height: 4),
               Text(
-                'Tiêu thụ: ${((item.waterEndReading ?? 0) - (item.waterStartReading ?? 0)).toStringAsFixed(1)} m³ × ${NumberFormat('#,###').format(item.waterPricePerUnit ?? 0)} đ/m³',
-                style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                item.waterStartReading != null && item.waterEndReading != null
+                    ? 'Tiêu thụ: ${(item.waterEndReading! - item.waterStartReading!).toStringAsFixed(1)} m³${item.waterPricePerUnit != null ? " × ${NumberFormat('#,###').format(item.waterPricePerUnit)} đ/m³" : ""}'
+                    : 'Tiêu thụ: N/A',
+                style: TextStyle(
+                  fontSize: 11, 
+                  color: item.waterStartReading != null && item.waterEndReading != null 
+                      ? Colors.grey[600] 
+                      : Colors.grey[400],
+                ),
               ),
             ],
             

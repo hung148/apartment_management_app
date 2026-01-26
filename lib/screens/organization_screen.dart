@@ -16,6 +16,7 @@ import 'package:apartment_management_project_2/services/building_service.dart';
 import 'package:apartment_management_project_2/services/organization_service.dart';
 import 'package:apartment_management_project_2/services/tenants_service.dart';
 import 'package:apartment_management_project_2/services/payments_service.dart';
+import 'package:apartment_management_project_2/services/payments_notifier.dart';
 import 'package:apartment_management_project_2/services/room_service.dart';
 import 'package:apartment_management_project_2/widgets/shared.dart';
 import 'package:flutter/material.dart';
@@ -59,11 +60,19 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
   final BuildingService _buildingService = getIt<BuildingService>();
   final TenantService _tenantService = getIt<TenantService>();
   final PaymentService _paymentService = getIt<PaymentService>();
+  final PaymentsNotifier _paymentsNotifier = getIt<PaymentsNotifier>();
   final RoomService _roomService = getIt<RoomService>();
   
   String? _selectedBuildingId; // For occupancy trend chart
 
   final TextEditingController _searchController = TextEditingController();
+  
+  @override
+  void initState() {
+    super.initState();
+    // Load payments when the screen initializes
+    _paymentsNotifier.loadPayments(widget.organization.id);
+  }
 
   @override
   void dispose() {
@@ -1264,112 +1273,110 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
   // PAYMENTS TAB
   // ========================================
   Widget _buildPaymentsTab() {
-  return FutureBuilder<List<Payment>>(
-    future: _getAllPayments(),
-    builder: (context, snapshot) {
-      if (snapshot.connectionState == ConnectionState.waiting) {
-        return const Center(child: CircularProgressIndicator());
-      }
+    return ListenableBuilder(
+      listenable: _paymentsNotifier,
+      builder: (context, _) {
+        final allPayments = _paymentsNotifier.payments;
+        
+        if (allPayments.isEmpty) {
+          return FutureBuilder<Membership?>(
+            future: _getMyMembership(),
+            builder: (context, membershipSnapshot) {
+              final isAdmin = membershipSnapshot.hasData &&
+                  membershipSnapshot.data!.role == 'admin';
 
-      if (!snapshot.hasData || snapshot.data!.isEmpty) {
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.receipt_long_outlined, size: 64, color: Colors.grey),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Chưa có hóa đơn nào',
+                      style: TextStyle(color: Colors.grey, fontSize: 16),
+                    ),
+                    const SizedBox(height: 24),
+                    if (isAdmin)
+                      ElevatedButton.icon(
+                        onPressed: _showAddPaymentDialog,
+                        icon: const Icon(Icons.add),
+                        label: const Text('Thêm Hóa Đơn'),
+                      ),
+                  ],
+                ),
+              );
+            },
+          );
+        }
+
+        final sortedPayments = List<Payment>.from(allPayments);
+        sortedPayments.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
         return FutureBuilder<Membership?>(
           future: _getMyMembership(),
           builder: (context, membershipSnapshot) {
             final isAdmin = membershipSnapshot.hasData &&
                 membershipSnapshot.data!.role == 'admin';
 
-            return Center(
+            return Padding(
+              padding: const EdgeInsets.all(16),
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.receipt_long_outlined, size: 64, color: Colors.grey),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Chưa có hóa đơn nào',
-                    style: TextStyle(color: Colors.grey, fontSize: 16),
+                  // Search with ValueListenableBuilder (no reload on type)
+                  ValueListenableBuilder<TextEditingValue>(
+                    valueListenable: _searchController,
+                    builder: (context, value, child) {
+                      return Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _searchController,
+                              decoration: InputDecoration(
+                                hintText: 'Tìm kiếm hóa đơn...',
+                                prefixIcon: const Icon(Icons.search),
+                                suffixIcon: value.text.isNotEmpty
+                                    ? IconButton(
+                                        icon: const Icon(Icons.clear),
+                                        onPressed: () => _searchController.clear(),
+                                      )
+                                    : null,
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          // Only show add button for admins
+                          if (isAdmin)
+                            ElevatedButton.icon(
+                              onPressed: _showAddPaymentDialog,
+                              icon: const Icon(Icons.add),
+                              label: const Text('Thêm'),
+                            ),
+                        ],
+                      );
+                    },
                   ),
-                  const SizedBox(height: 24),
-                  if (isAdmin)
-                    ElevatedButton.icon(
-                      onPressed: _showAddPaymentDialog,
-                      icon: const Icon(Icons.add),
-                      label: const Text('Thêm Hóa Đơn'),
+                  const SizedBox(height: 16),
+                  // Payments List
+                  Expanded(
+                    child: ValueListenableBuilder<TextEditingValue>(
+                      valueListenable: _searchController,
+                      builder: (context, value, child) {
+                        return _buildPaymentsList(sortedPayments, value.text, isAdmin);
+                      },
                     ),
+                  ),
                 ],
               ),
             );
           },
         );
-      }
-
-      final allPayments = snapshot.data!;
-      allPayments.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-
-      return FutureBuilder<Membership?>(
-        future: _getMyMembership(),
-        builder: (context, membershipSnapshot) {
-          final isAdmin = membershipSnapshot.hasData &&
-              membershipSnapshot.data!.role == 'admin';
-
-          return Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                // Search with ValueListenableBuilder (no reload on type)
-                ValueListenableBuilder<TextEditingValue>(
-                  valueListenable: _searchController,
-                  builder: (context, value, child) {
-                    return Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _searchController,
-                            decoration: InputDecoration(
-                              hintText: 'Tìm kiếm hóa đơn...',
-                              prefixIcon: const Icon(Icons.search),
-                              suffixIcon: value.text.isNotEmpty
-                                  ? IconButton(
-                                      icon: const Icon(Icons.clear),
-                                      onPressed: () => _searchController.clear(),
-                                    )
-                                  : null,
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        // Only show add button for admins
-                        if (isAdmin)
-                          ElevatedButton.icon(
-                            onPressed: _showAddPaymentDialog,
-                            icon: const Icon(Icons.add),
-                            label: const Text('Thêm'),
-                          ),
-                      ],
-                    );
-                  },
-                ),
-                const SizedBox(height: 16),
-                // Payments List
-                Expanded(
-                  child: ValueListenableBuilder<TextEditingValue>(
-                    valueListenable: _searchController,
-                    builder: (context, value, child) {
-                      return _buildPaymentsList(allPayments, value.text, isAdmin);
-                    },
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
-      );
-    },
-  );
-}
+      },
+    );
+  }
 
 Widget _buildPaymentsList(List<Payment> allPayments, String searchText, bool isAdmin) {
   final searchTerm = searchText.toLowerCase();
@@ -1584,9 +1591,11 @@ Widget _buildPaymentsList(List<Payment> allPayments, String searchText, bool isA
         paymentService: _paymentService,
       ),
     ).then((result) {
+      print('Dialog closed with result: $result');
       if (result == true) {
-        // Refresh the payment list
-        setState(() {});
+        // Refresh the payment list from database
+        print('Add payment dialog returned true, refreshing payments');
+        _paymentsNotifier.refreshPayments(widget.organization.id);
       }
     });
   }
@@ -1604,8 +1613,8 @@ Widget _buildPaymentsList(List<Payment> allPayments, String searchText, bool isA
       ),
     ).then((result) {
       if (result == true) {
-        // Refresh the payment list
-        setState(() {});
+        // Refresh the payment list from database
+        _paymentsNotifier.refreshPayments(widget.organization.id);
       }
     });
   }
@@ -1617,7 +1626,8 @@ Widget _buildPaymentsList(List<Payment> allPayments, String searchText, bool isA
         payment: payment,
         paymentService: _paymentService,
         onDeleted: () {
-          setState(() {}); // Refresh payment list
+          // Refresh the payment list from database
+          _paymentsNotifier.refreshPayments(widget.organization.id);
         },
       ),
     );

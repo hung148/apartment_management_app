@@ -55,10 +55,10 @@ class InvoiceLineItem {
   });
 }
 
-// Parse line items from payment with meter readings support
+// FIXED: Parse line items from payment - always show meter sections for electricity/water
 List<InvoiceLineItem> _parseLineItemsForPDF(Payment payment) {
-  // For single-type payments with meter readings, create detailed line item
-  if (payment.type == PaymentType.electricity && payment.electricityStartReading != null) {
+  // For electricity payments, ALWAYS create line item (even if some readings are null)
+  if (payment.type == PaymentType.electricity) {
     return [
       InvoiceLineItem(
         id: payment.id,
@@ -74,7 +74,8 @@ List<InvoiceLineItem> _parseLineItemsForPDF(Payment payment) {
     ];
   }
   
-  if (payment.type == PaymentType.water && payment.waterStartReading != null) {
+  // For water payments, ALWAYS create line item (even if some readings are null)
+  if (payment.type == PaymentType.water) {
     return [
       InvoiceLineItem(
         id: payment.id,
@@ -406,79 +407,136 @@ class PaymentPDFExporter {
                   ...List.generate(lineItems.length, (index) {
                     final item = lineItems[index];
                     
-                    // Build details text
+                    // Build details text - ALWAYS show meter sections for electricity/water
                     String detailsText = '';
                     
-                    // Electricity meter readings
-                    if (item.type == PaymentType.electricity && item.electricityStartReading != null) {
-                      detailsText = 'Chi so dau: ${item.electricityStartReading} kWh';
-                      if (item.electricityStartDate != null) {
-                        detailsText += ' (${DateFormat('dd/MM/yyyy').format(item.electricityStartDate!)})';
+                    // FIXED: ALWAYS show electricity meter section, display N/A for null values
+                    if (item.type == PaymentType.electricity) {
+                      // Start reading
+                      detailsText = 'Chi so dau: ';
+                      if (item.electricityStartReading != null) {
+                        detailsText += '${item.electricityStartReading} kWh';
+                        if (item.electricityStartDate != null) {
+                          detailsText += ' (${DateFormat('dd/MM/yyyy').format(item.electricityStartDate!)})';
+                        }
+                      } else {
+                        detailsText += 'N/A';
                       }
-                      detailsText += '\nChi so cuoi: ${item.electricityEndReading} kWh';
-                      if (item.electricityEndDate != null) {
-                        detailsText += ' (${DateFormat('dd/MM/yyyy').format(item.electricityEndDate!)})';
+                      
+                      // End reading
+                      detailsText += '\nChi so cuoi: ';
+                      if (item.electricityEndReading != null) {
+                        detailsText += '${item.electricityEndReading} kWh';
+                        if (item.electricityEndDate != null) {
+                          detailsText += ' (${DateFormat('dd/MM/yyyy').format(item.electricityEndDate!)})';
+                        }
+                      } else {
+                        detailsText += 'N/A';
                       }
-                      final usage = (item.electricityEndReading ?? 0) - (item.electricityStartReading ?? 0);
-                      detailsText += '\nTieu thu: ${usage.toStringAsFixed(1)} kWh';
-                      if (item.electricityPricePerUnit != null) {
-                        detailsText += ' x ${NumberFormat('#,###').format(item.electricityPricePerUnit)} d/kWh';
+                      
+                      // Usage calculation
+                      if (item.electricityStartReading != null && item.electricityEndReading != null) {
+                        final usage = item.electricityEndReading! - item.electricityStartReading!;
+                        detailsText += '\nTieu thu: ${usage.toStringAsFixed(1)} kWh';
+                        if (item.electricityPricePerUnit != null && item.electricityPricePerUnit! > 0) {
+                          detailsText += ' x ${NumberFormat('#,###').format(item.electricityPricePerUnit)} d/kWh';
+                        }
+                      } else {
+                        detailsText += '\nTieu thu: N/A';
+                      }
+                      
+                      // Add description if available
+                      if (item.description != null && item.description!.isNotEmpty) {
+                        detailsText += '\n${item.description}';
                       }
                     }
-                    // Water meter readings
-                    else if (item.type == PaymentType.water && item.waterStartReading != null) {
-                      detailsText = 'Chi so dau: ${item.waterStartReading} m3';
-                      if (item.waterStartDate != null) {
-                        detailsText += ' (${DateFormat('dd/MM/yyyy').format(item.waterStartDate!)})';
+                    // FIXED: ALWAYS show water meter section, display N/A for null values
+                    else if (item.type == PaymentType.water) {
+                      // Start reading
+                      detailsText = 'Chi so dau: ';
+                      if (item.waterStartReading != null) {
+                        detailsText += '${item.waterStartReading} m3';
+                        if (item.waterStartDate != null) {
+                          detailsText += ' (${DateFormat('dd/MM/yyyy').format(item.waterStartDate!)})';
+                        }
+                      } else {
+                        detailsText += 'N/A';
                       }
-                      detailsText += '\nChi so cuoi: ${item.waterEndReading} m3';
-                      if (item.waterEndDate != null) {
-                        detailsText += ' (${DateFormat('dd/MM/yyyy').format(item.waterEndDate!)})';
+                      
+                      // End reading
+                      detailsText += '\nChi so cuoi: ';
+                      if (item.waterEndReading != null) {
+                        detailsText += '${item.waterEndReading} m3';
+                        if (item.waterEndDate != null) {
+                          detailsText += ' (${DateFormat('dd/MM/yyyy').format(item.waterEndDate!)})';
+                        }
+                      } else {
+                        detailsText += 'N/A';
                       }
-                      final usage = (item.waterEndReading ?? 0) - (item.waterStartReading ?? 0);
-                      detailsText += '\nTieu thu: ${usage.toStringAsFixed(1)} m3';
-                      if (item.waterPricePerUnit != null) {
-                        detailsText += ' x ${NumberFormat('#,###').format(item.waterPricePerUnit)} d/m3';
+                      
+                      // Usage calculation
+                      if (item.waterStartReading != null && item.waterEndReading != null) {
+                        final usage = item.waterEndReading! - item.waterStartReading!;
+                        detailsText += '\nTieu thu: ${usage.toStringAsFixed(1)} m3';
+                        if (item.waterPricePerUnit != null && item.waterPricePerUnit! > 0) {
+                          detailsText += ' x ${NumberFormat('#,###').format(item.waterPricePerUnit)} d/m3';
+                        }
+                      } else {
+                        detailsText += '\nTieu thu: N/A';
+                      }
+                      
+                      // Add description if available
+                      if (item.description != null && item.description!.isNotEmpty) {
+                        detailsText += '\n${item.description}';
                       }
                     }
                     // Billing period
                     else if (item.billingStartDate != null && item.billingEndDate != null) {
                       detailsText = 'Ky: ${DateFormat('dd/MM/yyyy').format(item.billingStartDate!)} - ${DateFormat('dd/MM/yyyy').format(item.billingEndDate!)}';
+                      // Include description if available
+                      if (item.description != null && item.description!.isNotEmpty) {
+                        detailsText += '\n${item.description}';
+                      }
                     }
                     // Description
                     else if (item.description != null && item.description!.isNotEmpty) {
                       detailsText = item.description!;
                     }
-                    // FIXED: Fallback for payments without detailed info
+                    // FIXED: Fallback - check payment's original description first
                     else {
-                      // Generate meaningful description based on payment type and date
-                      switch (item.type) {
-                        case PaymentType.electricity:
-                          detailsText = 'Tien dien thang ${DateFormat('MM/yyyy').format(payment.dueDate)}';
-                          break;
-                        case PaymentType.water:
-                          detailsText = 'Tien nuoc thang ${DateFormat('MM/yyyy').format(payment.dueDate)}';
-                          break;
-                        case PaymentType.rent:
-                          detailsText = 'Tien thue thang ${DateFormat('MM/yyyy').format(payment.dueDate)}';
-                          break;
-                        case PaymentType.internet:
-                          detailsText = 'Tien internet thang ${DateFormat('MM/yyyy').format(payment.dueDate)}';
-                          break;
-                        case PaymentType.parking:
-                          detailsText = 'Tien gui xe thang ${DateFormat('MM/yyyy').format(payment.dueDate)}';
-                          break;
-                        case PaymentType.maintenance:
-                          detailsText = 'Phi bao tri thang ${DateFormat('MM/yyyy').format(payment.dueDate)}';
-                          break;
-                        case PaymentType.deposit:
-                          detailsText = 'Tien coc';
-                          break;
-                        case PaymentType.penalty:
-                          detailsText = 'Tien phat';
-                          break;
-                        default:
-                          detailsText = 'Khoan thanh toan';
+                      // First priority: use the original payment description if available
+                      if (payment.description != null && payment.description!.isNotEmpty) {
+                        detailsText = payment.description!;
+                      } else {
+                        // Generate meaningful description based on payment type and date
+                        switch (item.type) {
+                          case PaymentType.electricity:
+                            detailsText = 'Tien dien thang ${DateFormat('MM/yyyy').format(payment.dueDate)}';
+                            break;
+                          case PaymentType.water:
+                            detailsText = 'Tien nuoc thang ${DateFormat('MM/yyyy').format(payment.dueDate)}';
+                            break;
+                          case PaymentType.rent:
+                            detailsText = 'Tien thue thang ${DateFormat('MM/yyyy').format(payment.dueDate)}';
+                            break;
+                          case PaymentType.internet:
+                            detailsText = 'Tien internet thang ${DateFormat('MM/yyyy').format(payment.dueDate)}';
+                            break;
+                          case PaymentType.parking:
+                            detailsText = 'Tien gui xe thang ${DateFormat('MM/yyyy').format(payment.dueDate)}';
+                            break;
+                          case PaymentType.maintenance:
+                            detailsText = 'Phi bao tri thang ${DateFormat('MM/yyyy').format(payment.dueDate)}';
+                            break;
+                          case PaymentType.deposit:
+                            detailsText = 'Tien coc';
+                            break;
+                          case PaymentType.penalty:
+                            detailsText = 'Tien phat';
+                            break;
+                          default:
+                            detailsText = 'Khoan thanh toan';
+                        }
                       }
                     }
                     
