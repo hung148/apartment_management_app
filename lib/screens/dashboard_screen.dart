@@ -9,6 +9,7 @@ import 'package:apartment_management_project_2/utils/app_router.dart';
 import 'package:apartment_management_project_2/widgets/loading.dart';
 import 'package:flutter/material.dart';
 import 'dart:io';
+import 'dart:async';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -29,24 +30,120 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   // Update-related state
   bool _updateAvailable = false;
-  bool _checkingUpdate = true;
+  bool _checkingUpdate = false;
+  
+  // Cancellation flag and timer
+  bool _isDisposed = false;
+  Timer? _updateCheckTimer;
 
   @override
   void initState() {
     super.initState();
-
-    _checkForUpdate();
+    debugPrint('🟢 DashboardScreen.initState() called');
+    
+    // Re-enable update check with debugging
+    debugPrint('🔧 Scheduling update check...');
+    _updateCheckTimer = Timer(const Duration(milliseconds: 800), () {
+      debugPrint('⏰ Timer fired after 800ms');
+      if (mounted && !_isDisposed) {
+        debugPrint('✅ Widget is mounted and not disposed, calling _backgroundUpdateCheck');
+        _backgroundUpdateCheck();
+      } else {
+        debugPrint('⚠️ Timer fired but widget is disposed=$_isDisposed or not mounted=$mounted');
+      }
+    });
+    debugPrint('🏁 initState completed');
   }
 
-  // ---------------- UPDATE CHECK ----------------
+  @override
+  void dispose() {
+    debugPrint('🔴 DashboardScreen.dispose() called');
+    _updateCheckTimer?.cancel();
+    _isDisposed = true;
+    super.dispose();
+  }
 
+  /// Background update check that won't freeze the UI
+  Future<void> _backgroundUpdateCheck() async {
+    debugPrint('📱 >>> _backgroundUpdateCheck() STARTED <<<');
+    
+    if (_isDisposed || !mounted) {
+      debugPrint('❌ Aborted early: disposed=$_isDisposed, mounted=$mounted');
+      return;
+    }
+    
+    debugPrint('📝 Calling setState to set _checkingUpdate = true');
+    setState(() {
+      _checkingUpdate = true;
+    });
+    debugPrint('✅ setState completed');
+
+    try {
+      debugPrint('🌐 About to call _updateService.isUpdateAvailable()...');
+      
+      final available = await _updateService.isUpdateAvailable().timeout(
+        const Duration(seconds: 5),
+        onTimeout: () {
+          debugPrint('⏱️ ⏱️ ⏱️ TIMEOUT after 5 seconds!');
+          return false;
+        },
+      );
+      
+      debugPrint('📥 ✅ isUpdateAvailable() returned: $available');
+      
+      if (!_isDisposed && mounted) {
+        debugPrint('📝 Calling setState to update _updateAvailable=$available');
+        setState(() {
+          _updateAvailable = available;
+          _checkingUpdate = false;
+        });
+        debugPrint('✅ Final setState completed successfully');
+      } else {
+        debugPrint('⚠️ Widget disposed/unmounted after check, skipping setState');
+      }
+    } catch (e, stackTrace) {
+      debugPrint('❌ ❌ ❌ EXCEPTION CAUGHT: $e');
+      debugPrint('Stack trace: $stackTrace');
+      
+      if (!_isDisposed && mounted) {
+        setState(() {
+          _updateAvailable = false;
+          _checkingUpdate = false;
+        });
+      }
+    }
+    
+    debugPrint('🏁 >>> _backgroundUpdateCheck() COMPLETED <<<');
+  }
+
+  /// Manual update check (for pull-to-refresh)
   Future<void> _checkForUpdate() async {
-    final available = await _updateService.isUpdateAvailable();
-    if (mounted) {
-      setState(() {
-        _updateAvailable = available;
-        _checkingUpdate = false;
-      });
+    if (_checkingUpdate || _isDisposed) return; // Prevent multiple checks
+    
+    setState(() {
+      _checkingUpdate = true;
+    });
+
+    try {
+      final available = await _updateService.isUpdateAvailable().timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => false,
+      );
+      
+      if (!_isDisposed && mounted) {
+        setState(() {
+          _updateAvailable = available;
+          _checkingUpdate = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Update check error: $e');
+      if (!_isDisposed && mounted) {
+        setState(() {
+          _checkingUpdate = false;
+          _updateAvailable = false;
+        });
+      }
     }
   }
 
@@ -422,7 +519,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 if (owner == null) return;
 
                 final success = await _organizationService.joinOrganization(
-                  ownerID: owner.id,
+                  ownerId: owner.id,
                   inviteCode: code,
                 );
 
@@ -821,7 +918,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                                   Theme.of(context)
                                                       .colorScheme
                                                       .primary
-                                                      .withOpacity(0.7),
+                                                      .withAlpha((0.7 * 255).round()),
                                                 ],
                                               ),
                                               borderRadius: BorderRadius.circular(12),

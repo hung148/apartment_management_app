@@ -160,19 +160,76 @@ List<InvoiceLineItem> _parseLineItems(Payment payment) {
 // ========================================
 // VIEW PAYMENT DETAILS DIALOG
 // ========================================
-class ViewPaymentDetailsDialog extends StatelessWidget {
+class ViewPaymentDetailsDialog extends StatefulWidget {
   final Payment payment;
   final bool isAdmin;
   final VoidCallback? onEdit;
   final Organization organization;
+  final RoomService roomService;
+  final BuildingService buildingService;
 
   const ViewPaymentDetailsDialog({
     super.key,
     required this.payment,
     required this.isAdmin,
     required this.organization,
+    required this.roomService,
+    required this.buildingService,
     this.onEdit,
   });
+
+  @override
+  State<ViewPaymentDetailsDialog> createState() => _ViewPaymentDetailsDialogState();
+}
+
+class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog> {
+  Room? _room;
+  Building? _building;
+  bool _isLoadingRoomData = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRoomAndBuildingData();
+  }
+
+  Future<void> _loadRoomAndBuildingData() async {
+    try {
+      // Load room data
+      final room = await widget.roomService.getRoomById(widget.payment.roomId);
+      if (room != null && mounted) {
+        setState(() {
+          _room = room;
+        });
+        
+        // Load building data
+        final building = await widget.buildingService.getBuildingById(room.buildingId);
+        if (building != null && mounted) {
+          setState(() {
+            _building = building;
+          });
+        }
+      }
+    } catch (e) {
+      print('Error loading room/building data: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingRoomData = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _exportToPDF() async {
+    await PaymentPDFExporter.showPDFPreview(
+      context: context,
+      payment: widget.payment,
+      organization: widget.organization,
+      roomNumber: _room?.roomNumber,
+      buildingName: _building?.name,
+    );
+  }
 
   Color _getPaymentStatusColor(PaymentStatus status) {
     switch (status) {
@@ -415,7 +472,7 @@ class ViewPaymentDetailsDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isPhone = MediaQuery.of(context).size.width < 600;
-    final lineItems = _parseLineItems(payment);
+    final lineItems = _parseLineItems(widget.payment);
     
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -432,12 +489,12 @@ class ViewPaymentDetailsDialog extends StatelessWidget {
               child: Row(
                 children: [
                   CircleAvatar(
-                    backgroundColor: _getPaymentStatusColor(payment.status).withOpacity(0.2),
+                    backgroundColor: _getPaymentStatusColor(widget.payment.status).withOpacity(0.2),
                     child: Icon(
-                      payment.status == PaymentStatus.paid
+                      widget.payment.status == PaymentStatus.paid
                           ? Icons.check_circle
                           : Icons.pending,
-                      color: _getPaymentStatusColor(payment.status),
+                      color: _getPaymentStatusColor(widget.payment.status),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -453,10 +510,10 @@ class ViewPaymentDetailsDialog extends StatelessWidget {
                           ),
                         ),
                         Text(
-                          payment.getStatusDisplayName(),
+                          widget.payment.getStatusDisplayName(),
                           style: TextStyle(
                             fontSize: 12,
-                            color: _getPaymentStatusColor(payment.status),
+                            color: _getPaymentStatusColor(widget.payment.status),
                           ),
                         ),
                       ],
@@ -480,10 +537,14 @@ class ViewPaymentDetailsDialog extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       // Basic Info
-                      _buildDetailRow('Người Thuê', payment.tenantName ?? 'Chưa xác định'),
-                      _buildDetailRow('Hạn Thanh Toán', DateFormat('dd/MM/yyyy').format(payment.dueDate)),
-                      if (payment.paidAt != null)
-                        _buildDetailRow('Ngày Thanh Toán', DateFormat('dd/MM/yyyy').format(payment.paidAt!)),
+                      _buildDetailRow('Người Thuê', widget.payment.tenantName ?? 'Chưa xác định'),
+                      if (_room != null)
+                        _buildDetailRow('Phòng', _room!.roomNumber),
+                      if (_building != null)
+                        _buildDetailRow('Tòa nhà', _building!.name),
+                      _buildDetailRow('Hạn Thanh Toán', DateFormat('dd/MM/yyyy').format(widget.payment.dueDate)),
+                      if (widget.payment.paidAt != null)
+                        _buildDetailRow('Ngày Thanh Toán', DateFormat('dd/MM/yyyy').format(widget.payment.paidAt!)),
                       
                       const SizedBox(height: 16),
                       const Divider(),
@@ -520,7 +581,7 @@ class ViewPaymentDetailsDialog extends StatelessWidget {
                             ),
                           ),
                           Text(
-                            NumberFormat('#,###').format(payment.amount) + ' VND',
+                            NumberFormat('#,###').format(widget.payment.amount) + ' VND',
                             style: TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.bold,
@@ -531,7 +592,7 @@ class ViewPaymentDetailsDialog extends StatelessWidget {
                       ),
                       
                       // Late Fee
-                      if (payment.lateFee != null && payment.lateFee! > 0) ...[
+                      if (widget.payment.lateFee != null && widget.payment.lateFee! > 0) ...[
                         const SizedBox(height: 8),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -541,7 +602,7 @@ class ViewPaymentDetailsDialog extends StatelessWidget {
                               style: TextStyle(fontSize: 14, color: Colors.red),
                             ),
                             Text(
-                              NumberFormat('#,###').format(payment.lateFee!) + ' VND',
+                              NumberFormat('#,###').format(widget.payment.lateFee!) + ' VND',
                               style: const TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.bold,
@@ -562,7 +623,7 @@ class ViewPaymentDetailsDialog extends StatelessWidget {
                               ),
                             ),
                             Text(
-                              NumberFormat('#,###').format(payment.totalAmount) + ' VND',
+                              NumberFormat('#,###').format(widget.payment.totalAmount) + ' VND',
                               style: TextStyle(
                                 fontSize: 20,
                                 fontWeight: FontWeight.bold,
@@ -574,7 +635,7 @@ class ViewPaymentDetailsDialog extends StatelessWidget {
                       ],
                       
                       // Notes
-                      if (payment.notes != null && payment.notes!.isNotEmpty) ...[
+                      if (widget.payment.notes != null && widget.payment.notes!.isNotEmpty) ...[
                         const SizedBox(height: 16),
                         const Divider(),
                         const SizedBox(height: 16),
@@ -587,7 +648,7 @@ class ViewPaymentDetailsDialog extends StatelessWidget {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          payment.notes!,
+                          widget.payment.notes!,
                           style: TextStyle(
                             fontSize: 14,
                             color: Colors.grey[700],
@@ -613,12 +674,12 @@ class ViewPaymentDetailsDialog extends StatelessWidget {
                       child: const Text('Đóng'),
                     ),
                   ),
-                  if (isAdmin) ...[
+                  if (widget.isAdmin) ...[
                     Expanded(
                       child: ElevatedButton.icon(
                         onPressed: () {
                           Navigator.pop(context);
-                          onEdit!();
+                          widget.onEdit!();
                         },
                         icon: const Icon(Icons.edit),
                         label: const Text('Chỉnh Sửa'),
@@ -627,14 +688,14 @@ class ViewPaymentDetailsDialog extends StatelessWidget {
                     const SizedBox(width: 8),
                     Expanded(
                       child: ElevatedButton.icon(
-                        onPressed: () {
-                          PaymentPDFExporter.showPDFPreview(
-                            context: context,
-                            payment: payment,
-                            organization: organization,
-                          );
-                        },
-                        icon: const Icon(Icons.picture_as_pdf),
+                        onPressed: _isLoadingRoomData ? null : _exportToPDF,
+                        icon: _isLoadingRoomData 
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.picture_as_pdf),
                         label: const Text('Xuất PDF'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.red,
@@ -642,17 +703,17 @@ class ViewPaymentDetailsDialog extends StatelessWidget {
                         ),
                       ),
                     ),
-                  ] else if (onEdit == null)
+                  ] else if (widget.onEdit == null)
                     Expanded(
                       child: ElevatedButton.icon(
-                        onPressed: () {
-                          PaymentPDFExporter.showPDFPreview(
-                            context: context,
-                            payment: payment,
-                            organization: organization,
-                          );
-                        },
-                        icon: const Icon(Icons.picture_as_pdf),
+                        onPressed: _isLoadingRoomData ? null : _exportToPDF,
+                        icon: _isLoadingRoomData 
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.picture_as_pdf),
                         label: const Text('Xuất PDF'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.red,
@@ -671,7 +732,7 @@ class ViewPaymentDetailsDialog extends StatelessWidget {
 }
 
 // ========================================
-// EDIT PAYMENT DIALOG
+// EDIT PAYMENT DIALOG (unchanged, just included for completeness)
 // ========================================
 class EditPaymentDialog extends StatefulWidget {
   final Payment payment;

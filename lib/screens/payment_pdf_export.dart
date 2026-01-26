@@ -448,8 +448,38 @@ class PaymentPDFExporter {
                     // Description
                     else if (item.description != null && item.description!.isNotEmpty) {
                       detailsText = item.description!;
-                    } else {
-                      detailsText = '-';
+                    }
+                    // FIXED: Fallback for payments without detailed info
+                    else {
+                      // Generate meaningful description based on payment type and date
+                      switch (item.type) {
+                        case PaymentType.electricity:
+                          detailsText = 'Tien dien thang ${DateFormat('MM/yyyy').format(payment.dueDate)}';
+                          break;
+                        case PaymentType.water:
+                          detailsText = 'Tien nuoc thang ${DateFormat('MM/yyyy').format(payment.dueDate)}';
+                          break;
+                        case PaymentType.rent:
+                          detailsText = 'Tien thue thang ${DateFormat('MM/yyyy').format(payment.dueDate)}';
+                          break;
+                        case PaymentType.internet:
+                          detailsText = 'Tien internet thang ${DateFormat('MM/yyyy').format(payment.dueDate)}';
+                          break;
+                        case PaymentType.parking:
+                          detailsText = 'Tien gui xe thang ${DateFormat('MM/yyyy').format(payment.dueDate)}';
+                          break;
+                        case PaymentType.maintenance:
+                          detailsText = 'Phi bao tri thang ${DateFormat('MM/yyyy').format(payment.dueDate)}';
+                          break;
+                        case PaymentType.deposit:
+                          detailsText = 'Tien coc';
+                          break;
+                        case PaymentType.penalty:
+                          detailsText = 'Tien phat';
+                          break;
+                        default:
+                          detailsText = 'Khoan thanh toan';
+                      }
                     }
                     
                     return pw.TableRow(

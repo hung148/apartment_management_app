@@ -110,7 +110,7 @@ class OrganizationService {
           .doc(orgId)
           .update(updates);
 
-      print('✅ Organization updated successfully');
+      print('✅ Organization updated');
       return true;
     } catch (e) {
       print('❌ Error updating organization: $e');
@@ -118,210 +118,20 @@ class OrganizationService {
     }
   }
 
-  // Get all organizations that a user is a member of
-  Future<List<Organization>> getUserOrganizations(String ownerId) async {
-    try {
-      // Find all memberships where this user is a member
-      final membershipsSnapshot  = await _firestore
-        .collection('memberships') // Access memberships collection
-        .where('ownerId', isEqualTo: ownerId) // Filter by user ID
-        .where('status', isEqualTo: 'active') // Only get active member
-        .get(); // Execute the query and get results
-
-      // Create an empty list to store organizations
-      List<Organization> organizations = [];
-
-      // Loop through all membership documents
-      for (var membershipDoc in membershipsSnapshot.docs) {
-        // Convert the document data to a Membership object
-        final membership = Membership.fromMap(
-          membershipDoc.id, // Document ID
-          membershipDoc.data(), // Document data
-        );
-
-        // Now get the organization document using the organizationId from membership
-        final orgDoc = await _firestore
-          .collection('organizations') // Access organizations collection
-          .doc(membership.organizationId) // Get specific organization
-          .get(); // Fetch the document
-        
-        // Check if the organization document exists
-        if (orgDoc.exists) {
-          // Convert the document to an Organization object and add to our list
-          organizations.add(
-            Organization.fromMap(
-              orgDoc.id, // Document ID
-              orgDoc.data()! // Document data
-            )
-          );
-        }
-      }
-
-      return organizations;
-    } catch(e) {
-      print('❌ Error getting user organizations: $e');
-      return [];
-    }
-  }
-
-  // Get a single organization by its ID
-  Future<Organization?> getOrganization(String orgId) async {
-    try {
-      // Get the organization document from firestore
-      final doc = await _firestore
-        .collection('organizations') // Access organizations collection
-        .doc(orgId) // Get specific document by ID
-        .get();
-      
-      // Check if document exists
-      if (!doc.exists) return null;
-
-      // Convert document to Organization object and return it
-      return Organization.fromMap(
-        doc.id, 
-        doc.data()!,
-      );
-    } catch(e) {
-      print('❌ Error getting organization: $e');
-      return null;
-    }
-  }
-
-  // Get a user's membership in a specific organization
+  // Get user's membership in an organization
   Future<Membership?> getUserMembership(String ownerId, String orgId) async {
     try {
-      // Create the membership ID by combining user ID and org ID
       final membershipId = '${ownerId}_${orgId}';
-
-      // Try to get the membership document
-      final doc = await _firestore
-        .collection('memberships') // Access the memberships collection 
-        .doc(membershipId) // Get document with our custom ID
-        .get(); // Fetch the document
+      final doc = await _firestore.collection('memberships').doc(membershipId).get();
       
-      // Check if the membership exists
-      if (!doc.exists) return null;
-
-      // Convert document to Membership object and return it
-      return Membership.fromMap(
-        doc.id, 
-        doc.data()!
-      );
-    } catch (e) {
-      // If anything goes wrong, log the error and return null
-      print('❌ Error getting membership: $e');
-      return null;
-    }
-  }
-
-  // Join an organization using an invite code
-  Future<bool> joinOrganization({
-    required String ownerID,
-    required String inviteCode,
-  }) async {
-    try {
-      // We search in memberships because each org has an invite code stored there
-      final membershipSnapshot = await _firestore
-        .collection('memberships') // Access memberships collection
-        .where('inviteCode', isEqualTo: inviteCode.toUpperCase()) // Find by inviteCode
-        .limit(1) // We only need one result
-        .get(); // Execute the query
-      
-      // Check if we found any membership with this invite code
-      if (membershipSnapshot.docs.isEmpty) {
-        print('❌ Invalid invite code');
-        return false;
-      }
-
-      // Get the first (and only) membership document
-      // This tells us which organization the invite code belongs to
-      final existingMembership = Membership.fromMap(
-        membershipSnapshot.docs.first.id, // Document ID 
-        membershipSnapshot.docs.first.data(), // Document data
-      );
-
-      // Create the membership ID for this user + organization combo
-      final userMembershipId = '${ownerID}_${existingMembership.organizationId}';
-
-      // Try to get this membership document
-      final existingUserMembership = await _firestore
-        .collection('memberships') 
-        .doc(userMembershipId)
-        .get();
-      
-      // If this document already exists, user is already a member
-      if (existingUserMembership.exists) {
-        print('⚠️ User already a member of this organization');
-        return false;
-      }
-
-      // Create a new membership for the user
-      final newMembership = Membership(
-        id: userMembershipId, // Unique ID for this membership
-        organizationId: existingMembership.organizationId, // Link to organization
-        ownerId: ownerID, // Link to user
-        role: 'member', // New users join as regular members (not admin)
-        inviteCode: existingMembership.inviteCode, // Same invite code as organization
-        status: 'active', // Membership is active immediately
-        joinedAt: DateTime.now(), // Store when they joined
-      );
-
-      // Save the new membership to Firestore
-      await _firestore
-          .collection('memberships') // Access memberships collection
-          .doc(userMembershipId) // Use our custom ID
-          .set(newMembership.toMap()); // Save the membership data
-      
-      // Log success
-      print('✅ User joined organization');
-      return true;
-    } catch (e) {
-      // If anything goes wrong, log the error and return false
-      print('❌ Error joining organization: $e');
-      return false;
-    }
-  }
-
-  // Get the inviteCode for an organization
-  // Only admins can get the invite code
-  Future<String?> getInviteCode(String ownerId, String orgId) async {
-    try {
-      // Get the user's membership in this organization
-      final membership = await getUserMembership(ownerId, orgId);
-
-      // Check if membership exists and if user is an admin
-      if (membership == null || membership.role != 'admin') {
-        print('❌ User is not admin of this organization');
+      if (!doc.exists) {
         return null;
       }
-
-      // Return the invite code
-      return membership.inviteCode;
+      
+      return Membership.fromMap(doc.id, doc.data()!);
     } catch (e) {
-      // If anything goes wrong, log the error and return null
-      print('❌ Error getting invite code: $e');
+      print('❌ Error getting membership: $e');
       return null;
-    }
-  }
-
-  // Get all members of an organization
-  Future<List<Membership>> getOrganizationMembers(String orgId) async {
-    try {
-      // Query all memberships for this organization
-      final snapshot = await _firestore
-          .collection('memberships') // Access memberships collection
-          .where('organizationId', isEqualTo: orgId) // Filter by organization
-          .where('status', isEqualTo: 'active') // Only get active members
-          .get(); // Execute the query
-
-      // Convert all documents to Membership objects and return as a list
-      return snapshot.docs
-          .map((doc) => Membership.fromMap(doc.id, doc.data()))
-          .toList();
-    } catch (e) {
-      // If anything goes wrong, log the error and return empty list
-      print('❌ Error getting organization members: $e');
-      return [];
     }
   }
 
@@ -333,15 +143,14 @@ class OrganizationService {
       
       // Delete the membership document
       await _firestore
-          .collection('memberships') // Access memberships collection
-          .doc(membershipId) // Get specific membership
-          .delete(); // Delete it
+          .collection('memberships')
+          .doc(membershipId)
+          .delete();
       
       // Log success
       print('✅ User left organization');
       return true;
     } catch (e) {
-      // If anything goes wrong, log the error and return false
       print('❌ Error leaving organization: $e');
       return false;
     }
@@ -361,23 +170,84 @@ class OrganizationService {
         return false;
       }
 
+      WriteBatch batch = _firestore.batch();
+      int operationCount = 0;
+
+      // Helper to add delete operation safely
+      void safeDelete(DocumentReference ref) {
+        batch.delete(ref);
+        operationCount++;
+        if (operationCount >= 490) { // Safety margin for 500 limit
+          batch.commit();
+          batch = _firestore.batch();
+          operationCount = 0;
+        }
+      }
+
       // Delete all memberships for this organization
       // First, get all memberships
       final memberships = await _firestore
-          .collection('memberships') // Access memberships collection
-          .where('organizationId', isEqualTo: orgId) // Filter by organization
-          .get(); // Get all documents
+          .collection('memberships')
+          .where('organizationId', isEqualTo: orgId)
+          .get();
 
-      // Loop through and delete each membership
       for (var doc in memberships.docs) {
-        await doc.reference.delete(); // Delete the membership
+        safeDelete(doc.reference);
+      }
+
+      // Delete buildings and their related data
+      final buildings = await _firestore
+          .collection('buildings')
+          .where('organizationId', isEqualTo: orgId)
+          .get();
+
+      for (var buildingDoc in buildings.docs) {
+        final buildingId = buildingDoc.id;
+
+        // Delete rooms in this building
+        final rooms = await _firestore
+            .collection('rooms')
+            .where('buildingId', isEqualTo: buildingId)
+            .get();
+
+        for (var roomDoc in rooms.docs) {
+          final roomId = roomDoc.id;
+
+          // Delete tenants in this room
+          final tenants = await _firestore
+              .collection('tenants')
+              .where('roomId', isEqualTo: roomId)
+              .get();
+
+          for (var tenantDoc in tenants.docs) {
+            final tenantId = tenantDoc.id;
+
+            // Delete payments for this tenant
+            final payments = await _firestore
+                .collection('payments')
+                .where('tenantId', isEqualTo: tenantId)
+                .get();
+
+            for (var paymentDoc in payments.docs) {
+              safeDelete(paymentDoc.reference);
+            }
+
+            safeDelete(tenantDoc.reference);
+          }
+
+          safeDelete(roomDoc.reference);
+        }
+
+        safeDelete(buildingDoc.reference);
       }
 
       // Delete the organization itself
-      await _firestore
-          .collection('organizations') // Access organizations collection
-          .doc(orgId) // Get specific organization
-          .delete(); // Delete it
+      safeDelete(_firestore.collection('organizations').doc(orgId));
+
+      // Commit any remaining operations
+      if (operationCount > 0) {
+        await batch.commit();
+      }
 
       // Log success
       print('✅ Organization deleted');
@@ -446,6 +316,135 @@ class OrganizationService {
     } catch (e) {
       print('❌ Error promoting member to admin: $e');
       return false;
+    }
+  }
+
+    // Get all active members of an organization
+  Future<List<Membership>> getOrganizationMembers(String orgId) async {
+    try {
+      final snapshot = await _firestore
+          .collection('memberships')
+          .where('organizationId', isEqualTo: orgId)
+          .where('status', isEqualTo: 'active')
+          .get();
+
+      return snapshot.docs
+          .map((doc) => Membership.fromMap(doc.id, doc.data()!))
+          .toList();
+    } catch (e) {
+      print('❌ Error getting organization members: $e');
+      return [];
+    }
+  }
+
+  Future<String?> getInviteCode(String ownerId, String orgId) async {
+    try {
+      final membership = await getUserMembership(ownerId, orgId);
+      if (membership == null) {
+        print('❌ No membership found for user $ownerId in org $orgId');
+        return null;
+      }
+      return membership.inviteCode;
+    } catch (e) {
+      print('❌ Error getting invite code: $e');
+      return null;
+    }
+  }
+    
+  // Join an organization using an invite code
+  Future<bool> joinOrganization({
+    required String ownerId,      // the user who wants to join
+    required String inviteCode,
+  }) async {
+    try {
+      // Find any membership that has this invite code
+      // (invite codes are unique per organization in your current model)
+      final query = await _firestore
+          .collection('memberships')
+          .where('inviteCode', isEqualTo: inviteCode)
+          .limit(1)
+          .get();
+
+      if (query.docs.isEmpty) {
+        print('❌ Invalid or expired invite code');
+        return false;
+      }
+
+      final existingMembership = Membership.fromMap(
+        query.docs.first.id,
+        query.docs.first.data()!,
+      );
+
+      final orgId = existingMembership.organizationId;
+
+      // Prevent joining the same organization twice
+      final membershipId = '${ownerId}_$orgId';
+      final alreadyMember = await _firestore
+          .collection('memberships')
+          .doc(membershipId)
+          .get();
+
+      if (alreadyMember.exists) {
+        print('⚠️ User is already a member of this organization');
+        return false;
+      }
+
+      // Create new membership as regular member
+      final newMembership = Membership(
+        id: membershipId,
+        organizationId: orgId,
+        ownerId: ownerId,
+        role: 'member',
+        inviteCode: inviteCode,
+        status: 'active',
+        joinedAt: DateTime.now(),
+      );
+
+      await _firestore
+          .collection('memberships')
+          .doc(membershipId)
+          .set(newMembership.toMap());
+
+      print('✅ User $ownerId joined organization $orgId via invite code');
+      return true;
+    } catch (e) {
+      print('❌ Error joining organization: $e');
+      return false;
+    }
+  }
+
+  // Get all organizations the current user is a member of (active only)
+  Future<List<Organization>> getUserOrganizations(String ownerId) async {
+    try {
+      // Find all active memberships for this user
+      final membershipsSnap = await _firestore
+          .collection('memberships')
+          .where('ownerId', isEqualTo: ownerId)
+          .where('status', isEqualTo: 'active')
+          .get();
+
+      if (membershipsSnap.docs.isEmpty) {
+        return [];
+      }
+
+      // Collect all unique organization IDs
+      final orgIds = membershipsSnap.docs
+          .map((doc) => doc.data()['organizationId'] as String)
+          .toSet()
+          .toList();
+
+      // Fetch the actual organization documents
+      final orgsSnap = await _firestore
+          .collection('organizations')
+          .where(FieldPath.documentId, whereIn: orgIds)
+          .get();
+
+      return orgsSnap.docs
+          .map((doc) => Organization.fromMap(doc.id, doc.data()!))
+          .toList();
+    } catch (e) {
+      print('❌ Error fetching user organizations for $ownerId: $e');
+      return [];
     }
   }
 }

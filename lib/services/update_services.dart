@@ -1,5 +1,5 @@
 import 'dart:async';
-
+import 'dart:isolate';
 import 'package:in_app_update/in_app_update.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:io';
@@ -18,22 +18,24 @@ class UpdateService {
 
   /// Check if an update is available (works on all platforms)
   Future<bool> isUpdateAvailable() async {
+    debugPrint('🔍 UpdateService.isUpdateAvailable() called');
+    
     try {
       if (Platform.isAndroid) {
-        // Android: Use Google Play Store in-app updates
+        debugPrint('📱 Platform: Android');
         return await _checkAndroidUpdate();
       } else if (Platform.isIOS) {
-        // iOS: Check version from your backend
+        debugPrint('📱 Platform: iOS');
         return await _checkVersionFromBackend();
       } else if (Platform.isWindows) {
-        // Windows: Check version from your backend
+        debugPrint('💻 Platform: Windows');
         return await _checkVersionFromBackend();
       } else {
-        // Other platforms: Check version from your backend
-        return await _checkVersionFromBackend();
+        debugPrint('❓ Platform: Unknown');
+        return false;
       }
     } catch (e) {
-      debugPrint('Error checking for updates: $e');
+      debugPrint('❌ Error in isUpdateAvailable: $e');
       return false;
     }
   }
@@ -123,7 +125,6 @@ class UpdateService {
     if (!Platform.isWindows) return false;
     
     try {
-      // Replace with your actual Windows download URL
       final url = Uri.parse('https://github.com/hung148/apartment_management_app_version/releases/latest');
       if (await canLaunchUrl(url)) {
         await launchUrl(url, mode: LaunchMode.externalApplication);
@@ -140,20 +141,30 @@ class UpdateService {
 
   /// Check version from your backend API (works for all platforms)
   Future<bool> _checkVersionFromBackend() async {
+    debugPrint('🌐 _checkVersionFromBackend() started');
+    
     try {
-      // Get current app version
+      debugPrint('📦 Getting package info...');
       final packageInfo = await PackageInfo.fromPlatform();
       final currentVersion = packageInfo.version;
       final currentBuildNumber = packageInfo.buildNumber;
+      debugPrint('✅ Current version: $currentVersion ($currentBuildNumber)');
 
-      // Make API request to check latest version - with timeout
-      final response = await http
-          .get(Uri.parse(_versionCheckUrl))
-          .timeout(const Duration(seconds: 8));
+      debugPrint('🌐 Making HTTP request in isolate to $_versionCheckUrl');
+      
+      // Use compute to run HTTP request in separate isolate (prevents UI blocking)
+      final responseData = await compute(_fetchVersionData, _versionCheckUrl);
+      
+      debugPrint('📥 HTTP response received from isolate');
 
-      if (response.statusCode != 200) return false;
+      if (responseData == null) {
+        debugPrint('⚠️ Failed to fetch version data');
+        return false;
+      }
 
-      final data = json.decode(response.body);
+      debugPrint('📄 Parsing JSON...');
+      final data = json.decode(responseData);
+      debugPrint('✅ JSON parsed successfully');
 
       String latestVersion;
       String latestBuildNumber;
@@ -171,25 +182,51 @@ class UpdateService {
         return false;
       }
 
-      return _isNewerVersion(
+      debugPrint('📊 Latest version: $latestVersion ($latestBuildNumber)');
+
+      final isNewer = _isNewerVersion(
         currentVersion,
         currentBuildNumber,
         latestVersion,
         latestBuildNumber,
       );
-    } 
-    on SocketException catch (e) {
-      debugPrint('Network/DNS error: $e');
+      
+      debugPrint('🏁 Version comparison result: isNewer=$isNewer');
+      return isNewer;
+      
+    } on SocketException catch (e) {
+      debugPrint('🔌 SocketException: $e');
       return false;
-    } 
-    on TimeoutException {
-      debugPrint('Version check timeout');
+    } on TimeoutException catch (e) {
+      debugPrint('⏱️ TimeoutException: $e');
       return false;
-    } 
-    catch (e) {
-      // Catch-all for any other unexpected errors (json decode fail, etc.)
-      debugPrint('Unexpected error in version check: $e');
+    } on FormatException catch (e) {
+      debugPrint('📄 FormatException: $e');
       return false;
+    } catch (e) {
+      debugPrint('❌ Unexpected error: $e');
+      return false;
+    }
+  }
+
+  /// Static method to fetch version data (runs in isolate)
+  /// This must be a top-level function or static method for compute()
+  static Future<String?> _fetchVersionData(String url) async {
+    try {
+      final response = await http.get(Uri.parse(url)).timeout(
+        const Duration(seconds: 2),
+        onTimeout: () {
+          throw TimeoutException('Connection timeout');
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return response.body;
+      }
+      return null;
+    } catch (e) {
+      // Return null on any error
+      return null;
     }
   }
 
