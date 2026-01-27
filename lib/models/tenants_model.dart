@@ -50,6 +50,10 @@ class Tenant {
   final bool isMainTenant;               // Người thuê chính hay người ở cùng
   final String? mainTenantId;            // Nếu không phải người thuê chính
   
+  // NEW: Room/Apartment Details (for PDF generation)
+  final String? apartmentType;           // NEW: Loại căn hộ (1PN, 2PN, 3PN, Studio, etc.)
+  final double? apartmentArea;           // NEW: Diện tích căn hộ (m²)
+  
   // Last Known Location (for moved-out tenants)
   final String? lastBuildingName;        // Tên toà nhà trước khi chuyển đi
   final String? lastRoomNumber;          // Số phòng trước khi chuyển đi
@@ -103,6 +107,8 @@ class Tenant {
     this.deposit,
     this.isMainTenant = true,
     this.mainTenantId,
+    this.apartmentType,          // NEW
+    this.apartmentArea,           // NEW
     this.lastBuildingName,
     this.lastRoomNumber,
     this.documentUrls,
@@ -206,6 +212,8 @@ class Tenant {
       'deposit': deposit,
       'isMainTenant': isMainTenant,
       'mainTenantId': mainTenantId,
+      'apartmentType': apartmentType,        // NEW
+      'apartmentArea': apartmentArea,         // NEW
       'lastBuildingName': lastBuildingName,
       'lastRoomNumber': lastRoomNumber,
       'documentUrls': documentUrls,
@@ -273,6 +281,8 @@ class Tenant {
       deposit: (map['deposit'] as num?)?.toDouble(),
       isMainTenant: map['isMainTenant'] ?? true,
       mainTenantId: map['mainTenantId'],
+      apartmentType: map['apartmentType'],        // NEW
+      apartmentArea: (map['apartmentArea'] as num?)?.toDouble(),  // NEW
       lastBuildingName: map['lastBuildingName'],
       lastRoomNumber: map['lastRoomNumber'],
       documentUrls: map['documentUrls'] != null
@@ -332,6 +342,8 @@ class Tenant {
     double? deposit,
     bool? isMainTenant,
     String? mainTenantId,
+    String? apartmentType,        // NEW
+    double? apartmentArea,         // NEW
     String? lastBuildingName,
     String? lastRoomNumber,
     List<String>? documentUrls,
@@ -376,6 +388,8 @@ class Tenant {
       deposit: deposit ?? this.deposit,
       isMainTenant: isMainTenant ?? this.isMainTenant,
       mainTenantId: mainTenantId ?? this.mainTenantId,
+      apartmentType: apartmentType ?? this.apartmentType,     // NEW
+      apartmentArea: apartmentArea ?? this.apartmentArea,      // NEW
       lastBuildingName: lastBuildingName ?? this.lastBuildingName,
       lastRoomNumber: lastRoomNumber ?? this.lastRoomNumber,
       documentUrls: documentUrls ?? this.documentUrls,

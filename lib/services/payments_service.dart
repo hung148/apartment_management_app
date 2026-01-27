@@ -178,6 +178,104 @@ class PaymentService {
   }
 
   // ========================================
+  // CREATE - Add combined payment with utilities and fees
+  // ========================================
+  Future<String?> addCombinedPayment({
+    required String organizationId,
+    required String buildingId,
+    required String roomId,
+    required String tenantId,
+    required String tenantName,
+    required DateTime startDate,
+    required DateTime endDate,
+    required DateTime dueDate,
+    double? rent,
+    double? electricityAmount,
+    double? waterAmount,
+    double? internetFee,
+    double? cableTVFee,
+    double? hotWaterFee,
+    double? hotWaterPercent,
+    double? managementFee,
+    double? taxAmount,
+    double? electricityStartReading,
+    double? electricityEndReading,
+    double? electricityPricePerUnit,
+    double? waterStartReading,
+    double? waterEndReading,
+    double? waterPricePerUnit,
+    String? description,
+  }) async {
+    try {
+      // Calculate electricity amount if readings provided
+      double? finalElectricityAmount = electricityAmount;
+      if (electricityStartReading != null && 
+          electricityEndReading != null && 
+          electricityPricePerUnit != null) {
+        final usage = electricityEndReading - electricityStartReading;
+        finalElectricityAmount = usage * electricityPricePerUnit;
+      }
+
+      // Calculate water amount if readings provided
+      double? finalWaterAmount = waterAmount;
+      if (waterStartReading != null && 
+          waterEndReading != null && 
+          waterPricePerUnit != null) {
+        final usage = waterEndReading - waterStartReading;
+        finalWaterAmount = usage * waterPricePerUnit;
+      }
+
+      // Calculate total amount (without tax)
+      double totalAmount = 0;
+      if (rent != null) totalAmount += rent;
+      if (finalElectricityAmount != null) totalAmount += finalElectricityAmount;
+      if (finalWaterAmount != null) totalAmount += finalWaterAmount;
+      if (internetFee != null) totalAmount += internetFee;
+      if (cableTVFee != null) totalAmount += cableTVFee;
+      if (hotWaterFee != null) totalAmount += hotWaterFee;
+      if (managementFee != null) totalAmount += managementFee;
+
+      final payment = Payment(
+        id: '',
+        organizationId: organizationId,
+        buildingId: buildingId,
+        roomId: roomId,
+        tenantId: tenantId,
+        tenantName: tenantName,
+        type: PaymentType.rent,
+        status: PaymentStatus.pending,
+        amount: totalAmount,
+        dueDate: dueDate,
+        billingStartDate: startDate,
+        billingEndDate: endDate,
+        electricityStartReading: electricityStartReading,
+        electricityStartDate: startDate,
+        electricityEndReading: electricityEndReading,
+        electricityEndDate: endDate,
+        electricityPricePerUnit: electricityPricePerUnit,
+        waterStartReading: waterStartReading,
+        waterStartDate: startDate,
+        waterEndReading: waterEndReading,
+        waterEndDate: endDate,
+        waterPricePerUnit: waterPricePerUnit,
+        internetFee: internetFee,
+        cableTVFee: cableTVFee,
+        hotWaterFee: hotWaterFee,
+        hotWaterPercent: hotWaterPercent,
+        managementFee: managementFee,
+        taxAmount: taxAmount,
+        description: description ?? 'Hóa đơn tổng hợp từ ${_formatDate(startDate)} đến ${_formatDate(endDate)}',
+        createdAt: DateTime.now(),
+      );
+
+      return await addPayment(payment);
+    } catch (e) {
+      print('Error adding combined payment: $e');
+      return null;
+    }
+  }
+
+  // ========================================
   // READ - Get payment by ID
   // ========================================
   Future<Payment?> getPaymentById(String paymentId) async {
@@ -591,7 +689,7 @@ class PaymentService {
   }
 
   // ========================================
-  // UPDATE - Mark payment as paid
+  // UPDATE - Mark payment as paid (with combined payment support)
   // ========================================
   Future<bool> markAsPaid(
     String paymentId, {
@@ -606,7 +704,7 @@ class PaymentService {
       final payment = await getPaymentById(paymentId);
       if (payment == null) return false;
 
-      final totalDue = payment.totalAmount;
+      final totalDue = payment.totalWithAllFees;
       final newPaidAmount = payment.paidAmount + paidAmount;
 
       PaymentStatus newStatus;
@@ -738,7 +836,7 @@ class PaymentService {
   }
 
   // ========================================
-  // UTILITY - Calculate total amount due
+  // UTILITY - Calculate total amount due (with combined payment support)
   // ========================================
   Future<double> calculateTotalDue(String roomId) async {
     try {
@@ -747,6 +845,50 @@ class PaymentService {
     } catch (e) {
       print('Error calculating total due: $e');
       return 0.0;
+    }
+  }
+
+  // ========================================
+  // UTILITY - Calculate combined fees breakdown
+  // ========================================
+  Future<Map<String, double>> calculateCombinedFeesBreakdown(
+    String roomId,
+    DateTime startDate,
+    DateTime endDate,
+  ) async {
+    try {
+      final snapshot = await _firestore
+          .collection('payments')
+          .where('roomId', isEqualTo: roomId)
+          .where('billingStartDate', isGreaterThanOrEqualTo: Timestamp.fromDate(startDate))
+          .where('billingEndDate', isLessThanOrEqualTo: Timestamp.fromDate(endDate))
+          .get();
+
+      final payments = snapshot.docs
+          .map((doc) => Payment.fromMap(doc.id, doc.data()))
+          .toList();
+
+      double totalInternetFee = 0;
+      double totalCableTVFee = 0;
+      double totalHotWaterFee = 0;
+      double totalManagementFee = 0;
+
+      for (var payment in payments) {
+        if (payment.internetFee != null) totalInternetFee += payment.internetFee!;
+        if (payment.cableTVFee != null) totalCableTVFee += payment.cableTVFee!;
+        if (payment.hotWaterFee != null) totalHotWaterFee += payment.hotWaterFee!;
+        if (payment.managementFee != null) totalManagementFee += payment.managementFee!;
+      }
+
+      return {
+        'internet': totalInternetFee,
+        'cableTV': totalCableTVFee,
+        'hotWater': totalHotWaterFee,
+        'management': totalManagementFee,
+      };
+    } catch (e) {
+      print('Error calculating combined fees: $e');
+      return {};
     }
   }
 
@@ -775,7 +917,7 @@ class PaymentService {
   }
 
   // ========================================
-  // UTILITY - Get payment statistics
+  // UTILITY - Get payment statistics (with combined payment support)
   // ========================================
   Future<Map<String, dynamic>> getPaymentStatistics(
     String organizationId,
@@ -791,7 +933,7 @@ class PaymentService {
           .toList();
 
       final now = DateTime.now();
-      final totalAmount = payments.fold<double>(0.0, (sum, p) => sum + p.amount);
+      final totalAmount = payments.fold<double>(0.0, (sum, p) => sum + p.totalWithAllFees);
       final totalPaid = payments
           .where((p) => p.status == PaymentStatus.paid)
           .fold<double>(0.0, (sum, p) => sum + p.paidAmount);
@@ -801,6 +943,19 @@ class PaymentService {
       final totalOverdue = payments
           .where((p) => p.dueDate.isBefore(now) && p.status == PaymentStatus.pending)
           .fold<double>(0.0, (sum, p) => sum + p.remainingAmount);
+
+      // Calculate total additional fees
+      double totalInternetFee = 0;
+      double totalCableTVFee = 0;
+      double totalHotWaterFee = 0;
+      double totalManagementFee = 0;
+
+      for (var payment in payments) {
+        if (payment.internetFee != null) totalInternetFee += payment.internetFee!;
+        if (payment.cableTVFee != null) totalCableTVFee += payment.cableTVFee!;
+        if (payment.hotWaterFee != null) totalHotWaterFee += payment.hotWaterFee!;
+        if (payment.managementFee != null) totalManagementFee += payment.managementFee!;
+      }
 
       return {
         'totalPayments': payments.length,
@@ -813,6 +968,10 @@ class PaymentService {
         'overdueCount': payments
             .where((p) => p.dueDate.isBefore(now) && p.status == PaymentStatus.pending)
             .length,
+        'totalInternetFee': totalInternetFee,
+        'totalCableTVFee': totalCableTVFee,
+        'totalHotWaterFee': totalHotWaterFee,
+        'totalManagementFee': totalManagementFee,
       };
     } catch (e) {
       print('Error getting payment statistics: $e');

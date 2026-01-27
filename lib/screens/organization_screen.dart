@@ -1575,6 +1575,7 @@ Widget _buildPaymentsList(List<Payment> allPayments, String searchText, bool isA
       roomService: _roomService,
       buildingService: _buildingService,
       organization: widget.organization,
+      paymentService: _paymentService,
       onEdit: () => _showEditPaymentDialog(payment),
     ),
   );

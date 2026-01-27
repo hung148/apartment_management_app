@@ -167,6 +167,7 @@ class ViewPaymentDetailsDialog extends StatefulWidget {
   final Organization organization;
   final RoomService roomService;
   final BuildingService buildingService;
+  final PaymentService paymentService;
 
   const ViewPaymentDetailsDialog({
     super.key,
@@ -175,6 +176,7 @@ class ViewPaymentDetailsDialog extends StatefulWidget {
     required this.organization,
     required this.roomService,
     required this.buildingService,
+    required this.paymentService,
     this.onEdit,
   });
 
@@ -648,122 +650,180 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog> {
                             ),
                           ],
                         ),
-                        const Divider(),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text(
-                              'TỔNG THANH TOÁN:',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            Text(
-                              NumberFormat('#,###').format(widget.payment.totalAmount) + ' VND',
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: Theme.of(context).primaryColor,
-                              ),
-                            ),
-                          ],
-                        ),
                       ],
                       
-                      // Notes
-                      if (widget.payment.notes != null && widget.payment.notes!.isNotEmpty) ...[
-                        const SizedBox(height: 16),
-                        const Divider(),
-                        const SizedBox(height: 16),
-                        const Text(
-                          'Ghi Chú',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
+                      const SizedBox(height: 12),
+                      
+                      // Subtotal (TỔNG CỘNG)
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'TỔNG CỘNG:',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          widget.payment.notes!,
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey[700],
+                          Text(
+                            NumberFormat('#,###').format(widget.payment.amount + (widget.payment.lateFee ?? 0)) + ' VND',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.grey[700],
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
+                      
+                      const SizedBox(height: 8),
+                      
+                      // Tax Amount (always display)
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Tiền thuế:',
+                            style: TextStyle(fontSize: 14, color: Colors.orange),
+                          ),
+                          Text(
+                            NumberFormat('#,###').format(widget.payment.taxAmount ?? 0) + ' VND',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.orange,
+                            ),
+                          ),
+                        ],
+                      ),
+                      
+                      const SizedBox(height: 12),
+                      const Divider(),
+                      
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'TỔNG THANH TOÁN:',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            NumberFormat('#,###').format(widget.payment.totalAmount) + ' VND',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: Theme.of(context).primaryColor,
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
               ),
             ),
-            
-            const Divider(height: 1),
-            
-            // Footer Buttons
-            Padding(
-              padding: const EdgeInsets.all(8),
-              child: Row(
+            // ========================================
+            // BOTTOM ACTION BUTTONS
+            // ========================================
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+              child: Column(
                 children: [
-                  Expanded(
-                    child: TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('Đóng'),
-                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          icon: const Icon(Icons.close),
+                          label: const Text('Đóng'),
+                          onPressed: () => Navigator.pop(context),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          icon: const Icon(Icons.delete),
+                          label: const Text('Xóa'),
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                          onPressed: () => _showDeleteConfirmation(context),
+                        ),
+                      ),
+                    ],
                   ),
-                  if (widget.isAdmin) ...[
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () {
-                          Navigator.pop(context);
-                          widget.onEdit!();
-                        },
-                        icon: const Icon(Icons.edit),
-                        label: const Text('Chỉnh Sửa'),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: _isLoadingRoomData ? null : _exportToPDF,
-                        icon: _isLoadingRoomData 
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Icon(Icons.picture_as_pdf),
-                        label: const Text('Xuất PDF'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.red,
-                          foregroundColor: Colors.white,
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      if (widget.isAdmin && widget.onEdit != null)
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            icon: const Icon(Icons.edit),
+                            label: const Text('Chỉnh Sửa'),
+                            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+                            onPressed: () {
+                              Navigator.pop(context);
+                              widget.onEdit!();
+                            },
+                          ),
+                        ),
+                      if (widget.isAdmin && widget.onEdit != null)
+                        const SizedBox(width: 8),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          icon: _isLoadingRoomData
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.picture_as_pdf),
+                          label: const Text('Xuất PDF'),
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+                          onPressed: _isLoadingRoomData ? null : _exportToPDF,
                         ),
                       ),
-                    ),
-                  ] else if (widget.onEdit == null)
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: _isLoadingRoomData ? null : _exportToPDF,
-                        icon: _isLoadingRoomData 
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Icon(Icons.picture_as_pdf),
-                        label: const Text('Xuất PDF'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.red,
-                          foregroundColor: Colors.white,
-                        ),
-                      ),
-                    ),
+                    ],
+                  ),
                 ],
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  void _showDeleteConfirmation(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Xóa phiếu thanh toán'),
+          content: const Text('Bạn có chắc muốn xóa phiếu thanh toán này không?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Hủy'),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.pop(context);
+                await widget.paymentService.deletePayment(widget.payment.id);
+                if (mounted) {
+                  Navigator.pop(context, true);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Đã xóa phiếu thanh toán')),
+                  );
+                }
+              },
+              child: const Text('Xóa', style: TextStyle(color: Colors.red)),
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -796,6 +856,7 @@ class EditPaymentDialog extends StatefulWidget {
 class _EditPaymentDialogState extends State<EditPaymentDialog> {
   final _formKey = GlobalKey<FormState>();
   late TextEditingController _notesController;
+  late TextEditingController _taxAmountController;
   
   late String? _selectedTenantId;
   late String? _selectedTenantName;
@@ -811,6 +872,9 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> {
   void initState() {
     super.initState();
     _notesController = TextEditingController(text: widget.payment.notes);
+    _taxAmountController = TextEditingController(
+      text: widget.payment.taxAmount != null ? widget.payment.taxAmount.toString() : '0.0',
+    );
     _selectedTenantId = widget.payment.tenantId;
     _selectedTenantName = widget.payment.tenantName;
     _selectedPaymentStatus = widget.payment.status;
@@ -1243,6 +1307,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> {
         'status': _selectedPaymentStatus.name,
         'description': lineItemsDescription,
         'notes': _notesController.text.isEmpty ? null : _notesController.text,
+        'taxAmount': _taxAmountController.text.isEmpty ? null : double.parse(_taxAmountController.text),
       };
       
       // If single item with meter readings, preserve those
@@ -1280,6 +1345,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> {
   @override
   void dispose() {
     _notesController.dispose();
+    _taxAmountController.dispose();
     super.dispose();
   }
 
@@ -1425,6 +1491,27 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> {
                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                               ),
                               maxLines: 2,
+                            ),
+                            const SizedBox(height: 12),
+                            
+                            // Tax Amount
+                            TextFormField(
+                              controller: _taxAmountController,
+                              decoration: InputDecoration(
+                                labelText: 'Tiền thuế (VND)',
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                              ),
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              validator: (v) {
+                                if (v!.isNotEmpty) {
+                                  try {
+                                    double.parse(v);
+                                  } catch (e) {
+                                    return 'Vui lòng nhập số hợp lệ';
+                                  }
+                                }
+                                return null;
+                              },
                             ),
                           ],
                         ),

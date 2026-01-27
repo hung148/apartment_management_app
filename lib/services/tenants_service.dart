@@ -595,6 +595,28 @@ class TenantService {
   }
 
   // ========================================
+  // UPDATE - Update apartment details (type and area)
+  // ========================================
+  Future<bool> updateApartmentDetails(
+    String tenantId, {
+    String? apartmentType,
+    double? apartmentArea,
+  }) async {
+    final Map<String, dynamic> updateData = {};
+    
+    if (apartmentType != null) {
+      updateData['apartmentType'] = apartmentType;
+    }
+    if (apartmentArea != null) {
+      updateData['apartmentArea'] = apartmentArea;
+    }
+
+    if (updateData.isEmpty) return true;
+    
+    return updateTenant(tenantId, updateData);
+  }
+
+  // ========================================
   // DELETE - Delete a tenant
   // ========================================
   Future<bool> deleteTenant(String tenantId) async {

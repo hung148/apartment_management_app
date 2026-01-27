@@ -56,18 +56,28 @@ class Payment {
   final DateTime dueDate;
   
   // Electricity meter readings (chỉ số điện)
-  final double? electricityStartReading;  // NEW: Chỉ số đầu
-  final DateTime? electricityStartDate;   // NEW: Từ ngày (chỉ số đầu)
-  final double? electricityEndReading;    // NEW: Chỉ số cuối
-  final DateTime? electricityEndDate;     // NEW: Đến ngày (chỉ số cuối)
-  final double? electricityPricePerUnit;  // NEW: Giá điện/kWh
+  final double? electricityStartReading;  // Chỉ số đầu
+  final DateTime? electricityStartDate;   // Từ ngày (chỉ số đầu)
+  final double? electricityEndReading;    // Chỉ số cuối
+  final DateTime? electricityEndDate;     // Đến ngày (chỉ số cuối)
+  final double? electricityPricePerUnit;  // Giá điện/kWh
   
   // Water meter readings (chỉ số nước)
-  final double? waterStartReading;        // NEW: Chỉ số đầu
-  final DateTime? waterStartDate;         // NEW: Từ ngày (chỉ số đầu)
-  final double? waterEndReading;          // NEW: Chỉ số cuối
-  final DateTime? waterEndDate;           // NEW: Đến ngày (chỉ số cuối)
-  final double? waterPricePerUnit;        // NEW: Giá nước/m³
+  final double? waterStartReading;        // Chỉ số đầu
+  final DateTime? waterStartDate;         // Từ ngày (chỉ số đầu)
+  final double? waterEndReading;          // Chỉ số cuối
+  final DateTime? waterEndDate;           // Đến ngày (chỉ số cuối)
+  final double? waterPricePerUnit;        // Giá nước/m³
+  
+  // NEW: Additional Fees (for combined receipts)
+  final double? internetFee;              // NEW: Phí internet
+  final double? cableTVFee;               // NEW: Phí truyền hình cáp
+  final double? hotWaterFee;              // NEW: Phí nước nóng
+  final double? hotWaterPercent;          // NEW: % tính phí nước nóng
+  final double? managementFee;            // NEW: Phí quản lý (if different from rent)
+  
+  // Tax
+  final double? taxAmount;                // Tiền thuế / Tax amount
   
   // Payment tracking
   final DateTime createdAt;
@@ -114,6 +124,14 @@ class Payment {
     this.waterEndReading,
     this.waterEndDate,
     this.waterPricePerUnit,
+    // NEW: Additional fees
+    this.internetFee,
+    this.cableTVFee,
+    this.hotWaterFee,
+    this.hotWaterPercent,
+    this.managementFee,
+    // Tax
+    this.taxAmount,
     // Payment tracking
     required this.createdAt,
     this.paidAt,
@@ -133,15 +151,15 @@ class Payment {
                         (status == PaymentStatus.pending && DateTime.now().isAfter(dueDate));
   bool get isPartiallyPaid => status == PaymentStatus.partial;
   
-  double get remainingAmount => amount - paidAmount + (lateFee ?? 0);
-  double get totalAmount => amount + (lateFee ?? 0);
+  double get remainingAmount => amount - paidAmount + (lateFee ?? 0) + (taxAmount ?? 0);
+  double get totalAmount => amount + (lateFee ?? 0) + (taxAmount ?? 0);
   
   int get daysOverdue {
     if (!isOverdue) return 0;
     return DateTime.now().difference(dueDate).inDays;
   }
   
-  // NEW: Calculate electricity usage (số điện tiêu thụ)
+  // Calculate electricity usage (số điện tiêu thụ)
   double? get electricityUsage {
     if (electricityStartReading != null && electricityEndReading != null) {
       return electricityEndReading! - electricityStartReading!;
@@ -149,12 +167,23 @@ class Payment {
     return null;
   }
   
-  // NEW: Calculate water usage (số nước tiêu thụ)
+  // Calculate water usage (số nước tiêu thụ)
   double? get waterUsage {
     if (waterStartReading != null && waterEndReading != null) {
       return waterEndReading! - waterStartReading!;
     }
     return null;
+  }
+  
+  // NEW: Calculate total with all fees
+  double get totalWithAllFees {
+    double total = amount;
+    if (internetFee != null) total += internetFee!;
+    if (cableTVFee != null) total += cableTVFee!;
+    if (hotWaterFee != null) total += hotWaterFee!;
+    if (lateFee != null) total += lateFee!;
+    if (taxAmount != null) total += taxAmount!;
+    return total;
   }
 
   Map<String, dynamic> toMap() {
@@ -199,6 +228,14 @@ class Payment {
           ? Timestamp.fromDate(waterEndDate!)
           : null,
       'waterPricePerUnit': waterPricePerUnit,
+      // NEW: Additional fees
+      'internetFee': internetFee,
+      'cableTVFee': cableTVFee,
+      'hotWaterFee': hotWaterFee,
+      'hotWaterPercent': hotWaterPercent,
+      'managementFee': managementFee,
+      // Tax
+      'taxAmount': taxAmount,
       // Payment tracking
       'createdAt': Timestamp.fromDate(createdAt),
       'paidAt': paidAt != null ? Timestamp.fromDate(paidAt!) : null,
@@ -266,6 +303,14 @@ class Payment {
           ? (map['waterEndDate'] as Timestamp).toDate()
           : null,
       waterPricePerUnit: (map['waterPricePerUnit'] as num?)?.toDouble(),
+      // NEW: Additional fees
+      internetFee: (map['internetFee'] as num?)?.toDouble(),
+      cableTVFee: (map['cableTVFee'] as num?)?.toDouble(),
+      hotWaterFee: (map['hotWaterFee'] as num?)?.toDouble(),
+      hotWaterPercent: (map['hotWaterPercent'] as num?)?.toDouble(),
+      managementFee: (map['managementFee'] as num?)?.toDouble(),
+      // Tax
+      taxAmount: (map['taxAmount'] as num?)?.toDouble(),
       // Payment tracking
       createdAt: (map['createdAt'] as Timestamp).toDate(),
       paidAt: map['paidAt'] != null 
@@ -310,6 +355,12 @@ class Payment {
     double? waterEndReading,
     DateTime? waterEndDate,
     double? waterPricePerUnit,
+    double? internetFee,       // NEW
+    double? cableTVFee,        // NEW
+    double? hotWaterFee,       // NEW
+    double? hotWaterPercent,   // NEW
+    double? managementFee,     // NEW
+    double? taxAmount,         // NEW
     DateTime? createdAt,
     DateTime? paidAt,
     String? paidBy,
@@ -348,6 +399,12 @@ class Payment {
       waterEndReading: waterEndReading ?? this.waterEndReading,
       waterEndDate: waterEndDate ?? this.waterEndDate,
       waterPricePerUnit: waterPricePerUnit ?? this.waterPricePerUnit,
+      internetFee: internetFee ?? this.internetFee,               // NEW
+      cableTVFee: cableTVFee ?? this.cableTVFee,                 // NEW
+      hotWaterFee: hotWaterFee ?? this.hotWaterFee,               // NEW
+      hotWaterPercent: hotWaterPercent ?? this.hotWaterPercent,   // NEW
+      managementFee: managementFee ?? this.managementFee,         // NEW
+      taxAmount: taxAmount ?? this.taxAmount,                     // NEW
       createdAt: createdAt ?? this.createdAt,
       paidAt: paidAt ?? this.paidAt,
       paidBy: paidBy ?? this.paidBy,

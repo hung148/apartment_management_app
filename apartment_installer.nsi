@@ -12,7 +12,7 @@
 ; General Settings
 ;--------------------------------
 Name "Apartment Management"
-OutFile "installer_output\ApartmentManagement-Setup-1.0.2.exe"
+OutFile "installer_output\ApartmentManagement-Setup-1.0.2+6.exe"
 InstallDir "$PROGRAMFILES64\ApartmentManagement"
 InstallDirRegKey HKLM "Software\ApartmentManagement" "Install_Dir"
 RequestExecutionLevel admin

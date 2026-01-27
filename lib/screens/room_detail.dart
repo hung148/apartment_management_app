@@ -1804,6 +1804,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
         roomService: widget.roomService,
         buildingService: widget.buildingService,
         organization: widget.organization,
+        paymentService: _paymentService,
         onEdit: () => _showEditPaymentDialog(payment),
       ),
     );

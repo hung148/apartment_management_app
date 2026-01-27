@@ -84,6 +84,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> {
   late TextEditingController _descriptionController;
   late TextEditingController _notesController;
   late TextEditingController _lateFeeController;
+  late TextEditingController _taxAmountController;
   late TextEditingController _recurringParentIdController;
 
   String? _selectedBuildingId;
@@ -120,6 +121,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> {
     _descriptionController = TextEditingController();
     _notesController = TextEditingController();
     _lateFeeController = TextEditingController(text: '0.0');
+    _taxAmountController = TextEditingController(text: '0.0');
     _recurringParentIdController = TextEditingController();
     
     _selectedPaymentStatus = PaymentStatus.pending;
@@ -899,6 +901,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> {
           notes: _notesController.text.isEmpty ? null : _notesController.text,
           metadata: null,
           lateFee: _lateFeeController.text.isEmpty ? null : double.parse(_lateFeeController.text),
+          taxAmount: _taxAmountController.text.isEmpty ? null : double.parse(_taxAmountController.text),
           isRecurring: _isRecurring,
           recurringParentId: _recurringParentIdController.text.isEmpty ? null : _recurringParentIdController.text,
         );
@@ -951,6 +954,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> {
           notes: _notesController.text.isEmpty ? null : _notesController.text,
           metadata: null,
           lateFee: _lateFeeController.text.isEmpty ? null : double.parse(_lateFeeController.text),
+          taxAmount: _taxAmountController.text.isEmpty ? null : double.parse(_taxAmountController.text),
           isRecurring: _isRecurring,
           recurringParentId: _recurringParentIdController.text.isEmpty ? null : _recurringParentIdController.text,
         );
@@ -983,6 +987,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> {
     _descriptionController.dispose();
     _notesController.dispose();
     _lateFeeController.dispose();
+    _taxAmountController.dispose();
     _recurringParentIdController.dispose();
     super.dispose();
   }
@@ -1157,6 +1162,27 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> {
                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                               ),
                               maxLines: 2,
+                            ),
+                            const SizedBox(height: 12),
+                            
+                            // Tax Amount
+                            TextFormField(
+                              controller: _taxAmountController,
+                              decoration: InputDecoration(
+                                labelText: 'Tiền thuế (VND)',
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                              ),
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              validator: (v) {
+                                if (v!.isNotEmpty) {
+                                  try {
+                                    double.parse(v);
+                                  } catch (e) {
+                                    return 'Vui lòng nhập số hợp lệ';
+                                  }
+                                }
+                                return null;
+                              },
                             ),
                             const SizedBox(height: 24),
                             

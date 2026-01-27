@@ -1,3 +1,6 @@
 fix room detail hoa don and make look like in hoa don tab
 
 add vehicle management tab where it only dislay tenant vehicle with currently renting status
+
+fix den in xuat hoa don
+tax amount

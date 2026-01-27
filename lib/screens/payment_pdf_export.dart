@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:apartment_management_project_2/models/payment_model.dart';
 import 'package:apartment_management_project_2/models/organization_model.dart';
+import 'package:apartment_management_project_2/models/tenants_model.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -10,753 +11,581 @@ import 'package:printing/printing.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:path/path.dart' as p;
 
-// Helper class for invoice line items with meter readings
-class InvoiceLineItem {
-  String id;
-  PaymentType type;
-  double amount;
-  String? description;
-  
-  // Electricity fields
-  double? electricityStartReading;
-  DateTime? electricityStartDate;
-  double? electricityEndReading;
-  DateTime? electricityEndDate;
-  double? electricityPricePerUnit;
-  
-  // Water fields
-  double? waterStartReading;
-  DateTime? waterStartDate;
-  double? waterEndReading;
-  DateTime? waterEndDate;
-  double? waterPricePerUnit;
-  
-  // Billing period
-  DateTime? billingStartDate;
-  DateTime? billingEndDate;
-
-  InvoiceLineItem({
-    required this.id,
-    required this.type,
-    required this.amount,
-    this.description,
-    this.electricityStartReading,
-    this.electricityStartDate,
-    this.electricityEndReading,
-    this.electricityEndDate,
-    this.electricityPricePerUnit,
-    this.waterStartReading,
-    this.waterStartDate,
-    this.waterEndReading,
-    this.waterEndDate,
-    this.waterPricePerUnit,
-    this.billingStartDate,
-    this.billingEndDate,
-  });
-}
-
-// FIXED: Parse line items from payment - always show meter sections for electricity/water
-List<InvoiceLineItem> _parseLineItemsForPDF(Payment payment) {
-  // For electricity payments, ALWAYS create line item (even if some readings are null)
-  if (payment.type == PaymentType.electricity) {
-    return [
-      InvoiceLineItem(
-        id: payment.id,
-        type: payment.type,
-        amount: payment.amount,
-        description: payment.description,
-        electricityStartReading: payment.electricityStartReading,
-        electricityStartDate: payment.electricityStartDate,
-        electricityEndReading: payment.electricityEndReading,
-        electricityEndDate: payment.electricityEndDate,
-        electricityPricePerUnit: payment.electricityPricePerUnit,
-      ),
-    ];
-  }
-  
-  // For water payments, ALWAYS create line item (even if some readings are null)
-  if (payment.type == PaymentType.water) {
-    return [
-      InvoiceLineItem(
-        id: payment.id,
-        type: payment.type,
-        amount: payment.amount,
-        description: payment.description,
-        waterStartReading: payment.waterStartReading,
-        waterStartDate: payment.waterStartDate,
-        waterEndReading: payment.waterEndReading,
-        waterEndDate: payment.waterEndDate,
-        waterPricePerUnit: payment.waterPricePerUnit,
-      ),
-    ];
-  }
-  
-  if (payment.type == PaymentType.rent && payment.billingStartDate != null) {
-    return [
-      InvoiceLineItem(
-        id: payment.id,
-        type: payment.type,
-        amount: payment.amount,
-        description: payment.description,
-        billingStartDate: payment.billingStartDate,
-        billingEndDate: payment.billingEndDate,
-      ),
-    ];
-  }
-  
-  // Try to parse multi-line format from description
-  final description = payment.description;
-  if (description != null && description.contains('\n')) {
-    final lines = description.split('\n');
-    final items = <InvoiceLineItem>[];
-    
-    for (var line in lines) {
-      final match = RegExp(r'^([^:]+):\s*([\d,]+)\s*VND(?:\s*\((.+)\))?$').firstMatch(line.trim());
-      if (match != null) {
-        final typeLabel = match.group(1)?.trim() ?? '';
-        final amountStr = match.group(2)?.replaceAll(',', '') ?? '0';
-        final desc = match.group(3);
-        
-        PaymentType type = PaymentType.other;
-        const labelToType = {
-          'Tiền thuê': PaymentType.rent,
-          'Tiền điện': PaymentType.electricity,
-          'Tiền nước': PaymentType.water,
-          'Tiền internet': PaymentType.internet,
-          'Tiền gửi xe': PaymentType.parking,
-          'Phí bảo trì': PaymentType.maintenance,
-          'Tiền cọc': PaymentType.deposit,
-          'Tiền phạt': PaymentType.penalty,
-          'Khác': PaymentType.other,
-        };
-        
-        type = labelToType[typeLabel] ?? PaymentType.other;
-        
-        items.add(InvoiceLineItem(
-          id: DateTime.now().millisecondsSinceEpoch.toString() + items.length.toString(),
-          type: type,
-          amount: double.tryParse(amountStr) ?? 0,
-          description: desc,
-        ));
-      }
-    }
-    
-    if (items.isNotEmpty) return items;
-  }
-  
-  // Default: single line item
-  return [
-    InvoiceLineItem(
-      id: payment.id,
-      type: payment.type,
-      amount: payment.amount,
-      description: description,
-      billingStartDate: payment.billingStartDate,
-      billingEndDate: payment.billingEndDate,
-    ),
-  ];
-}
-
-// Get payment type label in Vietnamese
-String _getPaymentTypeLabel(PaymentType type) {
-  const labels = {
-    'rent': 'Tiền thuê',
-    'electricity': 'Tiền điện',
-    'water': 'Tiền nước',
-    'internet': 'Tiền internet',
-    'parking': 'Tiền gửi xe',
-    'maintenance': 'Phí bảo trì',
-    'deposit': 'Tiền cọc',
-    'penalty': 'Tiền phạt',
-    'other': 'Khác',
-  };
-  return labels[type.name] ?? type.name;
-}
-
-// Get payment status label in Vietnamese
-String _getPaymentStatusLabel(PaymentStatus status) {
-  const labels = {
-    'pending': 'Chờ thanh toán',
-    'paid': 'Đã thanh toán',
-    'overdue': 'Quá hạn',
-    'cancelled': 'Đã hủy',
-    'refunded': 'Đã hoàn tiền',
-    'partial': 'Thanh toán 1 phần',
-  };
-  return labels[status.name] ?? status.name;
-}
-
-// PDF Export Service
+/// Payment PDF Exporter - Fully Integrated with Tenant Model
+/// Creates Wyndham-style professional receipts with complete tenant integration
 class PaymentPDFExporter {
+  // ========================================
+  // FONT LOADING
+  // ========================================
   static Future<pw.Font> _loadVietnameseFont() async {
     try {
-      // Try to load a font that supports Vietnamese characters
       final fontData = await rootBundle.load('assets/fonts/Roboto-Regular.ttf');
       return pw.Font.ttf(fontData);
     } catch (e) {
-      // Fallback to default font if custom font not available
-      final fontData = await rootBundle.load('assets/fonts/Roboto-Regular.ttf');
-      return pw.Font.ttf(fontData);
+      print('Error loading Vietnamese font: $e');
+      throw Exception('Vietnamese font not found. Please add Roboto-Regular.ttf to assets/fonts/');
     }
   }
 
-  // Generate PDF for a single payment
-  static Future<pw.Document> generatePaymentPDF({
+  static Future<pw.Font> _loadVietneseBoldFont() async {
+    try {
+      final fontData = await rootBundle.load('assets/fonts/Roboto-Bold.ttf');
+      return pw.Font.ttf(fontData);
+    } catch (e) {
+      return _loadVietnameseFont();
+    }
+  }
+
+  // ========================================
+  // FORMATTING HELPERS
+  // ========================================
+  
+  static String formatCurrency(double amount) {
+    return NumberFormat('#,###', 'vi_VN').format(amount);
+  }
+
+  static String formatDate(DateTime date) {
+    return DateFormat('dd/MM/yyyy').format(date);
+  }
+
+  static String formatDateTime(DateTime dateTime) {
+    return DateFormat('dd/MM/yyyy HH:mm').format(dateTime);
+  }
+
+  static int calculateDaysBetween(DateTime start, DateTime end) {
+    return end.difference(start).inDays + 1;
+  }
+
+  static int calculateMonthsBetween(DateTime start, DateTime end) {
+    int months = (end.year - start.year) * 12 + end.month - start.month;
+    if (end.day >= start.day) months++;
+    return months.abs();
+  }
+
+  static String getPaymentTypeLabel(PaymentType type) {
+    const labels = {
+      'rent': 'PHÍ QUẢN LÝ',
+      'electricity': 'PHÍ ĐIỆN SINH HOẠT',
+      'water': 'PHÍ NƯỚC SINH HOẠT',
+      'internet': 'PHÍ INTERNET',
+      'parking': 'PHÍ GỬI XE',
+      'maintenance': 'PHÍ BẢO TRÌ',
+      'deposit': 'TIỀN CỌC',
+      'penalty': 'TIỀN PHẠT',
+      'other': 'KHÁC',
+    };
+    return labels[type.name] ?? type.name.toUpperCase();
+  }
+
+  // ========================================
+  // MAIN PDF GENERATION WITH TENANT INTEGRATION
+  // ========================================
+  
+  static Future<pw.Document> generateOwnerFeeReceipt({
     required Payment payment,
     required Organization organization,
+    Tenant? tenant, // Direct tenant integration
     String? roomNumber,
     String? buildingName,
+    
+    // Optional overrides (if not using tenant/payment data)
+    String? apartmentTypeOverride,
+    double? areaOverride,
+    String? tenantNameOverride,
+    DateTime? handoverDateOverride,
+    
+    // Optional fee overrides (use payment fields if available)
+    double? internetFeeOverride,
+    double? cableTVFeeOverride,
+    double? hotWaterFeeOverride,
+    double? hotWaterPercentOverride,
+    
+    // Additional info
+    String? email,
+    String? remark,
   }) async {
     final pdf = pw.Document();
-    final lineItems = _parseLineItemsForPDF(payment);
     
-    // Try to load Vietnamese font
-    pw.Font? vietnameseFont;
     try {
-      vietnameseFont = await _loadVietnameseFont();
-    } catch (e) {
-      // Will use default font
-    }
+      final regularFont = await _loadVietnameseFont();
+      final boldFont = await _loadVietneseBoldFont();
 
-    pdf.addPage(
-      pw.Page(
-        pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.all(40),
-        build: (pw.Context context) {
-          return pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              // Header
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+      // Extract data from tenant or use overrides
+      final tenantName = tenant?.fullName ?? tenantNameOverride ?? 'N/A';
+      final handoverDate = tenant?.moveInDate ?? handoverDateOverride;
+      final contactEmail = tenant?.email ?? email ?? organization.email;
+      final apartmentType = tenant?.apartmentType ?? apartmentTypeOverride;
+      final area = tenant?.apartmentArea ?? areaOverride;
+      
+      // Calculate billing period details
+      final billingStart = payment.billingStartDate;
+      final billingEnd = payment.billingEndDate;
+      final daysUsed = (billingStart != null && billingEnd != null) 
+          ? calculateDaysBetween(billingStart, billingEnd) 
+          : 0;
+      final monthsUsed = (billingStart != null && billingEnd != null)
+          ? calculateMonthsBetween(billingStart, billingEnd)
+          : 0;
+
+      // Determine fees - use payment fields first, then overrides
+      double managementFee = 0;
+      double electricityFee = 0;
+      double waterFee = 0;
+      double actualInternetFee = payment.internetFee ?? internetFeeOverride ?? 0;
+      double actualCableTVFee = payment.cableTVFee ?? cableTVFeeOverride ?? 0;
+      double actualHotWaterFee = payment.hotWaterFee ?? hotWaterFeeOverride ?? 0;
+      double actualHotWaterPercent = payment.hotWaterPercent ?? hotWaterPercentOverride ?? 0;
+
+      switch (payment.type) {
+        case PaymentType.rent:
+          managementFee = payment.amount;
+          break;
+        case PaymentType.electricity:
+          electricityFee = payment.amount;
+          break;
+        case PaymentType.water:
+          waterFee = payment.amount;
+          break;
+        case PaymentType.internet:
+          actualInternetFee = payment.amount;
+          break;
+        case PaymentType.parking:
+          actualCableTVFee = payment.amount;
+          break;
+        default:
+          managementFee = payment.amount;
+      }
+
+      // Calculate subtotal and tax
+      final subtotal = managementFee + electricityFee + waterFee + 
+                      actualInternetFee + actualCableTVFee + actualHotWaterFee;
+      // Use tax from payment model if available, otherwise calculate 10% of subtotal
+      final taxAmount = payment.taxAmount ?? (subtotal * 0.10);
+      final grandTotal = subtotal + taxAmount;
+
+      // Billing period text
+      final billingPeriod = billingStart != null && billingEnd != null
+          ? '${formatDate(billingStart)} đến ${formatDate(billingEnd)} / From ${formatDate(billingStart)} to ${formatDate(billingEnd)}'
+          : '';
+
+      pdf.addPage(
+        pw.Page(
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(40),
+          build: (context) {
+            return pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                // ========================================
+                // HEADER
+                // ========================================
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text(
+                          organization.name.toUpperCase(),
+                          style: pw.TextStyle(
+                            fontSize: 16,
+                            fontWeight: pw.FontWeight.bold,
+                            font: boldFont,
+                            color: PdfColors.blue900,
+                          ),
+                        ),
+                        if (buildingName != null) ...[
+                          pw.SizedBox(height: 4),
+                          pw.Text(
+                            buildingName,
+                            style: pw.TextStyle(
+                              fontSize: 11,
+                              font: regularFont,
+                              color: PdfColors.grey700,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+                
+                pw.SizedBox(height: 20),
+                
+                // ========================================
+                // TITLE
+                // ========================================
+                pw.Center(
+                  child: pw.Column(
                     children: [
                       pw.Text(
-                        organization.name,
+                        'THU PHÍ CHỦ CĂN HỘ / APARTMENT OWNER FEE RECEIPT ${roomNumber ?? ''}',
                         style: pw.TextStyle(
-                          fontSize: 24,
+                          fontSize: 14,
                           fontWeight: pw.FontWeight.bold,
-                          font: vietnameseFont,
+                          font: boldFont,
                         ),
+                        textAlign: pw.TextAlign.center,
                       ),
                       pw.SizedBox(height: 4),
-                      if (organization.address != null && organization.address!.isNotEmpty)
+                      if (billingPeriod.isNotEmpty)
                         pw.Text(
-                          organization.address!,
-                          style: pw.TextStyle(fontSize: 10, font: vietnameseFont),
+                          '($billingPeriod)',
+                          style: pw.TextStyle(
+                            fontSize: 9,
+                            font: regularFont,
+                            fontStyle: pw.FontStyle.italic,
+                          ),
+                          textAlign: pw.TextAlign.center,
                         ),
-                      if (organization.phone != null && organization.phone!.isNotEmpty)
-                        pw.Text(
-                          'Tel: ${organization.phone!}',
-                          style: pw.TextStyle(fontSize: 10, font: vietnameseFont),
-                        ),
-                      if (organization.email != null && organization.email!.isNotEmpty)
-                        pw.Text(
-                          'Email: ${organization.email!}',
-                          style: pw.TextStyle(fontSize: 9, font: vietnameseFont),
-                        ),
-                    ],
-                  ),
-                  pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.end,
-                    children: [
+                      pw.SizedBox(height: 2),
                       pw.Text(
-                        'HOA DON',
+                        'Đơn vị tính/Currency unit: VND',
                         style: pw.TextStyle(
-                          fontSize: 28,
-                          fontWeight: pw.FontWeight.bold,
-                          font: vietnameseFont,
+                          fontSize: 8,
+                          font: regularFont,
+                          fontStyle: pw.FontStyle.italic,
                         ),
-                      ),
-                      pw.Text(
-                        'Invoice #${payment.id.substring(0, 8)}',
-                        style: pw.TextStyle(fontSize: 10, font: vietnameseFont),
+                        textAlign: pw.TextAlign.center,
                       ),
                     ],
-                  ),
-                ],
-              ),
-              
-              pw.SizedBox(height: 30),
-              pw.Divider(thickness: 2),
-              pw.SizedBox(height: 20),
-              
-              // Payment Info
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
-                    children: [
-                      pw.Text(
-                        'THONG TIN KHACH HANG',
-                        style: pw.TextStyle(
-                          fontSize: 12,
-                          fontWeight: pw.FontWeight.bold,
-                          font: vietnameseFont,
-                        ),
-                      ),
-                      pw.SizedBox(height: 8),
-                      pw.Text(
-                        'Nguoi thue: ${payment.tenantName ?? "Chua xac dinh"}',
-                        style: pw.TextStyle(fontSize: 11, font: vietnameseFont),
-                      ),
-                      if (buildingName != null)
-                        pw.Text(
-                          'Toa nha: $buildingName',
-                          style: pw.TextStyle(fontSize: 11, font: vietnameseFont),
-                        ),
-                      if (roomNumber != null)
-                        pw.Text(
-                          'Phong: $roomNumber',
-                          style: pw.TextStyle(fontSize: 11, font: vietnameseFont),
-                        ),
-                    ],
-                  ),
-                  pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.end,
-                    children: [
-                      pw.Text(
-                        'THONG TIN HOA DON',
-                        style: pw.TextStyle(
-                          fontSize: 12,
-                          fontWeight: pw.FontWeight.bold,
-                          font: vietnameseFont,
-                        ),
-                      ),
-                      pw.SizedBox(height: 8),
-                      pw.Text(
-                        'Ngay tao: ${DateFormat('dd/MM/yyyy').format(payment.createdAt)}',
-                        style: pw.TextStyle(fontSize: 11, font: vietnameseFont),
-                      ),
-                      pw.Text(
-                        'Han thanh toan: ${DateFormat('dd/MM/yyyy').format(payment.dueDate)}',
-                        style: pw.TextStyle(fontSize: 11, font: vietnameseFont),
-                      ),
-                      pw.Text(
-                        'Trang thai: ${_getPaymentStatusLabel(payment.status)}',
-                        style: pw.TextStyle(fontSize: 11, font: vietnameseFont),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              
-              pw.SizedBox(height: 30),
-              
-              // Line Items Table
-              pw.Table(
-                border: pw.TableBorder.all(color: PdfColors.grey400),
-                columnWidths: {
-                  0: const pw.FlexColumnWidth(1),
-                  1: const pw.FlexColumnWidth(3),
-                  2: const pw.FlexColumnWidth(4),
-                  3: const pw.FlexColumnWidth(2),
-                },
-                children: [
-                  // Header Row
-                  pw.TableRow(
-                    decoration: const pw.BoxDecoration(color: PdfColors.grey300),
-                    children: [
-                      pw.Padding(
-                        padding: const pw.EdgeInsets.all(8),
-                        child: pw.Text(
-                          'STT',
-                          style: pw.TextStyle(
-                            fontWeight: pw.FontWeight.bold,
-                            font: vietnameseFont,
-                          ),
-                        ),
-                      ),
-                      pw.Padding(
-                        padding: const pw.EdgeInsets.all(8),
-                        child: pw.Text(
-                          'KHOAN MUC',
-                          style: pw.TextStyle(
-                            fontWeight: pw.FontWeight.bold,
-                            font: vietnameseFont,
-                          ),
-                        ),
-                      ),
-                      pw.Padding(
-                        padding: const pw.EdgeInsets.all(8),
-                        child: pw.Text(
-                          'CHI TIET',
-                          style: pw.TextStyle(
-                            fontWeight: pw.FontWeight.bold,
-                            font: vietnameseFont,
-                          ),
-                        ),
-                      ),
-                      pw.Padding(
-                        padding: const pw.EdgeInsets.all(8),
-                        child: pw.Text(
-                          'SO TIEN',
-                          style: pw.TextStyle(
-                            fontWeight: pw.FontWeight.bold,
-                            font: vietnameseFont,
-                          ),
-                          textAlign: pw.TextAlign.right,
-                        ),
-                      ),
-                    ],
-                  ),
-                  // Line Item Rows
-                  ...List.generate(lineItems.length, (index) {
-                    final item = lineItems[index];
-                    
-                    // Build details text - ALWAYS show meter sections for electricity/water
-                    String detailsText = '';
-                    
-                    // FIXED: ALWAYS show electricity meter section, display N/A for null values
-                    if (item.type == PaymentType.electricity) {
-                      // Start reading
-                      detailsText = 'Chi so dau: ';
-                      if (item.electricityStartReading != null) {
-                        detailsText += '${item.electricityStartReading} kWh';
-                        if (item.electricityStartDate != null) {
-                          detailsText += ' (${DateFormat('dd/MM/yyyy').format(item.electricityStartDate!)})';
-                        }
-                      } else {
-                        detailsText += 'N/A';
-                      }
-                      
-                      // End reading
-                      detailsText += '\nChi so cuoi: ';
-                      if (item.electricityEndReading != null) {
-                        detailsText += '${item.electricityEndReading} kWh';
-                        if (item.electricityEndDate != null) {
-                          detailsText += ' (${DateFormat('dd/MM/yyyy').format(item.electricityEndDate!)})';
-                        }
-                      } else {
-                        detailsText += 'N/A';
-                      }
-                      
-                      // Usage calculation
-                      if (item.electricityStartReading != null && item.electricityEndReading != null) {
-                        final usage = item.electricityEndReading! - item.electricityStartReading!;
-                        detailsText += '\nTieu thu: ${usage.toStringAsFixed(1)} kWh';
-                        if (item.electricityPricePerUnit != null && item.electricityPricePerUnit! > 0) {
-                          detailsText += ' x ${NumberFormat('#,###').format(item.electricityPricePerUnit)} d/kWh';
-                        }
-                      } else {
-                        detailsText += '\nTieu thu: N/A';
-                      }
-                      
-                      // Add description if available
-                      if (item.description != null && item.description!.isNotEmpty) {
-                        detailsText += '\n${item.description}';
-                      }
-                    }
-                    // FIXED: ALWAYS show water meter section, display N/A for null values
-                    else if (item.type == PaymentType.water) {
-                      // Start reading
-                      detailsText = 'Chi so dau: ';
-                      if (item.waterStartReading != null) {
-                        detailsText += '${item.waterStartReading} m3';
-                        if (item.waterStartDate != null) {
-                          detailsText += ' (${DateFormat('dd/MM/yyyy').format(item.waterStartDate!)})';
-                        }
-                      } else {
-                        detailsText += 'N/A';
-                      }
-                      
-                      // End reading
-                      detailsText += '\nChi so cuoi: ';
-                      if (item.waterEndReading != null) {
-                        detailsText += '${item.waterEndReading} m3';
-                        if (item.waterEndDate != null) {
-                          detailsText += ' (${DateFormat('dd/MM/yyyy').format(item.waterEndDate!)})';
-                        }
-                      } else {
-                        detailsText += 'N/A';
-                      }
-                      
-                      // Usage calculation
-                      if (item.waterStartReading != null && item.waterEndReading != null) {
-                        final usage = item.waterEndReading! - item.waterStartReading!;
-                        detailsText += '\nTieu thu: ${usage.toStringAsFixed(1)} m3';
-                        if (item.waterPricePerUnit != null && item.waterPricePerUnit! > 0) {
-                          detailsText += ' x ${NumberFormat('#,###').format(item.waterPricePerUnit)} d/m3';
-                        }
-                      } else {
-                        detailsText += '\nTieu thu: N/A';
-                      }
-                      
-                      // Add description if available
-                      if (item.description != null && item.description!.isNotEmpty) {
-                        detailsText += '\n${item.description}';
-                      }
-                    }
-                    // Billing period
-                    else if (item.billingStartDate != null && item.billingEndDate != null) {
-                      detailsText = 'Ky: ${DateFormat('dd/MM/yyyy').format(item.billingStartDate!)} - ${DateFormat('dd/MM/yyyy').format(item.billingEndDate!)}';
-                      // Include description if available
-                      if (item.description != null && item.description!.isNotEmpty) {
-                        detailsText += '\n${item.description}';
-                      }
-                    }
-                    // Description
-                    else if (item.description != null && item.description!.isNotEmpty) {
-                      detailsText = item.description!;
-                    }
-                    // FIXED: Fallback - check payment's original description first
-                    else {
-                      // First priority: use the original payment description if available
-                      if (payment.description != null && payment.description!.isNotEmpty) {
-                        detailsText = payment.description!;
-                      } else {
-                        // Generate meaningful description based on payment type and date
-                        switch (item.type) {
-                          case PaymentType.electricity:
-                            detailsText = 'Tien dien thang ${DateFormat('MM/yyyy').format(payment.dueDate)}';
-                            break;
-                          case PaymentType.water:
-                            detailsText = 'Tien nuoc thang ${DateFormat('MM/yyyy').format(payment.dueDate)}';
-                            break;
-                          case PaymentType.rent:
-                            detailsText = 'Tien thue thang ${DateFormat('MM/yyyy').format(payment.dueDate)}';
-                            break;
-                          case PaymentType.internet:
-                            detailsText = 'Tien internet thang ${DateFormat('MM/yyyy').format(payment.dueDate)}';
-                            break;
-                          case PaymentType.parking:
-                            detailsText = 'Tien gui xe thang ${DateFormat('MM/yyyy').format(payment.dueDate)}';
-                            break;
-                          case PaymentType.maintenance:
-                            detailsText = 'Phi bao tri thang ${DateFormat('MM/yyyy').format(payment.dueDate)}';
-                            break;
-                          case PaymentType.deposit:
-                            detailsText = 'Tien coc';
-                            break;
-                          case PaymentType.penalty:
-                            detailsText = 'Tien phat';
-                            break;
-                          default:
-                            detailsText = 'Khoan thanh toan';
-                        }
-                      }
-                    }
-                    
-                    return pw.TableRow(
-                      children: [
-                        pw.Padding(
-                          padding: const pw.EdgeInsets.all(8),
-                          child: pw.Text(
-                            '${index + 1}',
-                            style: pw.TextStyle(font: vietnameseFont),
-                          ),
-                        ),
-                        pw.Padding(
-                          padding: const pw.EdgeInsets.all(8),
-                          child: pw.Text(
-                            _getPaymentTypeLabel(item.type),
-                            style: pw.TextStyle(font: vietnameseFont),
-                          ),
-                        ),
-                        pw.Padding(
-                          padding: const pw.EdgeInsets.all(8),
-                          child: pw.Text(
-                            detailsText,
-                            style: pw.TextStyle(fontSize: 9, font: vietnameseFont),
-                          ),
-                        ),
-                        pw.Padding(
-                          padding: const pw.EdgeInsets.all(8),
-                          child: pw.Text(
-                            '${NumberFormat('#,###').format(item.amount)} d',
-                            style: pw.TextStyle(font: vietnameseFont),
-                            textAlign: pw.TextAlign.right,
-                          ),
-                        ),
-                      ],
-                    );
-                  }),
-                  // Subtotal Row
-                  pw.TableRow(
-                    decoration: const pw.BoxDecoration(color: PdfColors.grey200),
-                    children: [
-                      pw.Padding(
-                        padding: const pw.EdgeInsets.all(8),
-                        child: pw.Text(''),
-                      ),
-                      pw.Padding(
-                        padding: const pw.EdgeInsets.all(8),
-                        child: pw.Text(
-                          'TONG CONG',
-                          style: pw.TextStyle(
-                            fontWeight: pw.FontWeight.bold,
-                            font: vietnameseFont,
-                          ),
-                        ),
-                      ),
-                      pw.Padding(
-                        padding: const pw.EdgeInsets.all(8),
-                        child: pw.Text(''),
-                      ),
-                      pw.Padding(
-                        padding: const pw.EdgeInsets.all(8),
-                        child: pw.Text(
-                          '${NumberFormat('#,###').format(payment.amount)} VND',
-                          style: pw.TextStyle(
-                            fontWeight: pw.FontWeight.bold,
-                            fontSize: 12,
-                            font: vietnameseFont,
-                          ),
-                          textAlign: pw.TextAlign.right,
-                        ),
-                      ),
-                    ],
-                  ),
-                  // Late Fee Row (if applicable)
-                  if (payment.lateFee != null && payment.lateFee! > 0)
-                    pw.TableRow(
-                      children: [
-                        pw.Padding(
-                          padding: const pw.EdgeInsets.all(8),
-                          child: pw.Text(''),
-                        ),
-                        pw.Padding(
-                          padding: const pw.EdgeInsets.all(8),
-                          child: pw.Text(
-                            'Phi tre han',
-                            style: pw.TextStyle(
-                              font: vietnameseFont,
-                              color: PdfColors.red,
-                            ),
-                          ),
-                        ),
-                        pw.Padding(
-                          padding: const pw.EdgeInsets.all(8),
-                          child: pw.Text(''),
-                        ),
-                        pw.Padding(
-                          padding: const pw.EdgeInsets.all(8),
-                          child: pw.Text(
-                            '+ ${NumberFormat('#,###').format(payment.lateFee!)} VND',
-                            style: pw.TextStyle(
-                              font: vietnameseFont,
-                              color: PdfColors.red,
-                            ),
-                            textAlign: pw.TextAlign.right,
-                          ),
-                        ),
-                      ],
-                    ),
-                  // Total with Late Fee (if applicable)
-                  if (payment.lateFee != null && payment.lateFee! > 0)
-                    pw.TableRow(
-                      decoration: const pw.BoxDecoration(color: PdfColors.grey300),
-                      children: [
-                        pw.Padding(
-                          padding: const pw.EdgeInsets.all(8),
-                          child: pw.Text(''),
-                        ),
-                        pw.Padding(
-                          padding: const pw.EdgeInsets.all(8),
-                          child: pw.Text(
-                            'TONG THANH TOAN',
-                            style: pw.TextStyle(
-                              fontWeight: pw.FontWeight.bold,
-                              font: vietnameseFont,
-                            ),
-                          ),
-                        ),
-                        pw.Padding(
-                          padding: const pw.EdgeInsets.all(8),
-                          child: pw.Text(''),
-                        ),
-                        pw.Padding(
-                          padding: const pw.EdgeInsets.all(8),
-                          child: pw.Text(
-                            '${NumberFormat('#,###').format(payment.totalAmount)} VND',
-                            style: pw.TextStyle(
-                              fontWeight: pw.FontWeight.bold,
-                              fontSize: 14,
-                              font: vietnameseFont,
-                            ),
-                            textAlign: pw.TextAlign.right,
-                          ),
-                        ),
-                      ],
-                    ),
-                ],
-              ),
-              
-              pw.SizedBox(height: 30),
-              
-              // Notes
-              if (payment.notes != null && payment.notes!.isNotEmpty) ...[
-                pw.Text(
-                  'GHI CHU',
-                  style: pw.TextStyle(
-                    fontSize: 12,
-                    fontWeight: pw.FontWeight.bold,
-                    font: vietnameseFont,
                   ),
                 ),
-                pw.SizedBox(height: 8),
-                pw.Container(
-                  padding: const pw.EdgeInsets.all(12),
-                  decoration: pw.BoxDecoration(
-                    color: PdfColors.grey200,
-                    borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
-                  ),
-                  child: pw.Text(
-                    payment.notes!,
-                    style: pw.TextStyle(fontSize: 10, font: vietnameseFont),
-                  ),
-                ),
+                
                 pw.SizedBox(height: 20),
-              ],
-              
-              pw.Spacer(),
-              
-              // Footer
-              pw.Divider(),
-              pw.SizedBox(height: 10),
-              pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-                children: [
-                  pw.Text(
-                    'Cam on quy khach!',
-                    style: pw.TextStyle(
-                      fontSize: 10,
-                      fontStyle: pw.FontStyle.italic,
-                      font: vietnameseFont,
+                
+                // ========================================
+                // BASIC INFORMATION TABLE
+                // ========================================
+                pw.Table(
+                  border: pw.TableBorder.all(color: PdfColors.grey600, width: 0.5),
+                  columnWidths: {
+                    0: const pw.FlexColumnWidth(2),
+                    1: const pw.FlexColumnWidth(1),
+                  },
+                  children: [
+                    _buildInfoRow('MÃ CĂN / APARTMENT CODE', roomNumber ?? 'N/A', regularFont, boldFont),
+                    _buildInfoRow('LOẠI CĂN HỘ / APARTMENT TYPE', apartmentType ?? 'N/A', regularFont, boldFont),
+                    _buildInfoRow('HỌ VÀ TÊN CHỦ CĂN HỘ / OWNER\'S FULL NAME', tenantName, regularFont, boldFont),
+                    _buildInfoRow('NGÀY BÀN GIAO ĐƯA VÀO SỬ DỤNG / HANDOVER DATE', 
+                        handoverDate != null ? formatDate(handoverDate) : 'N/A', regularFont, boldFont),
+                    _buildInfoRow('ĐẾN NGÀY / UNTIL DATE', 
+                        billingEnd != null ? formatDate(billingEnd) : 'N/A', regularFont, boldFont),
+                    _buildInfoRow('SỐ NGÀY SỬ DỤNG / NUMBER OF DAYS USED', daysUsed.toString(), regularFont, boldFont),
+                    _buildInfoRow('SỐ THÁNG SỬ DỤNG / NUMBER OF MONTHS USED', monthsUsed.toString(), regularFont, boldFont),
+                    _buildInfoRow('PHÍ QUẢN LÝ / MANAGEMENT FEE', formatCurrency(managementFee), regularFont, boldFont),
+                    _buildInfoRow('Diện tích / Area', area != null ? area.toStringAsFixed(2) : '0.00', regularFont, boldFont),
+                    _buildInfoRow('Đơn giá / Unit price', 
+                        area != null && area > 0 && monthsUsed > 0
+                            ? formatCurrency(managementFee / area / monthsUsed)
+                            : '0', regularFont, boldFont),
+                  ],
+                ),
+                
+                pw.SizedBox(height: 10),
+                
+                // ========================================
+                // ELECTRICITY SECTION
+                // ========================================
+                pw.Table(
+                  border: pw.TableBorder.all(color: PdfColors.grey600, width: 0.5),
+                  columnWidths: {
+                    0: const pw.FlexColumnWidth(2),
+                    1: const pw.FlexColumnWidth(1),
+                  },
+                  children: [
+                    _buildInfoRow('PHÍ ĐIỆN SINH HOẠT / ELECTRICITY FEE', formatCurrency(electricityFee), regularFont, boldFont),
+                    _buildInfoRow('KWH sử dụng / KWH used', 
+                        payment.electricityUsage?.toStringAsFixed(2) ?? '0.00', regularFont, boldFont),
+                    _buildInfoRow('Đơn giá / Unit price', 
+                        payment.electricityPricePerUnit != null 
+                            ? formatCurrency(payment.electricityPricePerUnit!)
+                            : '0', regularFont, boldFont),
+                  ],
+                ),
+                
+                pw.SizedBox(height: 10),
+                
+                // ========================================
+                // WATER SECTION
+                // ========================================
+                pw.Table(
+                  border: pw.TableBorder.all(color: PdfColors.grey600, width: 0.5),
+                  columnWidths: {
+                    0: const pw.FlexColumnWidth(2),
+                    1: const pw.FlexColumnWidth(1),
+                  },
+                  children: [
+                    _buildInfoRow('PHÍ NƯỚC SINH HOẠT / WATER FEE', formatCurrency(waterFee), regularFont, boldFont),
+                    _buildInfoRow('Số sử dụng / Consumption', 
+                        payment.waterUsage?.toStringAsFixed(2) ?? '0.00', regularFont, boldFont),
+                    _buildInfoRow('Đơn giá / Unit price', 
+                        payment.waterPricePerUnit != null 
+                            ? formatCurrency(payment.waterPricePerUnit!)
+                            : '0', regularFont, boldFont),
+                  ],
+                ),
+                
+                pw.SizedBox(height: 10),
+                
+                // ========================================
+                // OTHER FEES
+                // ========================================
+                pw.Table(
+                  border: pw.TableBorder.all(color: PdfColors.grey600, width: 0.5),
+                  columnWidths: {
+                    0: const pw.FlexColumnWidth(2),
+                    1: const pw.FlexColumnWidth(1),
+                  },
+                  children: [
+                    _buildInfoRow('PHÍ INTERNET (300.000/1 THÁNG) / INTERNET FEE (VND 300,000 PER MONTH)', 
+                        formatCurrency(actualInternetFee), regularFont, boldFont),
+                    _buildInfoRow('PHÍ TRUYỀN HÌNH CẤP (100.000/1 TIVI) / CABLE TV FEE (VND 100,000 PER TV)', 
+                        formatCurrency(actualCableTVFee), regularFont, boldFont),
+                    _buildInfoRow('PHÍ NƯỚC NÓNG (% TÍNH PHÍ: ${actualHotWaterPercent.toStringAsFixed(2)}%) / HOT WATER FEE (% CHARGE APPLIED: ${actualHotWaterPercent.toStringAsFixed(2)}%)', 
+                        formatCurrency(actualHotWaterFee), regularFont, boldFont),
+                  ],
+                ),
+                
+                pw.SizedBox(height: 10),
+                
+                // ========================================
+                // TOTALS
+                // ========================================
+                pw.Table(
+                  border: pw.TableBorder.all(color: PdfColors.grey600, width: 0.5),
+                  columnWidths: {
+                    0: const pw.FlexColumnWidth(2),
+                    1: const pw.FlexColumnWidth(1),
+                  },
+                  children: [
+                    _buildTotalRow('TỔNG CỘNG / SUBTOTAL', formatCurrency(subtotal), regularFont, boldFont, false),
+                    _buildTotalRow('TIỀN THUẾ / TAX AMOUNT', formatCurrency(taxAmount), regularFont, boldFont, false),
+                    _buildTotalRow('TỔNG THANH TOÁN / TOTAL PAYMENT', formatCurrency(grandTotal), regularFont, boldFont, true),
+                  ],
+                ),
+                
+                pw.SizedBox(height: 10),
+                
+                // ========================================
+                // CONTACT INFO
+                // ========================================
+                pw.Table(
+                  border: pw.TableBorder.all(color: PdfColors.grey600, width: 0.5),
+                  columnWidths: {
+                    0: const pw.FlexColumnWidth(2),
+                    1: const pw.FlexColumnWidth(1),
+                  },
+                  children: [
+                    _buildInfoRow('Email', contactEmail ?? '', regularFont, boldFont, isLink: true),
+                    _buildInfoRow('GHI CHÚ/ REMARK', remark ?? payment.notes ?? '', regularFont, boldFont, isMultiline: true),
+                  ],
+                ),
+                
+                pw.Spacer(),
+                
+                // ========================================
+                // BANK TRANSFER INFORMATION
+                // ========================================
+                if (organization.hasBankInfo)
+                  pw.Container(
+                    padding: const pw.EdgeInsets.all(10),
+                    decoration: pw.BoxDecoration(
+                      border: pw.Border.all(color: PdfColors.grey600, width: 0.5),
+                      color: PdfColors.grey100,
+                    ),
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text(
+                          'THÔNG TIN CHUYỂN KHOẢN / TRANSFER INFORMATION',
+                          style: pw.TextStyle(
+                            fontSize: 11,
+                            fontWeight: pw.FontWeight.bold,
+                            font: boldFont,
+                          ),
+                        ),
+                        pw.SizedBox(height: 6),
+                        _buildBankInfoRow('● Account Name: ', organization.bankAccountName ?? 'N/A', regularFont, boldFont),
+                        _buildBankInfoRow('● Account Number: ', organization.bankAccountNumber ?? 'N/A', regularFont, boldFont),
+                        _buildBankInfoRow('● Bank Name: ', organization.bankName ?? 'N/A', regularFont, boldFont),
+                      ],
                     ),
                   ),
-                  pw.Text(
-                    'In luc: ${DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now())}',
-                    style: pw.TextStyle(fontSize: 8, font: vietnameseFont),
-                  ),
-                ],
-              ),
-            ],
-          );
-        },
-      ),
-    );
+                
+                pw.SizedBox(height: 15),
+                
+                // ========================================
+                // FOOTER
+                // ========================================
+                pw.Divider(color: PdfColors.grey400),
+                pw.SizedBox(height: 8),
+                pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Text(
+                      'Generated: ${formatDateTime(DateTime.now())}',
+                      style: pw.TextStyle(fontSize: 8, font: regularFont, color: PdfColors.grey600),
+                    ),
+                    pw.Text(
+                      'Receipt ID: ${payment.id.substring(0, min(8, payment.id.length)).toUpperCase()}',
+                      style: pw.TextStyle(fontSize: 8, font: regularFont, color: PdfColors.grey600),
+                    ),
+                  ],
+                ),
+              ],
+            );
+          },
+        ),
+      );
 
-    return pdf;
+      return pdf;
+    } catch (e) {
+      print('Error generating PDF: $e');
+      rethrow;
+    }
   }
 
-  // Show PDF preview and allow save/print
+  // ========================================
+  // HELPER METHODS FOR TABLE ROWS
+  // ========================================
+  
+  static pw.TableRow _buildInfoRow(
+    String label, 
+    String value, 
+    pw.Font regularFont, 
+    pw.Font boldFont, {
+    bool isLink = false,
+    bool isMultiline = false,
+  }) {
+    return pw.TableRow(
+      children: [
+        pw.Padding(
+          padding: const pw.EdgeInsets.all(6),
+          child: pw.Text(
+            label,
+            style: pw.TextStyle(fontSize: 9, font: regularFont),
+          ),
+        ),
+        pw.Padding(
+          padding: const pw.EdgeInsets.all(6),
+          child: pw.Text(
+            value,
+            style: pw.TextStyle(
+              fontSize: 9, 
+              font: boldFont,
+              color: isLink ? PdfColors.blue700 : PdfColors.black,
+              decoration: isLink ? pw.TextDecoration.underline : null,
+            ),
+            textAlign: pw.TextAlign.right,
+            maxLines: isMultiline ? 3 : 1,
+          ),
+        ),
+      ],
+    );
+  }
+  
+  static pw.TableRow _buildTotalRow(
+    String label, 
+    String value, 
+    pw.Font regularFont, 
+    pw.Font boldFont,
+    bool isGrandTotal,
+  ) {
+    return pw.TableRow(
+      decoration: isGrandTotal 
+          ? const pw.BoxDecoration(color: PdfColors.blue50)
+          : null,
+      children: [
+        pw.Padding(
+          padding: const pw.EdgeInsets.all(8),
+          child: pw.Text(
+            label,
+            style: pw.TextStyle(
+              fontSize: isGrandTotal ? 11 : 10, 
+              font: boldFont,
+              fontWeight: pw.FontWeight.bold,
+            ),
+          ),
+        ),
+        pw.Padding(
+          padding: const pw.EdgeInsets.all(8),
+          child: pw.Text(
+            value,
+            style: pw.TextStyle(
+              fontSize: isGrandTotal ? 12 : 10, 
+              font: boldFont,
+              fontWeight: pw.FontWeight.bold,
+            ),
+            textAlign: pw.TextAlign.right,
+          ),
+        ),
+      ],
+    );
+  }
+  
+  static pw.Widget _buildBankInfoRow(
+    String label, 
+    String value, 
+    pw.Font regularFont, 
+    pw.Font boldFont,
+  ) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.only(bottom: 3),
+      child: pw.Row(
+        children: [
+          pw.Text(
+            label,
+            style: pw.TextStyle(fontSize: 9, font: regularFont),
+          ),
+          pw.Expanded(
+            child: pw.Text(
+              value,
+              style: pw.TextStyle(fontSize: 9, font: boldFont),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ========================================
+  // PDF PREVIEW AND SAVE
+  // ========================================
+  
+  /// Show PDF preview with tenant integration
   static Future<void> showPDFPreview({
     required BuildContext context,
     required Payment payment,
     required Organization organization,
+    Tenant? tenant,
     String? roomNumber,
     String? buildingName,
+    String? apartmentTypeOverride,
+    double? areaOverride,
+    double? internetFeeOverride,
+    double? cableTVFeeOverride,
+    double? hotWaterFeeOverride,
+    double? hotWaterPercentOverride,
+    String? email,
+    String? remark,
   }) async {
     try {
-      final pdf = await generatePaymentPDF(
+      final pdf = await generateOwnerFeeReceipt(
         payment: payment,
         organization: organization,
+        tenant: tenant,
         roomNumber: roomNumber,
         buildingName: buildingName,
+        apartmentTypeOverride: apartmentTypeOverride,
+        areaOverride: areaOverride,
+        internetFeeOverride: internetFeeOverride,
+        cableTVFeeOverride: cableTVFeeOverride,
+        hotWaterFeeOverride: hotWaterFeeOverride,
+        hotWaterPercentOverride: hotWaterPercentOverride,
+        email: email,
+        remark: remark,
       );
 
       if (context.mounted) {
@@ -765,11 +594,11 @@ class PaymentPDFExporter {
           MaterialPageRoute(
             builder: (context) => Scaffold(
               appBar: AppBar(
-                title: const Text('Xem Truoc Hoa Don'),
+                title: const Text('Xem Trước Hóa Đơn'),
                 actions: [
                   IconButton(
                     icon: const Icon(Icons.download),
-                    tooltip: 'Tai xuong PDF',
+                    tooltip: 'Tải xuống PDF',
                     onPressed: () => _savePDF(context, pdf, payment),
                   ),
                 ],
@@ -790,7 +619,7 @@ class PaymentPDFExporter {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Loi tao PDF: $e'),
+            content: Text('Lỗi tạo PDF: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -798,16 +627,15 @@ class PaymentPDFExporter {
     }
   }
 
-  // Save PDF to file
+  /// Save PDF to file
   static Future<void> _savePDF(
     BuildContext context,
     pw.Document pdf,
     Payment payment,
   ) async {
     try {
-      final fileName = 'hoa_don_${payment.id.substring(0, 8)}_${DateFormat('yyyyMMdd').format(DateTime.now())}.pdf';
+      final fileName = 'receipt_${payment.id.substring(0, min(8, payment.id.length))}_${DateFormat('yyyyMMdd').format(DateTime.now())}.pdf';
       
-      // For desktop platforms
       if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
         final saveLocation = await getSaveLocation(
           suggestedName: fileName,
@@ -819,10 +647,7 @@ class PaymentPDFExporter {
           ],
         );
 
-        if (saveLocation == null) {
-          // User cancelled
-          return;
-        }
+        if (saveLocation == null) return;
 
         final bytes = await pdf.save();
         final file = XFile.fromData(
@@ -836,13 +661,12 @@ class PaymentPDFExporter {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Da luu PDF: ${p.basename(saveLocation.path)}'),
+              content: Text('Đã lưu PDF: ${p.basename(saveLocation.path)}'),
               backgroundColor: Colors.green,
             ),
           );
         }
       } else {
-        // Mobile: share
         final bytes = await pdf.save();
         await Printing.sharePdf(
           bytes: bytes,
@@ -853,7 +677,7 @@ class PaymentPDFExporter {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Loi luu PDF: $e'),
+            content: Text('Lỗi lưu PDF: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -861,16 +685,24 @@ class PaymentPDFExporter {
     }
   }
 
-  // Quick export without preview
+  /// Quick export without preview
   static Future<void> quickExportPDF({
     required BuildContext context,
     required Payment payment,
     required Organization organization,
+    Tenant? tenant,
     String? roomNumber,
     String? buildingName,
+    String? apartmentTypeOverride,
+    double? areaOverride,
+    double? internetFeeOverride,
+    double? cableTVFeeOverride,
+    double? hotWaterFeeOverride,
+    double? hotWaterPercentOverride,
+    String? email,
+    String? remark,
   }) async {
     try {
-      // Show loading
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -879,27 +711,33 @@ class PaymentPDFExporter {
         ),
       );
 
-      final pdf = await generatePaymentPDF(
+      final pdf = await generateOwnerFeeReceipt(
         payment: payment,
         organization: organization,
+        tenant: tenant,
         roomNumber: roomNumber,
         buildingName: buildingName,
+        apartmentTypeOverride: apartmentTypeOverride,
+        areaOverride: areaOverride,
+        internetFeeOverride: internetFeeOverride,
+        cableTVFeeOverride: cableTVFeeOverride,
+        hotWaterFeeOverride: hotWaterFeeOverride,
+        hotWaterPercentOverride: hotWaterPercentOverride,
+        email: email,
+        remark: remark,
       );
 
-      // Close loading
       if (context.mounted) {
         Navigator.pop(context);
       }
 
       await _savePDF(context, pdf, payment);
     } catch (e) {
-      // Close loading if still open
       if (context.mounted) {
         Navigator.pop(context);
-        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Loi xuat PDF: $e'),
+            content: Text('Lỗi xuất PDF: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -907,3 +745,6 @@ class PaymentPDFExporter {
     }
   }
 }
+
+// Helper function for min
+int min(int a, int b) => a < b ? a : b;
