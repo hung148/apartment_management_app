@@ -419,11 +419,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 );
 
                 if (mounted) {
-                  nameController.dispose();
-                  addressController.dispose();
-                  phoneController.dispose();
-                  emailController.dispose();
-                  
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
@@ -440,12 +435,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ],
       ),
-    ).then((_) {
-      nameController.dispose();
-      addressController.dispose();
-      phoneController.dispose();
-      emailController.dispose();
-    });
+    );
+
+    // Dispose controllers after dialog closes
+    nameController.dispose();
+    addressController.dispose();
+    phoneController.dispose();
+    emailController.dispose();
   }
 
   // ========================================
@@ -751,9 +747,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           ElevatedButton(
             onPressed: () {
+              debugPrint('DEBUG: Delete button pressed');
               if (formKey.currentState!.validate()) {
-                nameController.dispose();
+                debugPrint('DEBUG: Form validated, skipping controller dispose');
+                debugPrint('DEBUG: About to pop dialog');
                 Navigator.pop(context, true);
+                debugPrint('DEBUG: Dialog pop called');
               }
             },
             style: ElevatedButton.styleFrom(
@@ -767,52 +766,320 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
 
     if (confirm == true) {
-      _deleteOrgLock.run(() async {
-        // Show loading
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (context) => const AlertDialog(
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 16),
-                Text('Đang xóa tổ chức...'),
-                SizedBox(height: 8),
-                Text(
-                  'Có thể mất vài phút',
-                  style: TextStyle(fontSize: 12, color: Colors.grey),
+      // Let the dialog close and UI update before starting deletion
+      await Future.delayed(const Duration(milliseconds: 100));
+
+      // Create a ValueNotifier to track deletion progress
+      final progressNotifier = ValueNotifier<double>(0.0);
+
+      // Show dialog-based progress indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 20),
+              const Text('Đang xóa tổ chức...', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 16),
+              ValueListenableBuilder<double>(
+                valueListenable: progressNotifier,
+                builder: (context, progress, child) {
+                  return Column(
+                    children: [
+                      LinearProgressIndicator(value: progress),
+                      const SizedBox(height: 8),
+                      Text('${(progress * 100).toStringAsFixed(0)}%'),
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: 12),
+              const Text('Vui lòng không đóng ứng dụng', style: TextStyle(fontSize: 12)),
+            ],
+          ),
+        ),
+      );
+
+      // Start deletion after dialog is shown
+      final success = await _organizationService.deleteOrganization(
+        ownerId,
+        org.id,
+        onProgress: (progress) {
+          progressNotifier.value = progress;
+        },
+      );
+
+      if (!mounted) return;
+
+      Navigator.of(context).pop(); // Close progress dialog
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(
+                success ? Icons.check_circle : Icons.error,
+                color: Colors.white,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  success
+                      ? 'Đã xóa tổ chức thành công!'
+                      : 'Không thể xóa tổ chức. Vui lòng thử lại.',
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        );
-
-        final success = await _organizationService.deleteOrganization(
-          ownerId,
-          org.id,
-        );
-
-        if (!mounted) return;
-
-        Navigator.pop(context); // Close loading dialog
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              success
-                  ? 'Đã xóa tổ chức thành công!'
-                  : 'Không thể xóa tổ chức. Vui lòng thử lại.',
-            ),
-            backgroundColor: success ? Colors.green : Colors.red,
-            duration: const Duration(seconds: 3),
+          backgroundColor: success ? Colors.green : Colors.red,
+          duration: const Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
           ),
-        );
+        ),
+      );
 
-        if (success) setState(() {});
-      });
+      if (success) setState(() {});
     }
+  }
+
+  // ========================================
+  // VIEW ORGANIZATION INFO
+  // ========================================
+  void _showOrganizationInfo(Organization org) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Thông tin tổ chức'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildOrgInfoRow('Tên tổ chức:', org.name),
+              const SizedBox(height: 12),
+              _buildOrgInfoRow('ID:', org.id),
+              const SizedBox(height: 12),
+              _buildOrgInfoRow('Ngày tạo:', _formatDate(org.createdAt)),
+              if (org.updatedAt != null) ...[
+                const SizedBox(height: 12),
+                _buildOrgInfoRow('Cập nhật lần cuối:', _formatDate(org.updatedAt!)),
+              ],
+              if (org.address != null && org.address!.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                _buildOrgInfoRow('Địa chỉ:', org.address!),
+              ],
+              if (org.phone != null && org.phone!.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                _buildOrgInfoRow('Số điện thoại:', org.phone!),
+              ],
+              if (org.email != null && org.email!.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                _buildOrgInfoRow('Email:', org.email!),
+              ],
+              if (org.bankName != null && org.bankName!.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                _buildOrgInfoRow('Tên ngân hàng:', org.bankName!),
+              ],
+              if (org.bankAccountNumber != null && org.bankAccountNumber!.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                _buildOrgInfoRow('Số tài khoản:', org.bankAccountNumber!),
+              ],
+              if (org.bankAccountName != null && org.bankAccountName!.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                _buildOrgInfoRow('Chủ tài khoản:', org.bankAccountName!),
+              ],
+              if (org.taxCode != null && org.taxCode!.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                _buildOrgInfoRow('Mã số thuế:', org.taxCode!),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Đóng'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOrgInfoRow(String label, String value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey)),
+        const SizedBox(height: 4),
+        SelectableText(
+          value,
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+        ),
+      ],
+    );
+  }
+
+  // ========================================
+  // MIGRATE ORGANIZATION
+  // ========================================
+  void _showMigrateOrganizationDialog(Organization sourceOrg, String ownerId, bool deleteAfter) async {
+    final targetController = TextEditingController();
+    Map<String, int>? preview;
+    String? status;
+    bool loading = false;
+    bool started = false;
+    double progress = 0.0;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: !started,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: Text(deleteAfter ? 'Di chuyển & xóa tổ chức' : 'Di chuyển dữ liệu tổ chức'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.blue[50],
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Thông tin tổ chức nguồn:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey)),
+                        const SizedBox(height: 8),
+                        Text('Tên: ${sourceOrg.name}', style: const TextStyle(fontWeight: FontWeight.w500)),
+                        Text('ID: ${sourceOrg.id}', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: targetController,
+                    decoration: const InputDecoration(
+                      labelText: 'ID tổ chức đích',
+                      hintText: 'Nhập ID tổ chức đích nơi muốn di chuyển',
+                      helperText: 'ID của tổ chức đích (không phải tên)',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  if (preview != null) ...[
+                    Text('Xem trước dữ liệu sẽ di chuyển:', style: const TextStyle(fontWeight: FontWeight.bold)),
+                    Text('Tòa nhà: ${preview?['buildings'] ?? 0}, Phòng: ${preview?['rooms'] ?? 0}, Người thuê: ${preview?['tenants'] ?? 0}, Thanh toán: ${preview?['payments'] ?? 0}'),
+                  ],
+                  if (status != null) ...[
+                    const SizedBox(height: 8),
+                    Text(status!, style: const TextStyle(fontSize: 13)),
+                  ],
+                  if (loading) ...[
+                    const SizedBox(height: 16),
+                    LinearProgressIndicator(value: progress),
+                    const SizedBox(height: 8),
+                    Text('${(progress * 100).toStringAsFixed(0)}%'),
+                  ],
+                ],
+              ),
+              actions: [
+                if (!started) ...[
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Hủy'),
+                  ),
+                  TextButton(
+                    onPressed: () async {
+                      setState(() => status = null);
+                      final id = targetController.text.trim();
+                      if (id.isEmpty) {
+                        setState(() => status = 'Vui lòng nhập ID tổ chức đích.');
+                        return;
+                      }
+                      setState(() => status = 'Đang lấy xem trước...');
+                      try {
+                        final result = await _organizationService.getMigrationPreview(sourceOrg.id);
+                        setState(() => preview = result);
+                        setState(() => status = 'Đã lấy xem trước.');
+                      } catch (e) {
+                        setState(() => status = 'Lỗi khi lấy xem trước: $e');
+                      }
+                    },
+                    child: const Text('Xem trước'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () async {
+                      final targetId = targetController.text.trim();
+                      if (targetId.isEmpty) {
+                        setState(() => status = 'Vui lòng nhập ID tổ chức đích.');
+                        return;
+                      }
+                      setState(() {
+                        loading = true;
+                        started = true;
+                        status = deleteAfter ? 'Đang di chuyển và xóa...' : 'Đang di chuyển dữ liệu...';
+                        progress = 0.0;
+                      });
+                      bool success = false;
+                      try {
+                        if (deleteAfter) {
+                          success = await _organizationService.migrateAndDeleteOrganization(
+                            ownerId: ownerId,
+                            sourceOrgId: sourceOrg.id,
+                            targetOrgId: targetId,
+                            onProgress: (p) => setState(() => progress = p),
+                            onStatusUpdate: (msg) => setState(() => status = msg),
+                          );
+                        } else {
+                          success = await _organizationService.migrateOrganization(
+                            ownerId: ownerId,
+                            sourceOrgId: sourceOrg.id,
+                            targetOrgId: targetId,
+                            onProgress: (p) => setState(() => progress = p),
+                            onStatusUpdate: (msg) => setState(() => status = msg),
+                          );
+                        }
+                      } catch (e) {
+                        setState(() => status = 'Lỗi: $e');
+                      }
+                      setState(() {
+                        loading = false;
+                        started = false;
+                      });
+                      if (success) {
+                        if (mounted) Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(deleteAfter
+                                ? 'Đã di chuyển và xóa tổ chức thành công!'
+                                : 'Đã di chuyển dữ liệu thành công!'),
+                            backgroundColor: Colors.green,
+                          ),
+                        );
+                        setState(() {});
+                      } else {
+                        setState(() => status = 'Thao tác thất bại.');
+                      }
+                    },
+                    child: Text(deleteAfter ? 'Di chuyển & XÓA' : 'Di chuyển'),
+                  ),
+                ],
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   Widget _buildDeleteWarningItem(String text) {
@@ -896,8 +1163,39 @@ class _DashboardScreenState extends State<DashboardScreen> {
               
               const Divider(height: 1),
               
-              // Leave or Delete
-              if (isAdmin)
+              // View Organization Info
+              ListTile(
+                leading: Icon(Icons.info_outline, color: Colors.blue[700]),
+                title: const Text('Xem thông tin tổ chức'),
+                subtitle: const Text('Chi tiết tổ chức và ID'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showOrganizationInfo(org);
+                },
+              ),
+              
+              const Divider(height: 1),
+              
+              // Migration options (admin only)
+              if (isAdmin) ...[
+                ListTile(
+                  leading: Icon(Icons.compare_arrows, color: Colors.blue[700]),
+                  title: const Text('Di chuyển dữ liệu sang tổ chức khác'),
+                  subtitle: const Text('Sao chép toàn bộ dữ liệu sang tổ chức khác'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showMigrateOrganizationDialog(org, ownerId, false);
+                  },
+                ),
+                ListTile(
+                  leading: Icon(Icons.delete_sweep, color: Colors.red[700]),
+                  title: const Text('Di chuyển & xóa tổ chức'),
+                  subtitle: const Text('Chuyển dữ liệu và xóa tổ chức này'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showMigrateOrganizationDialog(org, ownerId, true);
+                  },
+                ),
                 ListTile(
                   leading: Icon(Icons.delete_forever, color: Colors.red[700]),
                   title: const Text('Xóa tổ chức'),
@@ -906,8 +1204,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     Navigator.pop(context);
                     _showDeleteOrganizationDialog(org, ownerId);
                   },
-                )
-              else
+                ),
+              ] else ...[
                 ListTile(
                   leading: Icon(Icons.exit_to_app, color: Colors.orange[700]),
                   title: const Text('Rời khỏi tổ chức'),
@@ -917,8 +1215,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     _showLeaveOrganizationDialog(org, ownerId);
                   },
                 ),
-              
-              const SizedBox(height: 12),
+              ],
             ],
           ),
         );
@@ -931,6 +1228,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // ========================================
 
   Future<void> _handleLogout() async {
+    debugPrint('DEBUG: Showing delete confirmation dialog');
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -954,6 +1252,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
     );
 
+    debugPrint('DEBUG: Dialog closed, confirm value: '
+      + confirm.toString());
     if (confirm == true) {
       _logoutLock.run(() async {
         await _authService.signOut();
@@ -1376,15 +1676,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                             ),
                                           ),
                                           // Three-dot menu button
-                                          GestureDetector(
-                                            onTap: () {
-                                              _showOrganizationOptions(org, owner.id, isAdmin);
-                                            },
-                                            child: Padding(
-                                              padding: const EdgeInsets.all(8.0),
-                                              child: Icon(
-                                                Icons.more_vert,
-                                                color: Colors.grey[400],
+                                          Tooltip(
+                                            message: 'Tùy chọn tổ chức',
+                                            child: Material(
+                                              color: Colors.transparent,
+                                              child: InkWell(
+                                                onTap: () {
+                                                  _showOrganizationOptions(org, owner.id, isAdmin);
+                                                },
+                                                child: Padding(
+                                                  padding: const EdgeInsets.all(8.0),
+                                                  child: Icon(
+                                                    Icons.more_vert,
+                                                    color: Colors.blue[700],
+                                                    size: 28,
+                                                  ),
+                                                ),
                                               ),
                                             ),
                                           ),

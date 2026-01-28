@@ -555,7 +555,7 @@ class OrganizationService {
   // ========================================
   // DELETE - Delete an organization
   // ========================================
-  Future<bool> deleteOrganization(String ownerId, String orgId) async {
+  Future<bool> deleteOrganization(String ownerId, String orgId, {Function(double)? onProgress}) async {
     try {
       // Check if user is admin
       final membership = await getUserMembership(ownerId, orgId);
@@ -565,88 +565,208 @@ class OrganizationService {
         return false;
       }
 
+      // Fetch all data first in parallel to avoid nested queries
+      print('📊 Fetching organization data...');
+      onProgress?.call(0.1); // 10% - fetching data
+      
+      final results = await Future.wait([
+        _firestore
+            .collection('memberships')
+            .where('organizationId', isEqualTo: orgId)
+            .get(),
+        _firestore
+            .collection('buildings')
+            .where('organizationId', isEqualTo: orgId)
+            .get(),
+      ]);
+
+      final memberships = results[0];
+      final buildings = results[1];
+      
+      final buildingIds = buildings.docs.map((doc) => doc.id).toList();
+      
+      print('📊 Found ${buildings.docs.length} buildings');
+      onProgress?.call(0.2); // 20% - fetched main collections
+
+      // Fetch all rooms for all buildings in parallel
+      List<QuerySnapshot> roomSnapshots = [];
+      if (buildingIds.isNotEmpty) {
+        // Split into chunks of 10 for 'whereIn' limit
+        for (int i = 0; i < buildingIds.length; i += 10) {
+          final chunk = buildingIds.skip(i).take(10).toList();
+          final roomSnap = await _firestore
+              .collection('rooms')
+              .where('buildingId', whereIn: chunk)
+              .get();
+          roomSnapshots.add(roomSnap);
+          // Yield to event loop every chunk
+          await Future.delayed(Duration.zero);
+        }
+      }
+      
+      final allRooms = roomSnapshots.expand((snap) => snap.docs).toList();
+      final roomIds = allRooms.map((doc) => doc.id).toList();
+      
+      print('📊 Found ${allRooms.length} rooms');
+      onProgress?.call(0.35); // 35% - fetched rooms
+
+      // Fetch all tenants for all rooms in parallel
+      List<QuerySnapshot> tenantSnapshots = [];
+      if (roomIds.isNotEmpty) {
+        for (int i = 0; i < roomIds.length; i += 10) {
+          final chunk = roomIds.skip(i).take(10).toList();
+          final tenantSnap = await _firestore
+              .collection('tenants')
+              .where('roomId', whereIn: chunk)
+              .get();
+          tenantSnapshots.add(tenantSnap);
+          // Yield to event loop
+          await Future.delayed(Duration.zero);
+        }
+      }
+      
+      final allTenants = tenantSnapshots.expand((snap) => snap.docs).toList();
+      final tenantIds = allTenants.map((doc) => doc.id).toList();
+      
+      print('📊 Found ${allTenants.length} tenants');
+      onProgress?.call(0.50); // 50% - fetched tenants
+
+      // Fetch all payments for all tenants in parallel
+      List<QuerySnapshot> paymentSnapshots = [];
+      if (tenantIds.isNotEmpty) {
+        for (int i = 0; i < tenantIds.length; i += 10) {
+          final chunk = tenantIds.skip(i).take(10).toList();
+          final paymentSnap = await _firestore
+              .collection('payments')
+              .where('tenantId', whereIn: chunk)
+              .get();
+          paymentSnapshots.add(paymentSnap);
+          // Yield to event loop
+          await Future.delayed(Duration.zero);
+        }
+      }
+      
+      final allPayments = paymentSnapshots.expand((snap) => snap.docs).toList();
+      
+      print('📊 Found ${allPayments.length} payments');
+      print('🗑️ Starting deletion process...');
+      onProgress?.call(0.65); // 65% - fetched all data, starting deletion
+
+      // Collect all batch commits we need to do
+      List<Future<void>> batchCommits = [];
       WriteBatch batch = _firestore.batch();
       int operationCount = 0;
+      int totalOperations = allPayments.length + allTenants.length + allRooms.length + buildings.docs.length + memberships.docs.length + 1;
 
       // Helper to add delete operation safely
       void safeDelete(DocumentReference ref) {
         batch.delete(ref);
         operationCount++;
-        if (operationCount >= 490) { // Safety margin for 500 limit
-          batch.commit();
+        if (operationCount >= 490) {
+          // Store the current batch commit
+          batchCommits.add(batch.commit());
+          // Create a new batch
           batch = _firestore.batch();
           operationCount = 0;
         }
       }
 
-      // Delete all memberships for this organization
-      final memberships = await _firestore
-          .collection('memberships')
-          .where('organizationId', isEqualTo: orgId)
-          .get();
 
+      // Helper for yielding and progress
+      int deleted = 0;
+      int yieldEvery = 20;
+      void updateProgress() {
+        if (totalOperations > 0) {
+          double prog = 0.65 + (deleted / totalOperations) * 0.30;
+          onProgress?.call(prog.clamp(0.0, 0.99));
+        }
+      }
+
+      // Delete all payments
+      for (var doc in allPayments) {
+        safeDelete(doc.reference);
+        deleted++;
+        if (deleted % yieldEvery == 0) {
+          updateProgress();
+          await Future.delayed(Duration.zero);
+        }
+      }
+      print('🗑️ Queued ${allPayments.length} payment deletions');
+
+      // Delete all tenants
+      for (var doc in allTenants) {
+        safeDelete(doc.reference);
+        deleted++;
+        if (deleted % yieldEvery == 0) {
+          updateProgress();
+          await Future.delayed(Duration.zero);
+        }
+      }
+      print('🗑️ Queued ${allTenants.length} tenant deletions');
+
+      // Delete all rooms
+      for (var doc in allRooms) {
+        safeDelete(doc.reference);
+        deleted++;
+        if (deleted % yieldEvery == 0) {
+          updateProgress();
+          await Future.delayed(Duration.zero);
+        }
+      }
+      print('🗑️ Queued ${allRooms.length} room deletions');
+
+      // Delete all buildings
+      for (var doc in buildings.docs) {
+        safeDelete(doc.reference);
+        deleted++;
+        if (deleted % yieldEvery == 0) {
+          updateProgress();
+          await Future.delayed(Duration.zero);
+        }
+      }
+      print('🗑️ Queued ${buildings.docs.length} building deletions');
+
+      // Delete all memberships
       for (var doc in memberships.docs) {
         safeDelete(doc.reference);
-      }
-
-      // Delete buildings and their related data
-      final buildings = await _firestore
-          .collection('buildings')
-          .where('organizationId', isEqualTo: orgId)
-          .get();
-
-      for (var buildingDoc in buildings.docs) {
-        final buildingId = buildingDoc.id;
-
-        // Delete rooms in this building
-        final rooms = await _firestore
-            .collection('rooms')
-            .where('buildingId', isEqualTo: buildingId)
-            .get();
-
-        for (var roomDoc in rooms.docs) {
-          final roomId = roomDoc.id;
-
-          // Delete tenants in this room
-          final tenants = await _firestore
-              .collection('tenants')
-              .where('roomId', isEqualTo: roomId)
-              .get();
-
-          for (var tenantDoc in tenants.docs) {
-            final tenantId = tenantDoc.id;
-
-            // Delete payments for this tenant
-            final payments = await _firestore
-                .collection('payments')
-                .where('tenantId', isEqualTo: tenantId)
-                .get();
-
-            for (var paymentDoc in payments.docs) {
-              safeDelete(paymentDoc.reference);
-            }
-
-            safeDelete(tenantDoc.reference);
-          }
-
-          safeDelete(roomDoc.reference);
+        deleted++;
+        if (deleted % yieldEvery == 0) {
+          updateProgress();
+          await Future.delayed(Duration.zero);
         }
-
-        safeDelete(buildingDoc.reference);
       }
+      print('🗑️ Queued ${memberships.docs.length} membership deletions');
 
       // Delete the organization itself
       safeDelete(_firestore.collection('organizations').doc(orgId));
+      deleted++;
+      updateProgress();
+      print('🗑️ Queued organization deletion');
 
-      // Commit any remaining operations
+      // Commit remaining operations in the current batch
       if (operationCount > 0) {
-        await batch.commit();
+        batchCommits.add(batch.commit());
       }
 
-      print('✅ Organization deleted');
+      // Wait for all batches to complete with periodic yields to event loop
+      print('⏳ Committing ${batchCommits.length} batches...');
+      for (var i = 0; i < batchCommits.length; i++) {
+        await batchCommits[i];
+        // Update progress: 65% to 95%
+        double progress = 0.65 + ((i + 1) / batchCommits.length) * 0.30;
+        onProgress?.call(progress);
+        // Yield to event loop after each batch commit
+        if (i < batchCommits.length - 1) {
+          await Future.delayed(Duration.zero);
+        }
+      }
+
+      onProgress?.call(1.0); // 100% - completed
+      print('✅ Organization deleted successfully');
       return true;
-    } catch (e) {
+    } catch (e, stackTrace) {
       print('❌ Error deleting organization: $e');
+      print('Stack trace: $stackTrace');
       return false;
     }
   }
@@ -680,5 +800,449 @@ class OrganizationService {
     // Vietnam tax code: 10-14 digits (can include hyphens)
     final regex = RegExp(r'^\d{10}(-\d{3})?$');
     return regex.hasMatch(taxCode.replaceAll('-', ''));
+  }
+
+  // ========================================
+  // MIGRATE - Migrate all data from one organization to another
+  // ========================================
+  Future<bool> migrateOrganization({
+    required String ownerId,
+    required String sourceOrgId,
+    required String targetOrgId,
+    Function(double)? onProgress,
+    Function(String)? onStatusUpdate,
+  }) async {
+    try {
+      // Verify user is admin in BOTH organizations
+      onStatusUpdate?.call('Checking permissions...');
+      final sourceMembership = await getUserMembership(ownerId, sourceOrgId);
+      final targetMembership = await getUserMembership(ownerId, targetOrgId);
+      
+      if (sourceMembership == null || sourceMembership.role != 'admin') {
+        print('❌ User is not admin in source organization');
+        return false;
+      }
+      
+      if (targetMembership == null || targetMembership.role != 'admin') {
+        print('❌ User is not admin in target organization');
+        return false;
+      }
+
+      // Verify both organizations exist
+      final sourceOrg = await getOrganizationById(sourceOrgId);
+      final targetOrg = await getOrganizationById(targetOrgId);
+      
+      if (sourceOrg == null || targetOrg == null) {
+        print('❌ One or both organizations not found');
+        return false;
+      }
+
+      print('🔄 Starting migration from "${sourceOrg.name}" to "${targetOrg.name}"');
+      onProgress?.call(0.05);
+
+      // ============================================
+      // STEP 1: Fetch all data from source
+      // ============================================
+      onStatusUpdate?.call('Fetching source data...');
+      print('📊 Fetching all data from source organization...');
+      
+      final buildingsSnap = await _firestore
+          .collection('buildings')
+          .where('organizationId', isEqualTo: sourceOrgId)
+          .get();
+      
+      final buildingIds = buildingsSnap.docs.map((doc) => doc.id).toList();
+      print('📊 Found ${buildingsSnap.docs.length} buildings');
+      onProgress?.call(0.10);
+
+      // Fetch all rooms
+      List<QuerySnapshot> roomSnapshots = [];
+      if (buildingIds.isNotEmpty) {
+        for (int i = 0; i < buildingIds.length; i += 10) {
+          final chunk = buildingIds.skip(i).take(10).toList();
+          final roomSnap = await _firestore
+              .collection('rooms')
+              .where('buildingId', whereIn: chunk)
+              .get();
+          roomSnapshots.add(roomSnap);
+          await Future.delayed(Duration.zero);
+        }
+      }
+      
+      final allRooms = roomSnapshots.expand((snap) => snap.docs).toList();
+      final roomIds = allRooms.map((doc) => doc.id).toList();
+      print('📊 Found ${allRooms.length} rooms');
+      onProgress?.call(0.20);
+
+      // Fetch all tenants
+      List<QuerySnapshot> tenantSnapshots = [];
+      if (roomIds.isNotEmpty) {
+        for (int i = 0; i < roomIds.length; i += 10) {
+          final chunk = roomIds.skip(i).take(10).toList();
+          final tenantSnap = await _firestore
+              .collection('tenants')
+              .where('roomId', whereIn: chunk)
+              .get();
+          tenantSnapshots.add(tenantSnap);
+          await Future.delayed(Duration.zero);
+        }
+      }
+      
+      final allTenants = tenantSnapshots.expand((snap) => snap.docs).toList();
+      final tenantIds = allTenants.map((doc) => doc.id).toList();
+      print('📊 Found ${allTenants.length} tenants');
+      onProgress?.call(0.30);
+
+      // Fetch all payments
+      List<QuerySnapshot> paymentSnapshots = [];
+      if (tenantIds.isNotEmpty) {
+        for (int i = 0; i < tenantIds.length; i += 10) {
+          final chunk = tenantIds.skip(i).take(10).toList();
+          final paymentSnap = await _firestore
+              .collection('payments')
+              .where('tenantId', whereIn: chunk)
+              .get();
+          paymentSnapshots.add(paymentSnap);
+          await Future.delayed(Duration.zero);
+        }
+      }
+      
+      final allPayments = paymentSnapshots.expand((snap) => snap.docs).toList();
+      print('📊 Found ${allPayments.length} payments');
+      onProgress?.call(0.40);
+
+      // ============================================
+      // STEP 2: Create mappings for new IDs
+      // ============================================
+      onStatusUpdate?.call('Preparing migration mappings...');
+      print('🗺️ Creating ID mappings...');
+      
+      // Map old building IDs to new building IDs
+      final Map<String, String> buildingIdMap = {};
+      final Map<String, String> roomIdMap = {};
+      final Map<String, String> tenantIdMap = {};
+      
+      for (var buildingDoc in buildingsSnap.docs) {
+        final newBuildingRef = _firestore.collection('buildings').doc();
+        buildingIdMap[buildingDoc.id] = newBuildingRef.id;
+      }
+      
+      for (var roomDoc in allRooms) {
+        final newRoomRef = _firestore.collection('rooms').doc();
+        roomIdMap[roomDoc.id] = newRoomRef.id;
+      }
+      
+      for (var tenantDoc in allTenants) {
+        final newTenantRef = _firestore.collection('tenants').doc();
+        tenantIdMap[tenantDoc.id] = newTenantRef.id;
+      }
+      
+      onProgress?.call(0.45);
+
+      // ============================================
+      // STEP 3: Migrate data with new IDs
+      // ============================================
+      onStatusUpdate?.call('Migrating data to target organization...');
+      print('🔄 Starting data migration...');
+      
+      List<Future<void>> batchCommits = [];
+      WriteBatch batch = _firestore.batch();
+      int operationCount = 0;
+      int totalOperations = buildingsSnap.docs.length + allRooms.length + 
+                          allTenants.length + allPayments.length;
+      int migratedCount = 0;
+
+      void safeBatchOperation(DocumentReference ref, Map<String, dynamic> data) {
+        batch.set(ref, data);
+        operationCount++;
+        migratedCount++;
+        
+        if (operationCount >= 490) {
+          batchCommits.add(batch.commit());
+          batch = _firestore.batch();
+          operationCount = 0;
+        }
+        
+        // Update progress periodically
+        if (migratedCount % 20 == 0) {
+          double progress = 0.45 + (migratedCount / totalOperations) * 0.45;
+          onProgress?.call(progress.clamp(0.0, 0.90));
+        }
+      }
+
+      // Migrate buildings
+      for (var buildingDoc in buildingsSnap.docs) {
+        final oldId = buildingDoc.id;
+        final newId = buildingIdMap[oldId]!;
+        final buildingData = buildingDoc.data();
+        
+        // Update organization ID
+        buildingData['organizationId'] = targetOrgId;
+        
+        final newBuildingRef = _firestore.collection('buildings').doc(newId);
+        safeBatchOperation(newBuildingRef, buildingData);
+        
+        await Future.delayed(Duration.zero);
+      }
+      print('✅ Migrated ${buildingsSnap.docs.length} buildings');
+
+      // Migrate rooms
+      for (var roomDoc in allRooms) {
+        final oldRoomId = roomDoc.id;
+        final newRoomId = roomIdMap[oldRoomId]!;
+        final roomData = roomDoc.data() as Map<String, dynamic>;
+        
+        // Update building ID reference
+        final oldBuildingId = roomData['buildingId'];
+        if (oldBuildingId != null && buildingIdMap.containsKey(oldBuildingId)) {
+          roomData['buildingId'] = buildingIdMap[oldBuildingId];
+        }
+        
+        final newRoomRef = _firestore.collection('rooms').doc(newRoomId);
+        safeBatchOperation(newRoomRef, roomData);
+        
+        await Future.delayed(Duration.zero);
+      }
+      print('✅ Migrated ${allRooms.length} rooms');
+
+      // Migrate tenants
+      for (var tenantDoc in allTenants) {
+        final oldTenantId = tenantDoc.id;
+        final newTenantId = tenantIdMap[oldTenantId]!;
+        final tenantData = tenantDoc.data() as Map<String, dynamic>;
+        
+        // Update room ID reference
+        final oldRoomId = tenantData['roomId'];
+        if (oldRoomId != null && roomIdMap.containsKey(oldRoomId)) {
+          tenantData['roomId'] = roomIdMap[oldRoomId];
+        }
+        
+        // Update building ID reference (if exists)
+        final oldBuildingId = tenantData['buildingId'];
+        if (oldBuildingId != null && buildingIdMap.containsKey(oldBuildingId)) {
+          tenantData['buildingId'] = buildingIdMap[oldBuildingId];
+        }
+        
+        final newTenantRef = _firestore.collection('tenants').doc(newTenantId);
+        safeBatchOperation(newTenantRef, tenantData);
+        
+        await Future.delayed(Duration.zero);
+      }
+      print('✅ Migrated ${allTenants.length} tenants');
+
+      // Migrate payments
+      for (var paymentDoc in allPayments) {
+        final paymentData = paymentDoc.data() as Map<String, dynamic>;
+        
+        // Update tenant ID reference
+        final oldTenantId = paymentData['tenantId'];
+        if (oldTenantId != null && tenantIdMap.containsKey(oldTenantId)) {
+          paymentData['tenantId'] = tenantIdMap[oldTenantId];
+        }
+        
+        // Update room ID reference (if exists)
+        final oldRoomId = paymentData['roomId'];
+        if (oldRoomId != null && roomIdMap.containsKey(oldRoomId)) {
+          paymentData['roomId'] = roomIdMap[oldRoomId];
+        }
+        
+        // Update building ID reference (if exists)
+        final oldBuildingId = paymentData['buildingId'];
+        if (oldBuildingId != null && buildingIdMap.containsKey(oldBuildingId)) {
+          paymentData['buildingId'] = buildingIdMap[oldBuildingId];
+        }
+        
+        // Generate new payment ID
+        final newPaymentRef = _firestore.collection('payments').doc();
+        safeBatchOperation(newPaymentRef, paymentData);
+        
+        await Future.delayed(Duration.zero);
+      }
+      print('✅ Migrated ${allPayments.length} payments');
+
+      // Commit remaining operations
+      if (operationCount > 0) {
+        batchCommits.add(batch.commit());
+      }
+
+      // ============================================
+      // STEP 4: Commit all batches
+      // ============================================
+      onStatusUpdate?.call('Finalizing migration...');
+      print('⏳ Committing ${batchCommits.length} batches...');
+      
+      for (var i = 0; i < batchCommits.length; i++) {
+        await batchCommits[i];
+        double progress = 0.90 + ((i + 1) / batchCommits.length) * 0.09;
+        onProgress?.call(progress);
+        await Future.delayed(Duration.zero);
+      }
+
+      onProgress?.call(1.0);
+      onStatusUpdate?.call('Migration completed successfully!');
+      print('✅ Migration completed successfully!');
+      print('📊 Summary:');
+      print('   - Buildings: ${buildingsSnap.docs.length}');
+      print('   - Rooms: ${allRooms.length}');
+      print('   - Tenants: ${allTenants.length}');
+      print('   - Payments: ${allPayments.length}');
+      
+      return true;
+    } catch (e, stackTrace) {
+      print('❌ Error during migration: $e');
+      print('Stack trace: $stackTrace');
+      onStatusUpdate?.call('Migration failed: $e');
+      return false;
+    }
+  }
+
+  // ========================================
+  // MIGRATE - Migrate and DELETE source organization
+  // ========================================
+  Future<bool> migrateAndDeleteOrganization({
+    required String ownerId,
+    required String sourceOrgId,
+    required String targetOrgId,
+    Function(double)? onProgress,
+    Function(String)? onStatusUpdate,
+  }) async {
+    try {
+      // Step 1: Migrate data (0% - 80%)
+      onStatusUpdate?.call('Starting migration...');
+      final migrationSuccess = await migrateOrganization(
+        ownerId: ownerId,
+        sourceOrgId: sourceOrgId,
+        targetOrgId: targetOrgId,
+        onProgress: (progress) => onProgress?.call(progress * 0.8),
+        onStatusUpdate: onStatusUpdate,
+      );
+
+      if (!migrationSuccess) {
+        print('❌ Migration failed, aborting delete');
+        return false;
+      }
+
+      // Step 2: Delete source organization (80% - 100%)
+      onStatusUpdate?.call('Deleting source organization...');
+      onProgress?.call(0.80);
+      
+      final deleteSuccess = await deleteOrganization(
+        ownerId,
+        sourceOrgId,
+        onProgress: (progress) => onProgress?.call(0.80 + (progress * 0.2)),
+      );
+
+      if (deleteSuccess) {
+        onProgress?.call(1.0);
+        onStatusUpdate?.call('Migration and cleanup completed!');
+        print('✅ Migration and deletion completed successfully');
+        return true;
+      } else {
+        print('⚠️ Migration succeeded but deletion failed');
+        onStatusUpdate?.call('Migration succeeded but deletion failed. Please delete manually.');
+        return false;
+      }
+    } catch (e, stackTrace) {
+      print('❌ Error during migrate and delete: $e');
+      print('Stack trace: $stackTrace');
+      onStatusUpdate?.call('Operation failed: $e');
+      return false;
+    }
+  }
+
+  // ========================================
+  // UTILITY - Get migration preview
+  // ========================================
+  Future<Map<String, int>> getMigrationPreview(String sourceOrgId) async {
+    try {
+      print('📊 Generating migration preview for org: $sourceOrgId');
+      
+      final buildingsSnap = await _firestore
+          .collection('buildings')
+          .where('organizationId', isEqualTo: sourceOrgId)
+          .get();
+      
+      final buildingIds = buildingsSnap.docs.map((doc) => doc.id).toList();
+      
+      // Count rooms
+      int roomCount = 0;
+      if (buildingIds.isNotEmpty) {
+        for (int i = 0; i < buildingIds.length; i += 10) {
+          final chunk = buildingIds.skip(i).take(10).toList();
+          final roomSnap = await _firestore
+              .collection('rooms')
+              .where('buildingId', whereIn: chunk)
+              .get();
+          roomCount += roomSnap.docs.length;
+        }
+      }
+      
+      // Get room IDs for tenant count
+      List<String> roomIds = [];
+      if (buildingIds.isNotEmpty) {
+        for (int i = 0; i < buildingIds.length; i += 10) {
+          final chunk = buildingIds.skip(i).take(10).toList();
+          final roomSnap = await _firestore
+              .collection('rooms')
+              .where('buildingId', whereIn: chunk)
+              .get();
+          roomIds.addAll(roomSnap.docs.map((doc) => doc.id));
+        }
+      }
+      
+      // Count tenants
+      int tenantCount = 0;
+      if (roomIds.isNotEmpty) {
+        for (int i = 0; i < roomIds.length; i += 10) {
+          final chunk = roomIds.skip(i).take(10).toList();
+          final tenantSnap = await _firestore
+              .collection('tenants')
+              .where('roomId', whereIn: chunk)
+              .get();
+          tenantCount += tenantSnap.docs.length;
+        }
+      }
+      
+      // Get tenant IDs for payment count
+      List<String> tenantIds = [];
+      if (roomIds.isNotEmpty) {
+        for (int i = 0; i < roomIds.length; i += 10) {
+          final chunk = roomIds.skip(i).take(10).toList();
+          final tenantSnap = await _firestore
+              .collection('tenants')
+              .where('roomId', whereIn: chunk)
+              .get();
+          tenantIds.addAll(tenantSnap.docs.map((doc) => doc.id));
+        }
+      }
+      
+      // Count payments
+      int paymentCount = 0;
+      if (tenantIds.isNotEmpty) {
+        for (int i = 0; i < tenantIds.length; i += 10) {
+          final chunk = tenantIds.skip(i).take(10).toList();
+          final paymentSnap = await _firestore
+              .collection('payments')
+              .where('tenantId', whereIn: chunk)
+              .get();
+          paymentCount += paymentSnap.docs.length;
+        }
+      }
+      
+      return {
+        'buildings': buildingsSnap.docs.length,
+        'rooms': roomCount,
+        'tenants': tenantCount,
+        'payments': paymentCount,
+      };
+    } catch (e) {
+      print('❌ Error generating migration preview: $e');
+      return {
+        'buildings': 0,
+        'rooms': 0,
+        'tenants': 0,
+        'payments': 0,
+      };
+    }
   }
 }
