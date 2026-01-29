@@ -55,6 +55,58 @@ class OrganizationScreen extends StatefulWidget {
 }
 
 class _OrganizationScreenState extends State<OrganizationScreen> {
+  
+  bool _isSmallScreen(BuildContext context) => MediaQuery.of(context).size.width < 600;
+  bool _isMediumScreen(BuildContext context) {
+    final width = MediaQuery.of(context).size.width;
+    return width >= 600 && width < 1200;
+  }
+
+  double _getDialogWidth(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    if (screenWidth < 600) return screenWidth * 0.95;
+    if (screenWidth < 1200) return 600;
+    return 800;
+  }
+
+  EdgeInsets _getResponsivePadding(BuildContext context) {
+    return EdgeInsets.all(_isSmallScreen(context) ? 12.0 : 16.0);
+  }
+
+  Widget _buildMinimumSizeWarning(BuildContext context, BoxConstraints constraints) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.warning_amber_rounded, size: 64, color: Colors.orange[700]),
+            const SizedBox(height: 16),
+            Text(
+              'Kích thước cửa sổ quá nhỏ',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Kích thước tối thiểu: 360x600',
+              style: TextStyle(color: Colors.grey[600]),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Hiện tại: ${constraints.maxWidth.toInt()}x${constraints.maxHeight.toInt()}',
+              style: TextStyle(color: Colors.grey[600]),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   final OrganizationService _orgService = getIt<OrganizationService>();
   final AuthService _authService = getIt<AuthService>();
   final BuildingService _buildingService = getIt<BuildingService>();
@@ -144,250 +196,389 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
 
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          return Dialog(
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 0.9,
-                maxHeight: MediaQuery.of(context).size.height * 0.85,
+      builder: (context) {
+        final isSmall = _isSmallScreen(context);
+        final padding = _getResponsivePadding(context);
+        
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return Dialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
               ),
-              child: AlertDialog(
-                title: const Text('Thêm Toà Nhà'),
-                contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
-                content: SizedBox(
-                  width: double.maxFinite,
-                  child: SingleChildScrollView(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        // Building Name
-                        TextField(
-                          controller: nameController,
-                          decoration: const InputDecoration(
-                            labelText: 'Tên toà nhà *',
-                            hintText: 'vd: Toà A',
-                            hintStyle: TextStyle(
-                              color: Color(0xFFBDBDBD),  // Grey 400
-                              fontStyle: FontStyle.italic,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        
-                        // Address
-                        TextField(
-                          controller: addressController,
-                          decoration: const InputDecoration(
-                            labelText: 'Địa chỉ *',
-                            hintText: 'vd: 123 Đường ABC',
-                            hintStyle: TextStyle(
-                              color: Color(0xFFBDBDBD),  // Grey 400
-                              fontStyle: FontStyle.italic,
-                            ),
-                          ),
-                          maxLines: 2,
-                        ),
-                        const SizedBox(height: 24),
-                        
-                        // Auto-generate rooms toggle
-                        CheckboxListTile(
-                          title: const Text('Tự động tạo phòng'),
-                          subtitle: const Text('Tạo phòng tự động khi thêm toà nhà'),
-                          value: autoGenerateRooms,
-                          onChanged: (value) {
-                            setDialogState(() {
-                              autoGenerateRooms = value ?? true;
-                            });
-                          },
-                          contentPadding: EdgeInsets.zero,
-                        ),
-                        
-                        if (autoGenerateRooms) ...[
-                          const SizedBox(height: 16),
-                          const Divider(),
-                          const SizedBox(height: 16),
-                          
-                          // Room Configuration Section
-                          const Text(
-                            'Cấu hình phòng',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          
-                          // Number of floors
-                          TextField(
-                            controller: floorsController,
-                            decoration: const InputDecoration(
-                              labelText: 'Số tầng *',
-                              hintText: '1',
-                              hintStyle: TextStyle(
-                                color: Color(0xFFBDBDBD),  // Grey 400
-                                fontStyle: FontStyle.italic,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: _getDialogWidth(context),
+                  maxHeight: MediaQuery.of(context).size.height * 0.9,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Header with close button
+                    Padding(
+                      padding: padding,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Thêm Toà Nhà',
+                              style: TextStyle(
+                                fontSize: isSmall ? 16 : 18,
+                                fontWeight: FontWeight.bold,
                               ),
-                              helperText: 'Số tầng trong toà nhà',
                             ),
-                            keyboardType: TextInputType.number,
-                            onChanged: (value) {
-                              setDialogState(() {}); // Update preview
-                            },
                           ),
-                          const SizedBox(height: 16),
-                          
-                          // Rooms per floor
-                          TextField(
-                            controller: roomsPerFloorController,
-                            decoration: const InputDecoration(
-                              labelText: 'Số phòng mỗi tầng *',
-                              hintText: '10',
-                              hintStyle: TextStyle(
-                                color: Color(0xFFBDBDBD),  // Grey 400
-                                fontStyle: FontStyle.italic,
+                          IconButton(
+                            icon: const Icon(Icons.close),
+                            onPressed: () => Navigator.of(context).pop(),
+                            padding: EdgeInsets.zero,
+                            constraints: BoxConstraints(
+                              minWidth: isSmall ? 40 : 48,
+                              minHeight: isSmall ? 40 : 48,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Divider(height: 1),
+                    
+                    // Scrollable content
+                    Flexible(
+                      child: SingleChildScrollView(
+                        padding: padding,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // Building Name
+                            TextField(
+                              controller: nameController,
+                              decoration: InputDecoration(
+                                labelText: 'Tên toà nhà *',
+                                hintText: 'vd: Toà A',
+                                hintStyle: const TextStyle(
+                                  color: Color(0xFFBDBDBD),
+                                  fontStyle: FontStyle.italic,
+                                ),
+                                labelStyle: TextStyle(fontSize: isSmall ? 13 : 14),
                               ),
-                              helperText: 'Số phòng trên mỗi tầng',
+                              style: TextStyle(fontSize: isSmall ? 13 : 14),
                             ),
-                            keyboardType: TextInputType.number,
-                            onChanged: (value) {
-                              setDialogState(() {}); // Update preview
-                            },
-                          ),
-                          const SizedBox(height: 16),
-                          
-                          // Room number prefix
-                          TextField(
-                            controller: roomPrefixController,
-                            decoration: const InputDecoration(
-                              labelText: 'Tiền tố số phòng (tùy chọn)',
-                              hintText: 'A',
-                              hintStyle: TextStyle(
-                                color: Color(0xFFBDBDBD),  // Grey 400
-                                fontStyle: FontStyle.italic,
+                            SizedBox(height: isSmall ? 12 : 16),
+                            
+                            // Address
+                            TextField(
+                              controller: addressController,
+                              decoration: InputDecoration(
+                                labelText: 'Địa chỉ *',
+                                hintText: 'vd: 123 Đường ABC',
+                                hintStyle: const TextStyle(
+                                  color: Color(0xFFBDBDBD),
+                                  fontStyle: FontStyle.italic,
+                                ),
+                                labelStyle: TextStyle(fontSize: isSmall ? 13 : 14),
                               ),
-                              helperText: 'VD: "A" sẽ tạo phòng A101, A102, ...',
+                              style: TextStyle(fontSize: isSmall ? 13 : 14),
+                              maxLines: 2,
                             ),
-                            onChanged: (value) {
-                              setDialogState(() {}); // Update preview
-                            },
-                          ),
-                          const SizedBox(height: 16),
-                          
-                          // Preview
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.blue.shade50,
-                              borderRadius: BorderRadius.circular(8),
+                            SizedBox(height: isSmall ? 16 : 24),
+                            
+                            // Auto-generate rooms toggle
+                            CheckboxListTile(
+                              title: Text(
+                                'Tự động tạo phòng',
+                                style: TextStyle(fontSize: isSmall ? 13 : 14),
+                              ),
+                              subtitle: Text(
+                                'Tạo phòng tự động khi thêm toà nhà',
+                                style: TextStyle(fontSize: isSmall ? 12 : 13),
+                              ),
+                              value: autoGenerateRooms,
+                              onChanged: (value) {
+                                setDialogState(() {
+                                  autoGenerateRooms = value ?? true;
+                                });
+                              },
+                              contentPadding: EdgeInsets.zero,
                             ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
+                            
+                            if (autoGenerateRooms) ...[
+                              SizedBox(height: isSmall ? 12 : 16),
+                              const Divider(),
+                              SizedBox(height: isSmall ? 12 : 16),
+                              
+                              // Room Configuration Section
+                              Text(
+                                'Cấu hình phòng',
+                                style: TextStyle(
+                                  fontSize: isSmall ? 14 : 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              SizedBox(height: isSmall ? 12 : 16),
+                              
+                              // Number of floors
+                              TextField(
+                                controller: floorsController,
+                                decoration: InputDecoration(
+                                  labelText: 'Số tầng *',
+                                  hintText: '1',
+                                  hintStyle: const TextStyle(
+                                    color: Color(0xFFBDBDBD),
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                  helperText: 'Số tầng trong toà nhà',
+                                  labelStyle: TextStyle(fontSize: isSmall ? 13 : 14),
+                                  helperStyle: TextStyle(fontSize: isSmall ? 11 : 12),
+                                ),
+                                style: TextStyle(fontSize: isSmall ? 13 : 14),
+                                keyboardType: TextInputType.number,
+                                onChanged: (value) {
+                                  setDialogState(() {}); // Update preview
+                                },
+                              ),
+                              SizedBox(height: isSmall ? 12 : 16),
+                              
+                              // Rooms per floor
+                              TextField(
+                                controller: roomsPerFloorController,
+                                decoration: InputDecoration(
+                                  labelText: 'Số phòng mỗi tầng *',
+                                  hintText: '10',
+                                  hintStyle: const TextStyle(
+                                    color: Color(0xFFBDBDBD),
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                  helperText: 'Số phòng trên mỗi tầng',
+                                  labelStyle: TextStyle(fontSize: isSmall ? 13 : 14),
+                                  helperStyle: TextStyle(fontSize: isSmall ? 11 : 12),
+                                ),
+                                style: TextStyle(fontSize: isSmall ? 13 : 14),
+                                keyboardType: TextInputType.number,
+                                onChanged: (value) {
+                                  setDialogState(() {}); // Update preview
+                                },
+                              ),
+                              SizedBox(height: isSmall ? 12 : 16),
+                              
+                              // Room number prefix
+                              TextField(
+                                controller: roomPrefixController,
+                                decoration: InputDecoration(
+                                  labelText: 'Tiền tố số phòng (tùy chọn)',
+                                  hintText: 'A',
+                                  hintStyle: const TextStyle(
+                                    color: Color(0xFFBDBDBD),
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                  helperText: 'VD: "A" sẽ tạo phòng A101, A102, ...',
+                                  labelStyle: TextStyle(fontSize: isSmall ? 13 : 14),
+                                  helperStyle: TextStyle(fontSize: isSmall ? 11 : 12),
+                                ),
+                                style: TextStyle(fontSize: isSmall ? 13 : 14),
+                                onChanged: (value) {
+                                  setDialogState(() {}); // Update preview
+                                },
+                              ),
+                              SizedBox(height: isSmall ? 12 : 16),
+                              
+                              // Preview
+                              Container(
+                                padding: EdgeInsets.all(isSmall ? 10 : 12),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.shade50,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Icon(Icons.info_outline, size: 16, color: Colors.blue.shade700),
-                                    const SizedBox(width: 8),
-                                    const Text(
-                                      'Ví dụ số phòng:',
+                                    Row(
+                                      children: [
+                                        Icon(
+                                          Icons.info_outline,
+                                          size: isSmall ? 14 : 16,
+                                          color: Colors.blue.shade700,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          'Ví dụ số phòng:',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: isSmall ? 11 : 12,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      _generateRoomPreview(
+                                        roomPrefixController.text,
+                                        floorsController.text,
+                                        roomsPerFloorController.text,
+                                      ),
                                       style: TextStyle(
+                                        fontSize: isSmall ? 11 : 12,
+                                        color: Colors.blue.shade900,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Tổng số phòng: ${_calculateTotalRooms(floorsController.text, roomsPerFloorController.text)}',
+                                      style: TextStyle(
+                                        fontSize: isSmall ? 11 : 12,
                                         fontWeight: FontWeight.bold,
-                                        fontSize: 12,
+                                        color: Colors.blue.shade900,
                                       ),
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  _generateRoomPreview(
-                                    roomPrefixController.text,
-                                    floorsController.text,
-                                    roomsPerFloorController.text,
-                                  ),
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.blue.shade900,
+                              ),
+                            ],
+                            
+                            SizedBox(height: isSmall ? 12 : 16),
+                          ],
+                        ),
+                      ),
+                    ),
+                    
+                    const Divider(height: 1),
+                    
+                    // Actions - responsive layout
+                    Padding(
+                      padding: EdgeInsets.all(isSmall ? 8.0 : 12.0),
+                      child: isSmall
+                          ? Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                SizedBox(
+                                  width: double.infinity,
+                                  height: 44,
+                                  child: TextButton(
+                                    onPressed: () => Navigator.of(context).pop(),
+                                    child: const Text('Hủy'),
                                   ),
                                 ),
                                 const SizedBox(height: 8),
-                                Text(
-                                  'Tổng số phòng: ${_calculateTotalRooms(floorsController.text, roomsPerFloorController.text)}',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.blue.shade900,
+                                SizedBox(
+                                  width: double.infinity,
+                                  height: 44,
+                                  child: ElevatedButton(
+                                    onPressed: () {
+                                      // Validate required fields
+                                      if (nameController.text.trim().isEmpty ||
+                                          addressController.text.trim().isEmpty) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(
+                                            content: Text('Vui lòng điền đầy đủ thông tin bắt buộc'),
+                                          ),
+                                        );
+                                        return;
+                                      }
+
+                                      // Validate room configuration if auto-generate is enabled
+                                      if (autoGenerateRooms) {
+                                        final floors = int.tryParse(floorsController.text.trim());
+                                        final roomsPerFloor = int.tryParse(roomsPerFloorController.text.trim());
+                                        
+                                        if (floors == null || floors <= 0) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(
+                                              content: Text('Số tầng không hợp lệ'),
+                                            ),
+                                          );
+                                          return;
+                                        }
+                                        
+                                        if (roomsPerFloor == null || roomsPerFloor <= 0) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(
+                                              content: Text('Số phòng mỗi tầng không hợp lệ'),
+                                            ),
+                                          );
+                                          return;
+                                        }
+                                      }
+
+                                      Navigator.of(context).pop({
+                                        'name': nameController.text.trim(),
+                                        'address': addressController.text.trim(),
+                                        'autoGenerateRooms': autoGenerateRooms,
+                                        'floors': autoGenerateRooms ? int.parse(floorsController.text.trim()) : 0,
+                                        'roomsPerFloor': autoGenerateRooms ? int.parse(roomsPerFloorController.text.trim()) : 0,
+                                        'roomPrefix': autoGenerateRooms ? roomPrefixController.text.trim() : '',
+                                      });
+                                    },
+                                    child: const Text('Thêm'),
                                   ),
                                 ),
                               ],
+                            )
+                          : Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                TextButton(
+                                  onPressed: () => Navigator.of(context).pop(),
+                                  child: const Text('Hủy'),
+                                ),
+                                const SizedBox(width: 12),
+                                ElevatedButton(
+                                  onPressed: () {
+                                    // Validate required fields
+                                    if (nameController.text.trim().isEmpty ||
+                                        addressController.text.trim().isEmpty) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Vui lòng điền đầy đủ thông tin bắt buộc'),
+                                        ),
+                                      );
+                                      return;
+                                    }
+
+                                    // Validate room configuration if auto-generate is enabled
+                                    if (autoGenerateRooms) {
+                                      final floors = int.tryParse(floorsController.text.trim());
+                                      final roomsPerFloor = int.tryParse(roomsPerFloorController.text.trim());
+                                      
+                                      if (floors == null || floors <= 0) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(
+                                            content: Text('Số tầng không hợp lệ'),
+                                          ),
+                                        );
+                                        return;
+                                      }
+                                      
+                                      if (roomsPerFloor == null || roomsPerFloor <= 0) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(
+                                            content: Text('Số phòng mỗi tầng không hợp lệ'),
+                                          ),
+                                        );
+                                        return;
+                                      }
+                                    }
+
+                                    Navigator.of(context).pop({
+                                      'name': nameController.text.trim(),
+                                      'address': addressController.text.trim(),
+                                      'autoGenerateRooms': autoGenerateRooms,
+                                      'floors': autoGenerateRooms ? int.parse(floorsController.text.trim()) : 0,
+                                      'roomsPerFloor': autoGenerateRooms ? int.parse(roomsPerFloorController.text.trim()) : 0,
+                                      'roomPrefix': autoGenerateRooms ? roomPrefixController.text.trim() : '',
+                                    });
+                                  },
+                                  child: const Text('Thêm'),
+                                ),
+                              ],
                             ),
-                          ),
-                        ],
-                        
-                        const SizedBox(height: 16),
-                      ],
                     ),
-                  ),
+                  ],
                 ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Hủy'),
-                  ),
-                  ElevatedButton(
-                    onPressed: () {
-                      // Validate required fields
-                      if (nameController.text.trim().isEmpty ||
-                          addressController.text.trim().isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Vui lòng điền đầy đủ thông tin bắt buộc'),
-                          ),
-                        );
-                        return;
-                      }
-
-                      // Validate room configuration if auto-generate is enabled
-                      if (autoGenerateRooms) {
-                        final floors = int.tryParse(floorsController.text.trim());
-                        final roomsPerFloor = int.tryParse(roomsPerFloorController.text.trim());
-                        
-                        if (floors == null || floors <= 0) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Số tầng không hợp lệ'),
-                            ),
-                          );
-                          return;
-                        }
-                        
-                        if (roomsPerFloor == null || roomsPerFloor <= 0) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Số phòng mỗi tầng không hợp lệ'),
-                            ),
-                          );
-                          return;
-                        }
-                      }
-
-                      Navigator.of(context).pop({
-                        'name': nameController.text.trim(),
-                        'address': addressController.text.trim(),
-                        'autoGenerateRooms': autoGenerateRooms,
-                        'floors': autoGenerateRooms ? int.parse(floorsController.text.trim()) : 0,
-                        'roomsPerFloor': autoGenerateRooms ? int.parse(roomsPerFloorController.text.trim()) : 0,
-                        'roomPrefix': autoGenerateRooms ? roomPrefixController.text.trim() : '',
-                      });
-                    },
-                    child: const Text('Thêm'),
-                  ),
-                ],
               ),
-            ),
-          );
-        },
-      ),
+            );
+          },
+        );
+      },
     );
 
     if (result != null && mounted) {
@@ -464,8 +655,6 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
     }
   }
 
-  // Add these helper methods after _showAddBuildingDialog:
-
   // Helper method to generate room number preview
   String _generateRoomPreview(String prefix, String floorsText, String roomsPerFloorText) {
     final floors = int.tryParse(floorsText);
@@ -523,250 +712,391 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
 
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          return Dialog(
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 0.9,
-                maxHeight: MediaQuery.of(context).size.height * 0.85,
-              ),
-              child: AlertDialog(
-                title: const Text('Chỉnh Sửa Toà Nhà'),
-                contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
-                content: SizedBox(
-                  width: double.maxFinite,
-                  child: SingleChildScrollView(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        // Building Name
-                        TextField(
-                          controller: nameController,
-                          decoration: const InputDecoration(
-                            labelText: 'Tên toà nhà *',
-                            hintText: 'vd: Toà A',
-                            hintStyle: TextStyle(
-                              color: Color(0xFFBDBDBD),
-                              fontStyle: FontStyle.italic,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        
-                        // Address
-                        TextField(
-                          controller: addressController,
-                          decoration: const InputDecoration(
-                            labelText: 'Địa chỉ *',
-                            hintText: 'vd: 123 Đường ABC',
-                            hintStyle: TextStyle(
-                              color: Color(0xFFBDBDBD),
-                              fontStyle: FontStyle.italic,
-                            ),
-                          ),
-                          maxLines: 2,
-                        ),
-                        const SizedBox(height: 24),
-                        
-                        // Auto-generate rooms toggle
-                        CheckboxListTile(
-                          title: const Text('Thêm phòng mới'),
-                          subtitle: const Text('Tạo thêm phòng cho toà nhà này'),
-                          value: autoGenerateRooms,
-                          onChanged: (value) {
-                            setDialogState(() {
-                              autoGenerateRooms = value ?? false;
-                            });
-                          },
-                          contentPadding: EdgeInsets.zero,
-                        ),
-                        
-                        if (autoGenerateRooms) ...[
-                          const SizedBox(height: 16),
-                          const Divider(),
-                          const SizedBox(height: 16),
-                          
-                          // Room Configuration Section
-                          const Text(
-                            'Cấu hình phòng',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          
-                          // Number of floors
-                          TextField(
-                            controller: floorsController,
-                            decoration: const InputDecoration(
-                              labelText: 'Số tầng *',
-                              hintText: '1',
-                              hintStyle: TextStyle(
-                                color: Color(0xFFBDBDBD),
-                                fontStyle: FontStyle.italic,
+      builder: (context) {
+        final isSmall = _isSmallScreen(context);
+        final screenHeight = MediaQuery.of(context).size.height;
+        
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return Dialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: _getDialogWidth(context),
+                  maxHeight: screenHeight * 0.9,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Header with close button
+                    Padding(
+                      padding: EdgeInsets.all(isSmall ? 12.0 : 16.0),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Chỉnh Sửa Toà Nhà',
+                              style: TextStyle(
+                                fontSize: isSmall ? 16 : 18,
+                                fontWeight: FontWeight.bold,
                               ),
-                              helperText: 'Số tầng trong toà nhà',
                             ),
-                            keyboardType: TextInputType.number,
-                            onChanged: (value) {
-                              setDialogState(() {}); // Update preview
-                            },
                           ),
-                          const SizedBox(height: 16),
-                          
-                          // Rooms per floor
-                          TextField(
-                            controller: roomsPerFloorController,
-                            decoration: const InputDecoration(
-                              labelText: 'Số phòng mỗi tầng *',
-                              hintText: '10',
-                              hintStyle: TextStyle(
-                                color: Color(0xFFBDBDBD),
-                                fontStyle: FontStyle.italic,
+                          IconButton(
+                            icon: const Icon(Icons.close),
+                            onPressed: () => Navigator.pop(context),
+                            padding: EdgeInsets.zero,
+                            constraints: BoxConstraints(
+                              minWidth: isSmall ? 40 : 48,
+                              minHeight: isSmall ? 40 : 48,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Divider(height: 1),
+                    
+                    // Scrollable content
+                    Flexible(
+                      child: SingleChildScrollView(
+                        padding: EdgeInsets.all(isSmall ? 12.0 : 16.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // Building Name
+                            TextField(
+                              controller: nameController,
+                              style: TextStyle(fontSize: isSmall ? 14 : 16),
+                              decoration: InputDecoration(
+                                labelText: 'Tên toà nhà *',
+                                labelStyle: TextStyle(fontSize: isSmall ? 13 : 14),
+                                hintText: 'vd: Toà A',
+                                hintStyle: TextStyle(
+                                  color: const Color(0xFFBDBDBD),
+                                  fontStyle: FontStyle.italic,
+                                  fontSize: isSmall ? 13 : 14,
+                                ),
                               ),
-                              helperText: 'Số phòng trên mỗi tầng',
                             ),
-                            keyboardType: TextInputType.number,
-                            onChanged: (value) {
-                              setDialogState(() {}); // Update preview
-                            },
-                          ),
-                          const SizedBox(height: 16),
-                          
-                          // Room number prefix
-                          TextField(
-                            controller: roomPrefixController,
-                            decoration: const InputDecoration(
-                              labelText: 'Tiền tố số phòng (tùy chọn)',
-                              hintText: 'A',
-                              hintStyle: TextStyle(
-                                color: Color(0xFFBDBDBD),
-                                fontStyle: FontStyle.italic,
+                            SizedBox(height: isSmall ? 12 : 16),
+                            
+                            // Address
+                            TextField(
+                              controller: addressController,
+                              style: TextStyle(fontSize: isSmall ? 14 : 16),
+                              decoration: InputDecoration(
+                                labelText: 'Địa chỉ *',
+                                labelStyle: TextStyle(fontSize: isSmall ? 13 : 14),
+                                hintText: 'vd: 123 Đường ABC',
+                                hintStyle: TextStyle(
+                                  color: const Color(0xFFBDBDBD),
+                                  fontStyle: FontStyle.italic,
+                                  fontSize: isSmall ? 13 : 14,
+                                ),
                               ),
-                              helperText: 'VD: "A" sẽ tạo phòng A101, A102, ...',
+                              maxLines: 2,
                             ),
-                            onChanged: (value) {
-                              setDialogState(() {}); // Update preview
-                            },
-                          ),
-                          const SizedBox(height: 16),
-                          
-                          // Preview
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.blue.shade50,
-                              borderRadius: BorderRadius.circular(8),
+                            SizedBox(height: isSmall ? 16 : 24),
+                            
+                            // Auto-generate rooms toggle
+                            CheckboxListTile(
+                              title: Text(
+                                'Thêm phòng mới',
+                                style: TextStyle(fontSize: isSmall ? 14 : 16),
+                              ),
+                              subtitle: Text(
+                                'Tạo thêm phòng cho toà nhà này',
+                                style: TextStyle(fontSize: isSmall ? 12 : 14),
+                              ),
+                              value: autoGenerateRooms,
+                              onChanged: (value) {
+                                setDialogState(() {
+                                  autoGenerateRooms = value ?? false;
+                                });
+                              },
+                              contentPadding: EdgeInsets.zero,
                             ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
+                            
+                            if (autoGenerateRooms) ...[
+                              SizedBox(height: isSmall ? 12 : 16),
+                              const Divider(),
+                              SizedBox(height: isSmall ? 12 : 16),
+                              
+                              // Room Configuration Section
+                              Text(
+                                'Cấu hình phòng',
+                                style: TextStyle(
+                                  fontSize: isSmall ? 15 : 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              SizedBox(height: isSmall ? 12 : 16),
+                              
+                              // Number of floors
+                              TextField(
+                                controller: floorsController,
+                                style: TextStyle(fontSize: isSmall ? 14 : 16),
+                                decoration: InputDecoration(
+                                  labelText: 'Số tầng *',
+                                  labelStyle: TextStyle(fontSize: isSmall ? 13 : 14),
+                                  hintText: '1',
+                                  hintStyle: TextStyle(
+                                    color: const Color(0xFFBDBDBD),
+                                    fontStyle: FontStyle.italic,
+                                    fontSize: isSmall ? 13 : 14,
+                                  ),
+                                  helperText: 'Số tầng trong toà nhà',
+                                  helperStyle: TextStyle(fontSize: isSmall ? 11 : 12),
+                                ),
+                                keyboardType: TextInputType.number,
+                                onChanged: (value) {
+                                  setDialogState(() {}); // Update preview
+                                },
+                              ),
+                              SizedBox(height: isSmall ? 12 : 16),
+                              
+                              // Rooms per floor
+                              TextField(
+                                controller: roomsPerFloorController,
+                                style: TextStyle(fontSize: isSmall ? 14 : 16),
+                                decoration: InputDecoration(
+                                  labelText: 'Số phòng mỗi tầng *',
+                                  labelStyle: TextStyle(fontSize: isSmall ? 13 : 14),
+                                  hintText: '10',
+                                  hintStyle: TextStyle(
+                                    color: const Color(0xFFBDBDBD),
+                                    fontStyle: FontStyle.italic,
+                                    fontSize: isSmall ? 13 : 14,
+                                  ),
+                                  helperText: 'Số phòng trên mỗi tầng',
+                                  helperStyle: TextStyle(fontSize: isSmall ? 11 : 12),
+                                ),
+                                keyboardType: TextInputType.number,
+                                onChanged: (value) {
+                                  setDialogState(() {}); // Update preview
+                                },
+                              ),
+                              SizedBox(height: isSmall ? 12 : 16),
+                              
+                              // Room number prefix
+                              TextField(
+                                controller: roomPrefixController,
+                                style: TextStyle(fontSize: isSmall ? 14 : 16),
+                                decoration: InputDecoration(
+                                  labelText: 'Tiền tố số phòng (tùy chọn)',
+                                  labelStyle: TextStyle(fontSize: isSmall ? 13 : 14),
+                                  hintText: 'A',
+                                  hintStyle: TextStyle(
+                                    color: const Color(0xFFBDBDBD),
+                                    fontStyle: FontStyle.italic,
+                                    fontSize: isSmall ? 13 : 14,
+                                  ),
+                                  helperText: 'VD: "A" sẽ tạo phòng A101, A102, ...',
+                                  helperStyle: TextStyle(fontSize: isSmall ? 11 : 12),
+                                ),
+                                onChanged: (value) {
+                                  setDialogState(() {}); // Update preview
+                                },
+                              ),
+                              SizedBox(height: isSmall ? 12 : 16),
+                              
+                              // Preview
+                              Container(
+                                padding: EdgeInsets.all(isSmall ? 10 : 12),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.shade50,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Icon(Icons.info_outline, size: 16, color: Colors.blue.shade700),
-                                    const SizedBox(width: 8),
-                                    const Text(
-                                      'Ví dụ số phòng:',
+                                    Row(
+                                      children: [
+                                        Icon(
+                                          Icons.info_outline,
+                                          size: isSmall ? 14 : 16,
+                                          color: Colors.blue.shade700,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          'Ví dụ số phòng:',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: isSmall ? 11 : 12,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    SizedBox(height: isSmall ? 6 : 8),
+                                    Text(
+                                      _generateRoomPreview(
+                                        roomPrefixController.text,
+                                        floorsController.text,
+                                        roomsPerFloorController.text,
+                                      ),
                                       style: TextStyle(
+                                        fontSize: isSmall ? 11 : 12,
+                                        color: Colors.blue.shade900,
+                                      ),
+                                    ),
+                                    SizedBox(height: isSmall ? 6 : 8),
+                                    Text(
+                                      'Tổng số phòng: ${_calculateTotalRooms(floorsController.text, roomsPerFloorController.text)}',
+                                      style: TextStyle(
+                                        fontSize: isSmall ? 11 : 12,
                                         fontWeight: FontWeight.bold,
-                                        fontSize: 12,
+                                        color: Colors.blue.shade900,
                                       ),
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  _generateRoomPreview(
-                                    roomPrefixController.text,
-                                    floorsController.text,
-                                    roomsPerFloorController.text,
-                                  ),
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.blue.shade900,
+                              ),
+                            ],
+                            
+                            SizedBox(height: isSmall ? 12 : 16),
+                          ],
+                        ),
+                      ),
+                    ),
+                    
+                    const Divider(height: 1),
+                    
+                    // Actions
+                    Padding(
+                      padding: EdgeInsets.all(isSmall ? 8.0 : 12.0),
+                      child: isSmall
+                          ? Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                SizedBox(
+                                  width: double.infinity,
+                                  height: 44,
+                                  child: TextButton(
+                                    onPressed: () => Navigator.pop(context),
+                                    child: const Text('Hủy'),
                                   ),
                                 ),
                                 const SizedBox(height: 8),
-                                Text(
-                                  'Tổng số phòng: ${_calculateTotalRooms(floorsController.text, roomsPerFloorController.text)}',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.blue.shade900,
+                                SizedBox(
+                                  width: double.infinity,
+                                  height: 44,
+                                  child: ElevatedButton(
+                                    onPressed: () {
+                                      // Validate required fields
+                                      if (nameController.text.trim().isEmpty ||
+                                          addressController.text.trim().isEmpty) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(
+                                            content: Text('Vui lòng điền đầy đủ thông tin bắt buộc'),
+                                          ),
+                                        );
+                                        return;
+                                      }
+
+                                      // Validate room configuration if auto-generate is enabled
+                                      if (autoGenerateRooms) {
+                                        final floors = int.tryParse(floorsController.text.trim());
+                                        final roomsPerFloor = int.tryParse(roomsPerFloorController.text.trim());
+                                        
+                                        if (floors == null || floors <= 0) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(
+                                              content: Text('Số tầng không hợp lệ'),
+                                            ),
+                                          );
+                                          return;
+                                        }
+                                        
+                                        if (roomsPerFloor == null || roomsPerFloor <= 0) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(
+                                              content: Text('Số phòng mỗi tầng không hợp lệ'),
+                                            ),
+                                          );
+                                          return;
+                                        }
+                                      }
+
+                                      Navigator.of(context).pop({
+                                        'name': nameController.text.trim(),
+                                        'address': addressController.text.trim(),
+                                        'autoGenerateRooms': autoGenerateRooms,
+                                        'floors': autoGenerateRooms ? int.parse(floorsController.text.trim()) : 0,
+                                        'roomsPerFloor': autoGenerateRooms ? int.parse(roomsPerFloorController.text.trim()) : 0,
+                                        'roomPrefix': autoGenerateRooms ? roomPrefixController.text.trim() : '',
+                                      });
+                                    },
+                                    child: const Text('Cập nhật'),
                                   ),
                                 ),
                               ],
+                            )
+                          : Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context),
+                                  child: const Text('Hủy'),
+                                ),
+                                const SizedBox(width: 12),
+                                ElevatedButton(
+                                  onPressed: () {
+                                    // Validate required fields
+                                    if (nameController.text.trim().isEmpty ||
+                                        addressController.text.trim().isEmpty) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Vui lòng điền đầy đủ thông tin bắt buộc'),
+                                        ),
+                                      );
+                                      return;
+                                    }
+
+                                    // Validate room configuration if auto-generate is enabled
+                                    if (autoGenerateRooms) {
+                                      final floors = int.tryParse(floorsController.text.trim());
+                                      final roomsPerFloor = int.tryParse(roomsPerFloorController.text.trim());
+                                      
+                                      if (floors == null || floors <= 0) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(
+                                            content: Text('Số tầng không hợp lệ'),
+                                          ),
+                                        );
+                                        return;
+                                      }
+                                      
+                                      if (roomsPerFloor == null || roomsPerFloor <= 0) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(
+                                            content: Text('Số phòng mỗi tầng không hợp lệ'),
+                                          ),
+                                        );
+                                        return;
+                                      }
+                                    }
+
+                                    Navigator.of(context).pop({
+                                      'name': nameController.text.trim(),
+                                      'address': addressController.text.trim(),
+                                      'autoGenerateRooms': autoGenerateRooms,
+                                      'floors': autoGenerateRooms ? int.parse(floorsController.text.trim()) : 0,
+                                      'roomsPerFloor': autoGenerateRooms ? int.parse(roomsPerFloorController.text.trim()) : 0,
+                                      'roomPrefix': autoGenerateRooms ? roomPrefixController.text.trim() : '',
+                                    });
+                                  },
+                                  child: const Text('Cập nhật'),
+                                ),
+                              ],
                             ),
-                          ),
-                        ],
-                        
-                        const SizedBox(height: 16),
-                      ],
                     ),
-                  ),
+                  ],
                 ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Hủy'),
-                  ),
-                  ElevatedButton(
-                    onPressed: () {
-                      // Validate required fields
-                      if (nameController.text.trim().isEmpty ||
-                          addressController.text.trim().isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Vui lòng điền đầy đủ thông tin bắt buộc'),
-                          ),
-                        );
-                        return;
-                      }
-
-                      // Validate room configuration if auto-generate is enabled
-                      if (autoGenerateRooms) {
-                        final floors = int.tryParse(floorsController.text.trim());
-                        final roomsPerFloor = int.tryParse(roomsPerFloorController.text.trim());
-                        
-                        if (floors == null || floors <= 0) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Số tầng không hợp lệ'),
-                            ),
-                          );
-                          return;
-                        }
-                        
-                        if (roomsPerFloor == null || roomsPerFloor <= 0) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Số phòng mỗi tầng không hợp lệ'),
-                            ),
-                          );
-                          return;
-                        }
-                      }
-
-                      Navigator.of(context).pop({
-                        'name': nameController.text.trim(),
-                        'address': addressController.text.trim(),
-                        'autoGenerateRooms': autoGenerateRooms,
-                        'floors': autoGenerateRooms ? int.parse(floorsController.text.trim()) : 0,
-                        'roomsPerFloor': autoGenerateRooms ? int.parse(roomsPerFloorController.text.trim()) : 0,
-                        'roomPrefix': autoGenerateRooms ? roomPrefixController.text.trim() : '',
-                      });
-                    },
-                    child: const Text('Cập nhật'),
-                  ),
-                ],
               ),
-            ),
-          );
-        },
-      ),
+            );
+          },
+        );
+      },
     );
 
     if (result != null && mounted) {
@@ -1023,54 +1353,66 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 5,
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text(widget.organization.name),
-          bottom: PreferredSize(
-            preferredSize: const Size.fromHeight(kToolbarHeight),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                // Calculate if tabs will fit
-                // Rough estimate: each tab needs about 120 pixels
-                const estimatedTabWidth = 120.0;
-                const numberOfTabs = 5;
-                final totalEstimatedWidth = estimatedTabWidth * numberOfTabs;
-                final shouldScroll = constraints.maxWidth < totalEstimatedWidth;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Check minimum size
+        if (constraints.maxWidth < minWidth || constraints.maxHeight < minHeight) {
+          return Scaffold(
+            body: _buildMinimumSizeWarning(context, constraints),
+          );
+        }
+        
+        // Normal content
+        return DefaultTabController(
+          length: 5,
+          child: Scaffold(
+            appBar: AppBar(
+              title: Text(widget.organization.name),
+              bottom: PreferredSize(
+                preferredSize: const Size.fromHeight(kToolbarHeight),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    // Calculate if tabs will fit
+                    // Rough estimate: each tab needs about 120 pixels
+                    const estimatedTabWidth = 120.0;
+                    const numberOfTabs = 5;
+                    final totalEstimatedWidth = estimatedTabWidth * numberOfTabs;
+                    final shouldScroll = constraints.maxWidth < totalEstimatedWidth;
 
-                return TabBar(
-                  isScrollable: shouldScroll,
-                  labelStyle: const TextStyle(fontSize: 12),
-                  tabs: const [
-                    Tab(icon: Icon(Icons.apartment), text: 'Toà nhà'),
-                    Tab(icon: Icon(Icons.people), text: 'Người thuê'),
-                    Tab(icon: Icon(Icons.receipt_long), text: 'Hóa đơn'),
-                    Tab(icon: Icon(Icons.bar_chart), text: 'Thống kê'),
-                    Tab(icon: Icon(Icons.group), text: 'Thành viên'),
-                  ],
-                );
-              },
+                    return TabBar(
+                      isScrollable: shouldScroll,
+                      labelStyle: const TextStyle(fontSize: 12),
+                      tabs: const [
+                        Tab(icon: Icon(Icons.apartment), text: 'Toà nhà'),
+                        Tab(icon: Icon(Icons.people), text: 'Người thuê'),
+                        Tab(icon: Icon(Icons.receipt_long), text: 'Hóa đơn'),
+                        Tab(icon: Icon(Icons.bar_chart), text: 'Thống kê'),
+                        Tab(icon: Icon(Icons.group), text: 'Thành viên'),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ),
+            body: TabBarView(
+              children: [
+                _buildBuildingsTab(),
+                  TenantsTab(
+                  organization: widget.organization,
+                  tenantService: _tenantService,
+                  buildingService: _buildingService,
+                  roomService: _roomService,
+                  organizationService: _orgService,
+                  authService: _authService, // use your field name
+                ),
+                _buildPaymentsTab(),
+                _buildStatisticsTab(),
+                _buildMembersTab(),
+              ],
             ),
           ),
-        ),
-        body: TabBarView(
-          children: [
-            _buildBuildingsTab(),
-              TenantsTab(
-              organization: widget.organization,
-              tenantService: _tenantService,
-              buildingService: _buildingService,
-              roomService: _roomService,
-              organizationService: _orgService,
-              authService: _authService, // use your field name
-            ),
-            _buildPaymentsTab(),
-            _buildStatisticsTab(),
-            _buildMembersTab(),
-          ],
-        ),
-      ),
+        );
+      },
     );
   }
 

@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+const double minWidth = 360.0;
+const double minHeight = 600.0;
+
 class PdfFontService {
   static pw.Font? _cachedFont;
 

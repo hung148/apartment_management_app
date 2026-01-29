@@ -158,7 +158,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             children: [
               Icon(Icons.download, color: Theme.of(context).colorScheme.primary),
               const SizedBox(width: 8),
-              const Text('Cập nhật có sẵn'),
+              const Flexible(child: Text('Cập nhật có sẵn')),
             ],
           ),
           content: const Column(
@@ -256,6 +256,42 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   // ========================================
+  // RESPONSIVE HELPER METHODS
+  // ========================================
+  
+  bool _isSmallScreen(BuildContext context) {
+    return MediaQuery.of(context).size.width < 600;
+  }
+  
+  bool _isMediumScreen(BuildContext context) {
+    final width = MediaQuery.of(context).size.width;
+    return width >= 600 && width < 1200;
+  }
+  
+  bool _isLargeScreen(BuildContext context) {
+    return MediaQuery.of(context).size.width >= 1200;
+  }
+  
+  double _getDialogWidth(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    if (screenWidth < 600) {
+      return screenWidth * 0.9; // 90% on small screens
+    } else if (screenWidth < 1200) {
+      return 500; // Fixed 500px on medium screens
+    } else {
+      return 600; // Fixed 600px on large screens
+    }
+  }
+  
+  int _getGridCrossAxisCount(BuildContext context) {
+    final width = MediaQuery.of(context).size.width;
+    if (width < 600) return 1;
+    if (width < 900) return 2;
+    if (width < 1200) return 3;
+    return 4;
+  }
+
+  // ========================================
   // CREATE ORGANIZATION
   // ========================================
 
@@ -269,171 +305,200 @@ class _DashboardScreenState extends State<DashboardScreen> {
     await showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
+      builder: (context) => Dialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            Icon(Icons.add_business, color: Theme.of(context).colorScheme.primary),
-            const SizedBox(width: 8),
-            const Text('Tạo Tổ Chức Mới'),
-          ],
-        ),
-        content: SingleChildScrollView(
-          child: Form(
-            key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: nameController,
-                  autofocus: true,
-                  textCapitalization: TextCapitalization.words,
-                  decoration: InputDecoration(
-                    labelText: 'Tên tổ chức *',
-                    hintText: 'VD: Chung cư ABC',
-                    prefixIcon: const Icon(Icons.business),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Vui lòng nhập tên tổ chức';
-                    }
-                    return null;
-                  },
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: _getDialogWidth(context),
+            maxHeight: MediaQuery.of(context).size.height * 0.9,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Title
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Row(
+                  children: [
+                    Icon(Icons.add_business, color: Theme.of(context).colorScheme.primary),
+                    const SizedBox(width: 8),
+                    const Flexible(child: Text('Tạo Tổ Chức Mới', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
+                  ],
                 ),
-                const SizedBox(height: 16),
-                
-                TextFormField(
-                  controller: addressController,
-                  textCapitalization: TextCapitalization.words,
-                  maxLines: 2,
-                  decoration: InputDecoration(
-                    labelText: 'Địa chỉ',
-                    hintText: 'VD: 123 Nguyễn Huệ, Q1, TP.HCM',
-                    prefixIcon: const Icon(Icons.location_on),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    helperText: 'Tùy chọn - Hiển thị trên hóa đơn',
-                    helperStyle: TextStyle(fontSize: 11, color: Colors.grey[600]),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                
-                TextFormField(
-                  controller: phoneController,
-                  keyboardType: TextInputType.phone,
-                  decoration: InputDecoration(
-                    labelText: 'Số điện thoại',
-                    hintText: 'VD: 028-1234-5678',
-                    prefixIcon: const Icon(Icons.phone),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    helperText: 'Tùy chọn - Hiển thị trên hóa đơn',
-                    helperStyle: TextStyle(fontSize: 11, color: Colors.grey[600]),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                
-                TextFormField(
-                  controller: emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: InputDecoration(
-                    labelText: 'Email',
-                    hintText: 'VD: contact@abc.com',
-                    prefixIcon: const Icon(Icons.email),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    helperText: 'Tùy chọn - Hiển thị trên hóa đơn',
-                    helperStyle: TextStyle(fontSize: 11, color: Colors.grey[600]),
-                  ),
-                  validator: (value) {
-                    if (value != null && value.isNotEmpty) {
-                      final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
-                      if (!emailRegex.hasMatch(value)) {
-                        return 'Email không hợp lệ';
-                      }
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 8),
-                
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.blue.withOpacity(0.3)),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.info_outline, size: 20, color: Colors.blue[700]),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          'Thông tin liên hệ sẽ hiển thị trên hóa đơn PDF',
-                          style: TextStyle(fontSize: 12, color: Colors.blue[700]),
+              ),
+              const Divider(height: 1),
+              // Content
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Form(
+                    key: formKey,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        TextFormField(
+                          controller: nameController,
+                          autofocus: !_isSmallScreen(context),
+                          textCapitalization: TextCapitalization.words,
+                          decoration: InputDecoration(
+                            labelText: 'Tên tổ chức *',
+                            hintText: 'VD: Chung cư ABC',
+                            prefixIcon: const Icon(Icons.business),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) {
+                              return 'Vui lòng nhập tên tổ chức';
+                            }
+                            return null;
+                          },
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 16),
+                        
+                        TextFormField(
+                          controller: addressController,
+                          textCapitalization: TextCapitalization.words,
+                          maxLines: 2,
+                          decoration: InputDecoration(
+                            labelText: 'Địa chỉ',
+                            hintText: 'VD: 123 Nguyễn Huệ, Q1, TP.HCM',
+                            prefixIcon: const Icon(Icons.location_on),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            helperText: 'Tùy chọn - Hiển thị trên hóa đơn',
+                            helperStyle: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        
+                        TextFormField(
+                          controller: phoneController,
+                          keyboardType: TextInputType.phone,
+                          decoration: InputDecoration(
+                            labelText: 'Số điện thoại',
+                            hintText: 'VD: 028-1234-5678',
+                            prefixIcon: const Icon(Icons.phone),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            helperText: 'Tùy chọn - Hiển thị trên hóa đơn',
+                            helperStyle: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        
+                        TextFormField(
+                          controller: emailController,
+                          keyboardType: TextInputType.emailAddress,
+                          decoration: InputDecoration(
+                            labelText: 'Email',
+                            hintText: 'VD: contact@abc.com',
+                            prefixIcon: const Icon(Icons.email),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            helperText: 'Tùy chọn - Hiển thị trên hóa đơn',
+                            helperStyle: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                          ),
+                          validator: (value) {
+                            if (value != null && value.isNotEmpty) {
+                              final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+                              if (!emailRegex.hasMatch(value)) {
+                                return 'Email không hợp lệ';
+                              }
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 8),
+                        
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.info_outline, size: 20, color: Colors.blue[700]),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  'Thông tin liên hệ sẽ hiển thị trên hóa đơn PDF',
+                                  style: TextStyle(fontSize: 12, color: Colors.blue[700]),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ],
-            ),
+              ),
+              const Divider(height: 1),
+              // Actions
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () {
+                        Navigator.pop(context);
+                      },
+                      child: const Text('Hủy'),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        _createOrgLock.run(() async {
+                          if (!formKey.currentState!.validate()) {
+                            return;
+                          }
+                          
+                          final owner = await _authService.getCurrentOwner();
+                          if (owner == null) return;
+
+                          await _organizationService.createOrganization(
+                            name: nameController.text.trim(),
+                            ownerId: owner.id,
+                            address: addressController.text.trim().isEmpty 
+                                ? null 
+                                : addressController.text.trim(),
+                            phone: phoneController.text.trim().isEmpty 
+                                ? null 
+                                : phoneController.text.trim(),
+                            email: emailController.text.trim().isEmpty 
+                                ? null 
+                                : emailController.text.trim(),
+                          );
+
+                          if (mounted) {
+                            Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Tạo tổ chức thành công!'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                            setState(() {});
+                          }
+                        });
+                      },
+                      icon: const Icon(Icons.check),
+                      label: const Text('Tạo'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            child: const Text('Hủy'),
-          ),
-          ElevatedButton.icon(
-            onPressed: () {
-              _createOrgLock.run(() async {
-                if (!formKey.currentState!.validate()) {
-                  return;
-                }
-                
-                final owner = await _authService.getCurrentOwner();
-                if (owner == null) return;
-
-                await _organizationService.createOrganization(
-                  name: nameController.text.trim(),
-                  ownerId: owner.id,
-                  address: addressController.text.trim().isEmpty 
-                      ? null 
-                      : addressController.text.trim(),
-                  phone: phoneController.text.trim().isEmpty 
-                      ? null 
-                      : phoneController.text.trim(),
-                  email: emailController.text.trim().isEmpty 
-                      ? null 
-                      : emailController.text.trim(),
-                );
-
-                if (mounted) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Tạo tổ chức thành công!'),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                  setState(() {});
-                }
-              });
-            },
-            icon: const Icon(Icons.check),
-            label: const Text('Tạo'),
-          ),
-        ],
       ),
     );
 
@@ -460,7 +525,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           children: [
             Icon(Icons.group_add, color: Theme.of(context).colorScheme.primary),
             const SizedBox(width: 8),
-            const Text('Tham Gia Tổ Chức'),
+            const Flexible(child: Text('Tham Gia Tổ Chức')),
           ],
         ),
         content: Column(
@@ -475,7 +540,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               controller: controller,
               textCapitalization: TextCapitalization.characters,
               maxLength: 8,
-              autofocus: true,
+              autofocus: !_isSmallScreen(context),
               decoration: InputDecoration(
                 labelText: 'Mã mời',
                 hintText: 'VD: A3F7B2C9',
@@ -556,7 +621,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           children: [
             Icon(Icons.exit_to_app, color: Colors.orange[700]),
             const SizedBox(width: 8),
-            const Text('Rời khỏi tổ chức'),
+            const Flexible(child: Text('Rời khỏi tổ chức')),
           ],
         ),
         content: Column(
@@ -661,107 +726,138 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => Dialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            Icon(Icons.delete_forever, color: Colors.red[700]),
-            const SizedBox(width: 8),
-            const Text('Xóa tổ chức'),
-          ],
-        ),
-        content: Form(
-          key: formKey,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: _getDialogWidth(context),
+            maxHeight: MediaQuery.of(context).size.height * 0.9,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Hành động này sẽ XÓA VĨNH VIỄN tổ chức "${org.name}" và TẤT CẢ dữ liệu liên quan bao gồm:',
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 12),
-              _buildDeleteWarningItem('Tất cả tòa nhà'),
-              _buildDeleteWarningItem('Tất cả phòng'),
-              _buildDeleteWarningItem('Tất cả người thuê'),
-              _buildDeleteWarningItem('Tất cả thanh toán'),
-              _buildDeleteWarningItem('Tất cả thành viên'),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.red.withOpacity(0.3)),
-                ),
+              // Title
+              Padding(
+                padding: const EdgeInsets.all(16.0),
                 child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.warning, size: 20, color: Colors.red[700]),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'CẢNH BÁO: Hành động này KHÔNG THỂ HOÀN TÁC!',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Colors.red[900],
-                          fontWeight: FontWeight.bold,
+                    Icon(Icons.delete_forever, color: Colors.red[700]),
+                    const SizedBox(width: 8),
+                    const Flexible(child: Text('Xóa tổ chức', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              // Content
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Form(
+                    key: formKey,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Hành động này sẽ XÓA VĨNH VIỄN tổ chức "${org.name}" và TẤT CẢ dữ liệu liên quan bao gồm:',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
+                        const SizedBox(height: 12),
+                        _buildDeleteWarningItem('Tất cả tòa nhà'),
+                        _buildDeleteWarningItem('Tất cả phòng'),
+                        _buildDeleteWarningItem('Tất cả người thuê'),
+                        _buildDeleteWarningItem('Tất cả thanh toán'),
+                        _buildDeleteWarningItem('Tất cả thành viên'),
+                        const SizedBox(height: 16),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.red.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.red.withOpacity(0.3)),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(Icons.warning, size: 20, color: Colors.red[700]),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  'CẢNH BÁO: Hành động này KHÔNG THỂ HOÀN TÁC!',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.red[900],
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Để xác nhận, vui lòng nhập tên tổ chức:',
+                          style: TextStyle(fontWeight: FontWeight.w500),
+                        ),
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: nameController,
+                          decoration: InputDecoration(
+                            hintText: org.name,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            prefixIcon: const Icon(Icons.edit),
+                          ),
+                          validator: (value) {
+                            if (value == null || value.trim() != org.name) {
+                              return 'Tên không khớp';
+                            }
+                            return null;
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const Divider(height: 1),
+              // Actions
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () {
+                        nameController.dispose();
+                        Navigator.pop(context, false);
+                      },
+                      child: const Text('Hủy'),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: () {
+                        debugPrint('DEBUG: Delete button pressed');
+                        if (formKey.currentState!.validate()) {
+                          debugPrint('DEBUG: Form validated, skipping controller dispose');
+                          debugPrint('DEBUG: About to pop dialog');
+                          Navigator.pop(context, true);
+                          debugPrint('DEBUG: Dialog pop called');
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        foregroundColor: Colors.white,
                       ),
+                      child: const Text('XÓA VĨNH VIỄN'),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 16),
-              const Text(
-                'Để xác nhận, vui lòng nhập tên tổ chức:',
-                style: TextStyle(fontWeight: FontWeight.w500),
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: nameController,
-                decoration: InputDecoration(
-                  hintText: org.name,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  prefixIcon: const Icon(Icons.edit),
-                ),
-                validator: (value) {
-                  if (value == null || value.trim() != org.name) {
-                    return 'Tên không khớp';
-                  }
-                  return null;
-                },
-              ),
             ],
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              nameController.dispose();
-              Navigator.pop(context, false);
-            },
-            child: const Text('Hủy'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              debugPrint('DEBUG: Delete button pressed');
-              if (formKey.currentState!.validate()) {
-                debugPrint('DEBUG: Form validated, skipping controller dispose');
-                debugPrint('DEBUG: About to pop dialog');
-                Navigator.pop(context, true);
-                debugPrint('DEBUG: Dialog pop called');
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('XÓA VĨNH VIỄN'),
-          ),
-        ],
       ),
     );
 
@@ -946,51 +1042,53 @@ class _DashboardScreenState extends State<DashboardScreen> {
             return AlertDialog(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               title: Text(deleteAfter ? 'Di chuyển & xóa tổ chức' : 'Di chuyển dữ liệu tổ chức'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.blue[50],
-                      borderRadius: BorderRadius.circular(8),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.blue[50],
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Thông tin tổ chức nguồn:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey)),
+                          const SizedBox(height: 8),
+                          Text('Tên: ${sourceOrg.name}', style: const TextStyle(fontWeight: FontWeight.w500)),
+                          Text('ID: ${sourceOrg.id}', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                        ],
+                      ),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Thông tin tổ chức nguồn:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey)),
-                        const SizedBox(height: 8),
-                        Text('Tên: ${sourceOrg.name}', style: const TextStyle(fontWeight: FontWeight.w500)),
-                        Text('ID: ${sourceOrg.id}', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: targetController,
-                    decoration: const InputDecoration(
-                      labelText: 'ID tổ chức đích',
-                      hintText: 'Nhập ID tổ chức đích nơi muốn di chuyển',
-                      helperText: 'ID của tổ chức đích (không phải tên)',
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  if (preview != null) ...[
-                    Text('Xem trước dữ liệu sẽ di chuyển:', style: const TextStyle(fontWeight: FontWeight.bold)),
-                    Text('Tòa nhà: ${preview?['buildings'] ?? 0}, Phòng: ${preview?['rooms'] ?? 0}, Người thuê: ${preview?['tenants'] ?? 0}, Thanh toán: ${preview?['payments'] ?? 0}'),
-                  ],
-                  if (status != null) ...[
-                    const SizedBox(height: 8),
-                    Text(status!, style: const TextStyle(fontSize: 13)),
-                  ],
-                  if (loading) ...[
                     const SizedBox(height: 16),
-                    LinearProgressIndicator(value: progress),
+                    TextField(
+                      controller: targetController,
+                      decoration: const InputDecoration(
+                        labelText: 'ID tổ chức đích',
+                        hintText: 'Nhập ID tổ chức đích nơi muốn di chuyển',
+                        helperText: 'ID của tổ chức đích (không phải tên)',
+                      ),
+                    ),
                     const SizedBox(height: 8),
-                    Text('${(progress * 100).toStringAsFixed(0)}%'),
+                    if (preview != null) ...[
+                      const Text('Xem trước dữ liệu sẽ di chuyển:', style: TextStyle(fontWeight: FontWeight.bold)),
+                      Text('Tòa nhà: ${preview?['buildings'] ?? 0}, Phòng: ${preview?['rooms'] ?? 0}, Người thuê: ${preview?['tenants'] ?? 0}, Thanh toán: ${preview?['payments'] ?? 0}'),
+                    ],
+                    if (status != null) ...[
+                      const SizedBox(height: 8),
+                      Text(status!, style: const TextStyle(fontSize: 13)),
+                    ],
+                    if (loading) ...[
+                      const SizedBox(height: 16),
+                      LinearProgressIndicator(value: progress),
+                      const SizedBox(height: 8),
+                      Text('${(progress * 100).toStringAsFixed(0)}%'),
+                    ],
                   ],
-                ],
+                ),
               ),
               actions: [
                 if (!started) ...[
@@ -1066,7 +1164,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             backgroundColor: Colors.green,
                           ),
                         );
-                        setState(() {});
+                        this.setState(() {});
                       } else {
                         setState(() => status = 'Thao tác thất bại.');
                       }
@@ -1089,7 +1187,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         children: [
           Icon(Icons.close, size: 16, color: Colors.red[700]),
           const SizedBox(width: 8),
-          Text(text, style: TextStyle(color: Colors.red[800])),
+          Flexible(child: Text(text, style: TextStyle(color: Colors.red[800]))),
         ],
       ),
     );
@@ -1106,8 +1204,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
   ) {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.85,
       ),
       builder: (context) {
         return SafeArea(
@@ -1132,6 +1234,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
                   ),
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
               const SizedBox(height: 8),
@@ -1147,75 +1252,90 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
               const Divider(height: 32),
               
-              // Open Organization
-              ListTile(
-                leading: Icon(Icons.open_in_new, color: Theme.of(context).colorScheme.primary),
-                title: const Text('Mở tổ chức'),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.pushNamed(
-                    context,
-                    AppRouter.oranizationScreen,
-                    arguments: {'organization': org},
-                  );
-                },
+              // Scrollable content
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Open Organization
+                      ListTile(
+                        leading: Icon(Icons.open_in_new, color: Theme.of(context).colorScheme.primary),
+                        title: const Text('Mở tổ chức'),
+                        onTap: () {
+                          Navigator.pop(context);
+                          Navigator.pushNamed(
+                            context,
+                            AppRouter.oranizationScreen,
+                            arguments: {'organization': org},
+                          );
+                        },
+                      ),
+                      
+                      const Divider(height: 1),
+                      
+                      // View Organization Info
+                      ListTile(
+                        leading: Icon(Icons.info_outline, color: Colors.blue[700]),
+                        title: const Text('Xem thông tin tổ chức'),
+                        subtitle: const Text('Chi tiết tổ chức và ID'),
+                        onTap: () {
+                          Navigator.pop(context);
+                          _showOrganizationInfo(org);
+                        },
+                      ),
+                      
+                      const Divider(height: 1),
+                      
+                      // Migration options (admin only)
+                      if (isAdmin) ...[
+                        ListTile(
+                          leading: Icon(Icons.compare_arrows, color: Colors.blue[700]),
+                          title: const Text('Di chuyển dữ liệu sang tổ chức khác'),
+                          subtitle: const Text('Sao chép toàn bộ dữ liệu sang tổ chức khác'),
+                          onTap: () {
+                            Navigator.pop(context);
+                            _showMigrateOrganizationDialog(org, ownerId, false);
+                          },
+                        ),
+                        const Divider(height: 1),
+                        ListTile(
+                          leading: Icon(Icons.delete_sweep, color: Colors.red[700]),
+                          title: const Text('Di chuyển & xóa tổ chức'),
+                          subtitle: const Text('Chuyển dữ liệu và xóa tổ chức này'),
+                          onTap: () {
+                            Navigator.pop(context);
+                            _showMigrateOrganizationDialog(org, ownerId, true);
+                          },
+                        ),
+                        const Divider(height: 1),
+                        ListTile(
+                          leading: Icon(Icons.delete_forever, color: Colors.red[700]),
+                          title: const Text('Xóa tổ chức'),
+                          subtitle: const Text('Xóa vĩnh viễn tổ chức và tất cả dữ liệu'),
+                          onTap: () {
+                            Navigator.pop(context);
+                            _showDeleteOrganizationDialog(org, ownerId);
+                          },
+                        ),
+                      ] else ...[
+                        ListTile(
+                          leading: Icon(Icons.exit_to_app, color: Colors.orange[700]),
+                          title: const Text('Rời khỏi tổ chức'),
+                          subtitle: const Text('Bạn sẽ mất quyền truy cập'),
+                          onTap: () {
+                            Navigator.pop(context);
+                            _showLeaveOrganizationDialog(org, ownerId);
+                          },
+                        ),
+                      ],
+                      
+                      // Bottom padding for safe area
+                      const SizedBox(height: 16),
+                    ],
+                  ),
+                ),
               ),
-              
-              const Divider(height: 1),
-              
-              // View Organization Info
-              ListTile(
-                leading: Icon(Icons.info_outline, color: Colors.blue[700]),
-                title: const Text('Xem thông tin tổ chức'),
-                subtitle: const Text('Chi tiết tổ chức và ID'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showOrganizationInfo(org);
-                },
-              ),
-              
-              const Divider(height: 1),
-              
-              // Migration options (admin only)
-              if (isAdmin) ...[
-                ListTile(
-                  leading: Icon(Icons.compare_arrows, color: Colors.blue[700]),
-                  title: const Text('Di chuyển dữ liệu sang tổ chức khác'),
-                  subtitle: const Text('Sao chép toàn bộ dữ liệu sang tổ chức khác'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _showMigrateOrganizationDialog(org, ownerId, false);
-                  },
-                ),
-                ListTile(
-                  leading: Icon(Icons.delete_sweep, color: Colors.red[700]),
-                  title: const Text('Di chuyển & xóa tổ chức'),
-                  subtitle: const Text('Chuyển dữ liệu và xóa tổ chức này'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _showMigrateOrganizationDialog(org, ownerId, true);
-                  },
-                ),
-                ListTile(
-                  leading: Icon(Icons.delete_forever, color: Colors.red[700]),
-                  title: const Text('Xóa tổ chức'),
-                  subtitle: const Text('Xóa vĩnh viễn tổ chức và tất cả dữ liệu'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _showDeleteOrganizationDialog(org, ownerId);
-                  },
-                ),
-              ] else ...[
-                ListTile(
-                  leading: Icon(Icons.exit_to_app, color: Colors.orange[700]),
-                  title: const Text('Rời khỏi tổ chức'),
-                  subtitle: const Text('Bạn sẽ mất quyền truy cập'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _showLeaveOrganizationDialog(org, ownerId);
-                  },
-                ),
-              ],
             ],
           ),
         );
@@ -1270,6 +1390,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final isSmall = _isSmallScreen(context);
+    
+    // Set minimum window size constraints
+    const minWidth = 360.0;
+    const minHeight = 600.0;
+    
     return Scaffold(
       appBar: AppBar(
         title: const Text('Trang chủ'),
@@ -1277,21 +1405,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
         actions: [
           if (_updateAvailable && !_checkingUpdate)
             Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: TextButton.icon(
-                onPressed: _performUpdate,
-                icon: const Icon(Icons.system_update, color: Colors.white),
-                label: const Text(
-                  'Cập nhật',
-                  style: TextStyle(color: Colors.white),
-                ),
-                style: TextButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                ),
-              ),
+              padding: EdgeInsets.only(right: isSmall ? 4 : 8),
+              child: isSmall
+                  ? IconButton(
+                      onPressed: _performUpdate,
+                      icon: const Icon(Icons.system_update),
+                      tooltip: 'Cập nhật',
+                    )
+                  : TextButton.icon(
+                      onPressed: _performUpdate,
+                      icon: const Icon(Icons.system_update, color: Colors.white),
+                      label: const Text(
+                        'Cập nhật',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                      style: TextButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                      ),
+                    ),
             ),
           IconButton(
             onPressed: _handleLogout,
@@ -1300,421 +1434,549 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ],
       ),
-      body: FutureBuilder<Owner?>(
-        future: _authService.getCurrentOwner(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: Loading3(size: 50));
-          }
-
-          final owner = snapshot.data;
-          if (owner == null) {
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          // Check minimum size
+          if (constraints.maxWidth < minWidth || constraints.maxHeight < minHeight) {
             return Center(
-              child: Card(
-                margin: const EdgeInsets.all(24),
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.error_outline,
-                        size: 64,
-                        color: Theme.of(context).colorScheme.error,
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.warning_amber_rounded, size: 64, color: Colors.orange[700]),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Kích thước cửa sổ quá nhỏ',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
                       ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Không tìm thấy dữ liệu người dùng',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.error,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      ElevatedButton.icon(
-                        onPressed: _handleLogout,
-                        icon: const Icon(Icons.logout),
-                        label: const Text('Đăng xuất'),
-                      ),
-                    ],
-                  ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Kích thước tối thiểu: ${minWidth.toInt()}x${minHeight.toInt()}',
+                      style: TextStyle(color: Colors.grey[600]),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Hiện tại: ${constraints.maxWidth.toInt()}x${constraints.maxHeight.toInt()}',
+                      style: TextStyle(color: Colors.grey[600]),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
                 ),
               ),
             );
           }
+          
+          return FutureBuilder<Owner?>(
+            future: _authService.getCurrentOwner(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: Loading3(size: 50));
+              }
 
-          return RefreshIndicator(
-            onRefresh: () async {
-              setState(() {});
-              await _checkForUpdate();
-            },
-            child: CustomScrollView(
-              slivers: [
-                // User Info Header
-                SliverToBoxAdapter(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          Theme.of(context).colorScheme.primary,
-                          Theme.of(context).colorScheme.primary.withOpacity(0.7),
+              final owner = snapshot.data;
+              if (owner == null) {
+                return Center(
+                  child: Card(
+                    margin: EdgeInsets.all(isSmall ? 16 : 24),
+                    child: Padding(
+                      padding: EdgeInsets.all(isSmall ? 16 : 24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.error_outline,
+                            size: isSmall ? 48 : 64,
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Không tìm thấy dữ liệu người dùng',
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.error,
+                              fontSize: isSmall ? 14 : 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 24),
+                          ElevatedButton.icon(
+                            onPressed: _handleLogout,
+                            icon: const Icon(Icons.logout),
+                            label: const Text('Đăng xuất'),
+                          ),
                         ],
                       ),
                     ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
+                  ),
+                );
+              }
+
+              return RefreshIndicator(
+                onRefresh: () async {
+                  setState(() {});
+                  await _checkForUpdate();
+                },
+                child: CustomScrollView(
+                  slivers: [
+                    // User Info Header
+                    SliverToBoxAdapter(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              Theme.of(context).colorScheme.primary,
+                              Theme.of(context).colorScheme.primary.withOpacity(0.7),
+                            ],
+                          ),
+                        ),
+                        child: Padding(
+                          padding: EdgeInsets.all(isSmall ? 16 : 24),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              CircleAvatar(
-                                radius: 32,
-                                backgroundColor: Colors.white,
-                                child: Text(
-                                  owner.name[0].toUpperCase(),
-                                  style: TextStyle(
-                                    fontSize: 32,
-                                    fontWeight: FontWeight.bold,
-                                    color: Theme.of(context).colorScheme.primary,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Xin chào!',
+                              Row(
+                                children: [
+                                  CircleAvatar(
+                                    radius: isSmall ? 24 : 32,
+                                    backgroundColor: Colors.white,
+                                    child: Text(
+                                      owner.name[0].toUpperCase(),
                                       style: TextStyle(
-                                        color: Colors.white.withOpacity(0.9),
-                                        fontSize: 14,
+                                        fontSize: isSmall ? 24 : 32,
+                                        fontWeight: FontWeight.bold,
+                                        color: Theme.of(context).colorScheme.primary,
                                       ),
                                     ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      owner.name,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 24,
-                                        fontWeight: FontWeight.bold,
-                                      ),
+                                  ),
+                                  SizedBox(width: isSmall ? 12 : 16),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Xin chào!',
+                                          style: TextStyle(
+                                            color: Colors.white.withOpacity(0.9),
+                                            fontSize: isSmall ? 12 : 14,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          owner.name,
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: isSmall ? 18 : 24,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Column(
+                                  children: [
+                                    _buildInfoRow(Icons.email, owner.email),
+                                    const SizedBox(height: 8),
+                                    _buildInfoRow(
+                                      Icons.calendar_today,
+                                      'Tham gia: ${_formatDate(owner.createdAt)}',
                                     ),
                                   ],
                                 ),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 16),
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Column(
-                              children: [
-                                _buildInfoRow(Icons.email, owner.email),
-                                const SizedBox(height: 8),
-                                _buildInfoRow(
-                                  Icons.calendar_today,
-                                  'Tham gia: ${_formatDate(owner.createdAt)}',
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
                     ),
-                  ),
-                ),
 
-                // Organizations Section Header
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.business,
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Tổ Chức Của Bạn',
-                              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
+                    // Organizations Section Header
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          isSmall ? 12 : 16,
+                          isSmall ? 16 : 24,
+                          isSmall ? 12 : 16,
+                          8,
                         ),
-                        Row(
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.group_add),
-                              tooltip: 'Tham gia tổ chức',
-                              onPressed: () => _dialogLock.run(_showJoinOrganizationDialog),
-                              style: IconButton.styleFrom(
-                                backgroundColor: Theme.of(context)
-                                    .colorScheme
-                                    .primary
-                                    .withOpacity(0.1),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            IconButton(
-                              icon: const Icon(Icons.add),
-                              tooltip: 'Tạo tổ chức mới',
-                              onPressed: () => _dialogLock.run(_showCreateOrganizationDialog),
-                              style: IconButton.styleFrom(
-                                backgroundColor: Theme.of(context)
-                                    .colorScheme
-                                    .primary
-                                    .withOpacity(0.1),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                // Organizations List
-                FutureBuilder<List<Organization>>(
-                  future: _organizationService.getUserOrganizations(owner.id),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const SliverFillRemaining(
-                        child: Center(child: CircularProgressIndicator()),
-                      );
-                    }
-
-                    final orgs = snapshot.data ?? [];
-                    if (orgs.isEmpty) {
-                      return SliverFillRemaining(
-                        child: Center(
-                          child: Card(
-                            margin: const EdgeInsets.all(24),
-                            child: Padding(
-                              padding: const EdgeInsets.all(32),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
+                        child: isSmall
+                            ? Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Icon(
-                                    Icons.business_outlined,
-                                    size: 80,
-                                    color: Colors.grey[400],
-                                  ),
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    'Chưa có tổ chức nào',
-                                    style: Theme.of(context).textTheme.titleLarge,
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'Tạo tổ chức mới hoặc tham gia bằng mã mời',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(color: Colors.grey[600]),
-                                  ),
-                                  const SizedBox(height: 24),
                                   Row(
-                                    mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      ElevatedButton.icon(
-                                        onPressed: _showJoinOrganizationDialog,
-                                        icon: const Icon(Icons.group_add),
-                                        label: const Text('Tham Gia'),
+                                      Icon(
+                                        Icons.business,
+                                        color: Theme.of(context).colorScheme.primary,
+                                        size: 20,
                                       ),
-                                      const SizedBox(width: 12),
-                                      ElevatedButton.icon(
-                                        onPressed: _showCreateOrganizationDialog,
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          'Tổ Chức Của Bạn',
+                                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 18,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.end,
+                                    children: [
+                                      Expanded(
+                                        child: OutlinedButton.icon(
+                                          icon: const Icon(Icons.group_add, size: 18),
+                                          label: const Text('Tham gia'),
+                                          onPressed: () => _dialogLock.run(_showJoinOrganizationDialog),
+                                          style: OutlinedButton.styleFrom(
+                                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: ElevatedButton.icon(
+                                          icon: const Icon(Icons.add, size: 18),
+                                          label: const Text('Tạo mới'),
+                                          onPressed: () => _dialogLock.run(_showCreateOrganizationDialog),
+                                          style: ElevatedButton.styleFrom(
+                                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              )
+                            : Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        Icons.business,
+                                        color: Theme.of(context).colorScheme.primary,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        'Tổ Chức Của Bạn',
+                                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  Row(
+                                    children: [
+                                      IconButton(
+                                        icon: const Icon(Icons.group_add),
+                                        tooltip: 'Tham gia tổ chức',
+                                        onPressed: () => _dialogLock.run(_showJoinOrganizationDialog),
+                                        style: IconButton.styleFrom(
+                                          backgroundColor: Theme.of(context)
+                                              .colorScheme
+                                              .primary
+                                              .withOpacity(0.1),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      IconButton(
                                         icon: const Icon(Icons.add),
-                                        label: const Text('Tạo Mới'),
+                                        tooltip: 'Tạo tổ chức mới',
+                                        onPressed: () => _dialogLock.run(_showCreateOrganizationDialog),
+                                        style: IconButton.styleFrom(
+                                          backgroundColor: Theme.of(context)
+                                              .colorScheme
+                                              .primary
+                                              .withOpacity(0.1),
+                                        ),
                                       ),
                                     ],
                                   ),
                                 ],
                               ),
-                            ),
-                          ),
-                        ),
-                      );
-                    }
+                      ),
+                    ),
 
-                    return SliverPadding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      sliver: SliverList(
-                        delegate: SliverChildBuilderDelegate(
-                          (context, index) {
-                            final org = orgs[index];
-                            return Card(
-                              margin: const EdgeInsets.only(bottom: 12),
-                              elevation: 2,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              child: FutureBuilder<Membership?>(
-                                future: _organizationService.getUserMembership(
-                                  owner.id,
-                                  org.id,
-                                ),
-                                builder: (context, snapshot) {
-                                  final role = snapshot.data?.role ?? 'member';
-                                  final isAdmin = role == 'admin';
-                                  final roleText = isAdmin ? 'Quản trị viên' : 'Thành viên';
+                    // Organizations List
+                    FutureBuilder<List<Organization>>(
+                      future: _organizationService.getUserOrganizations(owner.id),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState == ConnectionState.waiting) {
+                          return const SliverFillRemaining(
+                            child: Center(child: CircularProgressIndicator()),
+                          );
+                        }
 
-                                  return InkWell(
-                                    borderRadius: BorderRadius.circular(16),
-                                    onTap: () {
-                                      Navigator.pushNamed(
-                                        context,
-                                        AppRouter.oranizationScreen,
-                                        arguments: {
-                                          'organization': org
-                                        },
-                                      );
-                                    },
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(16),
-                                      child: Row(
-                                        children: [
-                                          Container(
-                                            width: 56,
-                                            height: 56,
-                                            decoration: BoxDecoration(
-                                              gradient: LinearGradient(
-                                                begin: Alignment.topLeft,
-                                                end: Alignment.bottomRight,
-                                                colors: [
-                                                  Theme.of(context).colorScheme.primary,
-                                                  Theme.of(context)
-                                                      .colorScheme
-                                                      .primary
-                                                      .withAlpha((0.7 * 255).round()),
-                                                ],
-                                              ),
-                                              borderRadius: BorderRadius.circular(12),
-                                            ),
-                                            child: Center(
-                                              child: Text(
-                                                org.name[0].toUpperCase(),
-                                                style: const TextStyle(
-                                                  color: Colors.white,
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 24,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 16),
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
+                        final orgs = snapshot.data ?? [];
+                        if (orgs.isEmpty) {
+                          return SliverFillRemaining(
+                            child: Center(
+                              child: Card(
+                                margin: EdgeInsets.all(isSmall ? 16 : 24),
+                                child: Padding(
+                                  padding: EdgeInsets.all(isSmall ? 24 : 32),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.business_outlined,
+                                        size: isSmall ? 64 : 80,
+                                        color: Colors.grey[400],
+                                      ),
+                                      const SizedBox(height: 16),
+                                      Text(
+                                        'Chưa có tổ chức nào',
+                                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                          fontSize: isSmall ? 18 : null,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        'Tạo tổ chức mới hoặc tham gia bằng mã mời',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          color: Colors.grey[600],
+                                          fontSize: isSmall ? 13 : null,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 24),
+                                      isSmall
+                                          ? Column(
                                               children: [
-                                                Text(
-                                                  org.name,
-                                                  style: const TextStyle(
-                                                    fontWeight: FontWeight.bold,
-                                                    fontSize: 16,
-                                                  ),
-                                                ),
-                                                const SizedBox(height: 4),
-                                                Text(
-                                                  _formatDate(org.createdAt),
-                                                  style: TextStyle(
-                                                    color: Colors.grey[600],
-                                                    fontSize: 12,
+                                                SizedBox(
+                                                  width: double.infinity,
+                                                  child: ElevatedButton.icon(
+                                                    onPressed: _showJoinOrganizationDialog,
+                                                    icon: const Icon(Icons.group_add),
+                                                    label: const Text('Tham Gia'),
                                                   ),
                                                 ),
                                                 const SizedBox(height: 8),
-                                                Container(
-                                                  padding: const EdgeInsets.symmetric(
-                                                    horizontal: 8,
-                                                    vertical: 4,
-                                                  ),
-                                                  decoration: BoxDecoration(
-                                                    color: isAdmin
-                                                        ? Colors.amber.withOpacity(0.2)
-                                                        : Colors.blue.withOpacity(0.2),
-                                                    borderRadius: BorderRadius.circular(8),
-                                                  ),
-                                                  child: Row(
-                                                    mainAxisSize: MainAxisSize.min,
-                                                    children: [
-                                                      Icon(
-                                                        isAdmin
-                                                            ? Icons.admin_panel_settings
-                                                            : Icons.person,
-                                                        size: 14,
-                                                        color: isAdmin
-                                                            ? Colors.amber[700]
-                                                            : Colors.blue[700],
-                                                      ),
-                                                      const SizedBox(width: 4),
-                                                      Text(
-                                                        roleText,
-                                                        style: TextStyle(
-                                                          color: isAdmin
-                                                              ? Colors.amber[700]
-                                                              : Colors.blue[700],
-                                                          fontWeight: FontWeight.w600,
-                                                          fontSize: 12,
-                                                        ),
-                                                      ),
-                                                    ],
+                                                SizedBox(
+                                                  width: double.infinity,
+                                                  child: ElevatedButton.icon(
+                                                    onPressed: _showCreateOrganizationDialog,
+                                                    icon: const Icon(Icons.add),
+                                                    label: const Text('Tạo Mới'),
                                                   ),
                                                 ),
                                               ],
+                                            )
+                                          : Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                ElevatedButton.icon(
+                                                  onPressed: _showJoinOrganizationDialog,
+                                                  icon: const Icon(Icons.group_add),
+                                                  label: const Text('Tham Gia'),
+                                                ),
+                                                const SizedBox(width: 12),
+                                                ElevatedButton.icon(
+                                                  onPressed: _showCreateOrganizationDialog,
+                                                  icon: const Icon(Icons.add),
+                                                  label: const Text('Tạo Mới'),
+                                                ),
+                                              ],
                                             ),
-                                          ),
-                                          // Three-dot menu button
-                                          Tooltip(
-                                            message: 'Tùy chọn tổ chức',
-                                            child: Material(
-                                              color: Colors.transparent,
-                                              child: InkWell(
-                                                onTap: () {
-                                                  _showOrganizationOptions(org, owner.id, isAdmin);
-                                                },
-                                                child: Padding(
-                                                  padding: const EdgeInsets.all(8.0),
-                                                  child: Icon(
-                                                    Icons.more_vert,
-                                                    color: Colors.blue[700],
-                                                    size: 28,
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        }
+
+                        return SliverPadding(
+                          padding: EdgeInsets.symmetric(horizontal: isSmall ? 12 : 16),
+                          sliver: SliverList(
+                            delegate: SliverChildBuilderDelegate(
+                              (context, index) {
+                                final org = orgs[index];
+                                return Card(
+                                  margin: const EdgeInsets.only(bottom: 12),
+                                  elevation: 2,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  child: FutureBuilder<Membership?>(
+                                    future: _organizationService.getUserMembership(
+                                      owner.id,
+                                      org.id,
+                                    ),
+                                    builder: (context, snapshot) {
+                                      final role = snapshot.data?.role ?? 'member';
+                                      final isAdmin = role == 'admin';
+                                      final roleText = isAdmin ? 'Quản trị viên' : 'Thành viên';
+
+                                      return InkWell(
+                                        borderRadius: BorderRadius.circular(16),
+                                        onTap: () {
+                                          Navigator.pushNamed(
+                                            context,
+                                            AppRouter.oranizationScreen,
+                                            arguments: {
+                                              'organization': org
+                                            },
+                                          );
+                                        },
+                                        child: Padding(
+                                          padding: EdgeInsets.all(isSmall ? 12 : 16),
+                                          child: Row(
+                                            children: [
+                                              Container(
+                                                width: isSmall ? 48 : 56,
+                                                height: isSmall ? 48 : 56,
+                                                decoration: BoxDecoration(
+                                                  gradient: LinearGradient(
+                                                    begin: Alignment.topLeft,
+                                                    end: Alignment.bottomRight,
+                                                    colors: [
+                                                      Theme.of(context).colorScheme.primary,
+                                                      Theme.of(context)
+                                                          .colorScheme
+                                                          .primary
+                                                          .withAlpha((0.7 * 255).round()),
+                                                    ],
+                                                  ),
+                                                  borderRadius: BorderRadius.circular(12),
+                                                ),
+                                                child: Center(
+                                                  child: Text(
+                                                    org.name[0].toUpperCase(),
+                                                    style: TextStyle(
+                                                      color: Colors.white,
+                                                      fontWeight: FontWeight.bold,
+                                                      fontSize: isSmall ? 20 : 24,
+                                                    ),
                                                   ),
                                                 ),
                                               ),
-                                            ),
+                                              SizedBox(width: isSmall ? 12 : 16),
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(
+                                                      org.name,
+                                                      style: TextStyle(
+                                                        fontWeight: FontWeight.bold,
+                                                        fontSize: isSmall ? 14 : 16,
+                                                      ),
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                    ),
+                                                    const SizedBox(height: 4),
+                                                    Text(
+                                                      _formatDate(org.createdAt),
+                                                      style: TextStyle(
+                                                        color: Colors.grey[600],
+                                                        fontSize: isSmall ? 11 : 12,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 8),
+                                                    Container(
+                                                      padding: const EdgeInsets.symmetric(
+                                                        horizontal: 8,
+                                                        vertical: 4,
+                                                      ),
+                                                      decoration: BoxDecoration(
+                                                        color: isAdmin
+                                                            ? Colors.amber.withOpacity(0.2)
+                                                            : Colors.blue.withOpacity(0.2),
+                                                        borderRadius: BorderRadius.circular(8),
+                                                      ),
+                                                      child: Row(
+                                                        mainAxisSize: MainAxisSize.min,
+                                                        children: [
+                                                          Icon(
+                                                            isAdmin
+                                                                ? Icons.admin_panel_settings
+                                                                : Icons.person,
+                                                            size: isSmall ? 12 : 14,
+                                                            color: isAdmin
+                                                                ? Colors.amber[700]
+                                                                : Colors.blue[700],
+                                                          ),
+                                                          const SizedBox(width: 4),
+                                                          Text(
+                                                            roleText,
+                                                            style: TextStyle(
+                                                              color: isAdmin
+                                                                  ? Colors.amber[700]
+                                                                  : Colors.blue[700],
+                                                              fontWeight: FontWeight.w600,
+                                                              fontSize: isSmall ? 11 : 12,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                              // Three-dot menu button
+                                              Tooltip(
+                                                message: 'Tùy chọn tổ chức',
+                                                child: Material(
+                                                  color: Colors.transparent,
+                                                  child: InkWell(
+                                                    onTap: () {
+                                                      _showOrganizationOptions(org, owner.id, isAdmin);
+                                                    },
+                                                    child: Padding(
+                                                      padding: const EdgeInsets.all(8.0),
+                                                      child: Icon(
+                                                        Icons.more_vert,
+                                                        color: Colors.blue[700],
+                                                        size: isSmall ? 24 : 28,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
                                           ),
-                                        ],
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
-                            );
-                          },
-                          childCount: orgs.length,
-                        ),
-                      ),
-                    );
-                  },
-                ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                );
+                              },
+                              childCount: orgs.length,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
 
-                const SliverToBoxAdapter(
-                  child: SizedBox(height: 24),
+                    const SliverToBoxAdapter(
+                      child: SizedBox(height: 24),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              );
+            },
           );
         },
       ),
@@ -1722,17 +1984,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildInfoRow(IconData icon, String text) {
+    final isSmall = _isSmallScreen(context);
     return Row(
       children: [
-        Icon(icon, size: 16, color: Colors.white),
+        Icon(icon, size: isSmall ? 14 : 16, color: Colors.white),
         const SizedBox(width: 8),
         Expanded(
           child: Text(
             text,
-            style: const TextStyle(
+            style: TextStyle(
               color: Colors.white,
-              fontSize: 13,
+              fontSize: isSmall ? 12 : 13,
             ),
+            overflow: TextOverflow.ellipsis,
           ),
         ),
       ],
