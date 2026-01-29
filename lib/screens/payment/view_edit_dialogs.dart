@@ -3,7 +3,7 @@ import 'package:apartment_management_project_2/models/organization_model.dart';
 import 'package:apartment_management_project_2/models/payment_model.dart';
 import 'package:apartment_management_project_2/models/rooms_model.dart';
 import 'package:apartment_management_project_2/models/tenants_model.dart';
-import 'package:apartment_management_project_2/screens/payment_pdf_export.dart';
+import 'package:apartment_management_project_2/screens/payment/payment_pdf_export.dart';
 import 'package:apartment_management_project_2/services/building_service.dart';
 import 'package:apartment_management_project_2/services/payments_service.dart';
 import 'package:apartment_management_project_2/services/room_service.dart';

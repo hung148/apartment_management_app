@@ -313,7 +313,7 @@ class RoomService {
   }
 
   // ========================================
-  // UTILITY - Generate room numbers for a building
+  // UTILITY - Generate room numbers for a building (LEGACY - kept for compatibility)
   // ========================================
   Future<List<Room>> generateRoomsForBuilding({
     required String organizationId,
@@ -339,5 +339,93 @@ class RoomService {
     }
     
     return rooms;
+  }
+
+  // ========================================
+  // UTILITY - Generate rooms with uniform distribution (same rooms per floor)
+  // ========================================
+  Future<List<Room>> generateUniformRoomsForBuilding({
+    required String organizationId,
+    required String buildingId,
+    required int numberOfFloors,
+    required int roomsPerFloor,
+    required String prefix,
+  }) async {
+    final rooms = <Room>[];
+    
+    for (int floor = 1; floor <= numberOfFloors; floor++) {
+      for (int roomNum = 1; roomNum <= roomsPerFloor; roomNum++) {
+        final roomNumber = '$prefix$floor${roomNum.toString().padLeft(2, '0')}';
+        
+        rooms.add(Room(
+          id: '', // Will be set by Firestore
+          organizationId: organizationId,
+          buildingId: buildingId,
+          roomNumber: roomNumber,
+          createdAt: DateTime.now(),
+        ));
+      }
+    }
+    
+    return rooms;
+  }
+
+  // ========================================
+  // UTILITY - Generate rooms with custom distribution (different rooms per floor)
+  // ========================================
+  Future<List<Room>> generateCustomRoomsForBuilding({
+    required String organizationId,
+    required String buildingId,
+    required List<int> floorRoomCounts,
+    required String prefix,
+  }) async {
+    final rooms = <Room>[];
+    
+    for (int floorIndex = 0; floorIndex < floorRoomCounts.length; floorIndex++) {
+      final floor = floorIndex + 1;
+      final roomsOnThisFloor = floorRoomCounts[floorIndex];
+      
+      for (int roomNum = 1; roomNum <= roomsOnThisFloor; roomNum++) {
+        final roomNumber = '$prefix$floor${roomNum.toString().padLeft(2, '0')}';
+        
+        rooms.add(Room(
+          id: '', // Will be set by Firestore
+          organizationId: organizationId,
+          buildingId: buildingId,
+          roomNumber: roomNumber,
+          createdAt: DateTime.now(),
+        ));
+      }
+    }
+    
+    return rooms;
+  }
+
+  // ========================================
+  // UTILITY - Generate rooms based on configuration
+  // ========================================
+  Future<List<Room>> generateRoomsFromConfig({
+    required String organizationId,
+    required String buildingId,
+    required Map<String, dynamic> config,
+  }) async {
+    if (config['uniformRooms'] == true) {
+      // Uniform mode: same number of rooms per floor
+      return generateUniformRoomsForBuilding(
+        organizationId: organizationId,
+        buildingId: buildingId,
+        numberOfFloors: config['floors'] as int,
+        roomsPerFloor: config['roomsPerFloor'] as int,
+        prefix: config['roomPrefix'] as String,
+      );
+    } else {
+      // Custom mode: different number of rooms per floor
+      return generateCustomRoomsForBuilding(
+        organizationId: organizationId,
+        buildingId: buildingId,
+        floorRoomCounts: List<int>.from(config['floorRoomCounts']),
+        prefix: config['roomPrefix'] as String,
+      );
+    }
   }
 }
