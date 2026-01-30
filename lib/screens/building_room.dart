@@ -2,6 +2,7 @@ import 'package:apartment_management_project_2/models/buildings_model.dart';
 import 'package:apartment_management_project_2/models/organization_model.dart';
 import 'package:apartment_management_project_2/models/rooms_model.dart';
 import 'package:apartment_management_project_2/services/room_service.dart';
+import 'package:apartment_management_project_2/widgets/shared.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
 
@@ -20,6 +21,57 @@ class BuildingRoomScreen extends StatefulWidget {
 }
 
 class _BuildingRoomScreenState extends State<BuildingRoomScreen> {
+  bool _isSmallScreen(BuildContext context) => MediaQuery.of(context).size.width < 600;
+  bool _isMediumScreen(BuildContext context) {
+    final width = MediaQuery.of(context).size.width;
+    return width >= 600 && width < 1200;
+  }
+
+  double _getDialogWidth(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    if (screenWidth < 600) return screenWidth * 0.95;
+    if (screenWidth < 1200) return 600;
+    return 800;
+  }
+
+  EdgeInsets _getResponsivePadding(BuildContext context) {
+    return EdgeInsets.all(_isSmallScreen(context) ? 12.0 : 16.0);
+  }
+
+  Widget _buildMinimumSizeWarning(BuildContext context, BoxConstraints constraints) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.warning_amber_rounded, size: 64, color: Colors.orange[700]),
+            const SizedBox(height: 16),
+            Text(
+              'Kích thước cửa sổ quá nhỏ',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Kích thước tối thiểu: 360x600',
+              style: TextStyle(color: Colors.grey[600]),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Hiện tại: ${constraints.maxWidth.toInt()}x${constraints.maxHeight.toInt()}',
+              style: TextStyle(color: Colors.grey[600]),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   final RoomService _roomService = RoomService();
   
   StreamSubscription<List<Room>>? _roomSubscription;
@@ -425,85 +477,96 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> {
   Widget build(BuildContext context) {
     print('BuildingRoomScreen: build called');
     
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.building.name),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          print('FAB pressed - opening add room dialog');
-          _showRoomDialog();
-        },
-        child: const Icon(Icons.add),
-      ),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // =========================
-          // BUILDING INFO
-          // =========================
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.blue.shade50,
-              border: Border(
-                bottom: BorderSide(color: Colors.grey.shade300),
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.apartment, color: Colors.blue.shade700),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        widget.building.name,
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.blue.shade900,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    const Icon(Icons.location_on, size: 16, color: Colors.grey),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Text(
-                        widget.building.address,
-                        style: const TextStyle(color: Colors.grey),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Tổng số phòng: ${_cachedRooms?.length ?? 0}',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.blue.shade700,
-                    fontWeight: FontWeight.w500,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Check minimum size
+        if (constraints.maxWidth < minWidth || constraints.maxHeight < minHeight) {
+          return Scaffold(
+            body: _buildMinimumSizeWarning(context, constraints),
+          );
+        }
+
+        return Scaffold(
+          appBar: AppBar(
+            title: Text(widget.building.name),
+          ),
+          floatingActionButton: FloatingActionButton(
+            onPressed: () {
+              print('FAB pressed - opening add room dialog');
+              _showRoomDialog();
+            },
+            child: const Icon(Icons.add),
+          ),
+          body: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // =========================
+              // BUILDING INFO
+              // =========================
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  border: Border(
+                    bottom: BorderSide(color: Colors.grey.shade300),
                   ),
                 ),
-              ],
-            ),
-          ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.apartment, color: Colors.blue.shade700),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            widget.building.name,
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue.shade900,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        const Icon(Icons.location_on, size: 16, color: Colors.grey),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            widget.building.address,
+                            style: const TextStyle(color: Colors.grey),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Tổng số phòng: ${_cachedRooms?.length ?? 0}',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.blue.shade700,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
 
-          // =========================
-          // ROOM LIST
-          // =========================
-          Expanded(
-            child: _buildRoomList(),
+              // =========================
+              // ROOM LIST
+              // =========================
+              Expanded(
+                child: _buildRoomList(),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      }
     );
   }
 }

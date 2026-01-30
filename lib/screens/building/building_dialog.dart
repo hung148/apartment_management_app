@@ -1,16 +1,26 @@
 import 'package:flutter/material.dart';
 
-/// Enhanced dialog that allows different room counts per floor
+/// Enhanced dialog that allows different room counts per floor with bulk editing
 class BuildingDialog extends StatefulWidget {
   final bool isEditMode;
   final String? initialName;
   final String? initialAddress;
+  final int? initialFloors;
+  final String? initialRoomPrefix;
+  final bool? initialUniformRooms;
+  final int? initialRoomsPerFloor;
+  final List<int>? initialFloorRoomCounts;
 
   const BuildingDialog({
     super.key,
     this.isEditMode = false,
     this.initialName,
     this.initialAddress,
+    this.initialFloors,
+    this.initialRoomPrefix,
+    this.initialUniformRooms,
+    this.initialRoomsPerFloor,
+    this.initialFloorRoomCounts,
   });
 
   @override
@@ -24,19 +34,62 @@ class _BuildingDialogState extends State<BuildingDialog> {
   final TextEditingController roomPrefixController = TextEditingController();
   
   bool autoGenerateRooms = true;
-  bool uniformRoomsPerFloor = true; // New: toggle between uniform and custom
+  bool uniformRoomsPerFloor = true;
   
   // For uniform mode
   final TextEditingController uniformRoomsController = TextEditingController();
   
   // For custom mode
   List<FloorConfig> floorConfigs = [];
+  
+  // For bulk editing
+  bool showBulkEdit = false;
+  final TextEditingController bulkStartFloorController = TextEditingController();
+  final TextEditingController bulkEndFloorController = TextEditingController();
+  final TextEditingController bulkRoomsController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
+    
+    // Initialize basic fields
     if (widget.initialName != null) nameController.text = widget.initialName!;
     if (widget.initialAddress != null) addressController.text = widget.initialAddress!;
+    
+    // Initialize room configuration in edit mode
+    if (widget.isEditMode) {
+      // If building has saved room configuration, load it
+      if (widget.initialFloors != null) {
+        floorsController.text = widget.initialFloors.toString();
+        
+        if (widget.initialRoomPrefix != null && widget.initialRoomPrefix!.isNotEmpty) {
+          roomPrefixController.text = widget.initialRoomPrefix!;
+        }
+        
+        if (widget.initialUniformRooms != null) {
+          uniformRoomsPerFloor = widget.initialUniformRooms!;
+          
+          if (uniformRoomsPerFloor && widget.initialRoomsPerFloor != null) {
+            uniformRoomsController.text = widget.initialRoomsPerFloor.toString();
+          } else if (!uniformRoomsPerFloor && widget.initialFloorRoomCounts != null) {
+            // Initialize custom floor configs with existing data
+            _initializeFloorConfigsWithData(widget.initialFloorRoomCounts!);
+          }
+        }
+      }
+      // For old buildings without saved config, autoGenerateRooms defaults to true
+      // but fields remain empty for user to fill in if they want to add rooms
+    }
+  }
+
+  void _initializeFloorConfigsWithData(List<int> roomCounts) {
+    floorConfigs.clear();
+    for (int i = 0; i < roomCounts.length; i++) {
+      floorConfigs.add(FloorConfig(
+        floorNumber: i + 1,
+        controller: TextEditingController(text: roomCounts[i].toString()),
+      ));
+    }
   }
 
   @override
@@ -46,13 +99,15 @@ class _BuildingDialogState extends State<BuildingDialog> {
     floorsController.dispose();
     roomPrefixController.dispose();
     uniformRoomsController.dispose();
+    bulkStartFloorController.dispose();
+    bulkEndFloorController.dispose();
+    bulkRoomsController.dispose();
     for (var config in floorConfigs) {
       config.controller.dispose();
     }
     super.dispose();
   }
 
-  // Helper methods moved inside the state class
   bool _isSmallScreen(BuildContext context) => MediaQuery.of(context).size.width < 600;
 
   double _getDialogWidth(BuildContext context) {
@@ -88,6 +143,52 @@ class _BuildingDialogState extends State<BuildingDialog> {
     });
   }
 
+  void _applyBulkEdit() {
+    final startFloor = int.tryParse(bulkStartFloorController.text.trim());
+    final endFloor = int.tryParse(bulkEndFloorController.text.trim());
+    final rooms = int.tryParse(bulkRoomsController.text.trim());
+
+    if (startFloor == null || endFloor == null || rooms == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Vui lòng nhập đầy đủ thông tin')),
+      );
+      return;
+    }
+
+    if (startFloor < 1 || endFloor > floorConfigs.length || startFloor > endFloor) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Khoảng tầng không hợp lệ (1-${floorConfigs.length})'),
+        ),
+      );
+      return;
+    }
+
+    if (rooms <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Số phòng phải lớn hơn 0')),
+      );
+      return;
+    }
+
+    setState(() {
+      for (int i = startFloor - 1; i < endFloor; i++) {
+        floorConfigs[i].controller.text = rooms.toString();
+      }
+      showBulkEdit = false;
+      bulkStartFloorController.clear();
+      bulkEndFloorController.clear();
+      bulkRoomsController.clear();
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Đã cập nhật tầng $startFloor-$endFloor: $rooms phòng'),
+        backgroundColor: Colors.green,
+      ),
+    );
+  }
+
   String _generatePreview() {
     final prefix = roomPrefixController.text.trim();
     final floors = int.tryParse(floorsController.text.trim());
@@ -113,7 +214,6 @@ class _BuildingDialogState extends State<BuildingDialog> {
   String _generateUniformPreview(String prefix, int floors, int roomsPerFloor) {
     final examples = <String>[];
     
-    // Show first 3 rooms on first floor
     for (int i = 1; i <= 3 && i <= roomsPerFloor; i++) {
       examples.add('$prefix${1}${i.toString().padLeft(2, '0')}');
     }
@@ -134,7 +234,6 @@ class _BuildingDialogState extends State<BuildingDialog> {
   String _generateCustomPreview(String prefix) {
     final examples = <String>[];
     
-    // Show first floor examples
     if (floorConfigs.isNotEmpty) {
       final firstFloorRooms = int.tryParse(floorConfigs[0].controller.text.trim()) ?? 0;
       if (firstFloorRooms > 0) {
@@ -149,7 +248,6 @@ class _BuildingDialogState extends State<BuildingDialog> {
       }
     }
     
-    // Show last floor example
     if (floorConfigs.length > 1) {
       examples.add('...');
       final lastFloor = floorConfigs.last;
@@ -176,7 +274,6 @@ class _BuildingDialogState extends State<BuildingDialog> {
   }
 
   Map<String, dynamic>? _validateAndGetResult() {
-    // Validate required fields
     if (nameController.text.trim().isEmpty ||
         addressController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -187,7 +284,6 @@ class _BuildingDialogState extends State<BuildingDialog> {
       return null;
     }
 
-    // If not auto-generating, return basic info
     if (!autoGenerateRooms) {
       return {
         'name': nameController.text.trim(),
@@ -223,7 +319,6 @@ class _BuildingDialogState extends State<BuildingDialog> {
         'roomPrefix': roomPrefixController.text.trim(),
       };
     } else {
-      // Validate all floor configs
       final floorRoomCounts = <int>[];
       for (var config in floorConfigs) {
         final rooms = int.tryParse(config.controller.text.trim());
@@ -538,8 +633,145 @@ class _BuildingDialogState extends State<BuildingDialog> {
                         ),
                       ],
 
-                      // Custom rooms per floor
+                      // Custom rooms per floor with bulk edit
                       if (!uniformRoomsPerFloor && floorConfigs.isNotEmpty) ...[
+                        // Bulk edit button
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'Cấu hình từng tầng',
+                                style: TextStyle(
+                                  fontSize: isSmall ? 12 : 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            TextButton.icon(
+                              onPressed: () {
+                                setState(() {
+                                  showBulkEdit = !showBulkEdit;
+                                });
+                              },
+                              icon: Icon(
+                                showBulkEdit ? Icons.close : Icons.edit_note,
+                                size: isSmall ? 16 : 18,
+                              ),
+                              label: Text(
+                                showBulkEdit ? 'Đóng' : 'Chỉnh hàng loạt',
+                                style: TextStyle(fontSize: isSmall ? 11 : 12),
+                              ),
+                            ),
+                          ],
+                        ),
+                        
+                        // Bulk edit panel
+                        if (showBulkEdit) ...[
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.blue.shade200),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Áp dụng số phòng cho nhiều tầng cùng lúc',
+                                  style: TextStyle(
+                                    fontSize: isSmall ? 11 : 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.blue.shade900,
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: TextField(
+                                        controller: bulkStartFloorController,
+                                        decoration: InputDecoration(
+                                          labelText: 'Từ tầng',
+                                          hintText: '1',
+                                          labelStyle: TextStyle(fontSize: isSmall ? 11 : 12),
+                                          contentPadding: const EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 8,
+                                          ),
+                                          border: const OutlineInputBorder(),
+                                          filled: true,
+                                          fillColor: Colors.white,
+                                        ),
+                                        style: TextStyle(fontSize: isSmall ? 12 : 13),
+                                        keyboardType: TextInputType.number,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: TextField(
+                                        controller: bulkEndFloorController,
+                                        decoration: InputDecoration(
+                                          labelText: 'Đến tầng',
+                                          hintText: floorConfigs.length.toString(),
+                                          labelStyle: TextStyle(fontSize: isSmall ? 11 : 12),
+                                          contentPadding: const EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 8,
+                                          ),
+                                          border: const OutlineInputBorder(),
+                                          filled: true,
+                                          fillColor: Colors.white,
+                                        ),
+                                        style: TextStyle(fontSize: isSmall ? 12 : 13),
+                                        keyboardType: TextInputType.number,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: TextField(
+                                        controller: bulkRoomsController,
+                                        decoration: InputDecoration(
+                                          labelText: 'Số phòng',
+                                          hintText: '10',
+                                          labelStyle: TextStyle(fontSize: isSmall ? 11 : 12),
+                                          contentPadding: const EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 8,
+                                          ),
+                                          border: const OutlineInputBorder(),
+                                          filled: true,
+                                          fillColor: Colors.white,
+                                        ),
+                                        style: TextStyle(fontSize: isSmall ? 12 : 13),
+                                        keyboardType: TextInputType.number,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton.icon(
+                                    onPressed: _applyBulkEdit,
+                                    icon: const Icon(Icons.check, size: 16),
+                                    label: Text(
+                                      'Áp dụng',
+                                      style: TextStyle(fontSize: isSmall ? 11 : 12),
+                                    ),
+                                    style: ElevatedButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(vertical: 8),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                        ],
+
+                        // Floor list
                         Container(
                           constraints: const BoxConstraints(maxHeight: 250),
                           child: ListView.builder(

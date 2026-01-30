@@ -20,6 +20,47 @@ class BuildingService {
   }
 
   // ========================================
+  // CREATE - Add building with room configuration from dialog
+  // ========================================
+  Future<String?> addBuildingFromDialogResult({
+    required String organizationId,
+    required Map<String, dynamic> dialogResult,
+  }) async {
+    try {
+      final building = Building(
+        id: '', // Will be set by Firestore
+        organizationId: organizationId,
+        name: dialogResult['name'],
+        address: dialogResult['address'],
+        createdAt: DateTime.now(),
+        // Save room configuration if auto-generate was enabled
+        floors: dialogResult['autoGenerateRooms'] == true 
+            ? dialogResult['floors'] as int? 
+            : null,
+        roomPrefix: dialogResult['autoGenerateRooms'] == true 
+            ? dialogResult['roomPrefix'] as String? 
+            : null,
+        uniformRooms: dialogResult['autoGenerateRooms'] == true 
+            ? dialogResult['uniformRooms'] as bool? 
+            : null,
+        roomsPerFloor: dialogResult['autoGenerateRooms'] == true && dialogResult['uniformRooms'] == true
+            ? dialogResult['roomsPerFloor'] as int? 
+            : null,
+        floorRoomCounts: dialogResult['autoGenerateRooms'] == true && dialogResult['uniformRooms'] == false
+            ? List<int>.from(dialogResult['floorRoomCounts']) 
+            : null,
+      );
+
+      final docRef = await _firestore.collection('buildings').add(building.toMap());
+      print('Building added with room configuration: ${docRef.id}');
+      return docRef.id;
+    } catch (e) {
+      print('Error adding building from dialog: $e');
+      return null;
+    }
+  }
+
+  // ========================================
   // READ - Get all buildings for an organization
   // ========================================
   Future<List<Building>> getOrganizationBuildings(String organizationId) async {
@@ -82,6 +123,45 @@ class BuildingService {
       return true;
     } catch (e) {
       print('Error updating building: $e');
+      return false;
+    }
+  }
+
+  // ========================================
+  // UPDATE - Update building from dialog result
+  // ========================================
+  Future<bool> updateBuildingFromDialogResult({
+    required String buildingId,
+    required Map<String, dynamic> dialogResult,
+  }) async {
+    try {
+      final updateData = <String, dynamic>{
+        'name': dialogResult['name'],
+        'address': dialogResult['address'],
+      };
+
+      // Update room configuration if auto-generate was enabled
+      if (dialogResult['autoGenerateRooms'] == true) {
+        updateData['floors'] = dialogResult['floors'];
+        updateData['roomPrefix'] = dialogResult['roomPrefix'];
+        updateData['uniformRooms'] = dialogResult['uniformRooms'];
+        
+        if (dialogResult['uniformRooms'] == true) {
+          updateData['roomsPerFloor'] = dialogResult['roomsPerFloor'];
+          // Clear floorRoomCounts if switching to uniform
+          updateData['floorRoomCounts'] = FieldValue.delete();
+        } else {
+          updateData['floorRoomCounts'] = dialogResult['floorRoomCounts'];
+          // Clear roomsPerFloor if switching to custom
+          updateData['roomsPerFloor'] = FieldValue.delete();
+        }
+      }
+
+      await _firestore.collection('buildings').doc(buildingId).update(updateData);
+      print('Building updated from dialog: $buildingId');
+      return true;
+    } catch (e) {
+      print('Error updating building from dialog: $e');
       return false;
     }
   }

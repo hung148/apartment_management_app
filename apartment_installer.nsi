@@ -12,7 +12,7 @@
 ; General Settings
 ;--------------------------------
 Name "Apartment Management"
-OutFile "installer_output\ApartmentManagement-Setup-1.0.2+6.exe"
+OutFile "installer_output\ApartmentManagement-Setup-1.0.2+7.exe"
 InstallDir "$PROGRAMFILES64\ApartmentManagement"
 InstallDirRegKey HKLM "Software\ApartmentManagement" "Install_Dir"
 RequestExecutionLevel admin
@@ -27,7 +27,7 @@ SetCompressor /SOLID lzma
 !define VCREDIST "vc_redist.x64.exe"
 !define APP_EXE "apartment_management_project_2.exe"
 !define APP_NAME "Apartment Management"
-!define APP_VERSION "1.0.2+4"
+!define APP_VERSION "1.0.2+7"
 !define PUBLISHER "Trinh Dinh Nguyen Hung"
 !define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\ApartmentManagement"
 !define REG_KEY "Software\ApartmentManagement"
@@ -61,10 +61,40 @@ Var VCRedistNeeded
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_UNPAGE_FINISH
 
+!define MUI_LANGDLL_REGISTRY_ROOT "HKCU"
+!define MUI_LANGDLL_REGISTRY_KEY "Software\ApartmentManagement"
+!define MUI_LANGDLL_REGISTRY_VALUENAME "InstallerLanguage"
+
 ;--------------------------------
 ; Languages
 ;--------------------------------
 !insertmacro MUI_LANGUAGE "English"
+!insertmacro MUI_LANGUAGE "Vietnamese"
+
+;--------------------------------
+; Custom Language Strings
+;--------------------------------
+
+LangString MSG_64BIT_ERROR ${LANG_ENGLISH} "This application requires 64-bit Windows. Installation cannot continue."
+LangString MSG_64BIT_ERROR ${LANG_VIETNAMESE} "Ứng dụng này yêu cầu Windows 64-bit. Không thể tiếp tục cài đặt."
+
+LangString MSG_ALREADY_INSTALLED ${LANG_ENGLISH} \
+"${APP_NAME} is already installed at:$\n$\n$0$\n$\nDo you want to uninstall the previous version?"
+
+LangString MSG_ALREADY_INSTALLED ${LANG_VIETNAMESE} \
+"${APP_NAME} đã được cài đặt tại:$\n$\n$0$\n$\nBạn có muốn gỡ phiên bản cũ không?"
+
+LangString MSG_UNINSTALL_CONFIRM ${LANG_ENGLISH} \
+"Are you sure you want to completely remove $(^Name) and all of its components?"
+
+LangString MSG_UNINSTALL_CONFIRM ${LANG_VIETNAMESE} \
+"Bạn có chắc chắn muốn gỡ bỏ hoàn toàn $(^Name) và tất cả thành phần không?"
+
+LangString MSG_UNINSTALL_DONE ${LANG_ENGLISH} \
+"$(^Name) has been successfully removed from your computer."
+
+LangString MSG_UNINSTALL_DONE ${LANG_VIETNAMESE} \
+"$(^Name) đã được gỡ khỏi máy tính của bạn thành công."
 
 ;--------------------------------
 ; Version Information
@@ -156,7 +186,7 @@ Section "Uninstall"
   DeleteRegKey HKLM "${UNINST_KEY}"
   
   ; Show completion message
-  MessageBox MB_OK "$(^Name) has been successfully removed from your computer."
+  MessageBox MB_OK "$(MSG_UNINSTALL_DONE)"
   
 SectionEnd
 
@@ -166,18 +196,18 @@ SectionEnd
 
 ; Called when installer starts
 Function .onInit
+  !insertmacro MUI_LANGDLL_DISPLAY
   
   ; Check if 64-bit Windows
   ${IfNot} ${RunningX64}
-    MessageBox MB_OK|MB_ICONSTOP "This application requires 64-bit Windows. Installation cannot continue."
+    MessageBox MB_OK|MB_ICONSTOP "$(MSG_64BIT_ERROR)"
     Abort
   ${EndIf}
   
   ; Check if already installed
   ReadRegStr $0 HKLM "${REG_KEY}" "Install_Dir"
   ${If} $0 != ""
-    MessageBox MB_YESNO|MB_ICONQUESTION \
-      "${APP_NAME} is already installed at:$\n$\n$0$\n$\nDo you want to uninstall the previous version?" \
+    MessageBox MB_YESNO|MB_ICONQUESTION "$(MSG_ALREADY_INSTALLED)" \
       IDYES uninst IDNO done
     
     uninst:
@@ -268,8 +298,7 @@ FunctionEnd
 ; Called when uninstaller starts
 Function un.onInit
   
-  MessageBox MB_YESNO|MB_ICONQUESTION \
-    "Are you sure you want to completely remove $(^Name) and all of its components?" \
+  MessageBox MB_YESNO|MB_ICONQUESTION "$(MSG_UNINSTALL_CONFIRM)" \
     IDYES +2
   Abort
   

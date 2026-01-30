@@ -205,51 +205,40 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
       );
 
       try {
-        // Create building
-        final building = Building(
-          id: '',
+        // ✅ CHANGED: Use addBuildingFromDialogResult instead of addBuilding
+        // This saves the room configuration (floors, prefix, etc.) to Firestore
+        final buildingId = await _buildingService.addBuildingFromDialogResult(
           organizationId: widget.organization.id,
-          name: result['name']!,
-          address: result['address']!,
-          createdAt: DateTime.now(),
+          dialogResult: result,
         );
 
-        final buildingId = await _buildingService.addBuilding(building);
+        if (buildingId == null) {
+          throw Exception('Failed to create building');
+        }
 
-        if (buildingId != null) {
-          // Generate and add rooms if enabled
-          if (result['autoGenerateRooms'] == true) {
-            final rooms = await _roomService.generateRoomsFromConfig(
-              organizationId: widget.organization.id,
-              buildingId: buildingId,
-              config: result,
+        // Generate and add rooms if enabled
+        if (result['autoGenerateRooms'] == true) {
+          final rooms = await _roomService.generateRoomsFromConfig(
+            organizationId: widget.organization.id,
+            buildingId: buildingId,
+            config: result,
+          );
+
+          await _roomService.addMultipleRooms(rooms);
+
+          final totalRooms = rooms.length;
+          
+          // Close loading dialog
+          if (mounted) Navigator.of(context).pop();
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Thêm toà nhà và $totalRooms phòng thành công'),
+                backgroundColor: Colors.green,
+              ),
             );
-
-            await _roomService.addMultipleRooms(rooms);
-
-            final totalRooms = rooms.length;
-            
-            // Close loading dialog
-            if (mounted) Navigator.of(context).pop();
-
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Thêm toà nhà và $totalRooms phòng thành công'),
-                ),
-              );
-              setState(() {}); // Refresh the list
-            }
-          } else {
-            // Close loading dialog
-            if (mounted) Navigator.of(context).pop();
-            
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Thêm toà nhà thành công')),
-              );
-              setState(() {}); // Refresh the list
-            }
+            setState(() {}); // Refresh the list
           }
         } else {
           // Close loading dialog
@@ -257,8 +246,12 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
           
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Không thể thêm toà nhà')),
+              const SnackBar(
+                content: Text('Thêm toà nhà thành công'),
+                backgroundColor: Colors.green,
+              ),
             );
+            setState(() {}); // Refresh the list
           }
         }
       } catch (e) {
@@ -267,7 +260,10 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
         
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Lỗi: $e')),
+            SnackBar(
+              content: Text('Lỗi: $e'),
+              backgroundColor: Colors.red,
+            ),
           );
         }
       }
@@ -281,6 +277,11 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
         isEditMode: true,
         initialName: building.name,
         initialAddress: building.address,
+        initialFloors: building.floors,
+        initialRoomPrefix: building.roomPrefix, // Pass null if it doesn't exist
+        initialUniformRooms: building.uniformRooms,
+        initialRoomsPerFloor: building.roomsPerFloor,
+        initialFloorRoomCounts: building.floorRoomCounts,
       ),
     );
 
@@ -295,49 +296,43 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
       );
 
       try {
-        // Update building basic info
-        final success = await _buildingService.updateBuilding(
-          building.id,
-          {
-            'name': result['name'],
-            'address': result['address'],
-          },
+        // Use the new method that handles room configuration
+        final success = await _buildingService.updateBuildingFromDialogResult(
+          buildingId: building.id,
+          dialogResult: result,
         );
 
-        if (success) {
-          // Generate and add rooms if enabled
-          if (result['autoGenerateRooms'] == true) {
-            final rooms = await _roomService.generateRoomsFromConfig(
-              organizationId: widget.organization.id,
-              buildingId: building.id,
-              config: result,
+        if (!success) {
+          throw Exception('Failed to update building');
+        }
+
+        // Generate and add rooms if enabled
+        if (result['autoGenerateRooms'] == true) {
+          final rooms = await _roomService.generateRoomsFromConfig(
+            organizationId: widget.organization.id,
+            buildingId: building.id,
+            config: result,
+          );
+
+          final addSuccess = await _roomService.addMultipleRooms(rooms);
+          
+          if (!addSuccess) {
+            throw Exception('Failed to add rooms');
+          }
+
+          final totalRooms = rooms.length;
+          
+          // Close loading dialog
+          if (mounted) Navigator.of(context).pop();
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Cập nhật toà nhà và thêm $totalRooms phòng thành công'),
+                backgroundColor: Colors.green,
+              ),
             );
-
-            await _roomService.addMultipleRooms(rooms);
-
-            final totalRooms = rooms.length;
-            
-            // Close loading dialog
-            if (mounted) Navigator.of(context).pop();
-
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Cập nhật toà nhà và thêm $totalRooms phòng thành công'),
-                ),
-              );
-              setState(() {}); // Refresh the list
-            }
-          } else {
-            // Close loading dialog
-            if (mounted) Navigator.of(context).pop();
-            
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Cập nhật toà nhà thành công')),
-              );
-              setState(() {}); // Refresh the list
-            }
+            setState(() {}); // Refresh the list
           }
         } else {
           // Close loading dialog
@@ -345,8 +340,12 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
           
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Không thể cập nhật toà nhà')),
+              const SnackBar(
+                content: Text('Cập nhật toà nhà thành công'),
+                backgroundColor: Colors.green,
+              ),
             );
+            setState(() {}); // Refresh the list
           }
         }
       } catch (e) {
@@ -355,7 +354,10 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
         
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Lỗi: $e')),
+            SnackBar(
+              content: Text('Lỗi: $e'),
+              backgroundColor: Colors.red,
+            ),
           );
         }
       }

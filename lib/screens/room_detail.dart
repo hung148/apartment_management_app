@@ -14,6 +14,7 @@ import 'package:apartment_management_project_2/services/tenants_service.dart';
 import 'package:apartment_management_project_2/services/payments_service.dart';
 import 'package:apartment_management_project_2/services/organization_service.dart';
 import 'package:apartment_management_project_2/screens/payment/payment_pdf_export.dart';
+import 'package:apartment_management_project_2/widgets/shared.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:intl/intl.dart';
@@ -39,6 +40,57 @@ class RoomDetailScreen extends StatefulWidget {
 }
 
 class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerProviderStateMixin {
+  bool _isSmallScreen(BuildContext context) => MediaQuery.of(context).size.width < 600;
+  bool _isMediumScreen(BuildContext context) {
+    final width = MediaQuery.of(context).size.width;
+    return width >= 600 && width < 1200;
+  }
+
+  double _getDialogWidth(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    if (screenWidth < 600) return screenWidth * 0.95;
+    if (screenWidth < 1200) return 600;
+    return 800;
+  }
+
+  EdgeInsets _getResponsivePadding(BuildContext context) {
+    return EdgeInsets.all(_isSmallScreen(context) ? 12.0 : 16.0);
+  }
+
+  Widget _buildMinimumSizeWarning(BuildContext context, BoxConstraints constraints) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.warning_amber_rounded, size: 64, color: Colors.orange[700]),
+            const SizedBox(height: 16),
+            Text(
+              'Kích thước cửa sổ quá nhỏ',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Kích thước tối thiểu: 360x600',
+              style: TextStyle(color: Colors.grey[600]),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Hiện tại: ${constraints.maxWidth.toInt()}x${constraints.maxHeight.toInt()}',
+              style: TextStyle(color: Colors.grey[600]),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   final PaymentService _paymentService = PaymentService();
   late TabController _tabController;
   
@@ -2274,37 +2326,46 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
   // =========================
   @override
   Widget build(BuildContext context) {
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Phòng ${widget.room.roomNumber}'),
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(icon: Icon(Icons.people), text: 'Người thuê'),
-            Tab(icon: Icon(Icons.receipt_long), text: 'Hóa đơn'),
-          ],
-        ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _buildTenantsTab(),
-          _buildPaymentsTab(),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          if (_tabController.index == 0) {
-            // Add tenant
-            _showAddEditTenantDialog();
-          } else {
-            // Add payment
-            _showAddPaymentDialog();
-          }
-        },
-        child: const Icon(Icons.add),
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Check minimum size
+        if (constraints.maxWidth < minWidth || constraints.maxHeight < minHeight) {
+          return Scaffold(
+            body: _buildMinimumSizeWarning(context, constraints),
+          );
+        }
+        return Scaffold(
+          appBar: AppBar(
+            title: Text('Phòng ${widget.room.roomNumber}'),
+            bottom: TabBar(
+              controller: _tabController,
+              tabs: const [
+                Tab(icon: Icon(Icons.people), text: 'Người thuê'),
+                Tab(icon: Icon(Icons.receipt_long), text: 'Hóa đơn'),
+              ],
+            ),
+          ),
+          body: TabBarView(
+            controller: _tabController,
+            children: [
+              _buildTenantsTab(),
+              _buildPaymentsTab(),
+            ],
+          ),
+          floatingActionButton: FloatingActionButton(
+            onPressed: () {
+              if (_tabController.index == 0) {
+                // Add tenant
+                _showAddEditTenantDialog();
+              } else {
+                // Add payment
+                _showAddPaymentDialog();
+              }
+            },
+            child: const Icon(Icons.add),
+          ),
+        );
+      },
     );
   }
 }
