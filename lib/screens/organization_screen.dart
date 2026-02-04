@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:apartment_management_project_2/main.dart';
@@ -55,8 +56,11 @@ class OrganizationScreen extends StatefulWidget {
   State<OrganizationScreen> createState() => _OrganizationScreenState();
 }
 
-class _OrganizationScreenState extends State<OrganizationScreen> {
+class _OrganizationScreenState extends State<OrganizationScreen> with WidgetsBindingObserver {
   
+  // Track how many overlays (dialogs/bottom sheets) are currently open
+  int _overlayCount = 0;
+
   bool _isSmallScreen(BuildContext context) => MediaQuery.of(context).size.width < 600;
   bool _isMediumScreen(BuildContext context) {
     final width = MediaQuery.of(context).size.width;
@@ -123,14 +127,77 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // Load payments when the screen initializes
     _paymentsNotifier.loadPayments(widget.organization.id);
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _searchController.dispose();
     super.dispose();
+  }
+
+  // Debounce timer for resize handling
+  Timer? _resizeDebounceTimer;
+
+  // Guard to prevent overlapping dismiss calls
+  bool _isDismissing = false;
+
+  // ─── Called whenever screen size / metrics change ───
+  @override
+  void didChangeMetrics() {
+    super.didChangeMetrics();
+    // Cancel any pending debounce before setting a new one
+    _resizeDebounceTimer?.cancel();
+    _resizeDebounceTimer = Timer(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+      final screenWidth = MediaQuery.sizeOf(context).width;
+      final screenHeight = MediaQuery.sizeOf(context).height;
+      if (screenWidth < 360 || screenHeight < 600) {
+        _dismissAllOverlays();
+      }
+    });
+  }
+
+  // Pops all open dialogs/bottom sheets by popping until only the base route remains.
+  Future<void> _dismissAllOverlays() async {
+    if (!mounted || _isDismissing) return;
+    _isDismissing = true;
+
+    try {
+      final nav = Navigator.of(context);
+      while (nav.canPop()) {
+        nav.pop();
+        // Yield to the framework between each pop so it can finish
+        // destroying the previous overlay before we pop the next one.
+        // This prevents back-to-back surface destruction that triggers EGL errors.
+        await Future.delayed(const Duration(milliseconds: 50));
+        if (!mounted) break;
+      }
+    } finally {
+      _isDismissing = false;
+    }
+  }
+
+  // ─── Overlay helpers ───
+
+  Future<T?> _showTrackedDialog<T>({
+    required BuildContext context,
+    required WidgetBuilder builder,
+    bool barrierDismissible = true,
+  }) async {
+    _overlayCount++;
+    try {
+      return await showDialog<T>(
+        context: context,
+        barrierDismissible: barrierDismissible,
+        builder: builder,
+      );
+    } finally {
+      if (mounted) _overlayCount--;
+    }
   }
 
   String? inviteCode;
@@ -187,7 +254,7 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
   // BUILDING DIALOGS
   // ========================================
   Future<void> _showAddBuildingDialog() async {
-    final result = await showDialog<Map<String, dynamic>>(
+    final result = await _showTrackedDialog<Map<String, dynamic>>(
       context: context,
       builder: (context) => const BuildingDialog(
         isEditMode: false,
@@ -196,7 +263,7 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
 
     if (result != null && mounted) {
       // Show loading indicator
-      showDialog(
+      _showTrackedDialog(
         context: context,
         barrierDismissible: false,
         builder: (context) => const Center(
@@ -271,7 +338,8 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
   }
 
   Future<void> _showEditBuildingDialog(Building building) async {
-    final result = await showDialog<Map<String, dynamic>>(
+
+    final result = await _showTrackedDialog<Map<String, dynamic>>(
       context: context,
       builder: (context) => BuildingDialog(
         isEditMode: true,
@@ -280,14 +348,20 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
         initialFloors: building.floors,
         initialRoomPrefix: building.roomPrefix, // Pass null if it doesn't exist
         initialUniformRooms: building.uniformRooms,
+        // Đối với chế độ Đồng đều (Uniform)
         initialRoomsPerFloor: building.roomsPerFloor,
-        initialFloorRoomCounts: building.floorRoomCounts,
+        initialRoomType: building.roomType, // Trường mới
+        initialRoomArea: building.roomArea, // Trường mới
+        
+        // Đối với chế độ Tùy chỉnh (Custom) - Thay thế cho initialFloorRoomCounts
+         initialFloorDetails: building.floorDetails,
+        initialFloorRoomCounts: building.floorRoomCounts, 
       ),
     );
 
     if (result != null && mounted) {
       // Show loading indicator
-      showDialog(
+      _showTrackedDialog(
         context: context,
         barrierDismissible: false,
         builder: (context) => const Center(
@@ -374,7 +448,7 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
     final dialogWidth = _getDialogWidth(context); // assume this returns e.g. 500–560
     final contentPadding = _getResponsivePadding(context);
 
-    final confirm = await showDialog<bool>(
+    final confirm = await _showTrackedDialog<bool>(
       context: context,
       builder: (context) {
         final dialogBg = Theme.of(context).dialogTheme.backgroundColor ??
@@ -533,7 +607,7 @@ class _OrganizationScreenState extends State<OrganizationScreen> {
 
     if (confirm != true || !mounted) return;
 
-    showDialog(
+    _showTrackedDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => const Center(child: CircularProgressIndicator()),
@@ -1155,7 +1229,7 @@ Widget _buildPaymentsList(List<Payment> allPayments, String searchText, bool isA
   }
 
   void _showPaymentDetailsDialog(Payment payment, bool isAdmin) {
-  showDialog(
+  _showTrackedDialog(
     context: context,
     builder: (context) => ViewPaymentDetailsDialog(
       payment: payment,
@@ -1170,7 +1244,7 @@ Widget _buildPaymentsList(List<Payment> allPayments, String searchText, bool isA
 }
 
   void _showAddPaymentDialog() {
-    showDialog(
+    _showTrackedDialog(
       context: context,
       builder: (context) => ImprovedPaymentFormDialog(
         organization: widget.organization,
@@ -1190,7 +1264,7 @@ Widget _buildPaymentsList(List<Payment> allPayments, String searchText, bool isA
   }
 
   void _showEditPaymentDialog(Payment payment) {
-    showDialog(
+    _showTrackedDialog(
       context: context,
       builder: (context) => EditPaymentDialog(
         payment: payment,
@@ -1209,7 +1283,7 @@ Widget _buildPaymentsList(List<Payment> allPayments, String searchText, bool isA
   }
 
   void _confirmDeletePayment(Payment payment) {
-    showDialog(
+    _showTrackedDialog(
       context: context,
       builder: (context) => DeletePaymentDialog(
         payment: payment,
@@ -1527,7 +1601,7 @@ Future<void> _exportStatisticsToPdf({
   
   // Show progress indicator
   if (mounted) {
-    showDialog(
+    _showTrackedDialog(
       context: context,
       barrierDismissible: false,
       builder: (_) => const Center(child: CircularProgressIndicator()),
@@ -1598,7 +1672,7 @@ Future<void> _exportStatisticsToPdf({
       } else if (pmt.roomId.isNotEmpty) {
         final room = rooms.firstWhere(
           (r) => r.id == pmt.roomId, 
-          orElse: () => Room(id: '', organizationId: '', buildingId: '', roomNumber: '', createdAt: DateTime.now())
+          orElse: () => Room(id: '', area: 0.0, roomType: '', organizationId: '', buildingId: '', roomNumber: '', createdAt: DateTime.now())
         );
         if (room.id.isNotEmpty) {
           final s = statsByBuilding[room.buildingId];
@@ -2174,7 +2248,7 @@ Future<void> _exportStatisticsToPdf({
   }) async {
     // Show progress indicator
     if (mounted) {
-      showDialog(
+      _showTrackedDialog(
         context: context,
         barrierDismissible: false,
         builder: (_) => const Center(child: CircularProgressIndicator()),
@@ -2242,7 +2316,7 @@ Future<void> _exportStatisticsToPdf({
         } else if (pmt.roomId.isNotEmpty) {
           final room = rooms.firstWhere(
             (r) => r.id == pmt.roomId, 
-            orElse: () => Room(id: '', organizationId: '', buildingId: '', roomNumber: '', createdAt: DateTime.now())
+            orElse: () => Room(id: '', area: 0.0, roomType: '', organizationId: '', buildingId: '', roomNumber: '', createdAt: DateTime.now())
           );
           if (room.id.isNotEmpty) {
             final s = statsByBuilding[room.buildingId];
@@ -3331,7 +3405,7 @@ Future<void> _exportStatisticsToPdf({
                                               setState(() {});
                                             }
                                           } else if (value == 'remove') {
-                                            final confirm = await showDialog<bool>(
+                                            final confirm = await _showTrackedDialog<bool>(
                                               context: context,
                                               builder: (context) => AlertDialog(
                                                 title: const Text('Xác nhận xóa'),

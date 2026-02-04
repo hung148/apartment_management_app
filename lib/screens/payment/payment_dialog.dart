@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:apartment_management_project_2/models/buildings_model.dart';
 import 'package:apartment_management_project_2/models/organization_model.dart';
 import 'package:apartment_management_project_2/models/payment_model.dart';
@@ -75,7 +77,10 @@ class ImprovedPaymentFormDialog extends StatefulWidget {
   State<ImprovedPaymentFormDialog> createState() => _ImprovedPaymentFormDialogState();
 }
 
-class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> {
+class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> with WidgetsBindingObserver {
+  // Track how many overlays (dialogs/bottom sheets) are currently open
+  int _overlayCount = 0;
+
   final _formKey = GlobalKey<FormState>();
   late TextEditingController _paidAmountController;
   late TextEditingController _currencyController;
@@ -103,7 +108,8 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> {
 
   List<Building> _buildings = [];
   List<Room> _rooms = [];
-  List<Tenant> _tenants = [];
+  List<Tenant> _allTenants = []; // All tenants in organization
+  List<Tenant> _availableTenants = []; // Filtered tenants for selected room
   
   // List of invoice line items
   List<InvoiceLineItem> _lineItems = [];
@@ -114,6 +120,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _paidAmountController = TextEditingController(text: '0.0');
     _currencyController = TextEditingController(text: 'VND');
     _transactionIdController = TextEditingController();
@@ -132,19 +139,65 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> {
 
   Future<void> _loadData() async {
     try {
-      final buildings = await widget.buildingService.getOrganizationBuildings(widget.organization.id);
-      final tenants = await widget.tenantService.getOrganizationTenants(widget.organization.id);
-      
+      // Load everything for the organization
+      final results = await Future.wait([
+        widget.buildingService.getOrganizationBuildings(widget.organization.id),
+        widget.roomService.getOrganizationRooms(widget.organization.id),
+        widget.tenantService.getOrganizationTenants(widget.organization.id),
+      ]);
+
       setState(() {
-        _buildings = buildings;
-        _tenants = tenants;
+        _buildings = results[0] as List<Building>;
+        _rooms = results[1] as List<Room>;
+        _allTenants = (results[2] as List<Tenant>)
+            .where((t) => t.status == TenantStatus.active) // Usually only bill active tenants
+            .toList();
       });
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi tải dữ liệu: $e')),
-        );
-      }
+      debugPrint('Error loading data: $e');
+    }
+  }
+
+  void _onTenantSelected(String? tenantId) {
+    if (tenantId == null) {
+      setState(() {
+        _selectedTenantId = null;
+        _selectedTenantName = null;
+        _selectedBuildingId = null;
+        _selectedRoomId = null;
+      });
+      return;
+    }
+
+    // Find the selected tenant
+    final tenant = _allTenants.firstWhere((t) => t.id == tenantId);
+    
+    setState(() {
+      _selectedTenantId = tenantId;
+      _selectedTenantName = tenant.fullName;
+      _selectedBuildingId = tenant.buildingId;
+      _selectedRoomId = tenant.roomId;
+    });
+    
+    if ((tenant.monthlyRent ?? 0) > 0 && _lineItems.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Gợi ý: Thêm mục tiền thuê ${NumberFormat('#,###').format(tenant.monthlyRent)}đ?'),
+          action: SnackBarAction(
+            label: 'Thêm ngay', 
+            onPressed: () {
+              setState(() {
+                _lineItems.add(InvoiceLineItem(
+                  id: DateTime.now().millisecondsSinceEpoch.toString(),
+                  type: PaymentType.rent,
+                  amount: tenant.monthlyRent ?? 0,
+                  description: 'Tiền thuê tháng ${DateTime.now().month}/${DateTime.now().year}',
+                ));
+              });
+            }
+          ),
+        )
+      );
     }
   }
 
@@ -155,11 +208,76 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> {
       setState(() {
         _rooms = rooms;
         _selectedRoomId = null;
+        _selectedTenantId = null;
+        _selectedTenantName = null;
+        _availableTenants = [];
       });
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Lỗi tải phòng: $e')),
+        );
+      }
+    }
+  }
+
+  // Load tenants for selected room
+  Future<void> _loadTenantsForRoom() async {
+    if (_selectedRoomId == null) {
+      setState(() {
+        _availableTenants = [];
+        _selectedTenantId = null;
+        _selectedTenantName = null;
+      });
+      return;
+    }
+
+    try {
+      // Get the selected room
+      final selectedRoom = _rooms.firstWhere((r) => r.id == _selectedRoomId);
+      
+      // Filter tenants based on the room
+      final filteredTenants = _allTenants.where((tenant) {
+        // Check if tenant's roomId matches selected room
+        return tenant.roomId == _selectedRoomId;
+      }).toList();
+      
+      setState(() {
+        _availableTenants = filteredTenants;
+        
+        // Auto-select tenant if there's only one tenant in the room
+        if (_availableTenants.length == 1) {
+          _selectedTenantId = _availableTenants.first.id;
+          _selectedTenantName = _availableTenants.first.fullName;
+        } else {
+          // Reset tenant selection if there are multiple or no tenants
+          _selectedTenantId = null;
+          _selectedTenantName = null;
+        }
+      });
+      
+      // Show info message
+      if (mounted) {
+        if (_availableTenants.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Không có người thuê nào trong phòng này'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        } else if (_availableTenants.length == 1) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Đã tự động chọn: ${_availableTenants.first.fullName}'),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lỗi tải người thuê: $e')),
         );
       }
     }
@@ -250,7 +368,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> {
       }
     }
     
-    final result = await showDialog<Map<String, dynamic>?>(
+    final result = await _showTrackedDialog<Map<String, dynamic>?>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
@@ -980,6 +1098,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _paidAmountController.dispose();
     _currencyController.dispose();
     _transactionIdController.dispose();
@@ -992,6 +1111,67 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> {
     super.dispose();
   }
 
+  // Debounce timer for resize handling
+  Timer? _resizeDebounceTimer;
+
+  // Guard to prevent overlapping dismiss calls
+  bool _isDismissing = false;
+
+  // ─── Called whenever screen size / metrics change ───
+  @override
+  void didChangeMetrics() {
+    super.didChangeMetrics();
+    // Cancel any pending debounce before setting a new one
+    _resizeDebounceTimer?.cancel();
+    _resizeDebounceTimer = Timer(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+      final screenWidth = MediaQuery.sizeOf(context).width;
+      final screenHeight = MediaQuery.sizeOf(context).height;
+      if (screenWidth < 360 || screenHeight < 600) {
+        _dismissAllOverlays();
+      }
+    });
+  }
+
+  // Pops all open dialogs/bottom sheets by popping until only the base route remains.
+  Future<void> _dismissAllOverlays() async {
+    if (!mounted || _isDismissing) return;
+    _isDismissing = true;
+
+    try {
+      final nav = Navigator.of(context);
+      while (nav.canPop()) {
+        nav.pop();
+        // Yield to the framework between each pop so it can finish
+        // destroying the previous overlay before we pop the next one.
+        // This prevents back-to-back surface destruction that triggers EGL errors.
+        await Future.delayed(const Duration(milliseconds: 50));
+        if (!mounted) break;
+      }
+    } finally {
+      _isDismissing = false;
+    }
+  }
+
+  // ─── Overlay helpers ───
+
+  Future<T?> _showTrackedDialog<T>({
+    required BuildContext context,
+    required WidgetBuilder builder,
+    bool barrierDismissible = true,
+  }) async {
+    _overlayCount++;
+    try {
+      return await showDialog<T>(
+        context: context,
+        barrierDismissible: barrierDismissible,
+        builder: builder,
+      );
+    } finally {
+      if (mounted) _overlayCount--;
+    }
+  }
+  
   @override
   Widget build(BuildContext context) {
     return Dialog(
@@ -1039,62 +1219,114 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            // Building Selection
-                            DropdownButtonFormField<String>(
-                              value: _selectedBuildingId,
-                              decoration: InputDecoration(
-                                labelText: 'Toà nhà *',
-                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                              ),
-                              items: _buildings.map((b) => DropdownMenuItem(value: b.id, child: Text(b.name))).toList(),
-                              onChanged: (v) {
-                                setState(() => _selectedBuildingId = v);
-                                _loadRooms();
-                              },
-                              validator: (v) => v == null ? 'Chọn toà nhà' : null,
-                            ),
-                            const SizedBox(height: 12),
-                            
-                            // Room Selection
-                            DropdownButtonFormField<String>(
-                              value: _selectedRoomId,
-                              decoration: InputDecoration(
-                                labelText: 'Phòng *',
-                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                              ),
-                              items: _rooms.map((r) => DropdownMenuItem(value: r.id, child: Text(r.roomNumber ?? ''))).toList(),
-                              onChanged: (v) => setState(() => _selectedRoomId = v),
-                              validator: (v) => v == null ? 'Chọn phòng' : null,
-                            ),
-                            const SizedBox(height: 12),
-                            
-                            // Tenant Selection
-                            DropdownButtonFormField<String?>(
-                              value: _selectedTenantId,
-                              decoration: InputDecoration(
-                                labelText: 'Người thuê',
-                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                              ),
-                              items: [
-                                const DropdownMenuItem<String?>(value: null, child: Text('Không chọn')),
-                                ..._tenants.map((t) => DropdownMenuItem<String?>(value: t.id, child: Text(t.fullName ?? ''))).toList(),
-                              ],
-                              onChanged: (v) {
-                                if (v != null && v.isNotEmpty) {
-                                  final tenant = _tenants.firstWhere((t) => t.id == v, orElse: () => _tenants.first);
-                                  setState(() {
-                                    _selectedTenantId = v;
-                                    _selectedTenantName = tenant.fullName;
-                                  });
-                                } else {
-                                  setState(() {
-                                    _selectedTenantId = null;
-                                    _selectedTenantName = null;
-                                  });
+                            // 1. SEARCHABLE TENANT SELECTION
+                            Autocomplete<Tenant>(
+                              // How the tenant looks in the text box after selection
+                              displayStringForOption: (Tenant t) => '${t.fullName} (${t.phoneNumber})',
+                              
+                              // Filtering logic
+                              optionsBuilder: (TextEditingValue textEditingValue) {
+                                if (textEditingValue.text == '') {
+                                  return const Iterable<Tenant>.empty();
                                 }
+                                return _allTenants.where((Tenant t) {
+                                  final nameMatches = t.fullName.toLowerCase().contains(textEditingValue.text.toLowerCase());
+                                  final phoneMatches = t.phoneNumber.contains(textEditingValue.text);
+                                  return nameMatches || phoneMatches;
+                                });
+                              },
+                              
+                              // Logic when a tenant is picked from the list
+                              onSelected: (Tenant selection) {
+                                _onTenantSelected(selection.id);
+                              },
+                              
+                              // This builds the actual TextField the user types in
+                              fieldViewBuilder: (context, textEditingController, focusNode, onFieldSubmitted) {
+                                return TextFormField(
+                                  controller: textEditingController,
+                                  focusNode: focusNode,
+                                  decoration: InputDecoration(
+                                    labelText: 'Tìm người thuê (Tên hoặc SĐT) *',
+                                    prefixIcon: const Icon(Icons.search),
+                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                    // Show a clear button if something is typed
+                                    suffixIcon: textEditingController.text.isNotEmpty 
+                                      ? IconButton(
+                                          icon: const Icon(Icons.clear),
+                                          onPressed: () {
+                                            textEditingController.clear();
+                                            _onTenantSelected(null);
+                                          },
+                                        )
+                                      : null,
+                                  ),
+                                  validator: (v) => _selectedTenantId == null ? 'Vui lòng chọn người thuê' : null,
+                                );
+                              },
+                              
+                              // Customizes the popup list appearance
+                              optionsViewBuilder: (context, onSelected, options) {
+                                return Align(
+                                  alignment: Alignment.topLeft,
+                                  child: Material(
+                                    elevation: 4.0,
+                                    child: ConstrainedBox(
+                                      constraints: const BoxConstraints(maxHeight: 200, maxWidth: 400),
+                                      child: ListView.builder(
+                                        padding: EdgeInsets.zero,
+                                        shrinkWrap: true,
+                                        itemCount: options.length,
+                                        itemBuilder: (BuildContext context, int index) {
+                                          final Tenant option = options.elementAt(index);
+                                          return ListTile(
+                                            title: Text(option.fullName),
+                                            subtitle: Text('SĐT: ${option.phoneNumber}'),
+                                            onTap: () => onSelected(option),
+                                          );
+                                        },
+                                      ),
+                                    ),
+                                  ),
+                                );
                               },
                             ),
-                            const SizedBox(height: 24),
+                            const SizedBox(height: 16),
+
+                            // 2. READ-ONLY BUILDING INFO
+                            TextFormField(
+                              key: ValueKey('building_$_selectedBuildingId'), // Forces UI refresh on ID change
+                              readOnly: true,
+                              initialValue: _selectedBuildingId != null 
+                                  ? _buildings.firstWhere((b) => b.id == _selectedBuildingId, orElse: () => Building(id: '', address: 'N/A', name: 'N/A', organizationId: '', createdAt: DateTime.now())).name
+                                  : 'Chưa xác định',
+                              decoration: InputDecoration(
+                                labelText: 'Toà nhà',
+                                filled: true,
+                                fillColor: Colors.grey[100],
+                                prefixIcon: const Icon(Icons.business),
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+
+                            // 3. READ-ONLY ROOM INFO
+                            TextFormField(
+                              key: ValueKey('room_$_selectedRoomId'), // Forces UI refresh on ID change
+                              readOnly: true,
+                              initialValue: _selectedRoomId != null 
+                                  ? _rooms.firstWhere((r) => r.id == _selectedRoomId, orElse: () => Room(id: '', area: 0.0, roomType: '', organizationId: '', buildingId: '', roomNumber: 'N/A', createdAt: DateTime.now())).roomNumber
+                                  : 'Chưa xác định',
+                              decoration: InputDecoration(
+                                labelText: 'Phòng',
+                                filled: true,
+                                fillColor: Colors.grey[100],
+                                prefixIcon: const Icon(Icons.door_front_door),
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                              ),
+                            ),
+
+                            const SizedBox(height: 12),
                             
                             // Line Items Section
                             Row(
@@ -1134,7 +1366,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> {
                             
                             // Status
                             DropdownButtonFormField<PaymentStatus>(
-                              value: _selectedPaymentStatus,
+                              initialValue: _selectedPaymentStatus,
                               decoration: InputDecoration(
                                 labelText: 'Trạng thái *',
                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),

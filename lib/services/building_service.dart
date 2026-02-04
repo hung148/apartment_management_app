@@ -28,34 +28,28 @@ class BuildingService {
   }) async {
     try {
       final building = Building(
-        id: '', // Will be set by Firestore
+        id: '', 
         organizationId: organizationId,
         name: dialogResult['name'],
         address: dialogResult['address'],
         createdAt: DateTime.now(),
-        // Save room configuration if auto-generate was enabled
-        floors: dialogResult['autoGenerateRooms'] == true 
-            ? dialogResult['floors'] as int? 
-            : null,
-        roomPrefix: dialogResult['autoGenerateRooms'] == true 
-            ? dialogResult['roomPrefix'] as String? 
-            : null,
-        uniformRooms: dialogResult['autoGenerateRooms'] == true 
-            ? dialogResult['uniformRooms'] as bool? 
-            : null,
-        roomsPerFloor: dialogResult['autoGenerateRooms'] == true && dialogResult['uniformRooms'] == true
-            ? dialogResult['roomsPerFloor'] as int? 
-            : null,
-        floorRoomCounts: dialogResult['autoGenerateRooms'] == true && dialogResult['uniformRooms'] == false
-            ? List<int>.from(dialogResult['floorRoomCounts']) 
-            : null,
+        floors: dialogResult['autoGenerateRooms'] == true ? dialogResult['floors'] : null,
+        roomPrefix: dialogResult['autoGenerateRooms'] == true ? dialogResult['roomPrefix'] : null,
+        uniformRooms: dialogResult['autoGenerateRooms'] == true ? dialogResult['uniformRooms'] : null,
+        
+        // Handle Uniform specific data
+        roomsPerFloor: dialogResult['uniformRooms'] == true ? dialogResult['roomsPerFloor'] : null,
+        roomType: dialogResult['uniformRooms'] == true ? dialogResult['roomType'] : null,
+        roomArea: dialogResult['uniformRooms'] == true ? dialogResult['roomArea'] : null,
+        
+        // Handle Custom specific data
+        floorDetails: dialogResult['uniformRooms'] == false ? dialogResult['floorDetails'] : null,
       );
 
       final docRef = await _firestore.collection('buildings').add(building.toMap());
-      print('Building added with room configuration: ${docRef.id}');
       return docRef.id;
     } catch (e) {
-      print('Error adding building from dialog: $e');
+      print('Error adding building: $e');
       return null;
     }
   }
@@ -140,7 +134,6 @@ class BuildingService {
         'address': dialogResult['address'],
       };
 
-      // Update room configuration if auto-generate was enabled
       if (dialogResult['autoGenerateRooms'] == true) {
         updateData['floors'] = dialogResult['floors'];
         updateData['roomPrefix'] = dialogResult['roomPrefix'];
@@ -148,20 +141,23 @@ class BuildingService {
         
         if (dialogResult['uniformRooms'] == true) {
           updateData['roomsPerFloor'] = dialogResult['roomsPerFloor'];
-          // Clear floorRoomCounts if switching to uniform
-          updateData['floorRoomCounts'] = FieldValue.delete();
+          updateData['roomType'] = dialogResult['roomType'];
+          updateData['roomArea'] = dialogResult['roomArea'];
+          // Clear custom details if switching to uniform
+          updateData['floorDetails'] = FieldValue.delete();
         } else {
-          updateData['floorRoomCounts'] = dialogResult['floorRoomCounts'];
-          // Clear roomsPerFloor if switching to custom
+          updateData['floorDetails'] = dialogResult['floorDetails'];
+          // Clear uniform fields if switching to custom
           updateData['roomsPerFloor'] = FieldValue.delete();
+          updateData['roomType'] = FieldValue.delete();
+          updateData['roomArea'] = FieldValue.delete();
         }
       }
 
       await _firestore.collection('buildings').doc(buildingId).update(updateData);
-      print('Building updated from dialog: $buildingId');
       return true;
     } catch (e) {
-      print('Error updating building from dialog: $e');
+      print('Error updating building: $e');
       return false;
     }
   }

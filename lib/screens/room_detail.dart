@@ -39,7 +39,10 @@ class RoomDetailScreen extends StatefulWidget {
   State<RoomDetailScreen> createState() => _RoomDetailScreenState();
 }
 
-class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerProviderStateMixin {
+class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+  // Track how many overlays (dialogs/bottom sheets) are currently open
+  int _overlayCount = 0;
+
   bool _isSmallScreen(BuildContext context) => MediaQuery.of(context).size.width < 600;
   bool _isMediumScreen(BuildContext context) {
     final width = MediaQuery.of(context).size.width;
@@ -107,6 +110,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _tabController = TabController(length: 2, vsync: this);
     _initializeStreams();
   }
@@ -174,10 +178,93 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _tabController.dispose();
     _tenantSubscription?.cancel();
     _paymentSubscription?.cancel();
     super.dispose();
+  }
+
+  // Debounce timer for resize handling
+  Timer? _resizeDebounceTimer;
+
+  // Guard to prevent overlapping dismiss calls
+  bool _isDismissing = false;
+
+  // ─── Called whenever screen size / metrics change ───
+  @override
+  void didChangeMetrics() {
+    super.didChangeMetrics();
+    // Cancel any pending debounce before setting a new one
+    _resizeDebounceTimer?.cancel();
+    _resizeDebounceTimer = Timer(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+      final screenWidth = MediaQuery.sizeOf(context).width;
+      final screenHeight = MediaQuery.sizeOf(context).height;
+      if (screenWidth < 360 || screenHeight < 600) {
+        _dismissAllOverlays();
+      }
+    });
+  }
+
+  // Pops all open dialogs/bottom sheets by popping until only the base route remains.
+  Future<void> _dismissAllOverlays() async {
+    if (!mounted || _isDismissing) return;
+    _isDismissing = true;
+
+    try {
+      final nav = Navigator.of(context);
+      while (nav.canPop()) {
+        nav.pop();
+        // Yield to the framework between each pop so it can finish
+        // destroying the previous overlay before we pop the next one.
+        // This prevents back-to-back surface destruction that triggers EGL errors.
+        await Future.delayed(const Duration(milliseconds: 50));
+        if (!mounted) break;
+      }
+    } finally {
+      _isDismissing = false;
+    }
+  }
+
+  // ─── Overlay helpers ───
+
+  Future<T?> _showTrackedDialog<T>({
+    required BuildContext context,
+    required WidgetBuilder builder,
+    bool barrierDismissible = true,
+  }) async {
+    _overlayCount++;
+    try {
+      return await showDialog<T>(
+        context: context,
+        barrierDismissible: barrierDismissible,
+        builder: builder,
+      );
+    } finally {
+      if (mounted) _overlayCount--;
+    }
+  }
+
+  Future<T?> _showTrackedBottomSheet<T>({
+    required BuildContext context,
+    required WidgetBuilder builder,
+    bool isScrollControlled = false,
+    ShapeBorder? shape,
+    BoxConstraints? constraints,
+  }) async {
+    _overlayCount++;
+    try {
+      return await showModalBottomSheet<T>(
+        context: context,
+        isScrollControlled: isScrollControlled,
+        shape: shape,
+        constraints: constraints,
+        builder: builder,
+      );
+    } finally {
+      if (mounted) _overlayCount--;
+    }
   }
 
   // =========================
@@ -220,7 +307,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
     DateTime? contractStartDate = tenant?.contractStartDate;
     DateTime? contractEndDate = tenant?.contractEndDate;
 
-    showDialog(
+    _showTrackedDialog(
       context: context,
       builder: (dialogContext) => Dialog(
         child: ConstrainedBox(
@@ -585,7 +672,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
   void _showTenantDetailDialog(Tenant tenant) {
     final isPhone = MediaQuery.of(context).size.width < 600;
     
-    showDialog(
+    _showTrackedDialog(
       context: context,
       builder: (context) => Dialog(
         child: ConstrainedBox(
@@ -832,7 +919,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
   // TENANT OPTIONS MENU
   // =========================
   Future<void> _showTenantOptionsMenu(Tenant tenant) async {
-    await showModalBottomSheet(
+    await _showTrackedBottomSheet(
       context: context,
       builder: (context) => SafeArea(
         child: Column(
@@ -894,7 +981,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
   Future<void> _showVehicleManagementDialog(Tenant tenant) async {
     final isPhone = MediaQuery.of(context).size.width < 600;
     
-    await showDialog(
+    await _showTrackedDialog(
       context: context,
       builder: (context) => Dialog(
         child: ConstrainedBox(
@@ -1105,7 +1192,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                                             }
                                           }
                                         } else if (value == 'delete') {
-                                          final ok = await showDialog<bool>(
+                                          final ok = await _showTrackedDialog<bool>(
                                             context: context,
                                             builder: (context) => AlertDialog(
                                               title: const Text('Xóa phương tiện'),
@@ -1161,7 +1248,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
     final colorController = TextEditingController();
     VehicleType selectedType = VehicleType.motorcycle;
 
-    return await showDialog<VehicleInfo>(
+    return await _showTrackedDialog<VehicleInfo>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
@@ -1264,7 +1351,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
     final colorController = TextEditingController(text: vehicle.color);
     VehicleType selectedType = vehicle.type;
 
-    return await showDialog<VehicleInfo>(
+    return await _showTrackedDialog<VehicleInfo>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
@@ -1352,7 +1439,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
 
   Future<String?> _showParkingSpotDialog() async {
     final controller = TextEditingController();
-    return await showDialog<String>(
+    return await _showTrackedDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Đăng ký bãi đỗ'),
@@ -1407,7 +1494,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
   Future<void> _showRentalHistoryDialog(Tenant tenant) async {
     final isPhone = MediaQuery.of(context).size.width < 600;
     
-    await showDialog(
+    await _showTrackedDialog(
       context: context,
       builder: (context) => Dialog(
         child: ConstrainedBox(
@@ -1480,7 +1567,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
   // MOVE OUT CONFIRMATION
   // =========================
   Future<void> _confirmMoveOut(Tenant tenant) async {
-    final ok = await showDialog<bool>(
+    final ok = await _showTrackedDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Đánh dấu đã chuyển đi'),
@@ -1511,7 +1598,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
   void _deleteTenant(Tenant tenant) {
     final isPhone = MediaQuery.of(context).size.width < 600;
     
-    showDialog(
+    _showTrackedDialog(
       context: context,
       builder: (dialogContext) => Dialog(
         child: ConstrainedBox(
@@ -1835,7 +1922,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
   
   void _showAddPaymentDialog() async {
     // Use the new ImprovedPaymentFormDialog
-    await showDialog(
+    await _showTrackedDialog(
       context: context,
       builder: (context) => ImprovedPaymentFormDialog(
         organization: widget.organization,
@@ -1848,7 +1935,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
   }
 
   void _showPaymentDetailDialog(Payment payment, bool isAdmin) {
-    showDialog(
+    _showTrackedDialog(
       context: context,
       builder: (context) => ViewPaymentDetailsDialog(
         payment: payment,
@@ -1864,7 +1951,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
 
   void _showEditPaymentDialog(Payment payment) {
 
-    showDialog(
+    _showTrackedDialog(
       context: context,
       builder: (context) => EditPaymentDialog(
         payment: payment,

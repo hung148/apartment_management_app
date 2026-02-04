@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:apartment_management_project_2/models/buildings_model.dart';
 import 'package:apartment_management_project_2/models/organization_model.dart';
 import 'package:apartment_management_project_2/models/payment_model.dart';
@@ -184,15 +186,86 @@ class ViewPaymentDetailsDialog extends StatefulWidget {
   State<ViewPaymentDetailsDialog> createState() => _ViewPaymentDetailsDialogState();
 }
 
-class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog> {
+class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog> with WidgetsBindingObserver {
   Room? _room;
   Building? _building;
   bool _isLoadingRoomData = true;
 
+  // Track how many overlays (dialogs/bottom sheets) are currently open
+  int _overlayCount = 0;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadRoomAndBuildingData();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  // Debounce timer for resize handling
+  Timer? _resizeDebounceTimer;
+
+  // Guard to prevent overlapping dismiss calls
+  bool _isDismissing = false;
+
+  // ─── Called whenever screen size / metrics change ───
+  @override
+  void didChangeMetrics() {
+    super.didChangeMetrics();
+    // Cancel any pending debounce before setting a new one
+    _resizeDebounceTimer?.cancel();
+    _resizeDebounceTimer = Timer(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+      final screenWidth = MediaQuery.sizeOf(context).width;
+      final screenHeight = MediaQuery.sizeOf(context).height;
+      if (screenWidth < 360 || screenHeight < 600) {
+        _dismissAllOverlays();
+      }
+    });
+  }
+
+  // Pops all open dialogs/bottom sheets by popping until only the base route remains.
+  Future<void> _dismissAllOverlays() async {
+    if (!mounted || _isDismissing) return;
+    _isDismissing = true;
+
+    try {
+      final nav = Navigator.of(context);
+      while (nav.canPop()) {
+        nav.pop();
+        // Yield to the framework between each pop so it can finish
+        // destroying the previous overlay before we pop the next one.
+        // This prevents back-to-back surface destruction that triggers EGL errors.
+        await Future.delayed(const Duration(milliseconds: 50));
+        if (!mounted) break;
+      }
+    } finally {
+      _isDismissing = false;
+    }
+  }
+
+  // ─── Overlay helpers ───
+
+  Future<T?> _showTrackedDialog<T>({
+    required BuildContext context,
+    required WidgetBuilder builder,
+    bool barrierDismissible = true,
+  }) async {
+    _overlayCount++;
+    try {
+      return await showDialog<T>(
+        context: context,
+        barrierDismissible: barrierDismissible,
+        builder: builder,
+      );
+    } finally {
+      if (mounted) _overlayCount--;
+    }
   }
 
   Future<void> _loadRoomAndBuildingData() async {
@@ -797,7 +870,7 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog> {
   }
 
   void _showDeleteConfirmation(BuildContext context) {
-    showDialog(
+    _showTrackedDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
@@ -853,7 +926,10 @@ class EditPaymentDialog extends StatefulWidget {
   State<EditPaymentDialog> createState() => _EditPaymentDialogState();
 }
 
-class _EditPaymentDialogState extends State<EditPaymentDialog> {
+class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindingObserver {
+   // Track how many overlays (dialogs/bottom sheets) are currently open
+  int _overlayCount = 0;
+
   final _formKey = GlobalKey<FormState>();
   late TextEditingController _notesController;
   late TextEditingController _taxAmountController;
@@ -871,6 +947,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _notesController = TextEditingController(text: widget.payment.notes);
     _taxAmountController = TextEditingController(
       text: widget.payment.taxAmount != null ? widget.payment.taxAmount.toString() : '0.0',
@@ -884,6 +961,67 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> {
     _lineItems = _parseLineItems(widget.payment);
     
     _loadData();
+  }
+
+  // Debounce timer for resize handling
+  Timer? _resizeDebounceTimer;
+
+  // Guard to prevent overlapping dismiss calls
+  bool _isDismissing = false;
+
+  // ─── Called whenever screen size / metrics change ───
+  @override
+  void didChangeMetrics() {
+    super.didChangeMetrics();
+    // Cancel any pending debounce before setting a new one
+    _resizeDebounceTimer?.cancel();
+    _resizeDebounceTimer = Timer(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+      final screenWidth = MediaQuery.sizeOf(context).width;
+      final screenHeight = MediaQuery.sizeOf(context).height;
+      if (screenWidth < 360 || screenHeight < 600) {
+        _dismissAllOverlays();
+      }
+    });
+  }
+
+  // Pops all open dialogs/bottom sheets by popping until only the base route remains.
+  Future<void> _dismissAllOverlays() async {
+    if (!mounted || _isDismissing) return;
+    _isDismissing = true;
+
+    try {
+      final nav = Navigator.of(context);
+      while (nav.canPop()) {
+        nav.pop();
+        // Yield to the framework between each pop so it can finish
+        // destroying the previous overlay before we pop the next one.
+        // This prevents back-to-back surface destruction that triggers EGL errors.
+        await Future.delayed(const Duration(milliseconds: 50));
+        if (!mounted) break;
+      }
+    } finally {
+      _isDismissing = false;
+    }
+  }
+
+  // ─── Overlay helpers ───
+
+  Future<T?> _showTrackedDialog<T>({
+    required BuildContext context,
+    required WidgetBuilder builder,
+    bool barrierDismissible = true,
+  }) async {
+    _overlayCount++;
+    try {
+      return await showDialog<T>(
+        context: context,
+        barrierDismissible: barrierDismissible,
+        builder: builder,
+      );
+    } finally {
+      if (mounted) _overlayCount--;
+    }
   }
 
   Future<void> _loadData() async {
@@ -947,7 +1085,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> {
     DateTime? billingStart;
     DateTime? billingEnd;
     
-    final result = await showDialog<Map<String, dynamic>?>(
+    final result = await _showTrackedDialog<Map<String, dynamic>?>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
@@ -1344,6 +1482,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _notesController.dispose();
     _taxAmountController.dispose();
     super.dispose();

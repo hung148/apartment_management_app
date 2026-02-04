@@ -1,6 +1,6 @@
-;--------------------------------
+﻿;--------------------------------
 ; Apartment Management - NSIS Installer
-; Improved version with better structure
+; Vietnamese Version
 ;--------------------------------
 
 !include "MUI2.nsh"
@@ -12,7 +12,7 @@
 ; General Settings
 ;--------------------------------
 Name "Apartment Management"
-OutFile "installer_output\ApartmentManagement-Setup-1.0.2+7.exe"
+OutFile "installer_output\ApartmentManagement-Setup-Vietnamese-1.0.2+7.exe"
 InstallDir "$PROGRAMFILES64\ApartmentManagement"
 InstallDirRegKey HKLM "Software\ApartmentManagement" "Install_Dir"
 RequestExecutionLevel admin
@@ -54,47 +54,17 @@ Var VCRedistNeeded
 !insertmacro MUI_PAGE_INSTFILES
 
 !define MUI_FINISHPAGE_RUN "$INSTDIR\${APP_EXE}"
-!define MUI_FINISHPAGE_RUN_TEXT "Launch ${APP_NAME}"
+!define MUI_FINISHPAGE_RUN_TEXT "Khởi chạy ${APP_NAME}"
 !insertmacro MUI_PAGE_FINISH
 
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_UNPAGE_FINISH
 
-!define MUI_LANGDLL_REGISTRY_ROOT "HKCU"
-!define MUI_LANGDLL_REGISTRY_KEY "Software\ApartmentManagement"
-!define MUI_LANGDLL_REGISTRY_VALUENAME "InstallerLanguage"
-
 ;--------------------------------
-; Languages
+; Language - Vietnamese Only
 ;--------------------------------
-!insertmacro MUI_LANGUAGE "English"
 !insertmacro MUI_LANGUAGE "Vietnamese"
-
-;--------------------------------
-; Custom Language Strings
-;--------------------------------
-
-LangString MSG_64BIT_ERROR ${LANG_ENGLISH} "This application requires 64-bit Windows. Installation cannot continue."
-LangString MSG_64BIT_ERROR ${LANG_VIETNAMESE} "Ứng dụng này yêu cầu Windows 64-bit. Không thể tiếp tục cài đặt."
-
-LangString MSG_ALREADY_INSTALLED ${LANG_ENGLISH} \
-"${APP_NAME} is already installed at:$\n$\n$0$\n$\nDo you want to uninstall the previous version?"
-
-LangString MSG_ALREADY_INSTALLED ${LANG_VIETNAMESE} \
-"${APP_NAME} đã được cài đặt tại:$\n$\n$0$\n$\nBạn có muốn gỡ phiên bản cũ không?"
-
-LangString MSG_UNINSTALL_CONFIRM ${LANG_ENGLISH} \
-"Are you sure you want to completely remove $(^Name) and all of its components?"
-
-LangString MSG_UNINSTALL_CONFIRM ${LANG_VIETNAMESE} \
-"Bạn có chắc chắn muốn gỡ bỏ hoàn toàn $(^Name) và tất cả thành phần không?"
-
-LangString MSG_UNINSTALL_DONE ${LANG_ENGLISH} \
-"$(^Name) has been successfully removed from your computer."
-
-LangString MSG_UNINSTALL_DONE ${LANG_VIETNAMESE} \
-"$(^Name) đã được gỡ khỏi máy tính của bạn thành công."
 
 ;--------------------------------
 ; Version Information
@@ -123,16 +93,16 @@ Section "Install" SecInstall
   ; Create desktop shortcut
   CreateShortcut "$DESKTOP\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}" \
     "" "$INSTDIR\${APP_EXE}" 0 SW_SHOWNORMAL \
-    "" "Launch ${APP_NAME}"
+    "" "Khởi chạy ${APP_NAME}"
   
   ; Create Start Menu shortcuts
   CreateDirectory "$SMPROGRAMS\${APP_NAME}"
   CreateShortcut "$SMPROGRAMS\${APP_NAME}\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}" \
     "" "$INSTDIR\${APP_EXE}" 0 SW_SHOWNORMAL \
-    "" "Launch ${APP_NAME}"
-  CreateShortcut "$SMPROGRAMS\${APP_NAME}\Uninstall.lnk" "$INSTDIR\Uninstall.exe" \
+    "" "Khởi chạy ${APP_NAME}"
+  CreateShortcut "$SMPROGRAMS\${APP_NAME}\Gỡ cài đặt.lnk" "$INSTDIR\Uninstall.exe" \
     "" "$INSTDIR\Uninstall.exe" 0 SW_SHOWNORMAL \
-    "" "Uninstall ${APP_NAME}"
+    "" "Gỡ cài đặt ${APP_NAME}"
   
   ; Write uninstaller
   WriteUninstaller "$INSTDIR\Uninstall.exe"
@@ -159,10 +129,10 @@ Section "Install" SecInstall
   
   ; Install VC++ Redistributable if needed
   ${If} $VCRedistNeeded == 1
-    DetailPrint "Installing Visual C++ Runtime..."
+    DetailPrint "Đang cài đặt Visual C++ Runtime..."
     Call InstallVCRedist
   ${Else}
-    DetailPrint "Visual C++ Runtime already installed"
+    DetailPrint "Visual C++ Runtime đã được cài đặt"
   ${EndIf}
   
 SectionEnd
@@ -175,7 +145,7 @@ Section "Uninstall"
   ; Remove shortcuts
   Delete "$DESKTOP\${APP_NAME}.lnk"
   Delete "$SMPROGRAMS\${APP_NAME}\${APP_NAME}.lnk"
-  Delete "$SMPROGRAMS\${APP_NAME}\Uninstall.lnk"
+  Delete "$SMPROGRAMS\${APP_NAME}\Gỡ cài đặt.lnk"
   RMDir "$SMPROGRAMS\${APP_NAME}"
   
   ; Remove installed files and directories
@@ -186,8 +156,10 @@ Section "Uninstall"
   DeleteRegKey HKLM "${UNINST_KEY}"
   
   ; Show completion message
-  MessageBox MB_OK "$(MSG_UNINSTALL_DONE)"
-  
+  ${IfNot} ${Silent}
+    MessageBox MB_OK "${APP_NAME} đã được gỡ khỏi máy tính của bạn thành công."
+  ${EndIf}
+
 SectionEnd
 
 ;--------------------------------
@@ -196,26 +168,33 @@ SectionEnd
 
 ; Called when installer starts
 Function .onInit
-  !insertmacro MUI_LANGDLL_DISPLAY
-  
+
   ; Check if 64-bit Windows
   ${IfNot} ${RunningX64}
-    MessageBox MB_OK|MB_ICONSTOP "$(MSG_64BIT_ERROR)"
+    MessageBox MB_OK|MB_ICONSTOP "Ứng dụng này yêu cầu Windows 64-bit. Không thể tiếp tục cài đặt."
     Abort
   ${EndIf}
   
   ; Check if already installed
   ReadRegStr $0 HKLM "${REG_KEY}" "Install_Dir"
   ${If} $0 != ""
-    MessageBox MB_YESNO|MB_ICONQUESTION "$(MSG_ALREADY_INSTALLED)" \
-      IDYES uninst IDNO done
+    MessageBox MB_YESNO|MB_ICONQUESTION "${APP_NAME} đã được cài đặt tại:$\n$\n$0$\n$\nBạn có muốn gỡ phiên bản cũ không?" IDNO done
+
+    ; User clicked Yes - manually uninstall
+    DetailPrint "Đang gỡ phiên bản cũ..."
     
-    uninst:
-      ; Run uninstaller
-      ExecWait '"$0\Uninstall.exe" /S _?=$0'
-      Delete "$0\Uninstall.exe"
-      RMDir "$0"
-      Goto done
+    ; Remove shortcuts
+    Delete "$DESKTOP\${APP_NAME}.lnk"
+    Delete "$SMPROGRAMS\${APP_NAME}\${APP_NAME}.lnk"
+    Delete "$SMPROGRAMS\${APP_NAME}\Gỡ cài đặt.lnk"
+    RMDir "$SMPROGRAMS\${APP_NAME}"
+    
+    ; Remove installed files and directories
+    RMDir /r "$0"
+    
+    ; Remove registry keys
+    DeleteRegKey HKLM "${REG_KEY}"
+    DeleteRegKey HKLM "${UNINST_KEY}"
       
     done:
   ${EndIf}
@@ -245,13 +224,13 @@ Function CheckVCRedist
     ${If} ${Errors}
       ; Not found - need to install
       StrCpy $VCRedistNeeded "1"
-      DetailPrint "Visual C++ Runtime not found - will install"
+      DetailPrint "Không tìm thấy Visual C++ Runtime - sẽ cài đặt"
     ${Else}
-      DetailPrint "Visual C++ Runtime found: $0"
+      DetailPrint "Đã tìm thấy Visual C++ Runtime: $0"
       StrCpy $VCRedistNeeded "0"
     ${EndIf}
   ${Else}
-    DetailPrint "Visual C++ Runtime found: $0"
+    DetailPrint "Đã tìm thấy Visual C++ Runtime: $0"
     StrCpy $VCRedistNeeded "0"
   ${EndIf}
   
@@ -267,7 +246,7 @@ Function InstallVCRedist
   
   ; Check if VC++ redistributable file exists
   IfFileExists "$EXEDIR\${VCREDIST}" +3
-    DetailPrint "ERROR: ${VCREDIST} not found in installer directory"
+    DetailPrint "LỖI: Không tìm thấy ${VCREDIST} trong thư mục cài đặt"
     Goto vcredist_end
   
   ; Extract to temp directory
@@ -275,16 +254,16 @@ Function InstallVCRedist
   File "${VCREDIST}"
   
   ; Run silent installation
-  DetailPrint "Installing Visual C++ Runtime (this may take a minute)..."
+  DetailPrint "Đang cài đặt Visual C++ Runtime (có thể mất một phút)..."
   ExecWait '"$TEMP\${VCREDIST}" /install /quiet /norestart' $0
   
   ; Check return code
   ${If} $0 == 0
-    DetailPrint "Visual C++ Runtime installed successfully"
+    DetailPrint "Cài đặt Visual C++ Runtime thành công"
   ${ElseIf} $0 == 3010
-    DetailPrint "Visual C++ Runtime installed (restart recommended)"
+    DetailPrint "Cài đặt Visual C++ Runtime thành công (nên khởi động lại)"
   ${Else}
-    DetailPrint "Visual C++ Runtime installation returned code: $0"
+    DetailPrint "Cài đặt Visual C++ Runtime trả về mã: $0"
   ${EndIf}
   
   ; Clean up
@@ -298,8 +277,12 @@ FunctionEnd
 ; Called when uninstaller starts
 Function un.onInit
   
-  MessageBox MB_YESNO|MB_ICONQUESTION "$(MSG_UNINSTALL_CONFIRM)" \
-    IDYES +2
-  Abort
+  ; Check if running in silent mode
+  ${If} ${Silent}
+    ; Silent mode - skip confirmation
+    Return
+  ${EndIf}
   
+  MessageBox MB_YESNO|MB_ICONQUESTION "Bạn có chắc chắn muốn gỡ bỏ hoàn toàn ${APP_NAME} và tất cả thành phần không?" IDYES +2
+  Abort
 FunctionEnd

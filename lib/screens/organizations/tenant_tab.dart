@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:apartment_management_project_2/models/tenants_model.dart';
@@ -33,12 +35,15 @@ class TenantsTab extends StatefulWidget {
   State<TenantsTab> createState() => _TenantsTabState();
 }
 
-class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMixin {
+class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
   @override
   bool get wantKeepAlive => true;
 
   final TextEditingController _searchController = TextEditingController();
   late Future<List<dynamic>> _initialFuture;
+
+  // Track how many overlays (dialogs/bottom sheets) are currently open
+  int _overlayCount = 0;
 
   List<Tenant> _allTenants = [];
   List<Building> _buildings = [];
@@ -48,6 +53,7 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
   @override
   void initState() {
     super.initState();
+     WidgetsBinding.instance.addObserver(this);
     _initialFuture = Future.wait([
       _getAllTenants(),
       _getBuildings(),
@@ -58,9 +64,102 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _searchController.dispose();
     super.dispose();
   }
+
+  // Debounce timer for resize handling
+  Timer? _resizeDebounceTimer;
+
+  // Guard to prevent overlapping dismiss calls
+  bool _isDismissing = false;
+
+  // ─── Called whenever screen size / metrics change ───
+  @override
+  void didChangeMetrics() {
+    super.didChangeMetrics();
+    // Cancel any pending debounce before setting a new one
+    _resizeDebounceTimer?.cancel();
+    _resizeDebounceTimer = Timer(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+      final screenWidth = MediaQuery.sizeOf(context).width;
+      final screenHeight = MediaQuery.sizeOf(context).height;
+      if (screenWidth < 360 || screenHeight < 600) {
+        _dismissAllOverlays();
+      }
+    });
+  }
+
+  // Pops all open dialogs/bottom sheets by popping until only the base route remains.
+  Future<void> _dismissAllOverlays() async {
+    if (!mounted || _isDismissing) return;
+    _isDismissing = true;
+
+    try {
+      final nav = Navigator.of(context);
+      while (nav.canPop()) {
+        nav.pop();
+        // Yield to the framework between each pop so it can finish
+        // destroying the previous overlay before we pop the next one.
+        // This prevents back-to-back surface destruction that triggers EGL errors.
+        await Future.delayed(const Duration(milliseconds: 50));
+        if (!mounted) break;
+      }
+    } finally {
+      _isDismissing = false;
+    }
+  }
+
+  // ─── Overlay helpers ───
+
+  Future<T?> _showTrackedDialog<T>({
+    required BuildContext context,
+    required WidgetBuilder builder,
+    bool barrierDismissible = true,
+  }) async {
+    _overlayCount++;
+    try {
+      return await showDialog<T>(
+        context: context,
+        barrierDismissible: barrierDismissible,
+        builder: builder,
+      );
+    } finally {
+      if (mounted) _overlayCount--;
+    }
+  }
+
+  Future<T?> _showTrackedBottomSheet<T>({
+    required BuildContext context,
+    required WidgetBuilder builder,
+    bool isScrollControlled = false,
+    ShapeBorder? shape,
+    BoxConstraints? constraints,
+  }) async {
+    _overlayCount++;
+    try {
+      return await showModalBottomSheet<T>(
+        context: context,
+        isScrollControlled: isScrollControlled,
+        shape: shape,
+        constraints: constraints,
+        builder: builder,
+      );
+    } finally {
+      if (mounted) _overlayCount--;
+    }
+  }
+
+  Map<String, List<Tenant>> _getRoomToTenantsMap(List<Tenant> allTenants) {
+  final map = <String, List<Tenant>>{};
+  for (var t in allTenants) {
+    if (t.status == TenantStatus.active) {
+      map.putIfAbsent(t.roomId, () => []).add(t);
+    }
+  }
+  return map;
+}
 
   Future<List<Tenant>> _getAllTenants() => widget.tenantService.getOrganizationTenants(widget.organization.id);
   Future<List<Building>> _getBuildings() => widget.buildingService.getOrganizationBuildings(widget.organization.id);
@@ -265,6 +364,8 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
 
       room = Room(
         id: '',
+        area: 0.0,
+        roomType: '',
         organizationId: '',
         buildingId: '',
         roomNumber: displayRoomNumber,
@@ -286,6 +387,8 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
         (r) => r.id == tenant.roomId,
         orElse: () => Room(
           id: '',
+          roomType: '',
+          area: 0.0,
           organizationId: '',
           buildingId: '',
           roomNumber: '?',
@@ -575,7 +678,7 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
   void _showTenantDetailDialog(Tenant tenant, String buildingName, String roomNumber) {
     final isPhone = MediaQuery.of(context).size.width < 600;
     
-    showDialog(
+    _showTrackedDialog(
       context: context,
       builder: (context) => Dialog(
         child: ConstrainedBox(
@@ -829,104 +932,149 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
   }
 
   Future<void> _showTenantOptionsMenu(Tenant tenant, bool isMovedOut) async {
-    await showModalBottomSheet(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.info_outline),
-              title: const Text('Xem chi tiết'),
-              onTap: () {
-                Navigator.pop(context);
-                final building = _buildings.firstWhere(
-                  (b) => b.id == tenant.buildingId,
-                  orElse: () => Building(
-                    id: '',
-                    organizationId: '',
-                    name: tenant.lastBuildingName ?? 'Không xác định',
-                    address: '',
-                    createdAt: DateTime.now(),
-                  ),
-                );
-                final room = _rooms.firstWhere(
-                  (r) => r.id == tenant.roomId,
-                  orElse: () => Room(
-                    id: '',
-                    organizationId: '',
-                    buildingId: '',
-                    roomNumber: tenant.lastRoomNumber ?? '?',
-                    createdAt: DateTime.now(),
-                  ),
-                );
-                _showTenantDetailDialog(tenant, building.name, room.roomNumber);
-              },
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final isLargeScreen = screenWidth >= 600;
+
+    // Shared list of menu items
+    List<Widget> menuItems = [
+      ListTile(
+        leading: const Icon(Icons.info_outline),
+        title: const Text('Xem chi tiết'),
+        onTap: () {
+          Navigator.pop(context);
+          final building = _buildings.firstWhere(
+            (b) => b.id == tenant.buildingId,
+            orElse: () => Building(
+              id: '',
+              organizationId: '',
+              name: tenant.lastBuildingName ?? 'Không xác định',
+              address: '',
+              createdAt: DateTime.now(),
             ),
-            ListTile(
-              leading: const Icon(Icons.edit),
-              title: const Text('Chỉnh sửa thông tin'),
-              onTap: () {
-                Navigator.pop(context);
-                _showEditTenantDialog(tenant);
-              },
+          );
+          final room = _rooms.firstWhere(
+            (r) => r.id == tenant.roomId,
+            orElse: () => Room(
+              id: '',
+              roomType: '',
+              area: 0.0,
+              organizationId: '',
+              buildingId: '',
+              roomNumber: tenant.lastRoomNumber ?? '?',
+              createdAt: DateTime.now(),
             ),
-            ListTile(
-              leading: const Icon(Icons.move_up),
-              title: const Text('Chuyển phòng'),
-              onTap: () {
-                Navigator.pop(context);
-                _showMoveRoomDialog(tenant);
-              },
-            ),
-            if (!isMovedOut) ...[
-              ListTile(
-                leading: const Icon(Icons.logout),
-                title: const Text('Chuyển đi'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showMoveOutDialog(tenant);
-                },
-              ),
-            ],
-            ListTile(
-              leading: const Icon(Icons.directions_car),
-              title: const Text('Quản lý phương tiện'),
-              subtitle: tenant.vehicles != null && tenant.vehicles!.isNotEmpty
-                  ? Text('${tenant.vehicles!.length} phương tiện')
-                  : null,
-              onTap: () {
-                Navigator.pop(context);
-                _showVehicleManagementDialog(tenant);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.history),
-              title: const Text('Lịch sử thuê phòng'),
-              onTap: () {
-                Navigator.pop(context);
-                _showRentalHistoryDialog(tenant);
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.delete, color: Colors.red.shade700),
-              title: Text('Xóa', style: TextStyle(color: Colors.red.shade700)),
-              onTap: () {
-                Navigator.pop(context);
-                _confirmDeleteTenant(tenant);
-              },
-            ),
-          ],
-        ),
+          );
+          _showTenantDetailDialog(tenant, building.name, room.roomNumber);
+        },
       ),
-    );
+      ListTile(
+        leading: const Icon(Icons.edit),
+        title: const Text('Chỉnh sửa thông tin'),
+        onTap: () {
+          Navigator.pop(context);
+          _showEditTenantDialog(tenant);
+        },
+      ),
+      ListTile(
+        leading: const Icon(Icons.move_up),
+        title: const Text('Chuyển phòng'),
+        onTap: () {
+          Navigator.pop(context);
+          _showMoveRoomDialog(tenant);
+        },
+      ),
+      if (!isMovedOut)
+        ListTile(
+          leading: const Icon(Icons.logout),
+          title: const Text('Chuyển đi'),
+          onTap: () {
+            Navigator.pop(context);
+            _showMoveOutDialog(tenant);
+          },
+        ),
+      ListTile(
+        leading: const Icon(Icons.directions_car),
+        title: const Text('Quản lý phương tiện'),
+        subtitle: tenant.vehicles != null && tenant.vehicles!.isNotEmpty
+            ? Text('${tenant.vehicles!.length} phương tiện')
+            : null,
+        onTap: () {
+          Navigator.pop(context);
+          _showVehicleManagementDialog(tenant);
+        },
+      ),
+      ListTile(
+        leading: const Icon(Icons.history),
+        title: const Text('Lịch sử thuê phòng'),
+        onTap: () {
+          Navigator.pop(context);
+          _showRentalHistoryDialog(tenant);
+        },
+      ),
+      ListTile(
+        leading: Icon(Icons.delete, color: Colors.red.shade700),
+        title: Text('Xóa', style: TextStyle(color: Colors.red.shade700)),
+        onTap: () {
+          Navigator.pop(context);
+          _confirmDeleteTenant(tenant);
+        },
+      ),
+    ];
+
+    if (isLargeScreen) {
+      // ─── Tablet / Desktop: show as a centered Dialog ───
+      await _showTrackedDialog(
+        context: context,
+        builder: (context) => Dialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 40.0, vertical: 24.0),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: SizedBox(
+            width: 360, // fixed comfortable width on large screens
+            child: SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Optional header
+                  const ListTile(
+                    title: Text(
+                      'Tùy chọn',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                    trailing: CloseButtonIcon(),
+                  ),
+                  const Divider(height: 0),
+                  ...menuItems,
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    } else {
+      // ─── Mobile: show as a ModalBottomSheet ───
+      await _showTrackedBottomSheet(
+        context: context,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(16),
+            topRight: Radius.circular(16),
+          ),
+        ),
+        builder: (context) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: menuItems,
+          ),
+        ),
+      );
+    }
   }
 
   // Vehicle Management Dialog
   Future<void> _showVehicleManagementDialog(Tenant tenant) async {
     final isPhone = MediaQuery.of(context).size.width < 600;
     
-    await showDialog(
+    await _showTrackedDialog(
       context: context,
       builder: (context) => Dialog(
         child: ConstrainedBox(
@@ -1173,7 +1321,7 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                                             }
                                           }
                                         } else if (value == 'delete') {
-                                          final ok = await showDialog<bool>(
+                                          final ok = await _showTrackedDialog<bool>(
                                             context: context,
                                             builder: (context) => AlertDialog(
                                               title: const Text('Xóa phương tiện'),
@@ -1233,7 +1381,7 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
     VehicleType selectedType = VehicleType.motorcycle;
 
     try {
-      return await showDialog<VehicleInfo>(
+      return await _showTrackedDialog<VehicleInfo>(
         context: context,
         builder: (context) => StatefulBuilder(
           builder: (context, setDialogState) {
@@ -1344,7 +1492,7 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
     VehicleType selectedType = vehicle.type;
 
     try {
-      return await showDialog<VehicleInfo>(
+      return await _showTrackedDialog<VehicleInfo>(
         context: context,
         builder: (context) => StatefulBuilder(
           builder: (context, setDialogState) {
@@ -1440,7 +1588,7 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
   Future<String?> _showParkingSpotDialog() async {
     final controller = TextEditingController();
     try {
-      return await showDialog<String>(
+      return await _showTrackedDialog<String>(
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('Đăng ký bãi đỗ'),
@@ -1511,7 +1659,7 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
   Future<void> _showRentalHistoryDialog(Tenant tenant) async {
     final isPhone = MediaQuery.of(context).size.width < 600;
     
-    await showDialog(
+    await _showTrackedDialog(
       context: context,
       builder: (context) => Dialog(
         child: ConstrainedBox(
@@ -1602,319 +1750,161 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
     final allRooms = await _getAllRooms();
     final isPhone = MediaQuery.of(context).size.width < 600;
 
-    late final Building currentBuilding;
-    late final Room currentRoom;
-    late final String currentBuildingName;
-    late final String currentRoomNumber;
-
-    final bool isMovedOut = tenant.status == TenantStatus.moveOut;
-
-    if (isMovedOut && tenant.lastBuildingName != null && tenant.lastRoomNumber != null) {
-      currentBuildingName = tenant.lastBuildingName!;
-      currentRoomNumber = tenant.lastRoomNumber!;
-
-      currentBuilding = Building(
-        id: '',
-        organizationId: '',
-        name: currentBuildingName,
-        address: '',
-        createdAt: DateTime.now(),
-      );
-
-      currentRoom = Room(
-        id: '',
-        organizationId: '',
-        buildingId: '',
-        roomNumber: currentRoomNumber,
-        createdAt: DateTime.now(),
-      );
-    } else {
-      currentBuilding = buildings.firstWhere(
-        (b) => b.id == tenant.buildingId,
-        orElse: () => Building(
-          id: '',
-          organizationId: '',
-          name: 'Không xác định',
-          address: '',
-          createdAt: DateTime.now(),
-        ),
-      );
-
-      currentRoom = allRooms.firstWhere(
-        (r) => r.id == tenant.roomId,
-        orElse: () => Room(
-          id: '',
-          organizationId: '',
-          buildingId: '',
-          roomNumber: '?',
-          createdAt: DateTime.now(),
-        ),
-      );
-
-      currentBuildingName = currentBuilding.name;
-      currentRoomNumber = currentRoom.roomNumber;
-    }
-
     final nameController = TextEditingController(text: tenant.fullName);
     final phoneController = TextEditingController(text: tenant.phoneNumber);
     final emailController = TextEditingController(text: tenant.email);
     final nationalIdController = TextEditingController(text: tenant.nationalId);
     final occupationController = TextEditingController(text: tenant.occupation);
     final workplaceController = TextEditingController(text: tenant.workplace);
-    final monthlyRentController = TextEditingController(
-      text: tenant.monthlyRent?.toString() ?? '',
-    );
+    final monthlyRentController = TextEditingController(text: tenant.monthlyRent?.toString() ?? '');
+    final areaController = TextEditingController(text: tenant.apartmentArea?.toString() ?? '');
+    final typeController = TextEditingController(text: tenant.apartmentType ?? '');
 
-    final result = await showDialog<Map<String, dynamic>>(
+    final result = await _showTrackedDialog<Map<String, dynamic>>(
       context: context,
-      builder: (context) => Dialog(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: isPhone ? MediaQuery.of(context).size.width * 0.95 : MediaQuery.of(context).size.width * 0.7,
-            maxHeight: MediaQuery.of(context).size.height * 0.85,
-          ),
-          child: AlertDialog(
-            title: const Text('Chỉnh sửa thông tin'),
-            contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
-            content: SizedBox(
-              width: double.maxFinite,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
+      builder: (context) => AlertDialog(
+        title: const Text('Chỉnh sửa thông tin'),
+        content: SizedBox(
+          width: isPhone ? double.maxFinite : 500,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildInputField(nameController, 'Họ và tên', Icons.person),
+                _buildInputField(phoneController, 'Số điện thoại', Icons.phone, keyboardType: TextInputType.phone),
+                _buildInputField(monthlyRentController, 'Giá thuê', Icons.money, suffix: '₫', keyboardType: TextInputType.number),
+                const Divider(height: 32),
+                const Text('Hóa đơn & Căn hộ', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+                const SizedBox(height: 12),
+                Row(
                   children: [
-                    TextField(
-                      controller: nameController,
-                      decoration: const InputDecoration(labelText: 'Họ và tên'),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: phoneController,
-                      decoration: const InputDecoration(labelText: 'Số điện thoại'),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: emailController,
-                      decoration: const InputDecoration(labelText: 'Email'),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: nationalIdController,
-                      decoration: const InputDecoration(labelText: 'CMND/CCCD'),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: occupationController,
-                      decoration: const InputDecoration(labelText: 'Nghề nghiệp'),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: workplaceController,
-                      decoration: const InputDecoration(labelText: 'Nơi làm việc'),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: monthlyRentController,
-                      decoration: const InputDecoration(
-                        labelText: 'Tiền thuê hàng tháng',
-                        suffixText: '₫',
-                      ),
-                      keyboardType: TextInputType.number,
-                    ),
-                    const SizedBox(height: 24),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.blue.shade200),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(Icons.location_on, size: 18, color: Colors.blue.shade700),
-                              const SizedBox(width: 8),
-                              const Text(
-                                'Vị trí hiện tại',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFF1565C0),
-                                ),
-                              ),
-                              const Spacer(),
-                              if (!isMovedOut)
-                                TextButton.icon(
-                                  icon: const Icon(Icons.swap_horiz, size: 18),
-                                  label: const Text('Chuyển phòng', style: TextStyle(fontSize: 13)),
-                                  style: TextButton.styleFrom(
-                                    foregroundColor: Colors.blue.shade700,
-                                    padding: EdgeInsets.zero,
-                                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                  ),
-                                  onPressed: () {
-                                    Navigator.pop(context);
-                                    _showMoveRoomDialog(tenant);
-                                  },
-                                ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            '$currentBuildingName - Phòng $currentRoomNumber',
-                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
-                          ),
-                          if (isMovedOut)
-                            const Padding(
-                              padding: EdgeInsets.only(top: 6),
-                              child: Text(
-                                '(Đã chuyển đi)',
-                                style: TextStyle(color: Colors.red, fontSize: 12),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 16),
+                    Expanded(child: _buildInputField(typeController, 'Loại căn hộ', Icons.category)),
+                    const SizedBox(width: 12),
+                    Expanded(child: _buildInputField(areaController, 'Diện tích', Icons.square_foot, suffix: 'm²', keyboardType: TextInputType.number)),
                   ],
                 ),
-              ),
+                _buildInputField(emailController, 'Email', Icons.email),
+                _buildInputField(nationalIdController, 'CMND/CCCD', Icons.badge),
+                _buildInputField(occupationController, 'Nghề nghiệp', Icons.work),
+                _buildInputField(workplaceController, 'Nơi làm việc', Icons.location_city),
+              ],
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Hủy'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  final monthlyRent = double.tryParse(monthlyRentController.text.trim());
-
-                  Navigator.pop(context, {
-                    'fullName': nameController.text.trim(),
-                    'phoneNumber': phoneController.text.trim(),
-                    'email': emailController.text.trim().isEmpty ? null : emailController.text.trim(),
-                    'nationalId': nationalIdController.text.trim().isEmpty ? null : nationalIdController.text.trim(),
-                    'occupation': occupationController.text.trim().isEmpty ? null : occupationController.text.trim(),
-                    'workplace': workplaceController.text.trim().isEmpty ? null : workplaceController.text.trim(),
-                    'monthlyRent': monthlyRent,
-                  });
-                },
-                child: const Text('Lưu'),
-              ),
-            ],
           ),
         ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Hủy')),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context, {
+                'fullName': nameController.text.trim(),
+                'phoneNumber': phoneController.text.trim(),
+                'email': emailController.text.trim().isEmpty ? null : emailController.text.trim(),
+                'nationalId': nationalIdController.text.trim().isEmpty ? null : nationalIdController.text.trim(),
+                'occupation': occupationController.text.trim().isEmpty ? null : occupationController.text.trim(),
+                'workplace': workplaceController.text.trim().isEmpty ? null : workplaceController.text.trim(),
+                'monthlyRent': double.tryParse(monthlyRentController.text.trim()),
+                'apartmentArea': double.tryParse(areaController.text.trim()),
+                'apartmentType': typeController.text.trim(),
+              });
+            },
+            child: const Text('Lưu thay đổi'),
+          ),
+        ],
       ),
     );
 
-    if (result != null && mounted) {
-      final success = await widget.tenantService.updateTenant(tenant.id, result);
-      if (success && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Đã cập nhật thông tin')),
-        );
-        await _refreshAll();
-      }
+    if (result != null) {
+      await widget.tenantService.updateTenant(tenant.id, result);
+      _refreshAll();
     }
   }
 
-  Future<void> _showMoveRoomDialog(Tenant tenant) async {
-    String? selectedBuildingId = tenant.buildingId.isNotEmpty ? tenant.buildingId : null;
-    String? selectedRoomId = tenant.roomId.isNotEmpty ? tenant.roomId : null;
+  // Widget phụ trợ để code gọn hơn
+  Widget _buildInputField(TextEditingController controller, String label, IconData icon, {String? suffix, TextInputType? keyboardType}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: TextField(
+        controller: controller,
+        keyboardType: keyboardType,
+        decoration: InputDecoration(
+          labelText: label,
+          prefixIcon: Icon(icon, size: 20),
+          suffixText: suffix,
+          border: const OutlineInputBorder(),
+          isDense: true,
+        ),
+      ),
+    );
+  }
 
-    List<Room> _roomsForBuilding(String? buildingId) {
-      if (buildingId == null || buildingId.isEmpty) return [];
-      return _rooms.where((r) => r.buildingId == buildingId).toList();
-    }
+Future<void> _showMoveRoomDialog(Tenant tenant) async {
+  // Đảm bảo lấy ID hiện tại từ object
+  String? selectedBuildingId = tenant.buildingId.isNotEmpty ? tenant.buildingId : null;
+  String? selectedRoomId = tenant.roomId.isNotEmpty ? tenant.roomId : null;
 
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            final Map<String, Building> buildingById = {
-              for (var b in _buildings) b.id: b
-            };
-            final availableRooms = _roomsForBuilding(selectedBuildingId);
-            final Map<String, Room> roomById = {
-              for (var r in availableRooms) r.id: r
-            };
+  final result = await _showTrackedDialog<bool>(
+    context: context,
+    builder: (context) => StatefulBuilder(
+      builder: (context, setDialogState) {
+        // Lọc danh sách phòng dựa trên toà nhà đang chọn
+        final availableRooms = _rooms.where((r) => r.buildingId == selectedBuildingId).toList();
 
-            if (selectedBuildingId != null && !buildingById.containsKey(selectedBuildingId)) {
-              selectedBuildingId = null;
-              selectedRoomId = null;
-            }
-            if (selectedRoomId != null && !roomById.containsKey(selectedRoomId)) {
-              selectedRoomId = null;
-            }
-
-            return AlertDialog(
-              title: const Text('Chuyển phòng'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  DropdownButtonFormField<String>(
-                    value: buildingById.containsKey(selectedBuildingId) ? selectedBuildingId : null,
-                    decoration: const InputDecoration(labelText: 'Toà nhà mới'),
-                    items: [
-                      const DropdownMenuItem<String>(value: null, child: Text('Chọn toà nhà')),
-                      ...buildingById.entries.map((e) => DropdownMenuItem<String>(
-                            value: e.key,
-                            child: Text(e.value.name),
-                          )),
-                    ],
-                    onChanged: (val) {
-                      setDialogState(() {
-                        selectedBuildingId = val;
-                        selectedRoomId = null;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    value: roomById.containsKey(selectedRoomId) ? selectedRoomId : null,
-                    decoration: const InputDecoration(labelText: 'Phòng mới'),
-                    items: [
-                      const DropdownMenuItem<String>(value: null, child: Text('Chọn phòng')),
-                      ...roomById.entries.map((e) => DropdownMenuItem<String>(
-                            value: e.key,
-                            child: Text(e.value.roomNumber),
-                          )),
-                    ],
-                    onChanged: (val) {
-                      setDialogState(() {
-                        selectedRoomId = val;
-                      });
-                    },
-                  ),
-                ],
+        return AlertDialog(
+          title: const Text('Chuyển phòng mới'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                value: selectedBuildingId,
+                decoration: const InputDecoration(labelText: 'Chọn Toà nhà', border: OutlineInputBorder()),
+                items: _buildings.map((b) => DropdownMenuItem(value: b.id, child: Text(b.name))).toList(),
+                onChanged: (val) {
+                  setDialogState(() {
+                    selectedBuildingId = val;
+                    selectedRoomId = null; // Reset phòng khi đổi toà nhà
+                  });
+                },
               ),
-              actions: [
-                TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Hủy')),
-                ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Chuyển')),
-              ],
-            );
-          },
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                initialValue: selectedRoomId,
+                decoration: const InputDecoration(labelText: 'Chọn Phòng', border: OutlineInputBorder()),
+                items: availableRooms.map((r) => DropdownMenuItem(value: r.id, child: Text('${r.roomNumber} (${r.roomType})'))).toList(),
+                onChanged: (val) => setDialogState(() => selectedRoomId = val),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Hủy')),
+            ElevatedButton(
+              onPressed: (selectedBuildingId == null || selectedRoomId == null) 
+                ? null 
+                : () => Navigator.pop(context, true),
+              child: const Text('Xác nhận chuyển'),
+            ),
+          ],
         );
       },
-    );
+    ),
+  );
 
-    if (result == true) {
-      if (selectedBuildingId == null || selectedRoomId == null) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vui lòng chọn toà nhà và phòng mới')));
-        return;
-      }
+  if (result == true && selectedBuildingId != null && selectedRoomId != null) {
+    // Nếu chuyển sang đúng phòng cũ thì không làm gì
+    if (selectedRoomId == tenant.roomId) return;
 
-      final success = await widget.tenantService.moveTenantToRoom(tenant.id, selectedBuildingId!, selectedRoomId!);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(success ? 'Đã chuyển phòng' : 'Chuyển phòng thất bại')));
-      await _refreshAll();
+    final success = await widget.tenantService.moveTenantToRoom(tenant.id, selectedBuildingId!, selectedRoomId!);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(success ? 'Đã chuyển phòng thành công' : 'Lỗi: Không thể chuyển phòng'),
+        backgroundColor: success ? Colors.green : Colors.red),
+      );
+      _refreshAll();
     }
   }
+}
 
   Future<void> _showMoveOutDialog(Tenant tenant) async {
-    final ok = await showDialog<bool>(
+    final ok = await _showTrackedDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Đánh dấu đã chuyển đi'),
@@ -1935,7 +1925,7 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
   }
 
   Future<void> _confirmDeleteTenant(Tenant tenant) async {
-    final ok = await showDialog<bool>(
+    final ok = await _showTrackedDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Xóa người thuê'),
@@ -1962,12 +1952,11 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
   Future<void> _showAddTenantDialog(List<Building> buildings, List<Room> allRooms) async {
     final isPhone = MediaQuery.of(context).size.width < 600;
     
-    if (buildings.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vui lòng tạo toà nhà trước')),
-      );
-      return;
-    }
+    // Logic: Tìm các phòng đã có chủ hộ đang ở (Active & Main Tenant)
+    final Set<String> occupiedRoomIds = _allTenants
+        .where((t) => t.status == TenantStatus.active && t.isMainTenant)
+        .map((t) => t.roomId)
+        .toSet();
 
     final nameController = TextEditingController();
     final phoneController = TextEditingController();
@@ -1976,20 +1965,21 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
     final occupationController = TextEditingController();
     final workplaceController = TextEditingController();
     final monthlyRentController = TextEditingController();
+    final areaController = TextEditingController(); // New
+    final typeController = TextEditingController(); // New
 
-    String? selectedBuildingId = buildings.first.id;
+    String? selectedBuildingId = buildings.isNotEmpty ? buildings.first.id : null;
     String? selectedRoomId;
+    TenantStatus selectedStatus = TenantStatus.active; // New: Option to choose status
     bool isMainTenant = true;
     DateTime moveInDate = DateTime.now();
     DateTime? contractEndDate;
 
-    final result = await showDialog<Map<String, dynamic>>(
+    final result = await _showTrackedDialog<Map<String, dynamic>>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
-          final availableRooms = allRooms
-              .where((r) => r.buildingId == selectedBuildingId)
-              .toList();
+          final availableRooms = allRooms.where((r) => r.buildingId == selectedBuildingId).toList();
 
           return Dialog(
             child: ConstrainedBox(
@@ -2007,202 +1997,127 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        TextField(
-                          controller: nameController,
-                          decoration: const InputDecoration(
-                            labelText: 'Họ và tên *',
-                            hintText: 'Nguyễn Văn A',
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        TextField(
-                          controller: phoneController,
-                          decoration: const InputDecoration(
-                            labelText: 'Số điện thoại *',
-                            hintText: '0912345678',
-                          ),
-                          keyboardType: TextInputType.phone,
-                        ),
-                        const SizedBox(height: 16),
-                        TextField(
-                          controller: emailController,
-                          decoration: const InputDecoration(
-                            labelText: 'Email',
-                            hintText: 'email@example.com',
-                          ),
-                          keyboardType: TextInputType.emailAddress,
-                        ),
-                        const SizedBox(height: 16),
-                        TextField(
-                          controller: nationalIdController,
-                          decoration: const InputDecoration(
-                            labelText: 'CMND/CCCD',
-                            hintText: '001234567890',
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        TextField(
-                          controller: occupationController,
-                          decoration: const InputDecoration(
-                            labelText: 'Nghề nghiệp',
-                            hintText: 'Kỹ sư, Nhân viên văn phòng...',
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        TextField(
-                          controller: workplaceController,
-                          decoration: const InputDecoration(
-                            labelText: 'Nơi làm việc',
-                            hintText: 'Công ty ABC...',
-                          ),
-                        ),
+                        _buildInputField(nameController, 'Họ và tên *', Icons.person),
+                        _buildInputField(phoneController, 'Số điện thoại *', Icons.phone, keyboardType: TextInputType.phone),
+                        
                         const SizedBox(height: 16),
                         DropdownButtonFormField<String>(
                           value: selectedBuildingId,
-                          decoration: const InputDecoration(labelText: 'Toà nhà *'),
-                          items: buildings.map((building) {
-                            return DropdownMenuItem(
-                              value: building.id,
-                              child: Text(building.name),
-                            );
-                          }).toList(),
-                          onChanged: (value) {
-                            setDialogState(() {
-                              selectedBuildingId = value;
-                              selectedRoomId = null;
-                            });
-                          },
+                          decoration: const InputDecoration(labelText: 'Toà nhà *', border: OutlineInputBorder()),
+                          items: buildings.map((b) => DropdownMenuItem(value: b.id, child: Text(b.name))).toList(),
+                          onChanged: (val) => setDialogState(() {
+                            selectedBuildingId = val;
+                            selectedRoomId = null;
+                          }),
                         ),
                         const SizedBox(height: 16),
                         DropdownButtonFormField<String>(
                           value: selectedRoomId,
-                          decoration: const InputDecoration(labelText: 'Phòng *'),
-                          items: availableRooms.isEmpty
-                              ? [const DropdownMenuItem(value: null, child: Text('Không có phòng'))]
-                              : availableRooms.map((room) {
-                                  return DropdownMenuItem(
-                                    value: room.id,
-                                    child: Text('Phòng ${room.roomNumber}'),
-                                  );
-                                }).toList(),
-                          onChanged: availableRooms.isEmpty
-                              ? null
-                              : (value) {
-                                  setDialogState(() {
-                                    selectedRoomId = value;
-                                  });
-                                },
-                        ),
-                        const SizedBox(height: 16),
-                        TextField(
-                          controller: monthlyRentController,
-                          decoration: const InputDecoration(
-                            labelText: 'Tiền thuê hàng tháng *',
-                            hintText: '5000000',
-                            suffixText: '₫',
-                          ),
-                          keyboardType: TextInputType.number,
-                        ),
-                        const SizedBox(height: 16),
-                        CheckboxListTile(
-                          title: const Text('Chủ phòng'),
-                          value: isMainTenant,
-                          onChanged: (value) {
+                          decoration: const InputDecoration(labelText: 'Phòng *', border: OutlineInputBorder()),
+                          items: availableRooms.map((room) {
+                            final bool isOccupied = occupiedRoomIds.contains(room.id);
+                            return DropdownMenuItem(
+                              value: room.id,
+                              child: Text(
+                                'Phòng ${room.roomNumber} ${isOccupied ? "(Đã thuê)" : "(Trống)"}',
+                                style: TextStyle(
+                                  color: isOccupied ? Colors.red : Colors.green.shade700,
+                                  fontWeight: isOccupied ? FontWeight.normal : FontWeight.bold,
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                          onChanged: (val) {
+                            final room = allRooms.firstWhere((r) => r.id == val);
                             setDialogState(() {
-                              isMainTenant = value ?? true;
+                              selectedRoomId = val;
+                              // Auto-fill area and type from Room data for the PDF Invoice
+                              areaController.text = room.area.toString();
+                              typeController.text = room.roomType;
                             });
                           },
-                          contentPadding: EdgeInsets.zero,
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 16),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: DropdownButtonFormField<TenantStatus>(
+                                value: selectedStatus,
+                                decoration: const InputDecoration(labelText: 'Trạng thái', border: OutlineInputBorder()),
+                                items: TenantStatus.values.map((s) {
+                                  String label = "Đang ở";
+                                  if (s == TenantStatus.inactive) label = "Tạm ngưng";
+                                  if (s == TenantStatus.moveOut) label = "Đã dọn đi";
+                                  return DropdownMenuItem(value: s, child: Text(label));
+                                }).toList(),
+                                onChanged: (val) => setDialogState(() => selectedStatus = val!),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: CheckboxListTile(
+                                title: const Text('Chủ hộ', style: TextStyle(fontSize: 14)),
+                                value: isMainTenant,
+                                onChanged: (val) => setDialogState(() => isMainTenant = val ?? true),
+                                contentPadding: EdgeInsets.zero,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        _buildInputField(monthlyRentController, 'Tiền thuê hàng tháng *', Icons.money, suffix: '₫', keyboardType: TextInputType.number),
+                        
+                        const Divider(height: 32),
+                        const Text('Thông tin bổ sung (Dùng cho hóa đơn)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(child: _buildInputField(typeController, 'Loại căn hộ', Icons.category)),
+                            const SizedBox(width: 12),
+                            Expanded(child: _buildInputField(areaController, 'Diện tích', Icons.square_foot, suffix: 'm²', keyboardType: TextInputType.number)),
+                          ],
+                        ),
+                        _buildInputField(emailController, 'Email', Icons.email, keyboardType: TextInputType.emailAddress),
+                        _buildInputField(nationalIdController, 'CMND/CCCD', Icons.badge),
+                        _buildInputField(occupationController, 'Nghề nghiệp', Icons.work),
+
                         ListTile(
                           title: const Text('Ngày chuyển vào *'),
                           subtitle: Text(DateFormat('dd/MM/yyyy').format(moveInDate)),
                           trailing: const Icon(Icons.calendar_today),
                           contentPadding: EdgeInsets.zero,
                           onTap: () async {
-                            final picked = await showDatePicker(
-                              context: context,
-                              initialDate: moveInDate,
-                              firstDate: DateTime(2000),
-                              lastDate: DateTime(2100),
-                            );
-                            if (picked != null) {
-                              setDialogState(() {
-                                moveInDate = picked;
-                              });
-                            }
+                            final picked = await showDatePicker(context: context, initialDate: moveInDate, firstDate: DateTime(2000), lastDate: DateTime(2100));
+                            if (picked != null) setDialogState(() => moveInDate = picked);
                           },
                         ),
-                        ListTile(
-                          title: const Text('Ngày kết thúc hợp đồng'),
-                          subtitle: Text(
-                            contractEndDate != null
-                                ? DateFormat('dd/MM/yyyy').format(contractEndDate!)
-                                : 'Chưa chọn',
-                          ),
-                          trailing: const Icon(Icons.calendar_today),
-                          contentPadding: EdgeInsets.zero,
-                          onTap: () async {
-                            final picked = await showDatePicker(
-                              context: context,
-                              initialDate: contractEndDate ?? DateTime.now().add(const Duration(days: 365)),
-                              firstDate: moveInDate,
-                              lastDate: DateTime(2100),
-                            );
-                            if (picked != null) {
-                              setDialogState(() {
-                                contractEndDate = picked;
-                              });
-                            }
-                          },
-                        ),
-                        const SizedBox(height: 16),
                       ],
                     ),
                   ),
                 ),
                 actions: [
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Hủy'),
-                  ),
+                  TextButton(onPressed: () => Navigator.pop(context), child: const Text('Hủy')),
                   ElevatedButton(
                     onPressed: () {
-                      if (nameController.text.trim().isEmpty ||
-                          phoneController.text.trim().isEmpty ||
-                          selectedRoomId == null ||
-                          monthlyRentController.text.trim().isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Vui lòng điền đầy đủ thông tin bắt buộc')),
-                        );
-                        return;
-                      }
-
-                      final monthlyRent = double.tryParse(monthlyRentController.text.trim());
-                      if (monthlyRent == null || monthlyRent <= 0) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Tiền thuê không hợp lệ')),
-                        );
-                        return;
-                      }
-
-                      Navigator.of(context).pop({
+                      if (nameController.text.isEmpty || selectedRoomId == null) return;
+                      Navigator.pop(context, {
                         'fullName': nameController.text.trim(),
                         'phoneNumber': phoneController.text.trim(),
-                        'email': emailController.text.trim().isEmpty ? null : emailController.text.trim(),
-                        'nationalId': nationalIdController.text.trim().isEmpty ? null : nationalIdController.text.trim(),
-                        'occupation': occupationController.text.trim().isEmpty ? null : occupationController.text.trim(),
-                        'workplace': workplaceController.text.trim().isEmpty ? null : workplaceController.text.trim(),
+                        'email': emailController.text.trim(),
+                        'nationalId': nationalIdController.text.trim(),
+                        'occupation': occupationController.text.trim(),
+                        'workplace': workplaceController.text.trim(),
                         'buildingId': selectedBuildingId,
                         'roomId': selectedRoomId,
-                        'monthlyRent': monthlyRent,
+                        'monthlyRent': double.tryParse(monthlyRentController.text) ?? 0,
+                        'apartmentArea': double.tryParse(areaController.text) ?? 0,
+                        'apartmentType': typeController.text.trim(),
                         'isMainTenant': isMainTenant,
+                        'status': selectedStatus,
                         'moveInDate': moveInDate,
-                        'contractEndDate': contractEndDate,
                       });
                     },
-                    child: const Text('Thêm'),
+                    child: const Text('Thêm mới'),
                   ),
                 ],
               ),
@@ -2212,38 +2127,28 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
       ),
     );
 
-    if (result != null && mounted) {
+    if (result != null) {
       final tenant = Tenant(
         id: '',
         organizationId: widget.organization.id,
-        buildingId: result['buildingId']!,
-        roomId: result['roomId']!,
-        fullName: result['fullName']!,
-        phoneNumber: result['phoneNumber']!,
+        buildingId: result['buildingId'],
+        roomId: result['roomId'],
+        fullName: result['fullName'],
+        phoneNumber: result['phoneNumber'],
         email: result['email'],
         nationalId: result['nationalId'],
         occupation: result['occupation'],
         workplace: result['workplace'],
-        isMainTenant: result['isMainTenant']!,
-        monthlyRent: result['monthlyRent']!,
-        moveInDate: result['moveInDate']!,
-        contractEndDate: result['contractEndDate'],
-        status: TenantStatus.active,
+        isMainTenant: result['isMainTenant'],
+        monthlyRent: result['monthlyRent'],
+        apartmentArea: result['apartmentArea'],
+        apartmentType: result['apartmentType'],
+        status: result['status'],
+        moveInDate: result['moveInDate'],
         createdAt: DateTime.now(),
       );
-
-      final tenantId = await widget.tenantService.addTenant(tenant);
-
-      if (tenantId != null && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Thêm người thuê thành công')),
-        );
-        await _refreshAll();
-      } else if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Không thể thêm người thuê')),
-        );
-      }
+      await widget.tenantService.addTenant(tenant);
+      _refreshAll();
     }
   }
 

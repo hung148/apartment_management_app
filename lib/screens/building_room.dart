@@ -20,7 +20,10 @@ class BuildingRoomScreen extends StatefulWidget {
   State<BuildingRoomScreen> createState() => _BuildingRoomScreenState();
 }
 
-class _BuildingRoomScreenState extends State<BuildingRoomScreen> {
+class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBindingObserver {
+  // Track how many overlays (dialogs/bottom sheets) are currently open
+  int _overlayCount = 0;
+
   bool _isSmallScreen(BuildContext context) => MediaQuery.of(context).size.width < 600;
   bool _isMediumScreen(BuildContext context) {
     final width = MediaQuery.of(context).size.width;
@@ -83,6 +86,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     try {  
       // Initialize stream subscription once on widget creation
       _initializeStream();
@@ -143,49 +147,126 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> {
   @override
   void dispose() {
     print('BuildingRoomScreen: disposing');
+    WidgetsBinding.instance.removeObserver(this);
     _roomSubscription?.cancel();
     super.dispose();
+  }
+
+   // Debounce timer for resize handling
+  Timer? _resizeDebounceTimer;
+
+  // Guard to prevent overlapping dismiss calls
+  bool _isDismissing = false;
+
+  // ─── Called whenever screen size / metrics change ───
+  @override
+  void didChangeMetrics() {
+    super.didChangeMetrics();
+    // Cancel any pending debounce before setting a new one
+    _resizeDebounceTimer?.cancel();
+    _resizeDebounceTimer = Timer(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+      final screenWidth = MediaQuery.sizeOf(context).width;
+      final screenHeight = MediaQuery.sizeOf(context).height;
+      if (screenWidth < 360 || screenHeight < 600) {
+        _dismissAllOverlays();
+      }
+    });
+  }
+
+  // Pops all open dialogs/bottom sheets by popping until only the base route remains.
+  Future<void> _dismissAllOverlays() async {
+    if (!mounted || _isDismissing) return;
+    _isDismissing = true;
+
+    try {
+      final nav = Navigator.of(context);
+      while (nav.canPop()) {
+        nav.pop();
+        // Yield to the framework between each pop so it can finish
+        // destroying the previous overlay before we pop the next one.
+        // This prevents back-to-back surface destruction that triggers EGL errors.
+        await Future.delayed(const Duration(milliseconds: 50));
+        if (!mounted) break;
+      }
+    } finally {
+      _isDismissing = false;
+    }
+  }
+
+  // ─── Overlay helpers ───
+
+  Future<T?> _showTrackedDialog<T>({
+    required BuildContext context,
+    required WidgetBuilder builder,
+    bool barrierDismissible = true,
+  }) async {
+    _overlayCount++;
+    try {
+      return await showDialog<T>(
+        context: context,
+        barrierDismissible: barrierDismissible,
+        builder: builder,
+      );
+    } finally {
+      if (mounted) _overlayCount--;
+    }
   }
 
   // =========================
   // ADD / EDIT ROOM DIALOG
   // =========================
   void _showRoomDialog({Room? room}) {
-    
     print('Opening room dialog - Edit mode: ${room != null}');
     
-    final controller = TextEditingController(
+    final numberController = TextEditingController(
       text: room?.roomNumber ?? '',
     );
+    
+    // 1. Thêm controller cho loại phòng
+    final typeController = TextEditingController(
+      text: room?.roomType ?? 'Tiêu chuẩn', // Mặc định là Standard nếu là phòng mới
+    );
 
-    showDialog(
+    _showTrackedDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text(room == null ? 'Thêm phòng' : 'Chỉnh sửa phòng'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            labelText: 'Số phòng',
-            hintText: 'Nhập số phòng',
-          ),
-          autofocus: true,
+        title: Text(room == null ? 'Thêm phòng mới' : 'Chỉnh sửa phòng'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min, // Quan trọng để dialog không chiếm hết màn hình
+          children: [
+            TextField(
+              controller: numberController,
+              decoration: const InputDecoration(
+                labelText: 'Số phòng *',
+                hintText: 'VD: A101',
+              ),
+              autofocus: true,
+              textCapitalization: TextCapitalization.characters,
+            ),
+            const SizedBox(height: 16),
+            // 2. Thêm trường nhập Loại phòng
+            TextField(
+              controller: typeController,
+              decoration: const InputDecoration(
+                labelText: 'Loại phòng',
+                hintText: 'VD: Studio, 1PN, 2PN...',
+              ),
+              textCapitalization: TextCapitalization.words,
+            ),
+          ],
         ),
         actions: [
           TextButton(
-            onPressed: () {
-              print('Room dialog cancelled');
-              Navigator.pop(dialogContext);
-            },
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text('Huỷ'),
           ),
           ElevatedButton(
             onPressed: () async {
-              final roomNumber = controller.text.trim();
-              
-              print('Saving room - Room number: $roomNumber');
+              final roomNumber = numberController.text.trim();
+              final roomType = typeController.text.trim();
               
               if (roomNumber.isEmpty) {
-                print('❌ Room number is empty, not saving');
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Vui lòng nhập số phòng')),
                 );
@@ -194,26 +275,25 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> {
 
               try {
                 if (room == null) {
-                  // ADD
-                  print('Adding new room...');
-                  final roomId = await _roomService.addRoom(
+                  // ADD NEW
+                  await _roomService.addRoom(
                     Room(
                       id: '',
+                      area: 0.0,
                       organizationId: widget.building.organizationId,
                       buildingId: widget.building.id,
                       roomNumber: roomNumber,
+                      roomType: roomType.isEmpty ? 'Standard' : roomType, // 3. Gửi roomType
                       createdAt: DateTime.now(),
                     ),
                   );
-                  print('✓ Room added with ID: $roomId');
                 } else {
-                  // EDIT
-                  print('Updating room ${room.id}...');
-                  final success = await _roomService.updateRoomNumber(
-                    room.id,
-                    roomNumber,
-                  );
-                  print('✓ Room updated: $success');
+                  // EDIT EXISTING
+                  // 4. Sử dụng hàm updateRoom chung để cập nhật cả 2 trường
+                  await _roomService.updateRoom(room.id, {
+                    'roomNumber': roomNumber,
+                    'roomType': roomType.isEmpty ? 'Standard' : roomType,
+                  });
                 }
 
                 if (mounted) {
@@ -226,16 +306,11 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> {
                     ),
                   );
                 }
-              } catch (e, stackTrace) {
+              } catch (e) {
                 print('❌ ERROR saving room: $e');
-                print('Stack trace: $stackTrace');
-                
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Lỗi: $e'),
-                      backgroundColor: Colors.red,
-                    ),
+                    SnackBar(content: Text('Lỗi: $e'), backgroundColor: Colors.red),
                   );
                 }
               }
@@ -253,7 +328,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> {
   void _deleteRoom(Room room) {
     print('Opening delete confirmation for room: ${room.roomNumber}');
     
-    showDialog(
+    _showTrackedDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Xoá phòng'),
@@ -300,6 +375,74 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> {
         ],
       ),
     );
+  }
+
+  // =========================
+  // SHOW ROOM INFO DIALOG
+  // =========================
+  void _showRoomInfoDialog(Room room) {
+    _showTrackedDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(Icons.meeting_room, color: Colors.blue.shade700),
+            const SizedBox(width: 8),
+            Text('Phòng ${room.roomNumber}'),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildRoomInfoRow('Số phòng:', room.roomNumber),
+              const SizedBox(height: 12),
+              _buildRoomInfoRow('ID phòng:', room.id),
+              const SizedBox(height: 12),
+              _buildRoomInfoRow('ID tòa nhà:', room.buildingId),
+              const SizedBox(height: 12),
+              _buildRoomInfoRow('ID tổ chức:', room.organizationId),
+              const SizedBox(height: 12),
+              _buildRoomInfoRow('Tên tòa nhà:', widget.building.name),
+              const SizedBox(height: 12),
+              _buildRoomInfoRow('Địa chỉ tòa nhà:', widget.building.address),
+              const SizedBox(height: 12),
+              _buildRoomInfoRow('Ngày tạo:', _formatDate(room.createdAt)),
+            ],
+          ),
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Đóng'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRoomInfoRow(String label, String value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey)),
+        const SizedBox(height: 4),
+        SelectableText(
+          value,
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+        ),
+      ],
+    );
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.day.toString().padLeft(2, '0')}/'
+        '${date.month.toString().padLeft(2, '0')}/'
+        '${date.year} '
+        '${date.hour.toString().padLeft(2, '0')}:'
+        '${date.minute.toString().padLeft(2, '0')}';
   }
 
   // =========================
@@ -420,11 +563,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> {
                 print('Menu selected: $value for room ${room.roomNumber}');
                 
                 if (value == 'view') {
-                  Navigator.pushNamed(
-                    context,
-                    '/room-detail',
-                    arguments: room,
-                  );
+                  _showRoomInfoDialog(room);
                 } else if (value == 'edit') {
                   _showRoomDialog(room: room);
                 } else if (value == 'delete') {

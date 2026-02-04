@@ -8,7 +8,8 @@ import 'package:apartment_management_project_2/services/update_services.dart';
 import 'package:apartment_management_project_2/utils/app_router.dart';
 import 'package:apartment_management_project_2/widgets/loading.dart';
 import 'package:flutter/material.dart';
-import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'dart:io' show Platform; 
 import 'dart:async';
 
 class DashboardScreen extends StatefulWidget {
@@ -18,7 +19,7 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
+class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObserver {
   final AuthService _authService = getIt<AuthService>();
   final OrganizationService _organizationService = getIt<OrganizationService>();
   final UpdateService _updateService = getIt<UpdateService>();
@@ -28,7 +29,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final AsyncLock _dialogLock = AsyncLock();
   final AsyncLock _logoutLock = AsyncLock();
   final AsyncLock _leaveOrgLock = AsyncLock();
-  final AsyncLock _deleteOrgLock = AsyncLock();
+
+  // Track how many overlays (dialogs/bottom sheets) are currently open
+  int _overlayCount = 0;
 
   // Update-related state
   bool _updateAvailable = false;
@@ -41,6 +44,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     debugPrint('🟢 DashboardScreen.initState() called');
     
     debugPrint('🔧 Scheduling update check...');
@@ -58,10 +62,94 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _resizeDebounceTimer?.cancel();
     debugPrint('🔴 DashboardScreen.dispose() called');
     _updateCheckTimer?.cancel();
     _isDisposed = true;
     super.dispose();
+  }
+
+  // Debounce timer for resize handling
+  Timer? _resizeDebounceTimer;
+
+  // Guard to prevent overlapping dismiss calls
+  bool _isDismissing = false;
+
+  // ─── Called whenever screen size / metrics change ───
+  @override
+  void didChangeMetrics() {
+    super.didChangeMetrics();
+    // Cancel any pending debounce before setting a new one
+    _resizeDebounceTimer?.cancel();
+    _resizeDebounceTimer = Timer(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+      final screenWidth = MediaQuery.sizeOf(context).width;
+      final screenHeight = MediaQuery.sizeOf(context).height;
+      if (screenWidth < 360 || screenHeight < 600) {
+        _dismissAllOverlays();
+      }
+    });
+  }
+
+  // Pops all open dialogs/bottom sheets by popping until only the base route remains.
+  Future<void> _dismissAllOverlays() async {
+    if (!mounted || _isDismissing) return;
+    _isDismissing = true;
+
+    try {
+      final nav = Navigator.of(context);
+      while (nav.canPop()) {
+        nav.pop();
+        // Yield to the framework between each pop so it can finish
+        // destroying the previous overlay before we pop the next one.
+        // This prevents back-to-back surface destruction that triggers EGL errors.
+        await Future.delayed(const Duration(milliseconds: 50));
+        if (!mounted) break;
+      }
+    } finally {
+      _isDismissing = false;
+    }
+  }
+
+  // ─── Overlay helpers ───
+
+  Future<T?> _showTrackedDialog<T>({
+    required BuildContext context,
+    required WidgetBuilder builder,
+    bool barrierDismissible = true,
+  }) async {
+    _overlayCount++;
+    try {
+      return await showDialog<T>(
+        context: context,
+        barrierDismissible: barrierDismissible,
+        builder: builder,
+      );
+    } finally {
+      if (mounted) _overlayCount--;
+    }
+  }
+
+  Future<T?> _showTrackedBottomSheet<T>({
+    required BuildContext context,
+    required WidgetBuilder builder,
+    bool isScrollControlled = false,
+    ShapeBorder? shape,
+    BoxConstraints? constraints,
+  }) async {
+    _overlayCount++;
+    try {
+      return await showModalBottomSheet<T>(
+        context: context,
+        isScrollControlled: isScrollControlled,
+        shape: shape,
+        constraints: constraints,
+        builder: builder,
+      );
+    } finally {
+      if (mounted) _overlayCount--;
+    }
   }
 
   /// Background update check that won't freeze the UI
@@ -149,8 +237,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _performUpdate() async {
-    if (Platform.isWindows) {
-      final confirm = await showDialog<bool>(
+    if (!kIsWeb && Platform.isWindows) {
+      final confirm = await _showTrackedDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -216,7 +304,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return;
     }
 
-    showDialog(
+    _showTrackedDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => const AlertDialog(
@@ -302,7 +390,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final emailController = TextEditingController();
     final formKey = GlobalKey<FormState>();
 
-    await showDialog(
+    await _showTrackedDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => Dialog(
@@ -516,7 +604,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _showJoinOrganizationDialog() async {
     final controller = TextEditingController();
 
-    await showDialog(
+    await _showTrackedDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
@@ -613,7 +701,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     Organization org,
     String ownerId,
   ) async {
-    final confirm = await showDialog<bool>(
+    final confirm = await _showTrackedDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -673,7 +761,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (confirm == true) {
       _leaveOrgLock.run(() async {
         // Show loading
-        showDialog(
+        _showTrackedDialog(
           context: context,
           barrierDismissible: false,
           builder: (context) => const AlertDialog(
@@ -724,7 +812,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final nameController = TextEditingController();
     final formKey = GlobalKey<FormState>();
 
-    final confirm = await showDialog<bool>(
+    final confirm = await _showTrackedDialog<bool>(
       context: context,
       builder: (context) => Dialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -869,7 +957,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final progressNotifier = ValueNotifier<double>(0.0);
 
       // Show dialog-based progress indicator
-      showDialog(
+      _showTrackedDialog(
         context: context,
         barrierDismissible: false,
         builder: (context) => AlertDialog(
@@ -948,7 +1036,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // VIEW ORGANIZATION INFO
   // ========================================
   void _showOrganizationInfo(Organization org) {
-    showDialog(
+    _showTrackedDialog(
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -1033,7 +1121,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     bool started = false;
     double progress = 0.0;
 
-    await showDialog(
+    await _showTrackedDialog(
       context: context,
       barrierDismissible: !started,
       builder: (context) {
@@ -1202,145 +1290,212 @@ class _DashboardScreenState extends State<DashboardScreen> {
     String ownerId,
     bool isAdmin,
   ) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final isLargeScreen = screenWidth >= 600;
+
+    // Shared header
+    List<Widget> header = [
+      const SizedBox(height: 12),
+      Container(
+        width: 40,
+        height: 4,
+        decoration: BoxDecoration(
+          color: Colors.grey[300],
+          borderRadius: BorderRadius.circular(2),
+        ),
       ),
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.85,
+      const SizedBox(height: 20),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: Text(
+          org.name,
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+          textAlign: TextAlign.center,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
       ),
-      builder: (context) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 12),
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 20),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Text(
-                  org.name,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Text(
-                  isAdmin ? 'Quản trị viên' : 'Thành viên',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey[600],
-                  ),
-                ),
-              ),
-              const Divider(height: 32),
-              
-              // Scrollable content
-              Flexible(
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
+      const SizedBox(height: 8),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: Text(
+          isAdmin ? 'Quản trị viên' : 'Thành viên',
+          style: TextStyle(
+            fontSize: 14,
+            color: Colors.grey[600],
+          ),
+        ),
+      ),
+      const Divider(height: 32),
+    ];
+
+    // Shared menu items
+    List<Widget> menuItems = [
+      ListTile(
+        leading: Icon(Icons.open_in_new, color: Theme.of(context).colorScheme.primary),
+        title: const Text('Mở tổ chức'),
+        onTap: () {
+          Navigator.pop(context);
+          Navigator.pushNamed(
+            context,
+            AppRouter.oranizationScreen,
+            arguments: {'organization': org},
+          );
+        },
+      ),
+      const Divider(height: 1),
+      ListTile(
+        leading: Icon(Icons.info_outline, color: Colors.blue[700]),
+        title: const Text('Xem thông tin tổ chức'),
+        subtitle: const Text('Chi tiết tổ chức và ID'),
+        onTap: () {
+          Navigator.pop(context);
+          _showOrganizationInfo(org);
+        },
+      ),
+      const Divider(height: 1),
+      if (isAdmin) ...[
+        ListTile(
+          leading: Icon(Icons.compare_arrows, color: Colors.blue[700]),
+          title: const Text('Di chuyển dữ liệu sang tổ chức khác'),
+          subtitle: const Text('Sao chép toàn bộ dữ liệu sang tổ chức khác'),
+          onTap: () {
+            Navigator.pop(context);
+            _showMigrateOrganizationDialog(org, ownerId, false);
+          },
+        ),
+        const Divider(height: 1),
+        ListTile(
+          leading: Icon(Icons.delete_sweep, color: Colors.red[700]),
+          title: const Text('Di chuyển & xóa tổ chức'),
+          subtitle: const Text('Chuyển dữ liệu và xóa tổ chức này'),
+          onTap: () {
+            Navigator.pop(context);
+            _showMigrateOrganizationDialog(org, ownerId, true);
+          },
+        ),
+        const Divider(height: 1),
+        ListTile(
+          leading: Icon(Icons.delete_forever, color: Colors.red[700]),
+          title: const Text('Xóa tổ chức'),
+          subtitle: const Text('Xóa vĩnh viễn tổ chức và tất cả dữ liệu'),
+          onTap: () {
+            Navigator.pop(context);
+            _showDeleteOrganizationDialog(org, ownerId);
+          },
+        ),
+      ] else ...[
+        ListTile(
+          leading: Icon(Icons.exit_to_app, color: Colors.orange[700]),
+          title: const Text('Rời khỏi tổ chức'),
+          subtitle: const Text('Bạn sẽ mất quyền truy cập'),
+          onTap: () {
+            Navigator.pop(context);
+            _showLeaveOrganizationDialog(org, ownerId);
+          },
+        ),
+      ],
+      const SizedBox(height: 16),
+    ];
+
+    if (isLargeScreen) {
+      // ─── Tablet / Desktop: centered Dialog ───
+      _showTrackedDialog(
+        context: context,
+        builder: (context) => Dialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 40.0, vertical: 24.0),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: SizedBox(
+            width: 400,
+            child: SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Header with close button
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      // Open Organization
-                      ListTile(
-                        leading: Icon(Icons.open_in_new, color: Theme.of(context).colorScheme.primary),
-                        title: const Text('Mở tổ chức'),
-                        onTap: () {
-                          Navigator.pop(context);
-                          Navigator.pushNamed(
-                            context,
-                            AppRouter.oranizationScreen,
-                            arguments: {'organization': org},
-                          );
-                        },
+                      IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(Icons.close),
                       ),
-                      
-                      const Divider(height: 1),
-                      
-                      // View Organization Info
-                      ListTile(
-                        leading: Icon(Icons.info_outline, color: Colors.blue[700]),
-                        title: const Text('Xem thông tin tổ chức'),
-                        subtitle: const Text('Chi tiết tổ chức và ID'),
-                        onTap: () {
-                          Navigator.pop(context);
-                          _showOrganizationInfo(org);
-                        },
-                      ),
-                      
-                      const Divider(height: 1),
-                      
-                      // Migration options (admin only)
-                      if (isAdmin) ...[
-                        ListTile(
-                          leading: Icon(Icons.compare_arrows, color: Colors.blue[700]),
-                          title: const Text('Di chuyển dữ liệu sang tổ chức khác'),
-                          subtitle: const Text('Sao chép toàn bộ dữ liệu sang tổ chức khác'),
-                          onTap: () {
-                            Navigator.pop(context);
-                            _showMigrateOrganizationDialog(org, ownerId, false);
-                          },
-                        ),
-                        const Divider(height: 1),
-                        ListTile(
-                          leading: Icon(Icons.delete_sweep, color: Colors.red[700]),
-                          title: const Text('Di chuyển & xóa tổ chức'),
-                          subtitle: const Text('Chuyển dữ liệu và xóa tổ chức này'),
-                          onTap: () {
-                            Navigator.pop(context);
-                            _showMigrateOrganizationDialog(org, ownerId, true);
-                          },
-                        ),
-                        const Divider(height: 1),
-                        ListTile(
-                          leading: Icon(Icons.delete_forever, color: Colors.red[700]),
-                          title: const Text('Xóa tổ chức'),
-                          subtitle: const Text('Xóa vĩnh viễn tổ chức và tất cả dữ liệu'),
-                          onTap: () {
-                            Navigator.pop(context);
-                            _showDeleteOrganizationDialog(org, ownerId);
-                          },
-                        ),
-                      ] else ...[
-                        ListTile(
-                          leading: Icon(Icons.exit_to_app, color: Colors.orange[700]),
-                          title: const Text('Rời khỏi tổ chức'),
-                          subtitle: const Text('Bạn sẽ mất quyền truy cập'),
-                          onTap: () {
-                            Navigator.pop(context);
-                            _showLeaveOrganizationDialog(org, ownerId);
-                          },
-                        ),
-                      ],
-                      
-                      // Bottom padding for safe area
-                      const SizedBox(height: 16),
                     ],
                   ),
-                ),
+                  // Org name & role (reuse without the drag handle)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Text(
+                      org.name,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Text(
+                      isAdmin ? 'Quản trị viên' : 'Thành viên',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ),
+                  const Divider(height: 32),
+                  // Scrollable menu
+                  Flexible(
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: menuItems,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
-        );
-      },
-    );
+        ),
+      );
+    } else {
+      // ─── Mobile: ModalBottomSheet ───
+      _showTrackedBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.85,
+        ),
+        builder: (context) {
+          return SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ...header,
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: menuItems,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      );
+    }
   }
 
   // ========================================
@@ -1349,7 +1504,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _handleLogout() async {
     debugPrint('DEBUG: Showing delete confirmation dialog');
-    final confirm = await showDialog<bool>(
+    final confirm = await _showTrackedDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),

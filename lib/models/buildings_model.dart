@@ -6,13 +6,17 @@ class Building {
   final String name;
   final String address;
   final DateTime createdAt;
-  
-  // Room configuration fields (optional - only present if rooms were auto-generated)
   final int? floors;
   final String? roomPrefix;
   final bool? uniformRooms;
   final int? roomsPerFloor;
-  final List<int>? floorRoomCounts;
+
+  // THÊM ĐẦY ĐỦ 2 DÒNG NÀY VÀO CLASS
+  final List<int>? floorRoomCounts; // Dữ liệu cũ (Chỉ chứa số lượng)
+  final List<Map<String, dynamic>>? floorDetails; // Dữ liệu mới (Số lượng, Loại, Diện tích)
+  
+  final String? roomType; 
+  final double? roomArea; 
 
   Building({
     required this.id,
@@ -24,25 +28,28 @@ class Building {
     this.roomPrefix,
     this.uniformRooms,
     this.roomsPerFloor,
-    this.floorRoomCounts,
+    this.floorRoomCounts, // Đảm bảo có dòng này
+    this.floorDetails,    // Đảm bảo có dòng này
+    this.roomType,
+    this.roomArea,
   });
 
+  // Đừng quên cập nhật toMap và fromMap để lưu/đọc 2 trường này từ Firestore
   Map<String, dynamic> toMap() {
-    final map = <String, dynamic>{
+    return {
       'organizationId': organizationId,
       'name': name,
       'address': address,
       'createdAt': Timestamp.fromDate(createdAt),
+      'floors': floors,
+      'roomPrefix': roomPrefix,
+      'uniformRooms': uniformRooms,
+      'roomsPerFloor': roomsPerFloor,
+      'floorRoomCounts': floorRoomCounts,
+      'floorDetails': floorDetails,
+      'roomType': roomType,
+      'roomArea': roomArea,
     };
-
-    // Add optional room configuration fields if they exist
-    if (floors != null) map['floors'] = floors!;
-    if (roomPrefix != null) map['roomPrefix'] = roomPrefix!;
-    if (uniformRooms != null) map['uniformRooms'] = uniformRooms!;
-    if (roomsPerFloor != null) map['roomsPerFloor'] = roomsPerFloor!;
-    if (floorRoomCounts != null) map['floorRoomCounts'] = floorRoomCounts!;
-
-    return map;
   }
 
   factory Building.fromMap(String id, Map<String, dynamic> map) {
@@ -56,33 +63,10 @@ class Building {
       roomPrefix: map['roomPrefix'] as String?,
       uniformRooms: map['uniformRooms'] as bool?,
       roomsPerFloor: map['roomsPerFloor'] as int?,
-      floorRoomCounts: map['floorRoomCounts'] != null 
-          ? List<int>.from(map['floorRoomCounts']) 
-          : null,
-    );
-  }
-
-  // Helper method to create a copy with updated fields
-  Building copyWith({
-    String? name,
-    String? address,
-    int? floors,
-    String? roomPrefix,
-    bool? uniformRooms,
-    int? roomsPerFloor,
-    List<int>? floorRoomCounts,
-  }) {
-    return Building(
-      id: id,
-      organizationId: organizationId,
-      name: name ?? this.name,
-      address: address ?? this.address,
-      createdAt: createdAt,
-      floors: floors ?? this.floors,
-      roomPrefix: roomPrefix ?? this.roomPrefix,
-      uniformRooms: uniformRooms ?? this.uniformRooms,
-      roomsPerFloor: roomsPerFloor ?? this.roomsPerFloor,
-      floorRoomCounts: floorRoomCounts ?? this.floorRoomCounts,
+      floorRoomCounts: map['floorRoomCounts'] != null ? List<int>.from(map['floorRoomCounts']) : null,
+      floorDetails: map['floorDetails'] != null ? List<Map<String, dynamic>>.from(map['floorDetails']) : null,
+      roomType: map['roomType'] as String?,
+      roomArea: (map['roomArea'] as num?)?.toDouble(),
     );
   }
 }

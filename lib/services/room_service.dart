@@ -333,6 +333,8 @@ class RoomService {
           organizationId: organizationId,
           buildingId: buildingId,
           roomNumber: roomNumber,
+          area: 0.0,
+          roomType: 'Tiêu Chuẩn',
           createdAt: DateTime.now(),
         ));
       }
@@ -344,29 +346,31 @@ class RoomService {
   // ========================================
   // UTILITY - Generate rooms with uniform distribution (same rooms per floor)
   // ========================================
-  Future<List<Room>> generateUniformRoomsForBuilding({
+   Future<List<Room>> generateUniformRoomsForBuilding({
     required String organizationId,
     required String buildingId,
     required int numberOfFloors,
     required int roomsPerFloor,
     required String prefix,
+    required String roomType,
+    required double area,
   }) async {
     final rooms = <Room>[];
-    
     for (int floor = 1; floor <= numberOfFloors; floor++) {
       for (int roomNum = 1; roomNum <= roomsPerFloor; roomNum++) {
+        // Format: A101, A102...
         final roomNumber = '$prefix$floor${roomNum.toString().padLeft(2, '0')}';
-        
         rooms.add(Room(
-          id: '', // Will be set by Firestore
+          id: '',
           organizationId: organizationId,
           buildingId: buildingId,
           roomNumber: roomNumber,
+          roomType: roomType,
+          area: area,
           createdAt: DateTime.now(),
         ));
       }
     }
-    
     return rooms;
   }
 
@@ -376,55 +380,66 @@ class RoomService {
   Future<List<Room>> generateCustomRoomsForBuilding({
     required String organizationId,
     required String buildingId,
-    required List<int> floorRoomCounts,
+    required List<Map<String, dynamic>> floorDetails, // Format từ BuildingDialog
     required String prefix,
   }) async {
     final rooms = <Room>[];
     
-    for (int floorIndex = 0; floorIndex < floorRoomCounts.length; floorIndex++) {
-      final floor = floorIndex + 1;
-      final roomsOnThisFloor = floorRoomCounts[floorIndex];
+    for (int i = 0; i < floorDetails.length; i++) {
+      final floorNum = i + 1;
+      final detail = floorDetails[i];
       
-      for (int roomNum = 1; roomNum <= roomsOnThisFloor; roomNum++) {
-        final roomNumber = '$prefix$floor${roomNum.toString().padLeft(2, '0')}';
-        
+      final int count = detail['count'] as int;
+      final String type = detail['type'] ?? 'Standard';
+      final double area = (detail['area'] as num?)?.toDouble() ?? 0.0;
+
+      for (int roomNum = 1; roomNum <= count; roomNum++) {
+        final roomNumber = '$prefix$floorNum${roomNum.toString().padLeft(2, '0')}';
         rooms.add(Room(
-          id: '', // Will be set by Firestore
+          id: '',
           organizationId: organizationId,
           buildingId: buildingId,
           roomNumber: roomNumber,
+          roomType: type,
+          area: area,
           createdAt: DateTime.now(),
         ));
       }
     }
-    
     return rooms;
   }
 
   // ========================================
-  // UTILITY - Generate rooms based on configuration
+  // UTILITY - Hàm xử lý cấu hình tổng quát
   // ========================================
   Future<List<Room>> generateRoomsFromConfig({
     required String organizationId,
     required String buildingId,
     required Map<String, dynamic> config,
   }) async {
+    final String prefix = config['roomPrefix'] ?? '';
+
     if (config['uniformRooms'] == true) {
-      // Uniform mode: same number of rooms per floor
+      // Chế độ đồng đều
       return generateUniformRoomsForBuilding(
         organizationId: organizationId,
         buildingId: buildingId,
         numberOfFloors: config['floors'] as int,
         roomsPerFloor: config['roomsPerFloor'] as int,
-        prefix: config['roomPrefix'] as String,
+        prefix: prefix,
+        roomType: config['roomType'] ?? 'Standard',
+        area: (config['roomArea'] as num?)?.toDouble() ?? 0.0,
       );
     } else {
-      // Custom mode: different number of rooms per floor
+      // Chế độ tùy chỉnh
+      final List<Map<String, dynamic>> details = 
+          List<Map<String, dynamic>>.from(config['floorDetails'] ?? []);
+          
       return generateCustomRoomsForBuilding(
         organizationId: organizationId,
         buildingId: buildingId,
-        floorRoomCounts: List<int>.from(config['floorRoomCounts']),
-        prefix: config['roomPrefix'] as String,
+        floorDetails: details,
+        prefix: prefix,
       );
     }
   }
