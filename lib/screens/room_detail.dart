@@ -6,14 +6,15 @@ import 'package:apartment_management_project_2/models/payment_model.dart';
 import 'package:apartment_management_project_2/models/organization_model.dart';
 import 'package:apartment_management_project_2/screens/payment/delete_payment_dialog.dart';
 import 'package:apartment_management_project_2/screens/payment/payment_dialog.dart';
+import 'package:apartment_management_project_2/screens/payment/payment_pdf_export.dart';
 import 'package:apartment_management_project_2/screens/payment/view_edit_dialogs.dart';
 import 'package:apartment_management_project_2/services/auth_service.dart';
 import 'package:apartment_management_project_2/services/building_service.dart';
 import 'package:apartment_management_project_2/services/room_service.dart';
 import 'package:apartment_management_project_2/services/tenants_service.dart';
 import 'package:apartment_management_project_2/services/payments_service.dart';
+import 'package:apartment_management_project_2/services/payments_notifier.dart';
 import 'package:apartment_management_project_2/services/organization_service.dart';
-import 'package:apartment_management_project_2/screens/payment/payment_pdf_export.dart';
 import 'package:apartment_management_project_2/widgets/shared.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
@@ -27,6 +28,8 @@ class RoomDetailScreen extends StatefulWidget {
   final RoomService roomService = getIt<RoomService>();
   final OrganizationService organizationService = getIt<OrganizationService>();
   final AuthService authService = getIt<AuthService>();
+  final PaymentService paymentService = getIt<PaymentService>();
+  final PaymentsNotifier paymentsNotifier = getIt<PaymentsNotifier>();
 
   RoomDetailScreen({
     Key? key,
@@ -94,17 +97,13 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
     );
   }
 
-  final PaymentService _paymentService = PaymentService();
   late TabController _tabController;
   
   StreamSubscription<List<Tenant>>? _tenantSubscription;
-  StreamSubscription<List<Payment>>? _paymentSubscription;
   
   List<Tenant>? _tenants;
-  List<Payment>? _payments;
   
   bool _isLoadingTenants = true;
-  bool _isLoadingPayments = true;
   bool _isInitialized = false;
 
   @override
@@ -113,6 +112,8 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
     WidgetsBinding.instance.addObserver(this);
     _tabController = TabController(length: 2, vsync: this);
     _initializeStreams();
+    // Load payments for this room
+    widget.paymentsNotifier.loadRoomPayments(widget.room.id);
   }
 
   void _initializeStreams() {
@@ -139,30 +140,6 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
           },
           cancelOnError: false,
         );
-
-    // Initialize payment stream
-    _paymentSubscription = _paymentService
-        .streamRoomPayments(widget.room.id)
-        .listen(
-          (payments) {
-            if (mounted) {
-              setState(() {
-                _payments = payments;
-                _isLoadingPayments = false;
-              });
-            }
-          },
-          onError: (error, stackTrace) {
-            print('❌ Stream ERROR for payments: $error');
-            print('Stack trace: $stackTrace');
-            if (mounted) {
-              setState(() {
-                _isLoadingPayments = false;
-              });
-            }
-          },
-          cancelOnError: false,
-        );
   }
 
   String? get _userId => widget.authService.currentUser?.uid;
@@ -181,7 +158,6 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
     WidgetsBinding.instance.removeObserver(this);
     _tabController.dispose();
     _tenantSubscription?.cancel();
-    _paymentSubscription?.cancel();
     super.dispose();
   }
 
@@ -1917,24 +1893,37 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
   }
 
   // =========================
-  // PAYMENT METHODS - USING NEW DIALOGS
+  // PAYMENT METHODS - USING NEW DIALOGS AND PDF
   // =========================
   
-  void _showAddPaymentDialog() async {
-    // Use the new ImprovedPaymentFormDialog
-    await _showTrackedDialog(
+  void _showAddPaymentDialog() {
+    _showTrackedDialog(
       context: context,
       builder: (context) => ImprovedPaymentFormDialog(
         organization: widget.organization,
         buildingService: widget.buildingService,
         roomService: widget.roomService,
         tenantService: widget.tenantService,
-        paymentService: _paymentService,
+        paymentService: widget.paymentService,
+        room: widget.room, // Pass the room to filter tenants
       ),
-    );
+    ).then((result) {
+      if (result == true) {
+        // Refresh the payment list from database
+        widget.paymentsNotifier.loadRoomPayments(widget.room.id);
+      }
+    });
   }
 
-  void _showPaymentDetailDialog(Payment payment, bool isAdmin) {
+  void _showPaymentDetailDialog(Payment payment, bool isAdmin) async {
+    // Get tenant info for the payment
+    Tenant? tenant;
+    if (payment.tenantId != null) {
+      tenant = await widget.tenantService.getTenantById(payment.tenantId!);
+    }
+
+    if (!mounted) return;
+
     _showTrackedDialog(
       context: context,
       builder: (context) => ViewPaymentDetailsDialog(
@@ -1943,14 +1932,17 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
         roomService: widget.roomService,
         buildingService: widget.buildingService,
         organization: widget.organization,
-        paymentService: _paymentService,
+        paymentService: widget.paymentService,
         onEdit: () => _showEditPaymentDialog(payment),
+        // TODO: Add these callbacks when ViewPaymentDetailsDialog is updated:
+        // onDelete: () => _showDeletePaymentDialog(payment),
+        // onExportPDF: () => _exportPDFQuick(payment, tenant),
+        // onPreviewPDF: () => _showPDFPreview(payment, tenant),
       ),
     );
   }
 
   void _showEditPaymentDialog(Payment payment) {
-
     _showTrackedDialog(
       context: context,
       builder: (context) => EditPaymentDialog(
@@ -1959,8 +1951,49 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
         buildingService: widget.buildingService,
         roomService: widget.roomService,
         tenantService: widget.tenantService,
-        paymentService: _paymentService,
+        paymentService: widget.paymentService,
       ),
+    ).then((result) {
+      if (result == true) {
+        // Refresh the payment list from database
+        widget.paymentsNotifier.loadRoomPayments(widget.room.id);
+      }
+    });
+  }
+
+  void _showDeletePaymentDialog(Payment payment) {
+    _showTrackedDialog(
+      context: context,
+      builder: (context) => DeletePaymentDialog(
+        payment: payment,
+        paymentService: widget.paymentService,
+        onDeleted: () {
+          // Refresh the payment list from database
+          widget.paymentsNotifier.loadRoomPayments(widget.room.id);
+        },
+      ),
+    );
+  }
+
+  Future<void> _showPDFPreview(Payment payment, Tenant? tenant) async {
+    await PaymentPDFExporter.showPDFPreview(
+      context: context,
+      payment: payment,
+      organization: widget.organization,
+      tenant: tenant,
+      room: widget.room,
+      roomNumber: widget.room.roomNumber,
+    );
+  }
+
+  Future<void> _exportPDFQuick(Payment payment, Tenant? tenant) async {
+    await PaymentPDFExporter.quickExportPDF(
+      context: context,
+      payment: payment,
+      organization: widget.organization,
+      tenant: tenant,
+      room: widget.room,
+      roomNumber: widget.room.roomNumber,
     );
   }
 
@@ -1968,81 +2001,106 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
   // BUILD PAYMENTS TAB
   // =========================
   Widget _buildPaymentsTab() {
-    if (_isLoadingPayments) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (_payments == null || _payments!.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.receipt_long_outlined, size: 64, color: Colors.grey[400]),
-            const SizedBox(height: 16),
-            Text(
-              'Chưa có hóa đơn',
-              style: TextStyle(fontSize: 16, color: Colors.grey[600]),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Tạo hóa đơn để bắt đầu quản lý thanh toán',
-              style: TextStyle(fontSize: 14, color: Colors.grey[500]),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: _showAddPaymentDialog,
-              icon: const Icon(Icons.add),
-              label: const Text('Tạo hóa đơn'),
-            ),
-          ],
-        ),
-      );
-    }
-
-    // Group payments by status
-    final pendingPayments = _payments!.where((p) => p.status == PaymentStatus.pending).toList();
-    final overduePayments = _payments!.where((p) => p.isOverdue).toList();
-    final paidPayments = _payments!.where((p) => p.status == PaymentStatus.paid).toList();
-
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        // Summary Cards
-        Row(
-          children: [
-            Expanded(
-              child: _buildSummaryCard(
-                'Chưa thanh toán',
-                pendingPayments.length.toString(),
-                Icons.pending_outlined,
-                Colors.orange,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _buildSummaryCard(
-                'Quá hạn',
-                overduePayments.length.toString(),
-                Icons.warning_outlined,
-                Colors.red,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _buildSummaryCard(
-                'Đã thanh toán',
-                paidPayments.length.toString(),
-                Icons.check_circle_outline,
-                Colors.green,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 24),
+    return ListenableBuilder(
+      listenable: widget.paymentsNotifier,
+      builder: (context, _) {
+        final allPayments = widget.paymentsNotifier.payments
+            .where((p) => p.roomId == widget.room.id)
+            .toList();
         
-        // Payment list
-        ...(_payments!.map((payment) => _buildPaymentCard(payment))),
-      ],
+        if (allPayments.isEmpty) {
+          return FutureBuilder<Membership?>(
+            future: _getMyMembership(),
+            builder: (context, membershipSnapshot) {
+              final isAdmin = membershipSnapshot.hasData &&
+                  membershipSnapshot.data!.role == 'admin';
+
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.receipt_long_outlined, size: 64, color: Colors.grey[400]),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Chưa có hóa đơn',
+                      style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Tạo hóa đơn để bắt đầu quản lý thanh toán',
+                      style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+                    ),
+                    const SizedBox(height: 24),
+                    if (isAdmin)
+                      ElevatedButton.icon(
+                        onPressed: _showAddPaymentDialog,
+                        icon: const Icon(Icons.add),
+                        label: const Text('Tạo hóa đơn'),
+                      ),
+                  ],
+                ),
+              );
+            },
+          );
+        }
+
+        final sortedPayments = List<Payment>.from(allPayments);
+        sortedPayments.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+        // Group payments by status
+        final pendingPayments = sortedPayments.where((p) => p.status == PaymentStatus.pending).toList();
+        final overduePayments = sortedPayments.where((p) => p.isOverdue).toList();
+        final paidPayments = sortedPayments.where((p) => p.status == PaymentStatus.paid).toList();
+
+        return FutureBuilder<Membership?>(
+          future: _getMyMembership(),
+          builder: (context, membershipSnapshot) {
+            final isAdmin = membershipSnapshot.hasData &&
+                membershipSnapshot.data!.role == 'admin';
+
+            return ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                // Summary Cards
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildSummaryCard(
+                        'Chưa thanh toán',
+                        pendingPayments.length.toString(),
+                        Icons.pending_outlined,
+                        Colors.orange,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _buildSummaryCard(
+                        'Quá hạn',
+                        overduePayments.length.toString(),
+                        Icons.warning_outlined,
+                        Colors.red,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _buildSummaryCard(
+                        'Đã thanh toán',
+                        paidPayments.length.toString(),
+                        Icons.check_circle_outline,
+                        Colors.green,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                
+                // Payment list
+                ...sortedPayments.map((payment) => _buildPaymentCard(payment, isAdmin)),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
@@ -2077,229 +2135,221 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
     );
   }
 
-  Widget _buildPaymentCard(Payment payment) {
+  Widget _buildPaymentCard(Payment payment, bool isAdmin) {
     final statusColor = _getPaymentStatusColor(payment.status);
     
-    return FutureBuilder<Membership?>(
-      future: _getMyMembership(),
-      builder: (context, membershipSnapshot) {
-      final isAdmin = membershipSnapshot.hasData &&
-            membershipSnapshot.data!.role == 'admin';
-          
-        return Card(
-          margin: const EdgeInsets.only(bottom: 12),
-          child: InkWell(
-            onTap: () => _showPaymentDetailDialog(payment, isAdmin),
-            borderRadius: BorderRadius.circular(12),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: InkWell(
+        onTap: () => _showPaymentDetailDialog(payment, isAdmin),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
                 children: [
-                  Row(
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: _getPaymentTypeColor(payment.type).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      _getPaymentTypeIcon(payment.type),
+                      color: _getPaymentTypeColor(payment.type),
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _getPaymentTypeDisplayName(payment.type),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          payment.tenantName ?? 'Không xác định',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
+                      Text(
+                        _formatCurrency(payment.totalAmount),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
                       Container(
-                        padding: const EdgeInsets.all(8),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: _getPaymentTypeColor(payment.type).withOpacity(0.1),
+                          color: statusColor.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: Icon(
-                          _getPaymentTypeIcon(payment.type),
-                          color: _getPaymentTypeColor(payment.type),
-                          size: 24,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              _getPaymentTypeDisplayName(payment.type),
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              payment.tenantName ?? 'Không xác định',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: Colors.grey[600],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            _formatCurrency(payment.totalAmount),
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
+                        child: Text(
+                          payment.getStatusDisplayName(),
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: statusColor,
+                            fontWeight: FontWeight.w600,
                           ),
-                          const SizedBox(height: 4),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: statusColor.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              payment.getStatusDisplayName(),
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: statusColor,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  
-                  // Billing period for recurring payments
-                  if (payment.billingStartDate != null && payment.billingEndDate != null)
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.calendar_month, size: 14, color: Colors.blue.shade700),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Kỳ: ${_formatDate(payment.billingStartDate!)} - ${_formatDate(payment.billingEndDate!)}',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.blue.shade700,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  
-                  if (payment.billingStartDate != null) const SizedBox(height: 8),
-                  
-                  // Due date
-                  Row(
-                    children: [
-                      Icon(Icons.event_available, size: 14, color: Colors.grey[600]),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Hạn: ${_formatDate(payment.dueDate)}',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                      const Spacer(),
-                      if (payment.paidAmount > 0 && payment.status != PaymentStatus.paid)
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: Colors.blue.shade50,
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            'Đã trả: ${_formatCurrency(payment.paidAmount)}',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.blue.shade700,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                  
-                  // Overdue warning
-                  if (payment.isOverdue) ...[
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.red.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.warning, size: 16, color: Colors.red.shade700),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Quá hạn ${payment.daysOverdue} ngày',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Colors.red.shade700,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          if (payment.lateFee != null && payment.lateFee! > 0) ...[
-                            const Spacer(),
-                            Text(
-                              '+${_formatCurrency(payment.lateFee!)}',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.red.shade700,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ],
-                  
-                  // Payment completed indicator
-                  if (payment.status == PaymentStatus.paid && payment.paidAt != null) ...[
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.green.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.check_circle, size: 16, color: Colors.green.shade700),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Đã thanh toán: ${_formatDate(payment.paidAt!)}',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Colors.green.shade700,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          if (payment.paymentMethod != null) ...[
-                            const Spacer(),
-                            Text(
-                              payment.getPaymentMethodDisplayName() ?? '',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: Colors.green.shade700,
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ],
                 ],
               ),
-            ),
+              const SizedBox(height: 12),
+              
+              // Billing period for recurring payments
+              if (payment.billingStartDate != null && payment.billingEndDate != null)
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.calendar_month, size: 14, color: Colors.blue.shade700),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Kỳ: ${_formatDate(payment.billingStartDate!)} - ${_formatDate(payment.billingEndDate!)}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.blue.shade700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              
+              if (payment.billingStartDate != null) const SizedBox(height: 8),
+              
+              // Due date
+              Row(
+                children: [
+                  Icon(Icons.event_available, size: 14, color: Colors.grey[600]),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Hạn: ${_formatDate(payment.dueDate)}',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  const Spacer(),
+                  if (payment.paidAmount > 0 && payment.status != PaymentStatus.paid)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade50,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        'Đã trả: ${_formatCurrency(payment.paidAmount)}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.blue.shade700,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              
+              // Overdue warning
+              if (payment.isOverdue) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.warning, size: 16, color: Colors.red.shade700),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Quá hạn ${payment.daysOverdue} ngày',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.red.shade700,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      if (payment.lateFee != null && payment.lateFee! > 0) ...[
+                        const Spacer(),
+                        Text(
+                          '+${_formatCurrency(payment.lateFee!)}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.red.shade700,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+              
+              // Payment completed indicator
+              if (payment.status == PaymentStatus.paid && payment.paidAt != null) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.check_circle, size: 16, color: Colors.green.shade700),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Đã thanh toán: ${_formatDate(payment.paidAt!)}',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.green.shade700,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      if (payment.paymentMethod != null) ...[
+                        const Spacer(),
+                        Text(
+                          payment.getPaymentMethodDisplayName() ?? '',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.green.shade700,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ],
           ),
-        );
-      }
+        ),
+      ),
     );
   }
 

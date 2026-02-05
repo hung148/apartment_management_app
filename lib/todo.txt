@@ -9,3 +9,5 @@ display room type and area in tenant information view
 fix Vi tri should display khong xac dinh if tenant move out
 
 show tenant email in export to hoa don
+
+delete multiple rooms

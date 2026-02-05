@@ -63,6 +63,7 @@ class ImprovedPaymentFormDialog extends StatefulWidget {
   final RoomService roomService;
   final TenantService tenantService;
   final PaymentService paymentService;
+  final Room? room; // Optional: if provided, filter tenants to only this room
 
   const ImprovedPaymentFormDialog({
     super.key,
@@ -71,6 +72,7 @@ class ImprovedPaymentFormDialog extends StatefulWidget {
     required this.roomService,
     required this.tenantService,
     required this.paymentService,
+    this.room, // Optional room parameter
   });
 
   @override
@@ -80,6 +82,7 @@ class ImprovedPaymentFormDialog extends StatefulWidget {
 class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> with WidgetsBindingObserver {
   // Track how many overlays (dialogs/bottom sheets) are currently open
   int _overlayCount = 0;
+  bool _isSaving = false;
 
   final _formKey = GlobalKey<FormState>();
   late TextEditingController _paidAmountController;
@@ -108,8 +111,8 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> w
 
   List<Building> _buildings = [];
   List<Room> _rooms = [];
-  List<Tenant> _allTenants = []; // All tenants in organization
-  List<Tenant> _availableTenants = []; // Filtered tenants for selected room
+  List<Tenant> _allTenants = []; // All tenants (filtered by room if provided)
+  List<Tenant> _availableTenants = []; // Currently available tenants for selection
   
   // List of invoice line items
   List<InvoiceLineItem> _lineItems = [];
@@ -134,6 +137,12 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> w
     _selectedPaymentStatus = PaymentStatus.pending;
     _dueDate = DateTime.now().add(const Duration(days: 30));
     
+    // If room is provided, pre-select building and room
+    if (widget.room != null) {
+      _selectedBuildingId = widget.room!.buildingId;
+      _selectedRoomId = widget.room!.id;
+    }
+    
     _loadData();
   }
 
@@ -149,9 +158,27 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> w
       setState(() {
         _buildings = results[0] as List<Building>;
         _rooms = results[1] as List<Room>;
-        _allTenants = (results[2] as List<Tenant>)
-            .where((t) => t.status == TenantStatus.active) // Usually only bill active tenants
+        
+        // Filter tenants based on whether a room was provided
+        final allOrgTenants = (results[2] as List<Tenant>)
+            .where((t) => t.status == TenantStatus.active)
             .toList();
+        
+        if (widget.room != null) {
+          // If room is provided, only show tenants in that room
+          _allTenants = allOrgTenants.where((t) => t.roomId == widget.room!.id).toList();
+          _availableTenants = _allTenants;
+          
+          // Auto-select tenant if there's only one
+          if (_allTenants.length == 1) {
+            _selectedTenantId = _allTenants.first.id;
+            _selectedTenantName = _allTenants.first.fullName;
+          }
+        } else {
+          // If no room provided, show all active tenants
+          _allTenants = allOrgTenants;
+          _availableTenants = _allTenants;
+        }
       });
     } catch (e) {
       debugPrint('Error loading data: $e');
@@ -163,8 +190,11 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> w
       setState(() {
         _selectedTenantId = null;
         _selectedTenantName = null;
-        _selectedBuildingId = null;
-        _selectedRoomId = null;
+        // Only reset building/room if not pre-set by widget.room
+        if (widget.room == null) {
+          _selectedBuildingId = null;
+          _selectedRoomId = null;
+        }
       });
       return;
     }
@@ -175,8 +205,11 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> w
     setState(() {
       _selectedTenantId = tenantId;
       _selectedTenantName = tenant.fullName;
-      _selectedBuildingId = tenant.buildingId;
-      _selectedRoomId = tenant.roomId;
+      // Only update building/room if not pre-set by widget.room
+      if (widget.room == null) {
+        _selectedBuildingId = tenant.buildingId;
+        _selectedRoomId = tenant.roomId;
+      }
     });
     
     if ((tenant.monthlyRent ?? 0) > 0 && _lineItems.isEmpty) {
@@ -207,10 +240,13 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> w
       final rooms = await widget.roomService.getBuildingRooms(_selectedBuildingId!);
       setState(() {
         _rooms = rooms;
-        _selectedRoomId = null;
-        _selectedTenantId = null;
-        _selectedTenantName = null;
-        _availableTenants = [];
+        // Only reset room/tenant if not pre-set by widget.room
+        if (widget.room == null) {
+          _selectedRoomId = null;
+          _selectedTenantId = null;
+          _selectedTenantName = null;
+          _availableTenants = [];
+        }
       });
     } catch (e) {
       if (mounted) {
@@ -225,20 +261,18 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> w
   Future<void> _loadTenantsForRoom() async {
     if (_selectedRoomId == null) {
       setState(() {
-        _availableTenants = [];
-        _selectedTenantId = null;
-        _selectedTenantName = null;
+        if (widget.room == null) {
+          _availableTenants = [];
+          _selectedTenantId = null;
+          _selectedTenantName = null;
+        }
       });
       return;
     }
 
     try {
-      // Get the selected room
-      final selectedRoom = _rooms.firstWhere((r) => r.id == _selectedRoomId);
-      
       // Filter tenants based on the room
       final filteredTenants = _allTenants.where((tenant) {
-        // Check if tenant's roomId matches selected room
         return tenant.roomId == _selectedRoomId;
       }).toList();
       
@@ -249,8 +283,8 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> w
         if (_availableTenants.length == 1) {
           _selectedTenantId = _availableTenants.first.id;
           _selectedTenantName = _availableTenants.first.fullName;
-        } else {
-          // Reset tenant selection if there are multiple or no tenants
+        } else if (widget.room == null) {
+          // Only reset if not pre-set by widget.room
           _selectedTenantId = null;
           _selectedTenantName = null;
         }
@@ -952,6 +986,10 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> w
   }
 
   Future<void> _savePayment() async {
+    if (!_formKey.currentState!.validate() || _isSaving) return; // Guard 1
+
+    setState(() => _isSaving = true); // Start saving state
+
     if (!_formKey.currentState!.validate()) return;
     
     if (_selectedBuildingId == null) {
@@ -1080,14 +1118,17 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> w
         await widget.paymentService.addPayment(payment);
       }
       
-      if (mounted) {
-        print('ImprovedPaymentFormDialog: Payment saved successfully, returning true');
-        Navigator.pop(context, true);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Đã tạo hóa đơn thành công')),
-        );
-      }
+       if (mounted) {
+          // Safety check: only pop if the dialog is still active
+          if (Navigator.of(context).canPop()) {
+            Navigator.pop(context, true);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Đã tạo hóa đơn thành công')),
+            );
+          }
+        }
     } catch (e) {
+      if (mounted) setState(() => _isSaving = false); // Reset on error
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Lỗi khi lưu hóa đơn: $e')),
@@ -1174,6 +1215,12 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> w
   
   @override
   Widget build(BuildContext context) {
+    // Determine if we're in "room mode" (showing only tenants from specific room)
+    final bool isRoomMode = widget.room != null;
+    final String dialogTitle = isRoomMode 
+        ? 'Thêm Hóa Đơn - Phòng ${widget.room!.roomNumber}' 
+        : 'Thêm Hóa Đơn';
+    
     return Dialog(
       insetPadding: const EdgeInsets.all(16),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -1192,10 +1239,10 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> w
                   child: Row(
                     children: [
                       const SizedBox(width: 8),
-                      const Expanded(
+                      Expanded(
                         child: Text(
-                          'Thêm Hóa Đơn',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          dialogTitle,
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                         ),
                       ),
                       IconButton(
@@ -1219,83 +1266,92 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> w
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            // 1. SEARCHABLE TENANT SELECTION
-                            Autocomplete<Tenant>(
-                              // How the tenant looks in the text box after selection
-                              displayStringForOption: (Tenant t) => '${t.fullName} (${t.phoneNumber})',
-                              
-                              // Filtering logic
-                              optionsBuilder: (TextEditingValue textEditingValue) {
-                                if (textEditingValue.text == '') {
-                                  return const Iterable<Tenant>.empty();
-                                }
-                                return _allTenants.where((Tenant t) {
-                                  final nameMatches = t.fullName.toLowerCase().contains(textEditingValue.text.toLowerCase());
-                                  final phoneMatches = t.phoneNumber.contains(textEditingValue.text);
-                                  return nameMatches || phoneMatches;
-                                });
-                              },
-                              
-                              // Logic when a tenant is picked from the list
-                              onSelected: (Tenant selection) {
-                                _onTenantSelected(selection.id);
-                              },
-                              
-                              // This builds the actual TextField the user types in
-                              fieldViewBuilder: (context, textEditingController, focusNode, onFieldSubmitted) {
-                                return TextFormField(
-                                  controller: textEditingController,
-                                  focusNode: focusNode,
+                            // TENANT SELECTION - Filtered if room is provided
+                            isRoomMode
+                              ? // 1. Show a simple Dropdown if we are in a specific room
+                              DropdownButtonFormField<String>(
+                                  initialValue: _selectedTenantId,
                                   decoration: InputDecoration(
-                                    labelText: 'Tìm người thuê (Tên hoặc SĐT) *',
-                                    prefixIcon: const Icon(Icons.search),
+                                    labelText: 'Chọn người thuê *',
+                                    prefixIcon: const Icon(Icons.person),
                                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                                    // Show a clear button if something is typed
-                                    suffixIcon: textEditingController.text.isNotEmpty 
-                                      ? IconButton(
-                                          icon: const Icon(Icons.clear),
-                                          onPressed: () {
-                                            textEditingController.clear();
-                                            _onTenantSelected(null);
-                                          },
-                                        )
-                                      : null,
                                   ),
-                                  validator: (v) => _selectedTenantId == null ? 'Vui lòng chọn người thuê' : null,
-                                );
-                              },
-                              
-                              // Customizes the popup list appearance
-                              optionsViewBuilder: (context, onSelected, options) {
-                                return Align(
-                                  alignment: Alignment.topLeft,
-                                  child: Material(
-                                    elevation: 4.0,
-                                    child: ConstrainedBox(
-                                      constraints: const BoxConstraints(maxHeight: 200, maxWidth: 400),
-                                      child: ListView.builder(
-                                        padding: EdgeInsets.zero,
-                                        shrinkWrap: true,
-                                        itemCount: options.length,
-                                        itemBuilder: (BuildContext context, int index) {
-                                          final Tenant option = options.elementAt(index);
-                                          return ListTile(
-                                            title: Text(option.fullName),
-                                            subtitle: Text('SĐT: ${option.phoneNumber}'),
-                                            onTap: () => onSelected(option),
-                                          );
-                                        },
+                                  items: _availableTenants.map((tenant) {
+                                    return DropdownMenuItem<String>(
+                                      value: tenant.id,
+                                      child: Text('${tenant.fullName} (${tenant.phoneNumber})'),
+                                    );
+                                  }).toList(),
+                                  onChanged: _onTenantSelected,
+                                  validator: (v) => v == null ? 'Vui lòng chọn người thuê' : null,
+                                )
+                              : // 2. Show the Autocomplete search only if we are in organization-wide mode
+                              Autocomplete<Tenant>(
+                                  displayStringForOption: (Tenant t) => '${t.fullName} (${t.phoneNumber})',
+                                  optionsBuilder: (TextEditingValue textEditingValue) {
+                                    if (textEditingValue.text == '') {
+                                      return const Iterable<Tenant>.empty();
+                                    }
+                                    return _availableTenants.where((Tenant t) {
+                                      final nameMatches = t.fullName.toLowerCase().contains(textEditingValue.text.toLowerCase());
+                                      final phoneMatches = t.phoneNumber.contains(textEditingValue.text);
+                                      return nameMatches || phoneMatches;
+                                    });
+                                  },
+                                  onSelected: (Tenant selection) {
+                                    _onTenantSelected(selection.id);
+                                  },
+                                  fieldViewBuilder: (context, textEditingController, focusNode, onFieldSubmitted) {
+                                    return TextFormField(
+                                      controller: textEditingController,
+                                      focusNode: focusNode,
+                                      decoration: InputDecoration(
+                                        labelText: 'Tìm người thuê (Tên hoặc SĐT) *',
+                                        prefixIcon: const Icon(Icons.search),
+                                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                        suffixIcon: textEditingController.text.isNotEmpty 
+                                          ? IconButton(
+                                              icon: const Icon(Icons.clear),
+                                              onPressed: () {
+                                                textEditingController.clear();
+                                                _onTenantSelected(null);
+                                              },
+                                            )
+                                          : null,
                                       ),
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                            const SizedBox(height: 16),
+                                      validator: (v) => _selectedTenantId == null ? 'Vui lòng chọn người thuê' : null,
+                                    );
+                                  },
+                                  optionsViewBuilder: (context, onSelected, options) {
+                                    return Align(
+                                      alignment: Alignment.topLeft,
+                                      child: Material(
+                                        elevation: 4.0,
+                                        child: ConstrainedBox(
+                                          constraints: const BoxConstraints(maxHeight: 200, maxWidth: 400),
+                                          child: ListView.builder(
+                                            padding: EdgeInsets.zero,
+                                            shrinkWrap: true,
+                                            itemCount: options.length,
+                                            itemBuilder: (BuildContext context, int index) {
+                                              final Tenant option = options.elementAt(index);
+                                              return ListTile(
+                                                title: Text(option.fullName),
+                                                subtitle: Text('SĐT: ${option.phoneNumber}'),
+                                                onTap: () => onSelected(option),
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                          const SizedBox(height: 16),
 
-                            // 2. READ-ONLY BUILDING INFO
+                            // READ-ONLY BUILDING INFO
                             TextFormField(
-                              key: ValueKey('building_$_selectedBuildingId'), // Forces UI refresh on ID change
+                              key: ValueKey('building_$_selectedBuildingId'),
                               readOnly: true,
                               initialValue: _selectedBuildingId != null 
                                   ? _buildings.firstWhere((b) => b.id == _selectedBuildingId, orElse: () => Building(id: '', address: 'N/A', name: 'N/A', organizationId: '', createdAt: DateTime.now())).name
@@ -1310,9 +1366,9 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> w
                             ),
                             const SizedBox(height: 12),
 
-                            // 3. READ-ONLY ROOM INFO
+                            // READ-ONLY ROOM INFO
                             TextFormField(
-                              key: ValueKey('room_$_selectedRoomId'), // Forces UI refresh on ID change
+                              key: ValueKey('room_$_selectedRoomId'),
                               readOnly: true,
                               initialValue: _selectedRoomId != null 
                                   ? _rooms.firstWhere((r) => r.id == _selectedRoomId, orElse: () => Room(id: '', area: 0.0, roomType: '', organizationId: '', buildingId: '', roomNumber: 'N/A', createdAt: DateTime.now())).roomNumber

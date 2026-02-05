@@ -24,6 +24,9 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
   // Track how many overlays (dialogs/bottom sheets) are currently open
   int _overlayCount = 0;
 
+  Set<String> _selectedRoomIds = {}; // Stores IDs of selected rooms
+  bool _isSelectionMode = false;     // Toggles selection UI
+
   bool _isSmallScreen(BuildContext context) => MediaQuery.of(context).size.width < 600;
   bool _isMediumScreen(BuildContext context) {
     final width = MediaQuery.of(context).size.width;
@@ -97,7 +100,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
   }
 
   void _initializeStream() {
-    
+    if (!mounted) return; // Add this
     print('Initializing room stream for building: ${widget.building.id}');
     
     // Cancel existing subscription if any
@@ -217,107 +220,109 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
   // ADD / EDIT ROOM DIALOG
   // =========================
   void _showRoomDialog({Room? room}) {
-    print('Opening room dialog - Edit mode: ${room != null}');
-    
-    final numberController = TextEditingController(
-      text: room?.roomNumber ?? '',
-    );
-    
-    // 1. Thêm controller cho loại phòng
-    final typeController = TextEditingController(
-      text: room?.roomType ?? 'Tiêu chuẩn', // Mặc định là Standard nếu là phòng mới
-    );
+    final numberController = TextEditingController(text: room?.roomNumber ?? '');
+    final typeController = TextEditingController(text: room?.roomType ?? 'Tiêu chuẩn');
+
+    // Use a local variable to prevent double-submissions
+    bool isSaving = false;
 
     _showTrackedDialog(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(room == null ? 'Thêm phòng mới' : 'Chỉnh sửa phòng'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min, // Quan trọng để dialog không chiếm hết màn hình
-          children: [
-            TextField(
-              controller: numberController,
-              decoration: const InputDecoration(
-                labelText: 'Số phòng *',
-                hintText: 'VD: A101',
-              ),
-              autofocus: true,
-              textCapitalization: TextCapitalization.characters,
+      builder: (dialogContext) => StatefulBuilder( // Add StatefulBuilder here
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: Text(room == null ? 'Thêm phòng mới' : 'Chỉnh sửa phòng'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: numberController,
+                  decoration: const InputDecoration(labelText: 'Số phòng *', hintText: 'VD: A101'),
+                  autofocus: true,
+                  enabled: !isSaving, // Disable input while saving
+                  textCapitalization: TextCapitalization.characters,
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: typeController,
+                  decoration: const InputDecoration(labelText: 'Loại phòng', hintText: 'VD: Studio, 1PN, 2PN...'),
+                  enabled: !isSaving, // Disable input while saving
+                  textCapitalization: TextCapitalization.words,
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
-            // 2. Thêm trường nhập Loại phòng
-            TextField(
-              controller: typeController,
-              decoration: const InputDecoration(
-                labelText: 'Loại phòng',
-                hintText: 'VD: Studio, 1PN, 2PN...',
+            actions: [
+              TextButton(
+                // Disable cancel button while saving
+                onPressed: isSaving ? null : () => Navigator.pop(dialogContext),
+                child: const Text('Huỷ'),
               ),
-              textCapitalization: TextCapitalization.words,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Huỷ'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final roomNumber = numberController.text.trim();
-              final roomType = typeController.text.trim();
-              
-              if (roomNumber.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Vui lòng nhập số phòng')),
-                );
-                return;
-              }
+              ElevatedButton(
+                // If isSaving is true, onPressed is null, which disables the button
+                onPressed: isSaving 
+                  ? null 
+                  : () async {
+                      final roomNumber = numberController.text.trim();
+                      final roomType = typeController.text.trim();
+                      
+                      if (roomNumber.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Vui lòng nhập số phòng')),
+                        );
+                        return;
+                      }
 
-              try {
-                if (room == null) {
-                  // ADD NEW
-                  await _roomService.addRoom(
-                    Room(
-                      id: '',
-                      area: 0.0,
-                      organizationId: widget.building.organizationId,
-                      buildingId: widget.building.id,
-                      roomNumber: roomNumber,
-                      roomType: roomType.isEmpty ? 'Standard' : roomType, // 3. Gửi roomType
-                      createdAt: DateTime.now(),
-                    ),
-                  );
-                } else {
-                  // EDIT EXISTING
-                  // 4. Sử dụng hàm updateRoom chung để cập nhật cả 2 trường
-                  await _roomService.updateRoom(room.id, {
-                    'roomNumber': roomNumber,
-                    'roomType': roomType.isEmpty ? 'Standard' : roomType,
-                  });
-                }
+                      // Start saving state
+                      setDialogState(() => isSaving = true);
 
-                if (mounted) {
-                  Navigator.pop(dialogContext);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(room == null 
-                          ? 'Đã thêm phòng thành công' 
-                          : 'Đã cập nhật phòng thành công'),
-                    ),
-                  );
-                }
-              } catch (e) {
-                print('❌ ERROR saving room: $e');
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Lỗi: $e'), backgroundColor: Colors.red),
-                  );
-                }
-              }
-            },
-            child: const Text('Lưu'),
-          ),
-        ],
+                      try {
+                        if (room == null) {
+                          await _roomService.addRoom(
+                            Room(
+                              id: '',
+                              area: 0.0,
+                              organizationId: widget.building.organizationId,
+                              buildingId: widget.building.id,
+                              roomNumber: roomNumber,
+                              roomType: roomType.isEmpty ? 'Standard' : roomType,
+                              createdAt: DateTime.now(),
+                            ),
+                          );
+                        } else {
+                          await _roomService.updateRoom(room.id, {
+                            'roomNumber': roomNumber,
+                            'roomType': roomType.isEmpty ? 'Standard' : roomType,
+                          });
+                        }
+
+                        // Important: Check if the dialog is still open before popping
+                        if (Navigator.of(dialogContext).canPop()) {
+                          Navigator.pop(dialogContext);
+                          
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(room == null ? 'Đã thêm thành công' : 'Đã cập nhật thành công')),
+                            );
+                          }
+                        }
+                      } catch (e) {
+                        print('❌ ERROR saving room: $e');
+                        // Reset saving state so user can try again
+                        setDialogState(() => isSaving = false);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Lỗi: $e'), backgroundColor: Colors.red),
+                          );
+                        }
+                      }
+                    },
+                child: isSaving 
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) 
+                  : const Text('Lưu'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -326,53 +331,148 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
   // DELETE ROOM
   // =========================
   void _deleteRoom(Room room) {
-    print('Opening delete confirmation for room: ${room.roomNumber}');
-    
+    bool isDeleting = false; // Add state guard
+
     _showTrackedDialog(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Xoá phòng'),
-        content: Text('Bạn có chắc muốn xoá phòng ${room.roomNumber}?'),
-        actions: [
-          TextButton(
-            onPressed: () {
-              print('Delete cancelled');
-              Navigator.pop(dialogContext);
-            },
-            child: const Text('Huỷ'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () async {
-              print('Deleting room ${room.id}...');
-              
-              try {
-                final success = await _roomService.deleteRoom(room.id);
-                print('✓ Room deleted: $success');
-                
-                if (mounted) {
-                  Navigator.pop(dialogContext);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Đã xoá phòng thành công')),
-                  );
-                }
-              } catch (e, stackTrace) {
-                print('❌ ERROR deleting room: $e');
-                print('Stack trace: $stackTrace');
-                
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Lỗi xoá phòng: $e'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                }
-              }
-            },
-            child: const Text('Xoá'),
-          ),
-        ],
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: const Text('Xoá phòng'),
+            content: isDeleting 
+                ? const Row(
+                    children: [
+                      CircularProgressIndicator(),
+                      SizedBox(width: 16),
+                      Text('Đang xoá...'),
+                    ],
+                  )
+                : Text('Bạn có chắc muốn xoá phòng ${room.roomNumber}?'),
+            actions: [
+              TextButton(
+                onPressed: isDeleting ? null : () => Navigator.pop(dialogContext),
+                child: const Text('Huỷ'),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                onPressed: isDeleting 
+                  ? null 
+                  : () async {
+                      setDialogState(() => isDeleting = true); // Disable button
+                      try {
+                        final success = await _roomService.deleteRoom(room.id);
+                        
+                        // Safety check before popping
+                        if (Navigator.of(dialogContext).canPop()) {
+                          Navigator.pop(dialogContext);
+                          if (mounted && success) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Đã xoá phòng thành công')),
+                            );
+                          }
+                        }
+                      } catch (e) {
+                        setDialogState(() => isDeleting = false); // Re-enable on error
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Lỗi: $e'), backgroundColor: Colors.red),
+                          );
+                        }
+                      }
+                    },
+                child: const Text('Xoá'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  // =========================
+  // MULTI-SELECTION LOGIC
+  // =========================
+  void _toggleRoomSelection(String roomId) {
+    setState(() {
+      if (_selectedRoomIds.contains(roomId)) {
+        _selectedRoomIds.remove(roomId);
+      } else {
+        _selectedRoomIds.add(roomId);
+        _isSelectionMode = true;
+      }
+    });
+  }
+
+  void _clearSelection() {
+    setState(() {
+      _selectedRoomIds.clear();
+      _isSelectionMode = false;
+    });
+  }
+
+  void _selectAll() {
+    if (_cachedRooms == null) return;
+    setState(() {
+      _selectedRoomIds = _cachedRooms!.map((r) => r.id).toSet();
+      _isSelectionMode = true;
+    });
+  }
+
+  // =========================
+  // DELETE MULTIPLE ROOMS
+  // =========================
+  void _deleteSelectedRooms() {
+    final count = _selectedRoomIds.length;
+    bool isDeleting = false;
+
+    _showTrackedDialog(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: const Text('Xoá nhiều phòng'),
+            content: Text(isDeleting 
+                ? 'Đang xoá $count phòng...' 
+                : 'Bạn có chắc muốn xoá $count phòng đã chọn? Thao tác này không thể hoàn tác.'),
+            actions: [
+              TextButton(
+                onPressed: isDeleting ? null : () => Navigator.pop(dialogContext),
+                child: const Text('Huỷ'),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                onPressed: isDeleting 
+                  ? null 
+                  : () async {
+                      setDialogState(() => isDeleting = true);
+                      try {
+                        final success = await _roomService.deleteMultipleRooms(_selectedRoomIds.toList());
+                        
+                        if (Navigator.of(dialogContext).canPop()) {
+                          Navigator.pop(dialogContext);
+                          if (mounted && success) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Đã xoá $count phòng thành công')),
+                            );
+                            _clearSelection();
+                          }
+                        }
+                      } catch (e) {
+                        setDialogState(() => isDeleting = false);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Lỗi: $e'), backgroundColor: Colors.red),
+                          );
+                        }
+                      }
+                    },
+                child: isDeleting 
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                  : const Text('Xoá tất cả'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -448,6 +548,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
   // =========================
   // BUILD ROOM LIST
   // =========================
+  bool _isNavigating = false;
   Widget _buildRoomList() {
     print('Building room list widget - Loading: $_isLoading, Error: $_errorMessage, Rooms: ${_cachedRooms?.length}');
     
@@ -534,31 +635,56 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
       itemCount: _cachedRooms!.length,
       itemBuilder: (context, index) {
         final room = _cachedRooms![index];
+        final isSelected = _selectedRoomIds.contains(room.id);
         
         return Card(
           margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          // Highlight the card with a light blue background when selected
+          color: isSelected ? Colors.blue.shade50 : null,
+          // Add a blue border when selected
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+            side: isSelected 
+                ? BorderSide(color: Colors.blue.shade300, width: 2) 
+                : BorderSide.none,
+          ),
           child: ListTile(
-            leading: CircleAvatar(
-              backgroundColor: Colors.blue.shade100,
-              child: Icon(Icons.meeting_room, color: Colors.blue.shade700),
-            ),
+            leading: _isSelectionMode 
+              ? Checkbox(
+                  value: isSelected, 
+                  activeColor: Colors.blue.shade700,
+                  onChanged: (_) => _toggleRoomSelection(room.id),
+                )
+              : CircleAvatar(
+                  backgroundColor: Colors.blue.shade100,
+                  child: Icon(Icons.meeting_room, color: Colors.blue.shade700),
+                ),
             title: Text(
               'Phòng ${room.roomNumber}',
-              style: const TextStyle(fontWeight: FontWeight.w500),
+              style: TextStyle(
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                color: isSelected ? Colors.blue.shade900 : null,
+              ),
             ),
-            // Add onTap to navigate to room detail
+            subtitle: room.roomType != null ? Text(room.roomType!) : null,
             onTap: () {
-              print('Navigating to room detail: ${room.roomNumber}');
-              Navigator.pushNamed(
-                context,
-                '/room-detail',
-                arguments: {
-                  'room': room,
-                  'organization': widget.organization,
-                },
-              );
+              if (_isSelectionMode) {
+                _toggleRoomSelection(room.id);
+              } else {
+                if (_isNavigating) return; // Prevent double push
+                _isNavigating = true;
+                // Normal navigation
+                Navigator.pushNamed(
+                  context,
+                  '/room-detail',
+                  arguments: {'room': room, 'organization': widget.organization},
+                );
+                _isNavigating = false; // Reset when they come back
+              }
             },
-            trailing: PopupMenuButton<String>(
+            onLongPress: () => _toggleRoomSelection(room.id),
+            // Hide the menu button when in selection mode
+            trailing: _isSelectionMode ? null : PopupMenuButton<String>(
               onSelected: (value) {
                 print('Menu selected: $value for room ${room.roomNumber}');
                 
@@ -627,13 +753,40 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
 
         return Scaffold(
           appBar: AppBar(
-            title: Text(widget.building.name),
+            leading: _isSelectionMode 
+              ? IconButton(icon: const Icon(Icons.close), onPressed: _clearSelection)
+              : null,
+            title: _isSelectionMode 
+              ? Text(_selectedRoomIds.isEmpty ? 'Chọn phòng' : '${_selectedRoomIds.length} đã chọn')
+              : Text(widget.building.name),
+            actions: [
+              if (_isSelectionMode) ...[
+                // Actions when selecting
+                IconButton(
+                  icon: const Icon(Icons.select_all),
+                  onPressed: _selectAll,
+                  tooltip: 'Chọn tất cả',
+                ),
+                // Only show the delete button if at least one room is selected
+                if (_selectedRoomIds.isNotEmpty)
+                  IconButton(
+                    icon: const Icon(Icons.delete, color: Colors.redAccent),
+                    onPressed: _deleteSelectedRooms,
+                    tooltip: 'Xoá đã chọn',
+                  ),
+              ] else ...[
+                // NEW: Action when NOT selecting (to enter mode)
+                IconButton(
+                  icon: const Icon(Icons.checklist_rtl),
+                  onPressed: () => setState(() => _isSelectionMode = true),
+                  tooltip: 'Chọn nhiều phòng',
+                ),
+              ]
+            ],
           ),
-          floatingActionButton: FloatingActionButton(
-            onPressed: () {
-              print('FAB pressed - opening add room dialog');
-              _showRoomDialog();
-            },
+          // Hide FAB when selecting to avoid confusion
+          floatingActionButton: _isSelectionMode ? null : FloatingActionButton(
+            onPressed: () => _showRoomDialog(),
             child: const Icon(Icons.add),
           ),
           body: Column(

@@ -6,11 +6,13 @@ class PaymentsNotifier extends ChangeNotifier {
   final PaymentService _paymentService;
   
   List<Payment> _payments = [];
-  
+  bool _isLoading = false;
+
   PaymentsNotifier(this._paymentService);
   
   // Getter for payments list
   List<Payment> get payments => _payments;
+  bool get isLoading => _isLoading;
   
   // Set payments list (useful when loading from database)
   void setPayments(List<Payment> payments) {
@@ -297,5 +299,32 @@ class PaymentsNotifier extends ChangeNotifier {
       print('Error loading payments in notifier: $e');
       rethrow;
     }
+  }
+
+  // Load payments for a specific room
+  Future<void> loadRoomPayments(String roomId) async {
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      _payments = await _paymentService.getRoomPayments(roomId);
+    } catch (e) {
+      print('Error loading room payments: $e');
+      _payments = [];
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  // Refresh payments for a specific room
+  Future<void> refreshRoomPayments(String roomId) async {
+    await loadRoomPayments(roomId);
+  }
+
+  // Clear all payments
+  void clearPayments() {
+    _payments = [];
+    notifyListeners();
   }
 }

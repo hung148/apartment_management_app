@@ -427,7 +427,7 @@ class RoomService {
         numberOfFloors: config['floors'] as int,
         roomsPerFloor: config['roomsPerFloor'] as int,
         prefix: prefix,
-        roomType: config['roomType'] ?? 'Standard',
+        roomType: config['roomType'] ?? 'Tiêu chuẩn',
         area: (config['roomArea'] as num?)?.toDouble() ?? 0.0,
       );
     } else {

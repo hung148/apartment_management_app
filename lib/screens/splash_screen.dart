@@ -1,9 +1,7 @@
-import 'package:apartment_management_project_2/main.dart';
 import 'package:apartment_management_project_2/utils/app_router.dart';
 import 'package:apartment_management_project_2/widgets/loading.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:apartment_management_project_2/services/auth_service.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -13,7 +11,7 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
-  final AuthService _authService = getIt<AuthService>();
+
   // initState runs ONCE when this widget is first created
   // It's like the "start" or "setup" function
   @override
@@ -36,6 +34,13 @@ class _SplashScreenState extends State<SplashScreen> {
     // This prevent errors when trying to navigate after widget is gone
     if(!mounted) return;
 
+    // Wait for Firebase Auth to finish checking persistence
+    // This ensures we get the correct auth state
+    // Get current auth state
+    final user = FirebaseAuth.instance.currentUser;
+    
+    if (!mounted) return;
+    
     // Get the currently logged-in user from Firebase
     // If someone is logged in, 'user' will have their info
     // If nobody is logged in, 'user' will be null
@@ -44,7 +49,7 @@ class _SplashScreenState extends State<SplashScreen> {
     // When your friend logs in on their phone, only their phone remembers them
     
     // Check if user exists (is logged in)
-    if (_authService.isLoggedIn) {
+    if (user != null) {
       // User is logged in
       // Navigate to Dashboard and replace this splash screen
       Navigator.pushReplacementNamed(context, AppRouter.dashboardScreen);
