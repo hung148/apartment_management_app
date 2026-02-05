@@ -263,7 +263,7 @@ class OrganizationService {
           .get();
 
       return snapshot.docs
-          .map((doc) => Membership.fromMap(doc.id, doc.data()!))
+          .map((doc) => Membership.fromMap(doc.id, doc.data()))
           .toList();
     } catch (e) {
       print('❌ Error getting organization members: $e');
@@ -317,7 +317,7 @@ class OrganizationService {
           .get();
 
       return orgsSnap.docs
-          .map((doc) => Organization.fromMap(doc.id, doc.data()!))
+          .map((doc) => Organization.fromMap(doc.id, doc.data()))
           .toList();
     } catch (e) {
       print('❌ Error fetching user organizations for $ownerId: $e');
@@ -347,7 +347,7 @@ class OrganizationService {
 
       final existingMembership = Membership.fromMap(
         query.docs.first.id,
-        query.docs.first.data()!,
+        query.docs.first.data(),
       );
 
       final orgId = existingMembership.organizationId;
