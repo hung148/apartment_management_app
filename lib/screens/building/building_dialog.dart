@@ -11,9 +11,8 @@ class BuildingDialog extends StatefulWidget {
   final String? initialRoomType;
   final double? initialRoomArea;
   
-  // Hỗ trợ cả 2 định dạng dữ liệu
-  final List<Map<String, dynamic>>? initialFloorDetails; // Định dạng mới
-  final List<int>? initialFloorRoomCounts;               // Định dạng cũ (Legacy)
+  final List<Map<String, dynamic>>? initialFloorDetails;
+  final List<int>? initialFloorRoomCounts;
 
   const BuildingDialog({
     super.key,
@@ -27,7 +26,7 @@ class BuildingDialog extends StatefulWidget {
     this.initialRoomType,
     this.initialRoomArea,
     this.initialFloorDetails,
-    this.initialFloorRoomCounts, // Đã thêm lại
+    this.initialFloorRoomCounts,
   });
 
   @override
@@ -45,7 +44,7 @@ class _BuildingDialogState extends State<BuildingDialog> {
   bool uniformRoomsPerFloor = true;
   
   final TextEditingController uniformRoomsController = TextEditingController();
-  final TextEditingController uniformTypeController = TextEditingController(text: 'Standard');
+  final TextEditingController uniformTypeController = TextEditingController(text: 'Tiêu chuẩn');
   final TextEditingController uniformAreaController = TextEditingController();
   
   List<FloorConfig> floorConfigs = [];
@@ -54,7 +53,7 @@ class _BuildingDialogState extends State<BuildingDialog> {
   final TextEditingController bulkStartFloorController = TextEditingController();
   final TextEditingController bulkEndFloorController = TextEditingController();
   final TextEditingController bulkRoomsController = TextEditingController();
-  final TextEditingController bulkTypeController = TextEditingController(text: 'Standard');
+  final TextEditingController bulkTypeController = TextEditingController(text: 'Tiêu chuẩn');
   final TextEditingController bulkAreaController = TextEditingController();
 
   @override
@@ -74,17 +73,16 @@ class _BuildingDialogState extends State<BuildingDialog> {
         uniformTypeController.text = widget.initialRoomType ?? 'Tiêu chuẩn';
         uniformAreaController.text = widget.initialRoomArea?.toString() ?? '';
       } else {
-        // LOGIC THÔNG MINH: Kiểm tra dữ liệu mới trước, nếu không có thì dùng dữ liệu cũ
         if (widget.initialFloorDetails != null) {
           _loadFloorConfigs(widget.initialFloorDetails!);
         } else if (widget.initialFloorRoomCounts != null) {
-          // Tự động chuyển đổi List<int> cũ sang FloorConfig mới
           floorConfigs = widget.initialFloorRoomCounts!.asMap().entries.map((entry) {
             return FloorConfig(
               floorNumber: entry.key + 1,
               countController: TextEditingController(text: entry.value.toString()),
-              typeController: TextEditingController(text: 'Standard'),
+              typeController: TextEditingController(text: 'Tiêu chuẩn'),
               areaController: TextEditingController(text: '50'),
+              customNames: [],
             );
           }).toList();
         }
@@ -94,22 +92,38 @@ class _BuildingDialogState extends State<BuildingDialog> {
 
   void _loadFloorConfigs(List<Map<String, dynamic>> details) {
     floorConfigs = details.asMap().entries.map((entry) {
+      final detail = entry.value;
+      final List<String> customNames = detail['customNames'] != null 
+          ? List<String>.from(detail['customNames'])
+          : [];
+      
       return FloorConfig(
         floorNumber: entry.key + 1,
-        countController: TextEditingController(text: entry.value['count']?.toString() ?? '10'),
-        typeController: TextEditingController(text: entry.value['type'] ?? 'Standard'),
-        areaController: TextEditingController(text: entry.value['area']?.toString() ?? '50'),
+        countController: TextEditingController(text: detail['count']?.toString() ?? '10'),
+        typeController: TextEditingController(text: detail['type'] ?? 'Tiêu chuẩn'),
+        areaController: TextEditingController(text: detail['area']?.toString() ?? '50'),
+        customNames: customNames,
       );
     }).toList();
   }
 
   @override
   void dispose() {
-    nameController.dispose(); addressController.dispose(); floorsController.dispose();
-    roomPrefixController.dispose(); uniformRoomsController.dispose(); uniformTypeController.dispose();
-    uniformAreaController.dispose(); bulkStartFloorController.dispose(); bulkEndFloorController.dispose();
-    bulkRoomsController.dispose(); bulkTypeController.dispose(); bulkAreaController.dispose();
-    for (var config in floorConfigs) { config.dispose(); }
+    nameController.dispose(); 
+    addressController.dispose(); 
+    floorsController.dispose();
+    roomPrefixController.dispose(); 
+    uniformRoomsController.dispose(); 
+    uniformTypeController.dispose();
+    uniformAreaController.dispose(); 
+    bulkStartFloorController.dispose(); 
+    bulkEndFloorController.dispose();
+    bulkRoomsController.dispose(); 
+    bulkTypeController.dispose(); 
+    bulkAreaController.dispose();
+    for (var config in floorConfigs) { 
+      config.dispose(); 
+    }
     super.dispose();
   }
 
@@ -121,11 +135,14 @@ class _BuildingDialogState extends State<BuildingDialog> {
         floorConfigs.add(FloorConfig(
           floorNumber: floorConfigs.length + 1,
           countController: TextEditingController(text: '10'),
-          typeController: TextEditingController(text: 'Standard'),
+          typeController: TextEditingController(text: 'Tiêu chuẩn'),
           areaController: TextEditingController(text: '50'),
+          customNames: [],
         ));
       }
-      while (floorConfigs.length > floors) { floorConfigs.removeLast().dispose(); }
+      while (floorConfigs.length > floors) { 
+        floorConfigs.removeLast().dispose(); 
+      }
     });
   }
 
@@ -143,8 +160,37 @@ class _BuildingDialogState extends State<BuildingDialog> {
     });
   }
 
+  // ✅ UPDATED: Validate with error messages
+  String? _validate() {
+    // Check basic fields
+    if (nameController.text.trim().isEmpty) {
+      return 'Vui lòng nhập tên toà nhà';
+    }
+    if (addressController.text.trim().isEmpty) {
+      return 'Vui lòng nhập địa chỉ';
+    }
+
+    // If auto-generate is disabled, we're done
+    if (!autoGenerateRooms) return null;
+
+    // Check floors
+    final floors = int.tryParse(floorsController.text.trim());
+    if (floors == null || floors <= 0) {
+      return 'Vui lòng nhập số tầng hợp lệ';
+    }
+
+    // Check uniform mode
+    if (uniformRoomsPerFloor) {
+      final roomsPerFloor = int.tryParse(uniformRoomsController.text.trim());
+      if (roomsPerFloor == null || roomsPerFloor <= 0) {
+        return 'Vui lòng nhập số phòng mỗi tầng hợp lệ';
+      }
+    }
+
+    return null; // All valid
+  }
+
   Map<String, dynamic>? _validateAndGetResult() {
-    if (nameController.text.isEmpty || addressController.text.isEmpty) return null;
     final baseData = {
       'name': nameController.text.trim(),
       'address': addressController.text.trim(),
@@ -167,21 +213,90 @@ class _BuildingDialogState extends State<BuildingDialog> {
         'count': int.tryParse(c.countController.text) ?? 0,
         'type': c.typeController.text.trim(),
         'area': double.tryParse(c.areaController.text) ?? 0.0,
+        'customNames': c.customNames,
       }).toList();
       return {
         ...baseData,
         'uniformRooms': false,
         'floors': int.tryParse(floorsController.text) ?? 0,
         'floorDetails': details,
-        'floorRoomCounts': details.map((e) => e['count'] as int).toList(), // Trả về cả list cũ để tránh lỗi service
+        'floorRoomCounts': details.map((e) => e['count'] as int).toList(),
         'roomPrefix': roomPrefixController.text.trim(),
       };
     }
   }
 
+  void _showCustomRoomNamesDialog(FloorConfig config) {
+    final int roomCount = int.tryParse(config.countController.text) ?? 0;
+    if (roomCount <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Vui lòng nhập số lượng phòng trước')),
+      );
+      return;
+    }
+
+    while (config.customNames.length < roomCount) {
+      config.customNames.add('');
+    }
+    while (config.customNames.length > roomCount) {
+      config.customNames.removeLast();
+    }
+
+    final controllers = config.customNames
+        .map((name) => TextEditingController(text: name))
+        .toList();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Tên phòng tầng ${config.floorNumber}'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: roomCount,
+            itemBuilder: (context, index) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: TextField(
+                  controller: controllers[index],
+                  decoration: InputDecoration(
+                    labelText: 'Phòng ${index + 1}',
+                    hintText: 'VD: Phòng VIP, Studio A...',
+                    border: const OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Hủy'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              for (int i = 0; i < controllers.length; i++) {
+                config.customNames[i] = controllers[i].text.trim();
+              }
+              Navigator.pop(context);
+              setState(() {});
+            },
+            child: const Text('Lưu'),
+          ),
+        ],
+      ),
+    ).then((_) {
+      for (var controller in controllers) {
+        controller.dispose();
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: ConstrainedBox(
@@ -209,9 +324,37 @@ class _BuildingDialogState extends State<BuildingDialog> {
                   key: _formKey,
                   child: Column(
                     children: [
-                      _buildTextField(nameController, 'Tên toà nhà *', 'vd: Toà A'),
+                      // ✅ Use TextFormField with validator
+                      TextFormField(
+                        controller: nameController,
+                        decoration: const InputDecoration(
+                          labelText: 'Tên toà nhà *',
+                          hintText: 'vd: Toà A',
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Vui lòng nhập tên toà nhà';
+                          }
+                          return null;
+                        },
+                      ),
                       const SizedBox(height: 16),
-                      _buildTextField(addressController, 'Địa chỉ *', 'vd: 123 Đường ABC', maxLines: 2),
+                      TextFormField(
+                        controller: addressController,
+                        maxLines: 2,
+                        decoration: const InputDecoration(
+                          labelText: 'Địa chỉ *',
+                          hintText: 'vd: 123 Đường ABC',
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Vui lòng nhập địa chỉ';
+                          }
+                          return null;
+                        },
+                      ),
                       CheckboxListTile(
                         title: const Text('Tự động tạo phòng'),
                         value: autoGenerateRooms,
@@ -219,7 +362,29 @@ class _BuildingDialogState extends State<BuildingDialog> {
                         contentPadding: EdgeInsets.zero,
                       ),
                       if (autoGenerateRooms) ...[
-                        _buildTextField(floorsController, 'Số tầng *', '1', keyboardType: TextInputType.number, onChanged: (_) { if (!uniformRoomsPerFloor) _updateFloorConfigs(); setState(() {}); }),
+                        TextFormField(
+                          controller: floorsController,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'Số tầng *',
+                            hintText: '1',
+                            border: OutlineInputBorder(),
+                          ),
+                          onChanged: (_) {
+                            if (!uniformRoomsPerFloor) _updateFloorConfigs();
+                            setState(() {});
+                          },
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) {
+                              return 'Vui lòng nhập số tầng';
+                            }
+                            final floors = int.tryParse(value);
+                            if (floors == null || floors <= 0) {
+                              return 'Số tầng phải lớn hơn 0';
+                            }
+                            return null;
+                          },
+                        ),
                         const SizedBox(height: 16),
                         _buildDistributionToggle(),
                         const SizedBox(height: 16),
@@ -239,7 +404,6 @@ class _BuildingDialogState extends State<BuildingDialog> {
     );
   }
 
-  // --- UI Helpers (Các Widget phụ trợ giống bản trước) ---
   Widget _buildTextField(TextEditingController controller, String label, String hint, {int maxLines = 1, TextInputType? keyboardType, Function(String)? onChanged}) {
     return TextField(controller: controller, maxLines: maxLines, keyboardType: keyboardType, onChanged: onChanged, decoration: InputDecoration(labelText: label, hintText: hint, border: const OutlineInputBorder()));
   }
@@ -255,10 +419,28 @@ class _BuildingDialogState extends State<BuildingDialog> {
 
   Widget _buildUniformSection() {
     return Column(children: [
-      _buildTextField(uniformRoomsController, 'Số phòng mỗi tầng', '10', keyboardType: TextInputType.number),
+      TextFormField(
+        controller: uniformRoomsController,
+        keyboardType: TextInputType.number,
+        decoration: const InputDecoration(
+          labelText: 'Số phòng mỗi tầng',
+          hintText: '10',
+          border: OutlineInputBorder(),
+        ),
+        validator: (value) {
+          if (value == null || value.trim().isEmpty) {
+            return 'Vui lòng nhập số phòng';
+          }
+          final rooms = int.tryParse(value);
+          if (rooms == null || rooms <= 0) {
+            return 'Số phòng phải lớn hơn 0';
+          }
+          return null;
+        },
+      ),
       const SizedBox(height: 8),
       Row(children: [
-        Expanded(child: _buildTextField(uniformTypeController, 'Loại phòng', 'Studio')),
+        Expanded(child: _buildTextField(uniformTypeController, 'Loại phòng', '')),
         const SizedBox(width: 8),
         Expanded(child: _buildTextField(uniformAreaController, 'Diện tích (m²)', '50', keyboardType: TextInputType.number)),
       ])
@@ -290,7 +472,7 @@ class _BuildingDialogState extends State<BuildingDialog> {
         Row(children: [
           Expanded(child: _buildTextField(bulkRoomsController, 'Số phòng', '10', keyboardType: TextInputType.number)),
           const SizedBox(width: 8),
-          Expanded(child: _buildTextField(bulkTypeController, 'Loại', 'Studio')),
+          Expanded(child: _buildTextField(bulkTypeController, 'Loại', '')),
           const SizedBox(width: 8),
           Expanded(child: _buildTextField(bulkAreaController, 'm²', '50', keyboardType: TextInputType.number)),
         ]),
@@ -301,6 +483,8 @@ class _BuildingDialogState extends State<BuildingDialog> {
   }
 
   Widget _buildFloorRow(FloorConfig config) {
+    final hasCustomNames = config.customNames.any((name) => name.isNotEmpty);
+    
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(children: [
@@ -311,6 +495,16 @@ class _BuildingDialogState extends State<BuildingDialog> {
         Expanded(flex: 2, child: _buildCompactField(config.typeController, 'Loại', TextInputType.text)),
         const SizedBox(width: 4),
         Expanded(child: _buildCompactField(config.areaController, 'm²', TextInputType.number)),
+        const SizedBox(width: 4),
+        IconButton(
+          icon: Icon(
+            Icons.badge,
+            color: hasCustomNames ? Colors.green : Colors.grey,
+            size: 20,
+          ),
+          tooltip: 'Đặt tên phòng',
+          onPressed: () => _showCustomRoomNamesDialog(config),
+        ),
       ]),
     );
   }
@@ -325,7 +519,28 @@ class _BuildingDialogState extends State<BuildingDialog> {
       child: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('Hủy')),
         const SizedBox(width: 8),
-        ElevatedButton(onPressed: () { final r = _validateAndGetResult(); if (r != null) Navigator.pop(context, r); }, child: Text(widget.isEditMode ? 'Cập nhật' : 'Thêm')),
+        ElevatedButton(
+          onPressed: () {
+            // ✅ Validate form
+            if (_formKey.currentState!.validate()) {
+              // Check additional validation
+              final error = _validate();
+              if (error != null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(error), backgroundColor: Colors.red),
+                );
+                return;
+              }
+              
+              // Get result and close
+              final r = _validateAndGetResult();
+              if (r != null) {
+                Navigator.pop(context, r);
+              }
+            }
+          },
+          child: Text(widget.isEditMode ? 'Cập nhật' : 'Thêm'),
+        ),
       ]),
     );
   }
@@ -336,6 +551,19 @@ class FloorConfig {
   final TextEditingController countController;
   final TextEditingController typeController;
   final TextEditingController areaController;
-  FloorConfig({required this.floorNumber, required this.countController, required this.typeController, required this.areaController});
-  void dispose() { countController.dispose(); typeController.dispose(); areaController.dispose(); }
+  final List<String> customNames;
+  
+  FloorConfig({
+    required this.floorNumber, 
+    required this.countController, 
+    required this.typeController, 
+    required this.areaController,
+    required this.customNames,
+  });
+  
+  void dispose() { 
+    countController.dispose(); 
+    typeController.dispose(); 
+    areaController.dispose(); 
+  }
 }

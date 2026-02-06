@@ -380,7 +380,7 @@ class RoomService {
   Future<List<Room>> generateCustomRoomsForBuilding({
     required String organizationId,
     required String buildingId,
-    required List<Map<String, dynamic>> floorDetails, // Format từ BuildingDialog
+    required List<Map<String, dynamic>> floorDetails,
     required String prefix,
   }) async {
     final rooms = <Room>[];
@@ -392,9 +392,21 @@ class RoomService {
       final int count = detail['count'] as int;
       final String type = detail['type'] ?? 'Standard';
       final double area = (detail['area'] as num?)?.toDouble() ?? 0.0;
+      
+      // ✅ NEW: Get custom names if available
+      final List<String> customNames = detail['customNames'] != null 
+          ? List<String>.from(detail['customNames'])
+          : [];
 
       for (int roomNum = 1; roomNum <= count; roomNum++) {
-        final roomNumber = '$prefix$floorNum${roomNum.toString().padLeft(2, '0')}';
+        // ✅ NEW: Use custom name if provided, otherwise use auto-generated
+        final String roomNumber;
+        if (roomNum <= customNames.length && customNames[roomNum - 1].isNotEmpty) {
+          roomNumber = customNames[roomNum - 1];
+        } else {
+          roomNumber = '$prefix$floorNum${roomNum.toString().padLeft(2, '0')}';
+        }
+        
         rooms.add(Room(
           id: '',
           organizationId: organizationId,

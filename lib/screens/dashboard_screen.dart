@@ -5,6 +5,7 @@ import 'package:apartment_management_project_2/models/owner_model.dart';
 import 'package:apartment_management_project_2/services/auth_service.dart';
 import 'package:apartment_management_project_2/services/organization_service.dart';
 import 'package:apartment_management_project_2/services/update_services.dart';
+import 'package:apartment_management_project_2/utils/app_localizations.dart';
 import 'package:apartment_management_project_2/utils/app_router.dart';
 import 'package:apartment_management_project_2/widgets/loading.dart';
 import 'package:flutter/material.dart';
@@ -23,6 +24,81 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
   final AuthService _authService = getIt<AuthService>();
   final OrganizationService _organizationService = getIt<OrganizationService>();
   final UpdateService _updateService = getIt<UpdateService>();
+
+  Future<Owner?>? _ownerFuture;
+
+  void _showLanguageDialog() {
+    final notifier = getIt<LocaleNotifier>();
+    // Biến tạm để lưu lựa chọn trong Dialog
+    Locale tempLocale = notifier.locale;
+
+    _showTrackedDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: Text(AppTranslations.of(context).text('select_language')),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // CÁCH MỚI: Sử dụng RadioGroup để bao bọc các lựa chọn
+                  RadioGroup<Locale>(
+                    groupValue: tempLocale, // Giá trị đang được chọn tạm thời
+                    onChanged: (Locale? value) {
+                      if (value != null) {
+                        // Cập nhật giao diện của riêng Dialog khi chọn
+                        setDialogState(() => tempLocale = value);
+                      }
+                    },
+                    child: Column(
+                      children: [
+                        // Tiếng Việt
+                        RadioListTile<Locale>(
+                          value: const Locale('vi', 'VN'),
+                          title: Text(AppTranslations.of(context).text('vietnamese')),
+                          secondary: const Text('🇻🇳', style: TextStyle(fontSize: 24)),
+                          // KHÔNG cần groupValue và onChanged ở đây nữa
+                        ),
+                        // Tiếng Anh
+                        RadioListTile<Locale>(
+                          value: const Locale('en', 'US'),
+                          title: Text(AppTranslations.of(context).text('english')),
+                          secondary: const Text('🇺🇸', style: TextStyle(fontSize: 24)),
+                          // KHÔNG cần groupValue và onChanged ở đây nữa
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                // Nút Hủy
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: Text(AppTranslations.of(context).text('cancel')),
+                ),
+                // Nút Xác nhận - Lúc này ngôn ngữ mới chính thức thay đổi
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Theme.of(context).colorScheme.primary,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: () {
+                    // Cập nhật ngôn ngữ toàn App thông qua notifier
+                    notifier.setLocale(tempLocale);
+                    Navigator.pop(context);
+                  },
+                  child: Text(AppTranslations.of(context).text('confirm')),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
 
   final AsyncLock _createOrgLock = AsyncLock();
   final AsyncLock _joinOrgLock = AsyncLock();
@@ -44,6 +120,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
   @override
   void initState() {
     super.initState();
+    _ownerFuture = _authService.getCurrentOwner();
     WidgetsBinding.instance.addObserver(this);
     debugPrint('🟢 DashboardScreen.initState() called');
     
@@ -1555,7 +1632,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Trang chủ'),
+        title: Text(AppTranslations.of(context).text('dashboard')),
         elevation: 0,
         actions: [
           if (_updateAvailable && !_checkingUpdate)
@@ -1565,13 +1642,13 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                   ? IconButton(
                       onPressed: _performUpdate,
                       icon: const Icon(Icons.system_update),
-                      tooltip: 'Cập nhật',
+                      tooltip: AppTranslations.of(context).text('update'),
                     )
                   : TextButton.icon(
                       onPressed: _performUpdate,
                       icon: const Icon(Icons.system_update, color: Colors.white),
-                      label: const Text(
-                        'Cập nhật',
+                      label: Text(
+                        AppTranslations.of(context).text('update'),
                         style: TextStyle(color: Colors.white),
                       ),
                       style: TextButton.styleFrom(
@@ -1583,9 +1660,14 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                     ),
             ),
           IconButton(
+            onPressed: _showLanguageDialog,
+            icon: const Icon(Icons.language),
+            tooltip: AppTranslations.of(context).text('language'),
+          ),
+          IconButton(
             onPressed: _handleLogout,
             icon: const Icon(Icons.logout),
-            tooltip: 'Đăng xuất',
+            tooltip: AppTranslations.of(context).text('logout'),
           ),
         ],
       ),
@@ -1627,7 +1709,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
           }
           
           return FutureBuilder<Owner?>(
-            future: _authService.getCurrentOwner(),
+            future: _ownerFuture,
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: Loading3(size: 50));

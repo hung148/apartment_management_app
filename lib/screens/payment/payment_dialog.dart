@@ -9,6 +9,7 @@ import 'package:apartment_management_project_2/services/building_service.dart';
 import 'package:apartment_management_project_2/services/payments_service.dart';
 import 'package:apartment_management_project_2/services/room_service.dart';
 import 'package:apartment_management_project_2/services/tenants_service.dart';
+import 'package:apartment_management_project_2/utils/currency_formatter.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -435,7 +436,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> w
                 children: [
                   // Payment Type
                   DropdownButtonFormField<PaymentType>(
-                    value: selectedType,
+                    initialValue: selectedType,
                     decoration: InputDecoration(
                       labelText: 'Loại thanh toán *',
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
@@ -560,6 +561,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> w
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: electricityPriceController,
+                      inputFormatters: [CurrencyInputFormatter()],
                       decoration: InputDecoration(
                         labelText: 'Giá điện (VND/kWh) *',
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
@@ -669,6 +671,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> w
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: waterPriceController,
+                      inputFormatters: [CurrencyInputFormatter()],
                       decoration: InputDecoration(
                         labelText: 'Giá nước (VND/m³) *',
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
@@ -753,6 +756,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> w
                   // Amount
                   TextFormField(
                     controller: amountController,
+                    inputFormatters: [CurrencyInputFormatter()],
                     decoration: InputDecoration(
                       labelText: 'Số tiền *',
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
@@ -1456,6 +1460,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> w
                             // Tax Amount
                             TextFormField(
                               controller: _taxAmountController,
+                              inputFormatters: [CurrencyInputFormatter()],
                               decoration: InputDecoration(
                                 labelText: 'Tiền thuế (VND)',
                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),

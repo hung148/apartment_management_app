@@ -28,8 +28,8 @@ class Building {
     this.roomPrefix,
     this.uniformRooms,
     this.roomsPerFloor,
-    this.floorRoomCounts, // Đảm bảo có dòng này
-    this.floorDetails,    // Đảm bảo có dòng này
+    this.floorRoomCounts, 
+    this.floorDetails,    
     this.roomType,
     this.roomArea,
   });

@@ -1,7 +1,5 @@
 add vehicle management tab where it only dislay tenant vehicle with currently renting status
 
-change number format from like 5000000 into 5,000,000
-
 better date chooser that support vietnamese
 
 display room type and area in tenant information view
@@ -10,4 +8,3 @@ fix Vi tri should display khong xac dinh if tenant move out
 
 show tenant email in export to hoa don
 
-delete multiple rooms
