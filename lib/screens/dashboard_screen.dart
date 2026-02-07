@@ -43,7 +43,6 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // CÁCH MỚI: Sử dụng RadioGroup để bao bọc các lựa chọn
                   RadioGroup<Locale>(
                     groupValue: tempLocale, // Giá trị đang được chọn tạm thời
                     onChanged: (Locale? value) {
@@ -59,14 +58,12 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                           value: const Locale('vi', 'VN'),
                           title: Text(AppTranslations.of(context).text('vietnamese')),
                           secondary: const Text('🇻🇳', style: TextStyle(fontSize: 24)),
-                          // KHÔNG cần groupValue và onChanged ở đây nữa
                         ),
                         // Tiếng Anh
                         RadioListTile<Locale>(
                           value: const Locale('en', 'US'),
                           title: Text(AppTranslations.of(context).text('english')),
                           secondary: const Text('🇺🇸', style: TextStyle(fontSize: 24)),
-                          // KHÔNG cần groupValue và onChanged ở đây nữa
                         ),
                       ],
                     ),
@@ -1662,7 +1659,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
           IconButton(
             onPressed: _showLanguageDialog,
             icon: const Icon(Icons.language),
-            tooltip: AppTranslations.of(context).text('language'),
+            tooltip: AppTranslations.of(context).text('lang'),
           ),
           IconButton(
             onPressed: _handleLogout,
@@ -1798,9 +1795,9 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          'Xin chào!',
+                                          AppTranslations.of(context).text('hello'),
                                           style: TextStyle(
-                                            color: Colors.white.withOpacity(0.9),
+                                            color: Colors.white.withValues(alpha: 0.9),
                                             fontSize: isSmall ? 12 : 14,
                                           ),
                                         ),
@@ -1823,7 +1820,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                               Container(
                                 padding: const EdgeInsets.all(12),
                                 decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.2),
+                                  color: Colors.white.withValues(alpha: 0.2),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: Column(
@@ -1832,7 +1829,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                                     const SizedBox(height: 8),
                                     _buildInfoRow(
                                       Icons.calendar_today,
-                                      'Tham gia: ${_formatDate(owner.createdAt)}',
+                                      '${AppTranslations.of(context).text('joined_at')}: ${_formatDate(owner.createdAt)}',
                                     ),
                                   ],
                                 ),
@@ -1866,7 +1863,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                                       const SizedBox(width: 8),
                                       Expanded(
                                         child: Text(
-                                          'Tổ Chức Của Bạn',
+                                          AppTranslations.of(context).text('your_organizations'),
                                           style: Theme.of(context).textTheme.titleLarge?.copyWith(
                                             fontWeight: FontWeight.bold,
                                             fontSize: 18,
@@ -1882,7 +1879,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                                       Expanded(
                                         child: OutlinedButton.icon(
                                           icon: const Icon(Icons.group_add, size: 18),
-                                          label: const Text('Tham gia'),
+                                          label: Text(AppTranslations.of(context).text('join')),
                                           onPressed: () => _dialogLock.run(_showJoinOrganizationDialog),
                                           style: OutlinedButton.styleFrom(
                                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -1893,7 +1890,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                                       Expanded(
                                         child: ElevatedButton.icon(
                                           icon: const Icon(Icons.add, size: 18),
-                                          label: const Text('Tạo mới'),
+                                          label: Text(AppTranslations.of(context).text('create')),
                                           onPressed: () => _dialogLock.run(_showCreateOrganizationDialog),
                                           style: ElevatedButton.styleFrom(
                                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -1915,7 +1912,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                                       ),
                                       const SizedBox(width: 8),
                                       Text(
-                                        'Tổ Chức Của Bạn',
+                                        AppTranslations.of(context).text('your_organizations'),
                                         style: Theme.of(context).textTheme.titleLarge?.copyWith(
                                           fontWeight: FontWeight.bold,
                                         ),
@@ -1926,25 +1923,25 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                                     children: [
                                       IconButton(
                                         icon: const Icon(Icons.group_add),
-                                        tooltip: 'Tham gia tổ chức',
+                                        tooltip: AppTranslations.of(context).text('tooltip_join'),
                                         onPressed: () => _dialogLock.run(_showJoinOrganizationDialog),
                                         style: IconButton.styleFrom(
                                           backgroundColor: Theme.of(context)
                                               .colorScheme
                                               .primary
-                                              .withOpacity(0.1),
+                                              .withValues(alpha: 0.1),
                                         ),
                                       ),
                                       const SizedBox(width: 8),
                                       IconButton(
                                         icon: const Icon(Icons.add),
-                                        tooltip: 'Tạo tổ chức mới',
+                                        tooltip: AppTranslations.of(context).text('tooltip_create'),
                                         onPressed: () => _dialogLock.run(_showCreateOrganizationDialog),
                                         style: IconButton.styleFrom(
                                           backgroundColor: Theme.of(context)
                                               .colorScheme
                                               .primary
-                                              .withOpacity(0.1),
+                                              .withValues(alpha: 0.1),
                                         ),
                                       ),
                                     ],

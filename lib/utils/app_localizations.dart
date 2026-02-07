@@ -10,6 +10,7 @@ class AppTranslations {
 
   static final Map<String, Map<String, String>> _values = {
     'vi': {
+      'lang': 'ngôn ngữ',
       'select_language': 'Chọn ngôn ngữ',
       'vietnamese': 'Tiếng Việt',
       'english': 'Tiếng Anh',
@@ -18,7 +19,9 @@ class AppTranslations {
       'update': 'Cập nhật',
       'your_organizations': 'Tổ Chức Của Bạn',
       'join': 'Tham gia',
+      'tooltip_join': 'Tham gia tổ chức',
       'create': 'Tạo mới',
+      'tooltip_create': 'Tạo tổ chức mới',
       'no_orgs': 'Chưa có tổ chức nào',
       'no_orgs_sub': 'Tạo tổ chức mới hoặc tham gia bằng mã mời',
       'hello': 'Xin chào!',
@@ -27,6 +30,7 @@ class AppTranslations {
       'member': 'Thành viên',
     },
     'en': {
+      'lang': 'language',
       'select_language': 'Select Language',
       'vietnamese': 'Vietnamese',
       'english': 'English',
@@ -35,7 +39,9 @@ class AppTranslations {
       'update': 'Update',
       'your_organizations': 'Your Organizations',
       'join': 'Join',
+      'tooltip_join': 'Join an existing organization',
       'create': 'Create',
+      'tooltip_create': 'Create a new organization',
       'no_orgs': 'No organizations yet',
       'no_orgs_sub': 'Create a new organization or join with an invite code',
       'hello': 'Hello!',
