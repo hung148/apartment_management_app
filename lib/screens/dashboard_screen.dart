@@ -320,17 +320,17 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
             children: [
               Icon(Icons.download, color: Theme.of(context).colorScheme.primary),
               const SizedBox(width: 8),
-              const Flexible(child: Text('Cập nhật có sẵn')),
+              Flexible(child: Text(AppTranslations.of(context).text('available_update'))),
             ],
           ),
-          content: const Column(
+          content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Phiên bản mới đã sẵn sàng!'),
+              Text(AppTranslations.of(context).text('new_update_ready')),
               SizedBox(height: 8),
               Text(
-                'Nhấn "Tải xuống" để mở trang tải xuống phiên bản mới.',
+                AppTranslations.of(context).text('click_update_button'),
                 style: TextStyle(fontSize: 14, color: Colors.grey),
               ),
             ],
@@ -484,7 +484,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                   children: [
                     Icon(Icons.add_business, color: Theme.of(context).colorScheme.primary),
                     const SizedBox(width: 8),
-                    const Flexible(child: Text('Tạo Tổ Chức Mới', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
+                    Flexible(child: Text(AppTranslations.of(context).text('tooltip_create'), style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
                   ],
                 ),
               ),
@@ -580,7 +580,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                         Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: Colors.blue.withOpacity(0.1),
+                            color: Colors.blue.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(color: Colors.blue.withOpacity(0.3)),
                           ),
@@ -687,7 +687,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
           children: [
             Icon(Icons.group_add, color: Theme.of(context).colorScheme.primary),
             const SizedBox(width: 8),
-            const Flexible(child: Text('Tham Gia Tổ Chức')),
+            Flexible(child: Text(AppTranslations.of(context).text('tooltip_join'))),
           ],
         ),
         content: Column(
@@ -760,7 +760,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
               });
             },
             icon: const Icon(Icons.login),
-            label: const Text('Tham Gia'),
+            label: Text(AppTranslations.of(context).text('join')),
           ),
         ],
       ),
@@ -795,7 +795,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.orange.withOpacity(0.1),
+                color: Colors.orange.withValues(alpha: .1),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: Colors.orange.withOpacity(0.3)),
               ),
@@ -934,9 +934,9 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                         Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: Colors.red.withOpacity(0.1),
+                            color: Colors.red.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.red.withOpacity(0.3)),
+                            border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
                           ),
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1031,37 +1031,38 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
       final progressNotifier = ValueNotifier<double>(0.0);
 
       // Show dialog-based progress indicator
-      _showTrackedDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const CircularProgressIndicator(),
-              const SizedBox(height: 20),
-              const Text('Đang xóa tổ chức...', style: TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 16),
-              ValueListenableBuilder<double>(
-                valueListenable: progressNotifier,
-                builder: (context, progress, child) {
-                  return Column(
-                    children: [
-                      LinearProgressIndicator(value: progress),
-                      const SizedBox(height: 8),
-                      Text('${(progress * 100).toStringAsFixed(0)}%'),
-                    ],
-                  );
-                },
-              ),
-              const SizedBox(height: 12),
-              const Text('Vui lòng không đóng ứng dụng', style: TextStyle(fontSize: 12)),
-            ],
+      if (mounted) {
+        _showTrackedDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const CircularProgressIndicator(),
+                const SizedBox(height: 20),
+                const Text('Đang xóa tổ chức...', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 16),
+                ValueListenableBuilder<double>(
+                  valueListenable: progressNotifier,
+                  builder: (context, progress, child) {
+                    return Column(
+                      children: [
+                        LinearProgressIndicator(value: progress),
+                        const SizedBox(height: 8),
+                        Text('${(progress * 100).toStringAsFixed(0)}%'),
+                      ],
+                    );
+                  },
+                ),
+                const SizedBox(height: 12),
+                const Text('Vui lòng không đóng ứng dụng', style: TextStyle(fontSize: 12)),
+              ],
+            ),
           ),
-        ),
-      );
-
+        );
+      }
       // Start deletion after dialog is shown
       final success = await _organizationService.deleteOrganization(
         ownerId,
@@ -1124,10 +1125,10 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
               const SizedBox(height: 12),
               _buildOrgInfoRow('ID:', org.id),
               const SizedBox(height: 12),
-              _buildOrgInfoRow('Ngày tạo:', _formatDate(org.createdAt)),
+              _buildOrgInfoRow('Ngày tạo:', _formatDate(org.createdAt, context)),
               if (org.updatedAt != null) ...[
                 const SizedBox(height: 12),
-                _buildOrgInfoRow('Cập nhật lần cuối:', _formatDate(org.updatedAt!)),
+                _buildOrgInfoRow('Cập nhật lần cuối:', _formatDate(org.updatedAt!, context)),
               ],
               if (org.address != null && org.address!.isNotEmpty) ...[
                 const SizedBox(height: 12),
@@ -1396,7 +1397,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20),
         child: Text(
-          isAdmin ? 'Quản trị viên' : 'Thành viên',
+          isAdmin ? AppTranslations.of(context).text('admin') : AppTranslations.of(context).text('member'),
           style: TextStyle(
             fontSize: 14,
             color: Colors.grey[600],
@@ -1516,7 +1517,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 20),
                     child: Text(
-                      isAdmin ? 'Quản trị viên' : 'Thành viên',
+                      isAdmin ? AppTranslations.of(context).text('admin') : AppTranslations.of(context).text('member'),
                       style: TextStyle(
                         fontSize: 14,
                         color: Colors.grey[600],
@@ -1766,7 +1767,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                             end: Alignment.bottomRight,
                             colors: [
                               Theme.of(context).colorScheme.primary,
-                              Theme.of(context).colorScheme.primary.withOpacity(0.7),
+                              Theme.of(context).colorScheme.primary.withValues(alpha: 0.7),
                             ],
                           ),
                         ),
@@ -1829,7 +1830,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                                     const SizedBox(height: 8),
                                     _buildInfoRow(
                                       Icons.calendar_today,
-                                      '${AppTranslations.of(context).text('joined_at')}: ${_formatDate(owner.createdAt)}',
+                                      '${AppTranslations.of(context).text('joined_at')}: ${_formatDate(owner.createdAt, context)}',
                                     ),
                                   ],
                                 ),
@@ -1979,7 +1980,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                                       ),
                                       const SizedBox(height: 16),
                                       Text(
-                                        'Chưa có tổ chức nào',
+                                        AppTranslations.of(context).text('no_orgs'),
                                         style: Theme.of(context).textTheme.titleLarge?.copyWith(
                                           fontSize: isSmall ? 18 : null,
                                         ),
@@ -1987,7 +1988,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                                       ),
                                       const SizedBox(height: 8),
                                       Text(
-                                        'Tạo tổ chức mới hoặc tham gia bằng mã mời',
+                                        AppTranslations.of(context).text('no_orgs_sub'),
                                         textAlign: TextAlign.center,
                                         style: TextStyle(
                                           color: Colors.grey[600],
@@ -2003,7 +2004,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                                                   child: ElevatedButton.icon(
                                                     onPressed: _showJoinOrganizationDialog,
                                                     icon: const Icon(Icons.group_add),
-                                                    label: const Text('Tham Gia'),
+                                                    label: Text(AppTranslations.of(context).text('join')),
                                                   ),
                                                 ),
                                                 const SizedBox(height: 8),
@@ -2012,7 +2013,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                                                   child: ElevatedButton.icon(
                                                     onPressed: _showCreateOrganizationDialog,
                                                     icon: const Icon(Icons.add),
-                                                    label: const Text('Tạo Mới'),
+                                                    label: Text(AppTranslations.of(context).text('create')),
                                                   ),
                                                 ),
                                               ],
@@ -2023,13 +2024,13 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                                                 ElevatedButton.icon(
                                                   onPressed: _showJoinOrganizationDialog,
                                                   icon: const Icon(Icons.group_add),
-                                                  label: const Text('Tham Gia'),
+                                                  label: Text(AppTranslations.of(context).text('join')),
                                                 ),
                                                 const SizedBox(width: 12),
                                                 ElevatedButton.icon(
                                                   onPressed: _showCreateOrganizationDialog,
                                                   icon: const Icon(Icons.add),
-                                                  label: const Text('Tạo Mới'),
+                                                  label: Text(AppTranslations.of(context).text('create')),
                                                 ),
                                               ],
                                             ),
@@ -2061,7 +2062,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                                     builder: (context, snapshot) {
                                       final role = snapshot.data?.role ?? 'member';
                                       final isAdmin = role == 'admin';
-                                      final roleText = isAdmin ? 'Quản trị viên' : 'Thành viên';
+                                      final roleText = isAdmin ? AppTranslations.of(context).text('admin') : AppTranslations.of(context).text('member');
 
                                       return InkWell(
                                         borderRadius: BorderRadius.circular(16),
@@ -2122,7 +2123,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                                                     ),
                                                     const SizedBox(height: 4),
                                                     Text(
-                                                      _formatDate(org.createdAt),
+                                                      _formatDate(org.createdAt, context),
                                                       style: TextStyle(
                                                         color: Colors.grey[600],
                                                         fontSize: isSmall ? 11 : 12,
@@ -2136,8 +2137,8 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                                                       ),
                                                       decoration: BoxDecoration(
                                                         color: isAdmin
-                                                            ? Colors.amber.withOpacity(0.2)
-                                                            : Colors.blue.withOpacity(0.2),
+                                                            ? Colors.amber.withValues(alpha: 0.2)
+                                                            : Colors.blue.withValues(alpha: 0.2),
                                                         borderRadius: BorderRadius.circular(8),
                                                       ),
                                                       child: Row(
@@ -2237,12 +2238,24 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     );
   }
 
-  String _formatDate(DateTime date) {
-    return '${date.day.toString().padLeft(2, '0')}/'
-        '${date.month.toString().padLeft(2, '0')}/'
-        '${date.year} '
-        '${date.hour.toString().padLeft(2, '0')}:'
-        '${date.minute.toString().padLeft(2, '0')}';
+ String _formatDate(DateTime date, BuildContext context) {
+    final locale = Localizations.localeOf(context).languageCode;
+    
+    if (locale == 'vi') {
+      // Vietnamese format: DD/MM/YYYY HH:mm
+      return '${date.day.toString().padLeft(2, '0')}/'
+          '${date.month.toString().padLeft(2, '0')}/'
+          '${date.year} '
+          '${date.hour.toString().padLeft(2, '0')}:'
+          '${date.minute.toString().padLeft(2, '0')}';
+    } else {
+      // English format: MM/DD/YYYY HH:mm
+      return '${date.month.toString().padLeft(2, '0')}/'
+          '${date.day.toString().padLeft(2, '0')}/'
+          '${date.year} '
+          '${date.hour.toString().padLeft(2, '0')}:'
+          '${date.minute.toString().padLeft(2, '0')}';
+    }
   }
 }
 
