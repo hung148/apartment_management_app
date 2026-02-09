@@ -338,12 +338,12 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('Để sau'),
+              child: Text(AppTranslations.of(context).text('later')),
             ),
             ElevatedButton.icon(
               onPressed: () => Navigator.pop(context, true),
               icon: const Icon(Icons.download),
-              label: const Text('Tải xuống'),
+              label: Text(AppTranslations.of(context).text('later')),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,
                 foregroundColor: Colors.white,
@@ -360,15 +360,15 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
           if (success) {
             setState(() => _updateAvailable = false);
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Đang mở trang tải xuống...'),
+              SnackBar(
+                content: Text(AppTranslations.of(context).text('opening_download_page')),
                 backgroundColor: Colors.green,
               ),
             );
           } else {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Không thể mở trình duyệt. Vui lòng kiểm tra kết nối.'),
+              SnackBar(
+                content: Text(AppTranslations.of(context).text('cannot_open_browser')),
                 backgroundColor: Colors.red,
               ),
             );
@@ -381,13 +381,13 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     _showTrackedDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => const AlertDialog(
+      builder: (context) => AlertDialog(
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             CircularProgressIndicator(),
             SizedBox(height: 16),
-            Text('Đang cập nhật...'),
+            Text(AppTranslations.of(context).text('updating')),
           ],
         ),
       ),
@@ -401,15 +401,15 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
       if (success) {
         setState(() => _updateAvailable = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Cập nhật thành công!'),
+          SnackBar(
+            content: Text(AppTranslations.of(context).text('update_success')),
             backgroundColor: Colors.green,
           ),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Không thể cập nhật. Vui lòng thử lại sau.'),
+          SnackBar(
+            content: Text(AppTranslations.of(context).text('update_failed')),
             backgroundColor: Colors.red,
           ),
         );
@@ -503,8 +503,8 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                           autofocus: !_isSmallScreen(context),
                           textCapitalization: TextCapitalization.words,
                           decoration: InputDecoration(
-                            labelText: 'Tên tổ chức *',
-                            hintText: 'VD: Chung cư ABC',
+                            labelText: AppTranslations.of(context).text('org_name_required'),
+                            hintText: AppTranslations.of(context).text('org_name_example'),
                             prefixIcon: const Icon(Icons.business),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
@@ -512,7 +512,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                           ),
                           validator: (value) {
                             if (value == null || value.trim().isEmpty) {
-                              return 'Vui lòng nhập tên tổ chức';
+                              return AppTranslations.of(context).text('please_enter_org_name');
                             }
                             return null;
                           },
@@ -524,13 +524,13 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                           textCapitalization: TextCapitalization.words,
                           maxLines: 2,
                           decoration: InputDecoration(
-                            labelText: 'Địa chỉ',
-                            hintText: 'VD: 123 Nguyễn Huệ, Q1, TP.HCM',
+                            labelText: AppTranslations.of(context).text('address'),
+                            hintText: AppTranslations.of(context).text('address_example'),
                             prefixIcon: const Icon(Icons.location_on),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
-                            helperText: 'Tùy chọn - Hiển thị trên hóa đơn',
+                            helperText: AppTranslations.of(context).text('optional_on_invoice'),
                             helperStyle: TextStyle(fontSize: 11, color: Colors.grey[600]),
                           ),
                         ),
@@ -540,13 +540,13 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                           controller: phoneController,
                           keyboardType: TextInputType.phone,
                           decoration: InputDecoration(
-                            labelText: 'Số điện thoại',
-                            hintText: 'VD: 028-1234-5678',
+                            labelText: AppTranslations.of(context).text('phone'),
+                            hintText: AppTranslations.of(context).text('phone_example'),
                             prefixIcon: const Icon(Icons.phone),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
-                            helperText: 'Tùy chọn - Hiển thị trên hóa đơn',
+                            helperText: AppTranslations.of(context).text('optional_on_invoice'),
                             helperStyle: TextStyle(fontSize: 11, color: Colors.grey[600]),
                           ),
                         ),
@@ -556,20 +556,20 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                           controller: emailController,
                           keyboardType: TextInputType.emailAddress,
                           decoration: InputDecoration(
-                            labelText: 'Email',
-                            hintText: 'VD: contact@abc.com',
+                            labelText: AppTranslations.of(context).text('email'),
+                            hintText: AppTranslations.of(context).text('email_example'),
                             prefixIcon: const Icon(Icons.email),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
-                            helperText: 'Tùy chọn - Hiển thị trên hóa đơn',
+                            helperText: AppTranslations.of(context).text('optional_on_invoice'),
                             helperStyle: TextStyle(fontSize: 11, color: Colors.grey[600]),
                           ),
                           validator: (value) {
                             if (value != null && value.isNotEmpty) {
                               final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
                               if (!emailRegex.hasMatch(value)) {
-                                return 'Email không hợp lệ';
+                                return AppTranslations.of(context).text('email_invalid');
                               }
                             }
                             return null;
@@ -582,7 +582,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                           decoration: BoxDecoration(
                             color: Colors.blue.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                            border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
                           ),
                           child: Row(
                             children: [
@@ -590,7 +590,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                               const SizedBox(width: 12),
                               Expanded(
                                 child: Text(
-                                  'Thông tin liên hệ sẽ hiển thị trên hóa đơn PDF',
+                                  AppTranslations.of(context).text('contact_info_on_invoice'),
                                   style: TextStyle(fontSize: 12, color: Colors.blue[700]),
                                 ),
                               ),
@@ -613,7 +613,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                       onPressed: () {
                         Navigator.pop(context);
                       },
-                      child: const Text('Hủy'),
+                      child: Text(AppTranslations.of(context).text('cancel')),
                     ),
                     const SizedBox(width: 8),
                     ElevatedButton.icon(
@@ -643,8 +643,8 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                           if (mounted) {
                             Navigator.pop(context);
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Tạo tổ chức thành công!'),
+                              SnackBar(
+                                content: Text(AppTranslations.of(context).text('org_created_success')),
                                 backgroundColor: Colors.green,
                               ),
                             );
@@ -653,7 +653,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                         });
                       },
                       icon: const Icon(Icons.check),
-                      label: const Text('Tạo'),
+                      label: Text(AppTranslations.of(context).text('create_action')),
                     ),
                   ],
                 ),
@@ -693,8 +693,8 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
-              'Nhập mã mời 8 ký tự để tham gia tổ chức',
+            Text(
+              AppTranslations.of(context).text('enter_invite_code'),
               style: TextStyle(fontSize: 14),
             ),
             const SizedBox(height: 16),
@@ -704,8 +704,8 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
               maxLength: 8,
               autofocus: !_isSmallScreen(context),
               decoration: InputDecoration(
-                labelText: 'Mã mời',
-                hintText: 'VD: A3F7B2C9',
+                labelText: AppTranslations.of(context).text('invite_code'),
+                hintText: AppTranslations.of(context).text('invite_code_example'),
                 prefixIcon: const Icon(Icons.vpn_key),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -717,7 +717,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Hủy'),
+            child: Text(AppTranslations.of(context).text('cancel')),
           ),
           ElevatedButton.icon(
             onPressed: () {
@@ -725,8 +725,8 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                 final code = controller.text.trim().toUpperCase();
                 if (code.length != 8) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Mã mời phải có 8 ký tự'),
+                    SnackBar(
+                      content: Text(AppTranslations.of(context).text('invite_code_8_chars')),
                       backgroundColor: Colors.orange,
                     ),
                   );
@@ -749,8 +749,8 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                   SnackBar(
                     content: Text(
                       success
-                          ? 'Tham gia tổ chức thành công!'
-                          : 'Mã mời không hợp lệ hoặc bạn đã là thành viên',
+                          ? AppTranslations.of(context).text('join_org_success')
+                          : AppTranslations.of(context).text('invite_code_invalid'),
                     ),
                     backgroundColor: success ? Colors.green : Colors.red,
                   ),
@@ -783,21 +783,21 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
           children: [
             Icon(Icons.exit_to_app, color: Colors.orange[700]),
             const SizedBox(width: 8),
-            const Flexible(child: Text('Rời khỏi tổ chức')),
+            Flexible(child: Text(AppTranslations.of(context).text('leave_org'))),
           ],
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Bạn có chắc chắn muốn rời khỏi tổ chức "${org.name}"?'),
+            Text(AppTranslations.of(context).textWithParams('leave_org_confirm', {'name': org.name})),
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: Colors.orange.withValues(alpha: .1),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -806,7 +806,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'Bạn sẽ mất quyền truy cập vào tất cả dữ liệu của tổ chức này.',
+                      AppTranslations.of(context).text('lose_access_warning'),
                       style: TextStyle(fontSize: 13, color: Colors.orange[900]),
                     ),
                   ),
@@ -818,7 +818,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Hủy'),
+            child: Text(AppTranslations.of(context).text('cancel')),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
@@ -826,7 +826,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
               backgroundColor: Colors.orange,
               foregroundColor: Colors.white,
             ),
-            child: const Text('Rời khỏi'),
+            child: Text(AppTranslations.of(context).text('leave_action')),
           ),
         ],
       ),
@@ -838,13 +838,13 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
         _showTrackedDialog(
           context: context,
           barrierDismissible: false,
-          builder: (context) => const AlertDialog(
+          builder: (context) => AlertDialog(
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 CircularProgressIndicator(),
                 SizedBox(height: 16),
-                Text('Đang rời khỏi tổ chức...'),
+                Text(AppTranslations.of(context).text('leaving_org')),
               ],
             ),
           ),
@@ -863,8 +863,8 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
           SnackBar(
             content: Text(
               success
-                  ? 'Đã rời khỏi tổ chức thành công!'
-                  : 'Không thể rời khỏi tổ chức. Bạn có thể là quản trị viên cuối cùng.',
+                  ? AppTranslations.of(context).text('left_org_success')
+                  : AppTranslations.of(context).text('cannot_leave_org'),
             ),
             backgroundColor: success ? Colors.green : Colors.red,
           ),
@@ -905,7 +905,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                   children: [
                     Icon(Icons.delete_forever, color: Colors.red[700]),
                     const SizedBox(width: 8),
-                    const Flexible(child: Text('Xóa tổ chức', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
+                    Flexible(child: Text(AppTranslations.of(context).text('delete_org'), style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
                   ],
                 ),
               ),
@@ -921,15 +921,15 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Hành động này sẽ XÓA VĨNH VIỄN tổ chức "${org.name}" và TẤT CẢ dữ liệu liên quan bao gồm:',
+                          AppTranslations.of(context).textWithParams('delete_org_warning', {'name': org.name}),
                           style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 12),
-                        _buildDeleteWarningItem('Tất cả tòa nhà'),
-                        _buildDeleteWarningItem('Tất cả phòng'),
-                        _buildDeleteWarningItem('Tất cả người thuê'),
-                        _buildDeleteWarningItem('Tất cả thanh toán'),
-                        _buildDeleteWarningItem('Tất cả thành viên'),
+                        _buildDeleteWarningItem(AppTranslations.of(context).text('all_buildings')),
+                        _buildDeleteWarningItem(AppTranslations.of(context).text('all_rooms')),
+                        _buildDeleteWarningItem(AppTranslations.of(context).text('all_tenants')),
+                        _buildDeleteWarningItem(AppTranslations.of(context).text('all_payments')),
+                        _buildDeleteWarningItem(AppTranslations.of(context).text('all_members')),
                         const SizedBox(height: 16),
                         Container(
                           padding: const EdgeInsets.all(12),
@@ -945,7 +945,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                               const SizedBox(width: 12),
                               Expanded(
                                 child: Text(
-                                  'CẢNH BÁO: Hành động này KHÔNG THỂ HOÀN TÁC!',
+                                  AppTranslations.of(context).text('warning_cannot_undo'),
                                   style: TextStyle(
                                     fontSize: 13,
                                     color: Colors.red[900],
@@ -957,8 +957,8 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                           ),
                         ),
                         const SizedBox(height: 16),
-                        const Text(
-                          'Để xác nhận, vui lòng nhập tên tổ chức:',
+                        Text(
+                          AppTranslations.of(context).text('confirm_enter_org_name'),
                           style: TextStyle(fontWeight: FontWeight.w500),
                         ),
                         const SizedBox(height: 8),
@@ -973,7 +973,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                           ),
                           validator: (value) {
                             if (value == null || value.trim() != org.name) {
-                              return 'Tên không khớp';
+                              return AppTranslations.of(context).text('name_mismatch');
                             }
                             return null;
                           },
@@ -995,7 +995,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                         nameController.dispose();
                         Navigator.pop(context, false);
                       },
-                      child: const Text('Hủy'),
+                      child: Text(AppTranslations.of(context).text('cancel')),
                     ),
                     const SizedBox(width: 8),
                     ElevatedButton(
@@ -1012,7 +1012,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                         backgroundColor: Colors.red,
                         foregroundColor: Colors.white,
                       ),
-                      child: const Text('XÓA VĨNH VIỄN'),
+                      child: Text(AppTranslations.of(context).text('delete_permanently')),
                     ),
                   ],
                 ),
@@ -1042,7 +1042,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
               children: [
                 const CircularProgressIndicator(),
                 const SizedBox(height: 20),
-                const Text('Đang xóa tổ chức...', style: TextStyle(fontWeight: FontWeight.bold)),
+                Text(AppTranslations.of(context).text('deleting_org'), style: TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 16),
                 ValueListenableBuilder<double>(
                   valueListenable: progressNotifier,
@@ -1057,7 +1057,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                   },
                 ),
                 const SizedBox(height: 12),
-                const Text('Vui lòng không đóng ứng dụng', style: TextStyle(fontSize: 12)),
+                Text(AppTranslations.of(context).text('please_dont_close'), style: TextStyle(fontSize: 12)),
               ],
             ),
           ),
@@ -1088,8 +1088,8 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
               Expanded(
                 child: Text(
                   success
-                      ? 'Đã xóa tổ chức thành công!'
-                      : 'Không thể xóa tổ chức. Vui lòng thử lại.',
+                      ? AppTranslations.of(context).text('deleted_org_success')
+                      : AppTranslations.of(context).text('cannot_delete_org')
                 ),
               ),
             ],
@@ -1115,48 +1115,48 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Thông tin tổ chức'),
+        title: Text(AppTranslations.of(context).text('org_info')),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildOrgInfoRow('Tên tổ chức:', org.name),
+              _buildOrgInfoRow(AppTranslations.of(context).text('org_name_label'), org.name),
               const SizedBox(height: 12),
-              _buildOrgInfoRow('ID:', org.id),
+              _buildOrgInfoRow(AppTranslations.of(context).text('id'), org.id),
               const SizedBox(height: 12),
-              _buildOrgInfoRow('Ngày tạo:', _formatDate(org.createdAt, context)),
+              _buildOrgInfoRow(AppTranslations.of(context).text('created_date'), _formatDate(org.createdAt, context)),
               if (org.updatedAt != null) ...[
                 const SizedBox(height: 12),
-                _buildOrgInfoRow('Cập nhật lần cuối:', _formatDate(org.updatedAt!, context)),
+                _buildOrgInfoRow(AppTranslations.of(context).text('last_updated'), _formatDate(org.updatedAt!, context)),
               ],
               if (org.address != null && org.address!.isNotEmpty) ...[
                 const SizedBox(height: 12),
-                _buildOrgInfoRow('Địa chỉ:', org.address!),
+                _buildOrgInfoRow(AppTranslations.of(context).text('address_label'), org.address!),
               ],
               if (org.phone != null && org.phone!.isNotEmpty) ...[
                 const SizedBox(height: 12),
-                _buildOrgInfoRow('Số điện thoại:', org.phone!),
+                _buildOrgInfoRow(AppTranslations.of(context).text('phone_label'), org.phone!),
               ],
               if (org.email != null && org.email!.isNotEmpty) ...[
                 const SizedBox(height: 12),
-                _buildOrgInfoRow('Email:', org.email!),
+                _buildOrgInfoRow(AppTranslations.of(context).text('email_label'), org.email!),
               ],
               if (org.bankName != null && org.bankName!.isNotEmpty) ...[
                 const SizedBox(height: 12),
-                _buildOrgInfoRow('Tên ngân hàng:', org.bankName!),
+                _buildOrgInfoRow(AppTranslations.of(context).text('bank_name'), org.bankName!),
               ],
               if (org.bankAccountNumber != null && org.bankAccountNumber!.isNotEmpty) ...[
                 const SizedBox(height: 12),
-                _buildOrgInfoRow('Số tài khoản:', org.bankAccountNumber!),
+                _buildOrgInfoRow(AppTranslations.of(context).text('account_number'), org.bankAccountNumber!),
               ],
               if (org.bankAccountName != null && org.bankAccountName!.isNotEmpty) ...[
                 const SizedBox(height: 12),
-                _buildOrgInfoRow('Chủ tài khoản:', org.bankAccountName!),
+                _buildOrgInfoRow(AppTranslations.of(context).text('account_holder'), org.bankAccountName!),
               ],
               if (org.taxCode != null && org.taxCode!.isNotEmpty) ...[
                 const SizedBox(height: 12),
-                _buildOrgInfoRow('Mã số thuế:', org.taxCode!),
+                _buildOrgInfoRow(AppTranslations.of(context).text('tax_code'), org.taxCode!),
               ],
             ],
           ),
@@ -1164,7 +1164,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
         actions: [
           ElevatedButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Đóng'),
+            child: Text(AppTranslations.of(context).text('close')),
           ),
         ],
       ),
@@ -1204,7 +1204,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
           builder: (context, setState) {
             return AlertDialog(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              title: Text(deleteAfter ? 'Di chuyển & xóa tổ chức' : 'Di chuyển dữ liệu tổ chức'),
+              title: Text(deleteAfter ? AppTranslations.of(context).text('migrate_and_delete') : AppTranslations.of(context).text('migrate_org_data')),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -1219,26 +1219,26 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('Thông tin tổ chức nguồn:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey)),
+                          Text(AppTranslations.of(context).text('source_org_info'), style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey)),
                           const SizedBox(height: 8),
-                          Text('Tên: ${sourceOrg.name}', style: const TextStyle(fontWeight: FontWeight.w500)),
-                          Text('ID: ${sourceOrg.id}', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                          Text(AppTranslations.of(context).textWithParams('name_with_value', {'name':  sourceOrg.name}), style: const TextStyle(fontWeight: FontWeight.w500)),
+                          Text(AppTranslations.of(context).textWithParams('id_with_value', {'id':  sourceOrg.id}), style: TextStyle(fontSize: 12, color: Colors.grey[600])),
                         ],
                       ),
                     ),
                     const SizedBox(height: 16),
                     TextField(
                       controller: targetController,
-                      decoration: const InputDecoration(
-                        labelText: 'ID tổ chức đích',
-                        hintText: 'Nhập ID tổ chức đích nơi muốn di chuyển',
-                        helperText: 'ID của tổ chức đích (không phải tên)',
+                      decoration: InputDecoration(
+                        labelText: AppTranslations.of(context).text('target_org_id'),
+                        hintText: AppTranslations.of(context).text('enter_target_org_id'),
+                        helperText: AppTranslations.of(context).text('target_org_id_placeholder'),
                       ),
                     ),
                     const SizedBox(height: 8),
                     if (preview != null) ...[
-                      const Text('Xem trước dữ liệu sẽ di chuyển:', style: TextStyle(fontWeight: FontWeight.bold)),
-                      Text('Tòa nhà: ${preview?['buildings'] ?? 0}, Phòng: ${preview?['rooms'] ?? 0}, Người thuê: ${preview?['tenants'] ?? 0}, Thanh toán: ${preview?['payments'] ?? 0}'),
+                      Text(AppTranslations.of(context).text('preview_data_migrate'), style: TextStyle(fontWeight: FontWeight.bold)),
+                      Text(AppTranslations.of(context).textWithParams('preview_stats', {'buildings':preview?['buildings'] ?? 0, 'rooms': preview?['rooms'] ?? 0, 'tenants': preview?['tenants'] ?? 0, 'payments': preview?['payments'] ?? 0})),
                     ],
                     if (status != null) ...[
                       const SizedBox(height: 8),
@@ -1257,7 +1257,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                 if (!started) ...[
                   TextButton(
                     onPressed: () => Navigator.pop(context),
-                    child: const Text('Hủy'),
+                    child: Text(AppTranslations.of(context).text('cancel')),
                   ),
                   TextButton(
                     onPressed: () async {
@@ -1588,7 +1588,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Hủy'),
+            child: Text(AppTranslations.of(context).text('cancel')),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),

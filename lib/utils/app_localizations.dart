@@ -50,7 +50,7 @@ class AppTranslations {
       'email_example': 'VD: contact@abc.com',
       'email_invalid': 'Email không hợp lệ',
       'contact_info_on_invoice': 'Thông tin liên hệ sẽ hiển thị trên hóa đơn PDF',
-      'cancel': 'Hủy',
+      'cancel': 'Huỷ',
       'org_created_success': 'Tạo tổ chức thành công!',
       'create_action': 'Tạo',
       'enter_invite_code': 'Nhập mã mời 8 ký tự để tham gia tổ chức',

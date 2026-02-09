@@ -54,6 +54,8 @@ dependencies:
   http: ^1.6.0
   get_it: ^9.2.0
   flutter_localization: ^0.3.3
+  flutter_localizations:
+    sdk: flutter
 
 dev_dependencies:
   flutter_test:
