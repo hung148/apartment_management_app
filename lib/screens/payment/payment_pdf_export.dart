@@ -151,8 +151,32 @@ class PaymentPDFExporter {
                 pw.Row(
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [
-                    pw.Text(organization.name.toUpperCase(),
-                      style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, font: boldFont, color: PdfColors.blue900)),
+                    pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text(
+                          organization.name.toUpperCase(),
+                          style: pw.TextStyle(
+                            fontSize: 14, 
+                            fontWeight: pw.FontWeight.bold, 
+                            font: boldFont, 
+                            color: PdfColors.blue900
+                          )
+                        ),
+                        // ADDED: Tax Code in header
+                        if (organization.taxCode != null && organization.taxCode!.isNotEmpty)
+                          pw.SizedBox(height: 4),
+                        if (organization.taxCode != null && organization.taxCode!.isNotEmpty)
+                          pw.Text(
+                            'Mã số thuế / Tax Code: ${organization.taxCode}',
+                            style: pw.TextStyle(
+                              fontSize: 9, 
+                              font: regularFont,
+                              color: PdfColors.grey800
+                            )
+                          ),
+                      ],
+                    ),
                   ],
                 ),
                 pw.SizedBox(height: 20),

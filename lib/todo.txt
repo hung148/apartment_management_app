@@ -2,15 +2,18 @@ add vehicle management tab where it only dislay tenant vehicle with currently re
 
 better date chooser that support vietnamese
 
-display room type and area in tenant information view
+add room type and area in tenant information view if they are currently renting
 
 fix Vi tri should display khong xac dinh if tenant move out
 
 show tenant email in export to hoa don
 
 ma so thue
+Show example format in the hint text or helper text
+If supporting multiple countries, add country-specific tax code validation
 
 fix security rule
 
 add app icon
+
 

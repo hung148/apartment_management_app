@@ -462,6 +462,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     final addressController = TextEditingController();
     final phoneController = TextEditingController();
     final emailController = TextEditingController();
+    final taxCodeController = TextEditingController(); // ADDED: Tax code controller
     final formKey = GlobalKey<FormState>();
 
     await _showTrackedDialog(
@@ -575,6 +576,32 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                             return null;
                           },
                         ),
+                        const SizedBox(height: 16),
+                        
+                        // ADDED: Tax Code Field
+                        TextFormField(
+                          controller: taxCodeController,
+                          keyboardType: TextInputType.number,
+                          decoration: InputDecoration(
+                            labelText: AppTranslations.of(context).text('tax_code'),
+                            hintText: '0123456789 or 0123456789-001',
+                            prefixIcon: const Icon(Icons.receipt_long),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            helperText: AppTranslations.of(context).text('optional_on_invoice'),
+                            helperStyle: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                          ),
+                          validator: (value) {
+                            if (value != null && value.isNotEmpty) {
+                              // Basic validation: 10-14 digits with optional hyphen
+                              if (!_organizationService.isValidTaxCode(value)) {
+                                return 'Invalid tax code format';
+                              }
+                            }
+                            return null;
+                          },
+                        ),
                         const SizedBox(height: 8),
                         
                         Container(
@@ -638,6 +665,9 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                             email: emailController.text.trim().isEmpty 
                                 ? null 
                                 : emailController.text.trim(),
+                            taxCode: taxCodeController.text.trim().isEmpty  // ADDED: Tax code parameter
+                                ? null 
+                                : taxCodeController.text.trim(),
                           );
 
                           if (mounted) {
@@ -669,6 +699,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     addressController.dispose();
     phoneController.dispose();
     emailController.dispose();
+    taxCodeController.dispose(); // ADDED: Dispose tax code controller
   }
 
   // ========================================
@@ -1264,31 +1295,31 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                       setState(() => status = null);
                       final id = targetController.text.trim();
                       if (id.isEmpty) {
-                        setState(() => status = 'Vui lòng nhập ID tổ chức đích.');
+                        setState(() => status = AppTranslations.of(context).text('please_enter_target_id'));
                         return;
                       }
-                      setState(() => status = 'Đang lấy xem trước...');
+                      setState(() => status = AppTranslations.of(context).text('fetching_preview'));
                       try {
                         final result = await _organizationService.getMigrationPreview(sourceOrg.id);
                         setState(() => preview = result);
-                        setState(() => status = 'Đã lấy xem trước.');
+                        setState(() => status = AppTranslations.of(context).text('fetched_preview'));
                       } catch (e) {
-                        setState(() => status = 'Lỗi khi lấy xem trước: $e');
+                        setState(() => status = AppTranslations.of(context).textWithParams('preview_error', {'error': e})); 
                       }
                     },
-                    child: const Text('Xem trước'),
+                    child: Text(AppTranslations.of(context).text('preview')),
                   ),
                   ElevatedButton(
                     onPressed: () async {
                       final targetId = targetController.text.trim();
                       if (targetId.isEmpty) {
-                        setState(() => status = 'Vui lòng nhập ID tổ chức đích.');
+                        setState(() => status = AppTranslations.of(context).text('please_enter_target_id'));
                         return;
                       }
                       setState(() {
                         loading = true;
                         started = true;
-                        status = deleteAfter ? 'Đang di chuyển và xóa...' : 'Đang di chuyển dữ liệu...';
+                        status = deleteAfter ? AppTranslations.of(context).text('migrating_and_deleting') : AppTranslations.of(context).text('migrating_data');
                         progress = 0.0;
                       });
                       bool success = false;
@@ -1311,28 +1342,30 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                           );
                         }
                       } catch (e) {
-                        setState(() => status = 'Lỗi: $e');
+                        setState(() => status = AppTranslations.of(context).textWithParams('error', {'error': e})); 
                       }
                       setState(() {
                         loading = false;
                         started = false;
                       });
                       if (success) {
-                        if (mounted) Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(deleteAfter
-                                ? 'Đã di chuyển và xóa tổ chức thành công!'
-                                : 'Đã di chuyển dữ liệu thành công!'),
-                            backgroundColor: Colors.green,
-                          ),
-                        );
+                        if (mounted) {
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(deleteAfter
+                                  ? AppTranslations.of(context).text('migrated_and_deleted_success')
+                                  : AppTranslations.of(context).text('migrated_data_success')),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                        }
                         this.setState(() {});
                       } else {
-                        setState(() => status = 'Thao tác thất bại.');
+                        setState(() => status = AppTranslations.of(context).text('operation_failed'));
                       }
                     },
-                    child: Text(deleteAfter ? 'Di chuyển & XÓA' : 'Di chuyển'),
+                    child: Text(deleteAfter ? AppTranslations.of(context).text('migrate_and_delete_action') : AppTranslations.of(context).text('migrate_action') ),
                   ),
                 ],
               ],
@@ -1411,7 +1444,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     List<Widget> menuItems = [
       ListTile(
         leading: Icon(Icons.open_in_new, color: Theme.of(context).colorScheme.primary),
-        title: const Text('Mở tổ chức'),
+        title: Text(AppTranslations.of(context).text('open_org')),
         onTap: () {
           Navigator.pop(context);
           Navigator.pushNamed(
@@ -1424,8 +1457,8 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
       const Divider(height: 1),
       ListTile(
         leading: Icon(Icons.info_outline, color: Colors.blue[700]),
-        title: const Text('Xem thông tin tổ chức'),
-        subtitle: const Text('Chi tiết tổ chức và ID'),
+        title: Text(AppTranslations.of(context).text('view_org_info')),
+        subtitle: Text(AppTranslations.of(context).text('org_details_and_id')),
         onTap: () {
           Navigator.pop(context);
           _showOrganizationInfo(org);
@@ -1435,8 +1468,8 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
       if (isAdmin) ...[
         ListTile(
           leading: Icon(Icons.compare_arrows, color: Colors.blue[700]),
-          title: const Text('Di chuyển dữ liệu sang tổ chức khác'),
-          subtitle: const Text('Sao chép toàn bộ dữ liệu sang tổ chức khác'),
+          title: Text(AppTranslations.of(context).text('migrate_to_other_org')),
+          subtitle: Text(AppTranslations.of(context).text('copy_all_data')),
           onTap: () {
             Navigator.pop(context);
             _showMigrateOrganizationDialog(org, ownerId, false);
@@ -1445,8 +1478,8 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
         const Divider(height: 1),
         ListTile(
           leading: Icon(Icons.delete_sweep, color: Colors.red[700]),
-          title: const Text('Di chuyển & xóa tổ chức'),
-          subtitle: const Text('Chuyển dữ liệu và xóa tổ chức này'),
+          title: Text(AppTranslations.of(context).text('migrate_and_delete_org')),
+          subtitle: Text(AppTranslations.of(context).text('transfer_and_delete')),
           onTap: () {
             Navigator.pop(context);
             _showMigrateOrganizationDialog(org, ownerId, true);
@@ -1455,8 +1488,8 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
         const Divider(height: 1),
         ListTile(
           leading: Icon(Icons.delete_forever, color: Colors.red[700]),
-          title: const Text('Xóa tổ chức'),
-          subtitle: const Text('Xóa vĩnh viễn tổ chức và tất cả dữ liệu'),
+          title: Text(AppTranslations.of(context).text('delete_org_action')),
+          subtitle: Text(AppTranslations.of(context).text('delete_org_permanently')),
           onTap: () {
             Navigator.pop(context);
             _showDeleteOrganizationDialog(org, ownerId);
@@ -1465,8 +1498,8 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
       ] else ...[
         ListTile(
           leading: Icon(Icons.exit_to_app, color: Colors.orange[700]),
-          title: const Text('Rời khỏi tổ chức'),
-          subtitle: const Text('Bạn sẽ mất quyền truy cập'),
+          title: Text(AppTranslations.of(context).text('leave_org_action')),
+          subtitle: Text(AppTranslations.of(context).text('will_lose_access')),
           onTap: () {
             Navigator.pop(context);
             _showLeaveOrganizationDialog(org, ownerId);
@@ -1583,8 +1616,8 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Xác nhận đăng xuất'),
-        content: const Text('Bạn có chắc chắn muốn đăng xuất?'),
+        title: Text(AppTranslations.of(context).text('confirm_logout')),
+        content: Text(AppTranslations.of(context).text('confirm_logout_message')),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -1596,7 +1629,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
               backgroundColor: Colors.red,
               foregroundColor: Colors.white,
             ),
-            child: const Text('Đăng xuất'),
+            child: Text(AppTranslations.of(context).text('logout_action')),
           ),
         ],
       ),
@@ -1682,7 +1715,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                     Icon(Icons.warning_amber_rounded, size: 64, color: Colors.orange[700]),
                     const SizedBox(height: 16),
                     Text(
-                      'Kích thước cửa sổ quá nhỏ',
+                      AppTranslations.of(context).text('window_size_too_small'),
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                         fontWeight: FontWeight.bold,
                       ),
@@ -1690,13 +1723,13 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Kích thước tối thiểu: ${minWidth.toInt()}x${minHeight.toInt()}',
+                      AppTranslations.of(context).textWithParams('minimum_size', {'width': minWidth.toInt(), 'height': minHeight.toInt()}), 
                       style: TextStyle(color: Colors.grey[600]),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Hiện tại: ${constraints.maxWidth.toInt()}x${constraints.maxHeight.toInt()}',
+                      AppTranslations.of(context).textWithParams('current_size', {'width': constraints.maxWidth.toInt(), 'height': constraints.maxHeight.toInt()}), 
                       style: TextStyle(color: Colors.grey[600]),
                       textAlign: TextAlign.center,
                     ),
@@ -1730,7 +1763,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                           ),
                           const SizedBox(height: 16),
                           Text(
-                            'Không tìm thấy dữ liệu người dùng',
+                            AppTranslations.of(context).text('user_data_not_found'),
                             style: TextStyle(
                               color: Theme.of(context).colorScheme.error,
                               fontSize: isSmall ? 14 : 16,
@@ -1742,7 +1775,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                           ElevatedButton.icon(
                             onPressed: _handleLogout,
                             icon: const Icon(Icons.logout),
-                            label: const Text('Đăng xuất'),
+                            label: Text(AppTranslations.of(context).text('logout_action')),
                           ),
                         ],
                       ),
@@ -2172,7 +2205,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                                               ),
                                               // Three-dot menu button
                                               Tooltip(
-                                                message: 'Tùy chọn tổ chức',
+                                                message: AppTranslations.of(context).text('org_options'),
                                                 child: Material(
                                                   color: Colors.transparent,
                                                   child: InkWell(
