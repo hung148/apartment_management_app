@@ -1,6 +1,6 @@
 add vehicle management tab where it only dislay tenant vehicle with currently renting status
 
-better date chooser that support vietnamese
+better date chooser that support vietnamese and be able to directly enter day, month, year
 
 add room type and area in tenant information view if they are currently renting
 
@@ -15,5 +15,11 @@ If supporting multiple countries, add country-specific tax code validation
 fix security rule
 
 add app icon
+
+ti lap day toa nha hien tai doesn't allow to choose
+
+noi lam viec not show up in add Tenant
+
+update tanent in room to be the same as tenantTab
 
 

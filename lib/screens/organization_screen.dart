@@ -124,12 +124,29 @@ class _OrganizationScreenState extends State<OrganizationScreen> with WidgetsBin
 
   final TextEditingController _searchController = TextEditingController();
   
+  Future<List<dynamic>>? _statsFuture;
+
+  void _refreshStats() {
+    if (!mounted) return;
+    setState(() {
+      _statsFuture = Future.wait([
+        _getAllTenants(),
+        _getAllPayments(),
+        _getBuildings(),
+        _getAllRooms(),
+      ]);
+    });
+  }
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     // Load payments when the screen initializes
     _paymentsNotifier.loadPayments(widget.organization.id);
+
+    // Initial load
+    _refreshStats();
   }
 
   @override
@@ -318,7 +335,8 @@ class _OrganizationScreenState extends State<OrganizationScreen> with WidgetsBin
                 backgroundColor: Colors.green,
               ),
             );
-            setState(() {}); // Refresh the list
+            setState(() {}); // Refresh building list
+            _refreshStats(); 
           }
         }
       } catch (e) {
@@ -724,6 +742,7 @@ class _OrganizationScreenState extends State<OrganizationScreen> with WidgetsBin
                   roomService: _roomService,
                   organizationService: _orgService,
                   authService: _authService, // use your field name
+                  onChanged: () => _refreshStats(),
                 ),
                 _buildPaymentsTab(),
                 _buildStatisticsTab(),
@@ -1300,286 +1319,297 @@ Widget _buildPaymentsList(List<Payment> allPayments, String searchText, bool isA
   // STATISTICS TAB
   // ========================================
   Widget _buildStatisticsTab() {
-    return FutureBuilder<List<dynamic>>(
-      future: Future.wait([
-        _getAllTenants(),
-        _getAllPayments(),
-        _getBuildings(),
-        _getAllRooms(), // Fetch real room data
-      ]),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
+    return ListenableBuilder(
+      listenable: _paymentsNotifier,
+      builder: (context, _) {
+        return FutureBuilder<List<dynamic>>(
+          future: _statsFuture,
+          builder: (context, snapshot) {
+          // ONLY show the loading spinner on the VERY FIRST load
+          if (snapshot.connectionState == ConnectionState.waiting && snapshot.data == null) {
+            return const Center(child: CircularProgressIndicator());
+          }
 
-        if (!snapshot.hasData) {
-          return const Center(child: Text('Không có dữ liệu'));
-        }
+            if (!snapshot.hasData) {
+              return const Center(child: Text('Không có dữ liệu'));
+            }
 
-        final tenants = snapshot.data![0] as List<Tenant>;
-        final payments = snapshot.data![1] as List<Payment>;
-        final buildings = snapshot.data![2] as List<Building>;
-        final rooms = snapshot.data![3] as List<Room>;
+            final tenants = snapshot.data![0] as List<Tenant>;
+            final payments = _paymentsNotifier.payments;
+            final buildings = snapshot.data![2] as List<Building>;
+            final rooms = snapshot.data![3] as List<Room>;
 
-        // Calculate statistics
-        final activeTenants = tenants.where((t) => t.status == TenantStatus.active).length;
-        
-        final totalPayments = payments.length;
-        final paidPayments = payments.where((p) => p.status == PaymentStatus.paid).length;
-        final pendingPayments = payments.where((p) => p.status == PaymentStatus.pending).length;
-        final overduePayments = payments.where((p) => p.isOverdue).length;
-        
-        final totalRevenue = payments
-            .where((p) => p.status == PaymentStatus.paid)
-            .fold<double>(0, (sum, p) => sum + p.paidAmount);
-        
-        final pendingRevenue = payments
-            .where((p) => p.status == PaymentStatus.pending)
-            .fold<double>(0, (sum, p) => sum + p.remainingAmount);
-
-        // Calculate monthly revenue for chart
-        final monthlyRevenue = _calculateMonthlyRevenue(payments);
-        
-        // Calculate building occupancy with real room data
-        final buildingOccupancy = _calculateBuildingOccupancy(buildings, rooms, tenants);
-
-        return SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Tổng quan',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 16),
+            // Calculate statistics
+            final activeTenants = tenants.where((t) => t.status == TenantStatus.active).length;
+            
+            final totalPayments = payments.length;
+            final paidPayments = payments.where((p) => p.status == PaymentStatus.paid).length;
+            final pendingPayments = payments.where((p) => p.status == PaymentStatus.pending).length;
+            final overduePayments = payments.where((p) => p.isOverdue).length;
+            
+            final totalRevenue = payments.fold<double>(0, (sum, p) {
+              // If status is 'paid' but paidAmount is accidentally 0, fallback to totalWithAllFees
+              if (p.status == PaymentStatus.paid && p.paidAmount == 0) {
+                return sum + p.totalWithAllFees;
+              }
+              return sum + p.paidAmount;
+            });
+            
+            final pendingRevenue = payments.fold<double>(0, (sum, p) {
+              // We ignore Paid (remaining is 0) and Cancelled (we don't expect to collect it)
+              if (p.status == PaymentStatus.paid || p.status == PaymentStatus.cancelled) {
+                return sum;
+              }
               
-              // Buildings & Tenants
-              Row(
+              // For Pending, Overdue, and Partial, use the model property
+              return sum + p.remainingAmount;
+            });
+
+            // Calculate monthly revenue for chart
+            final monthlyRevenue = _calculateMonthlyRevenue(payments);
+            
+            // Calculate building occupancy with real room data
+            final buildingOccupancy = _calculateBuildingOccupancy(buildings, rooms, tenants);
+
+            return SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: _buildStatCard(
-                      'Toà nhà',
-                      buildings.length.toString(),
-                      Icons.apartment,
-                      Colors.blue,
+                  const Text(
+                    'Tổng quan',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildStatCard(
-                      'Người thuê',
-                      '$activeTenants',
-                      Icons.people,
-                      Colors.green,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              
-              // Payments Overview
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildStatCard(
-                      'Đã thanh toán',
-                      paidPayments.toString(),
-                      Icons.check_circle,
-                      Colors.green,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildStatCard(
-                      'Chưa thanh toán',
-                      pendingPayments.toString(),
-                      Icons.pending,
-                      Colors.orange,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildStatCard(
-                      'Quá hạn',
-                      overduePayments.toString(),
-                      Icons.warning,
-                      Colors.red,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildStatCard(
-                      'Tổng hóa đơn',
-                      totalPayments.toString(),
-                      Icons.receipt_long,
-                      Colors.purple,
-                    ),
-                  ),
-                ],
-              ),
-              
-              const SizedBox(height: 24),
-              const Text(
-                'Doanh thu',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 16),
-              
-              // Revenue Cards
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  const SizedBox(height: 16),
+                  
+                  // Buildings & Tenants
+                  Row(
                     children: [
-                      Row(
-                        children: [
-                          Icon(Icons.attach_money, color: Colors.green.shade700),
-                          const SizedBox(width: 8),
-                          const Text(
-                            'Đã thu',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey,
-                            ),
-                          ),
-                        ],
+                      Expanded(
+                        child: _buildStatCard(
+                          'Toà nhà',
+                          buildings.length.toString(),
+                          Icons.apartment,
+                          Colors.blue,
+                        ),
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _formatCurrency(totalRevenue),
-                        style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.green.shade700,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildStatCard(
+                          'Người thuê',
+                          '$activeTenants',
+                          Icons.people,
+                          Colors.green,
                         ),
                       ),
                     ],
                   ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  const SizedBox(height: 12),
+                  
+                  // Payments Overview
+                  Row(
                     children: [
-                      Row(
-                        children: [
-                          Icon(Icons.schedule, color: Colors.orange.shade700),
-                          const SizedBox(width: 8),
-                          const Text(
-                            'Chưa thu',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey,
-                            ),
-                          ),
-                        ],
+                      Expanded(
+                        child: _buildStatCard(
+                          'Đã thanh toán',
+                          paidPayments.toString(),
+                          Icons.check_circle,
+                          Colors.green,
+                        ),
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _formatCurrency(pendingRevenue),
-                        style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.orange.shade700,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildStatCard(
+                          'Chưa thanh toán',
+                          pendingPayments.toString(),
+                          Icons.pending,
+                          Colors.orange,
                         ),
                       ),
                     ],
                   ),
-                ),
-              ),
-              
-              // Monthly Revenue Chart
-              const SizedBox(height: 24),
-              const Text(
-                'Doanh thu theo tháng',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 16),
-              _buildMonthlyRevenueChart(monthlyRevenue),
-              
-              // Building Occupancy Chart
-              const SizedBox(height: 24),
-              const Text(
-                'Tỷ lệ lấp đầy theo toà nhà hiện tại',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 16),
-              _buildBuildingOccupancyChart(buildingOccupancy),
-              
-              // Monthly Occupancy Trend Chart
-              const SizedBox(height: 24),
-              const Text(
-                'Xu hướng lấp đầy theo tháng',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 16),
-              _buildMonthlyOccupancyTrendChart(buildings, rooms, tenants),
-              const SizedBox(height: 32),
+                  const SizedBox(height: 12),
+                  
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildStatCard(
+                          'Quá hạn',
+                          overduePayments.toString(),
+                          Icons.warning,
+                          Colors.red,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildStatCard(
+                          'Tổng hóa đơn',
+                          totalPayments.toString(),
+                          Icons.receipt_long,
+                          Colors.purple,
+                        ),
+                      ),
+                    ],
+                  ),
+                  
+                  const SizedBox(height: 24),
+                  const Text(
+                    'Doanh thu',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  
+                  // Revenue Cards
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(Icons.attach_money, color: Colors.green.shade700),
+                              const SizedBox(width: 8),
+                              const Text(
+                                'Đã thu',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            _formatCurrency(totalRevenue),
+                            style: TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.green.shade700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(Icons.schedule, color: Colors.orange.shade700),
+                              const SizedBox(width: 8),
+                              const Text(
+                                'Chưa thu',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            _formatCurrency(pendingRevenue),
+                            style: TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.orange.shade700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  
+                  // Monthly Revenue Chart
+                  const SizedBox(height: 24),
+                  const Text(
+                    'Doanh thu theo tháng',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildMonthlyRevenueChart(monthlyRevenue),
+                  
+                  // Building Occupancy Chart
+                  const SizedBox(height: 24),
+                  const Text(
+                    'Tỷ lệ lấp đầy theo toà nhà hiện tại',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildBuildingOccupancyChart(buildingOccupancy),
+                  
+                  // Monthly Occupancy Trend Chart
+                  const SizedBox(height: 24),
+                  const Text(
+                    'Xu hướng lấp đầy theo tháng',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildMonthlyOccupancyTrendChart(buildings, rooms, tenants),
+                  const SizedBox(height: 32),
 
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      icon: const Icon(Icons.table_chart_outlined, size: 20),
-                      label: const Text('Xuất Excel'),
-                      onPressed: () => _exportStatisticsToExcel(
-                        buildings: buildings, 
-                        tenants: tenants, 
-                        rooms: rooms, 
-                        payments: payments,
-                        organizationName: widget.organization.name,
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.table_chart_outlined, size: 20),
+                          label: const Text('Xuất Excel'),
+                          onPressed: () => _exportStatisticsToExcel(
+                            buildings: buildings, 
+                            tenants: tenants, 
+                            rooms: rooms, 
+                            payments: payments,
+                            organizationName: widget.organization.name,
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      icon: const Icon(Icons.picture_as_pdf_outlined, size: 20),
-                      label: const Text('Xuất PDF'),
-                      onPressed: () => _exportStatisticsToPdf(
-                        buildings: buildings, 
-                        tenants: tenants, 
-                        rooms: rooms, 
-                        payments: payments,
-                        organizationName: widget.organization.name,
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.picture_as_pdf_outlined, size: 20),
+                          label: const Text('Xuất PDF'),
+                          onPressed: () => _exportStatisticsToPdf(
+                            buildings: buildings, 
+                            tenants: tenants, 
+                            rooms: rooms, 
+                            payments: payments,
+                            organizationName: widget.organization.name,
+                          ),
+                        ),
                       ),
-                    ),
+                    ],
                   ),
+
+                  const SizedBox(height: 24),
                 ],
               ),
-
-              const SizedBox(height: 24),
-            ],
-          ),
+            );
+          },
         );
-      },
+      }
     );
   }
 
@@ -1633,9 +1663,31 @@ Future<void> _exportStatisticsToPdf({
     final overduePayments = payments.where((p) => p.isOverdue).toList();
     final cancelledPayments = payments.where((p) => p.status == PaymentStatus.cancelled).toList();
     
-    final totalRevenue = paidPayments.fold<double>(0, (sum, p) => sum + p.paidAmount);
-    final pendingRevenue = pendingPayments.fold<double>(0, (sum, p) => sum + p.remainingAmount);
-    final overdueRevenue = overduePayments.fold<double>(0, (sum, p) => sum + p.remainingAmount);
+    final totalRevenue = paidPayments.fold<double>(0, (sum, p) {
+      if (p.status == PaymentStatus.paid) {
+        // If it's fully paid, take the totalAmount (or paidAmount if it's set)
+        return sum + (p.paidAmount > 0 ? p.paidAmount : p.totalAmount);
+      }
+      return sum + p.paidAmount;
+    });
+    final pendingRevenue = payments.fold<double>(0, (sum, p) {
+      // We ignore Paid (remaining is 0) and Cancelled (we don't expect to collect it)
+      if (p.status == PaymentStatus.paid || p.status == PaymentStatus.cancelled) {
+        return sum;
+      }
+      
+      // For Pending, Overdue, and Partial, use the model property
+      return sum + p.remainingAmount;
+    });
+    final overdueRevenue = payments.fold<double>(0, (sum, p) {
+      // We ignore Paid (remaining is 0) and Cancelled (we don't expect to collect it)
+      if (p.status == PaymentStatus.paid || p.status == PaymentStatus.cancelled) {
+        return sum;
+      }
+      
+      // For Pending, Overdue, and Partial, use the model property
+      return sum + p.remainingAmount;
+    });
     
     // Monthly revenue calculation
     final monthlyRevenue = _calculateMonthlyRevenue(payments);
@@ -2280,9 +2332,31 @@ Future<void> _exportStatisticsToPdf({
       final overduePayments = payments.where((p) => p.isOverdue).toList();
       final cancelledPayments = payments.where((p) => p.status == PaymentStatus.cancelled).toList();
       
-      final totalRevenue = paidPayments.fold<double>(0, (sum, p) => sum + p.paidAmount);
-      final pendingRevenue = pendingPayments.fold<double>(0, (sum, p) => sum + p.remainingAmount);
-      final overdueRevenue = overduePayments.fold<double>(0, (sum, p) => sum + p.remainingAmount);
+      final totalRevenue = payments.fold<double>(0, (sum, p) {
+        // If status is 'paid' but paidAmount is accidentally 0, fallback to totalWithAllFees
+        if (p.status == PaymentStatus.paid && p.paidAmount == 0) {
+          return sum + p.totalWithAllFees;
+        }
+        return sum + p.paidAmount;
+      });
+      final pendingRevenue = payments.fold<double>(0, (sum, p) {
+        // We ignore Paid (remaining is 0) and Cancelled (we don't expect to collect it)
+        if (p.status == PaymentStatus.paid || p.status == PaymentStatus.cancelled) {
+          return sum;
+        }
+        
+        // For Pending, Overdue, and Partial, use the model property
+        return sum + p.remainingAmount;
+      });
+      final overdueRevenue =  payments.fold<double>(0, (sum, p) {
+        // We ignore Paid (remaining is 0) and Cancelled (we don't expect to collect it)
+        if (p.status == PaymentStatus.paid || p.status == PaymentStatus.cancelled) {
+          return sum;
+        }
+        
+        // For Pending, Overdue, and Partial, use the model property
+        return sum + p.remainingAmount;
+      });
       
       // Building-specific stats
       final Map<String, _BuildingStats> statsByBuilding = {};
@@ -2701,13 +2775,16 @@ Future<void> _exportStatisticsToPdf({
     
     // Calculate revenue for each month
     for (var payment in payments.where((p) => p.status == PaymentStatus.paid)) {
-      if (payment.paidAt != null) {
-        final monthKey = DateFormat('MM/yyyy').format(payment.paidAt!);
-        if (monthlyRevenue.containsKey(monthKey)) {
-          monthlyRevenue[monthKey] = (monthlyRevenue[monthKey] ?? 0) + payment.paidAmount;
-        }
-      }
+    // Use paidAt if available, otherwise fallback to createdAt so it still shows on the chart
+    final dateToUse = payment.paidAt ?? payment.createdAt; 
+    final monthKey = DateFormat('MM/yyyy').format(dateToUse);
+    
+    if (monthlyRevenue.containsKey(monthKey)) {
+      // Fallback: If paidAmount is 0 but status is paid, use totalAmount
+      double amount = payment.paidAmount > 0 ? payment.paidAmount : payment.totalWithAllFees;
+      monthlyRevenue[monthKey] = (monthlyRevenue[monthKey] ?? 0) + amount;
     }
+  }
     
     return monthlyRevenue;
   }
@@ -2757,41 +2834,38 @@ Future<void> _exportStatisticsToPdf({
   ) {
     final Map<String, double> monthlyOccupancy = {};
     final now = DateTime.now();
-    
-    // Get rooms for this building
+
+    // 1. Get total rooms for this building
     final buildingRooms = rooms.where((r) => r.buildingId == buildingId).toList();
     final totalRooms = buildingRooms.length;
-    
     if (totalRooms == 0) return monthlyOccupancy;
-    
-    // Calculate for last 12 months
+
+    // 2. Loop through the last 12 months
     for (int i = 11; i >= 0; i--) {
-      final month = DateTime(now.year, now.month - i, 1);
-      final monthKey = DateFormat('MM/yyyy').format(month);
-      
-      // Count tenants who were active during this month
-      final activeTenants = tenants.where((tenant) {
-        // Check if tenant belongs to this building
+      final monthDate = DateTime(now.year, now.month - i, 1);
+      final monthEnd = DateTime(monthDate.year, monthDate.month + 1, 0); // Last day of that month
+      final monthKey = DateFormat('MM/yyyy').format(monthDate);
+
+      // 3. Count tenants who were "living there" during that month
+      final activeTenantsCount = tenants.where((tenant) {
         if (tenant.buildingId != buildingId) return false;
-        
-        // Tenant moved in before or during this month
-        final movedInBeforeOrDuringMonth = tenant.moveInDate.isBefore(
-          DateTime(month.year, month.month + 1, 1)
-        );
-        
-        // Check if tenant was still active
-        // (either no move out date, or moved out after this month started)
-        final stillActiveInMonth = tenant.status == TenantStatus.active ||
-            (tenant.moveInDate.year < month.year ||
-             (tenant.moveInDate.year == month.year && tenant.moveInDate.month <= month.month));
-        
-        return movedInBeforeOrDuringMonth && stillActiveInMonth;
+
+        // Check if they had moved in by the end of this month
+        final hasMovedIn = tenant.moveInDate.isBefore(monthEnd) || 
+                          tenant.moveInDate.isAtSameMomentAs(monthEnd);
+
+        // logic: If they are currently ACTIVE, they were active in the past (post-move-in)
+        // If they are moveOut, they were only active IF we knew their moveOutDate.
+        // For now, we count currently Active tenants in their historical months.
+        final isCurrentlyActive = tenant.status == TenantStatus.active;
+
+        return hasMovedIn && isCurrentlyActive;
       }).length;
-      
-      final occupancyRate = (activeTenants.toDouble() / totalRooms.toDouble() * 100);
+
+      double occupancyRate = (activeTenantsCount.toDouble() / totalRooms.toDouble() * 100);
       monthlyOccupancy[monthKey] = occupancyRate;
     }
-    
+
     return monthlyOccupancy;
   }
 

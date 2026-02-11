@@ -10,6 +10,7 @@ import 'package:apartment_management_project_2/services/payments_service.dart';
 import 'package:apartment_management_project_2/services/room_service.dart';
 import 'package:apartment_management_project_2/services/tenants_service.dart';
 import 'package:apartment_management_project_2/utils/currency_formatter.dart';
+import 'package:apartment_management_project_2/widgets/date_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -318,49 +319,6 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> w
     }
   }
 
-  Future<void> _selectDate(String dateType) async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: _getDueDate(dateType),
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2030),
-    );
-    
-    if (picked != null) {
-      setState(() {
-        switch (dateType) {
-          case 'billingStart':
-            _billingStartDate = picked;
-            break;
-          case 'billingEnd':
-            _billingEndDate = picked;
-            break;
-          case 'due':
-            _dueDate = picked;
-            break;
-          case 'paid':
-            _paidAt = picked;
-            break;
-        }
-      });
-    }
-  }
-
-  DateTime _getDueDate(String dateType) {
-    switch (dateType) {
-      case 'billingStart':
-        return _billingStartDate ?? DateTime.now();
-      case 'billingEnd':
-        return _billingEndDate ?? DateTime.now();
-      case 'due':
-        return _dueDate ?? DateTime.now().add(const Duration(days: 30));
-      case 'paid':
-        return _paidAt ?? DateTime.now();
-      default:
-        return DateTime.now();
-    }
-  }
-
   // Show dialog to add a line item with meter readings support
   Future<void> _showAddLineItemDialog() async {
     PaymentType? selectedType;
@@ -469,6 +427,8 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> w
                       style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                     ),
                     const SizedBox(height: 8),
+                    
+                    // Start reading and date
                     Row(
                       children: [
                         Expanded(
@@ -484,36 +444,21 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> w
                         ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: TextFormField(
-                            readOnly: true,
-                            decoration: InputDecoration(
-                              labelText: 'Từ ngày',
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                              suffixIcon: IconButton(
-                                icon: const Icon(Icons.calendar_today, size: 20),
-                                onPressed: () async {
-                                  final picked = await showDatePicker(
-                                    context: context,
-                                    initialDate: electricityStartDate ?? DateTime.now(),
-                                    firstDate: DateTime(2020),
-                                    lastDate: DateTime.now(),
-                                  );
-                                  if (picked != null) {
-                                    setDialogState(() => electricityStartDate = picked);
-                                  }
-                                },
-                              ),
-                            ),
-                            controller: TextEditingController(
-                              text: electricityStartDate != null 
-                                  ? DateFormat('dd/MM/yyyy').format(electricityStartDate!) 
-                                  : '',
-                            ),
+                          child: CompactVietnameseDatePicker(
+                            labelText: 'Từ ngày',
+                            initialDate: electricityStartDate,
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime.now(),
+                            onDateChanged: (date) {
+                              setDialogState(() => electricityStartDate = date);
+                            },
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 12),
+                    
+                    // End reading and date
                     Row(
                       children: [
                         Expanded(
@@ -529,36 +474,23 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> w
                         ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: TextFormField(
-                            readOnly: true,
-                            decoration: InputDecoration(
-                              labelText: 'Đến ngày',
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                              suffixIcon: IconButton(
-                                icon: const Icon(Icons.calendar_today, size: 20),
-                                onPressed: () async {
-                                  final picked = await showDatePicker(
-                                    context: context,
-                                    initialDate: electricityEndDate ?? DateTime.now(),
-                                    firstDate: DateTime(2020),
-                                    lastDate: DateTime.now(),
-                                  );
-                                  if (picked != null) {
-                                    setDialogState(() => electricityEndDate = picked);
-                                  }
-                                },
-                              ),
-                            ),
-                            controller: TextEditingController(
-                              text: electricityEndDate != null 
-                                  ? DateFormat('dd/MM/yyyy').format(electricityEndDate!) 
-                                  : '',
-                            ),
+                          child: CompactVietnameseDatePicker(
+                            labelText: 'Đến ngày',
+                            initialDate: electricityEndDate,
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime.now(),
+                            onDateChanged: (date) {
+                              setDialogState(() {
+                                electricityEndDate = date;
+                                calculateAmount();
+                              });
+                            },
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 12),
+                    
                     TextFormField(
                       controller: electricityPriceController,
                       inputFormatters: [CurrencyInputFormatter()],
@@ -579,6 +511,8 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> w
                       style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                     ),
                     const SizedBox(height: 8),
+                    
+                    // Start reading and date
                     Row(
                       children: [
                         Expanded(
@@ -594,36 +528,21 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> w
                         ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: TextFormField(
-                            readOnly: true,
-                            decoration: InputDecoration(
-                              labelText: 'Từ ngày',
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                              suffixIcon: IconButton(
-                                icon: const Icon(Icons.calendar_today, size: 20),
-                                onPressed: () async {
-                                  final picked = await showDatePicker(
-                                    context: context,
-                                    initialDate: waterStartDate ?? DateTime.now(),
-                                    firstDate: DateTime(2020),
-                                    lastDate: DateTime.now(),
-                                  );
-                                  if (picked != null) {
-                                    setDialogState(() => waterStartDate = picked);
-                                  }
-                                },
-                              ),
-                            ),
-                            controller: TextEditingController(
-                              text: waterStartDate != null 
-                                  ? DateFormat('dd/MM/yyyy').format(waterStartDate!) 
-                                  : '',
-                            ),
+                          child: CompactVietnameseDatePicker(
+                            labelText: 'Từ ngày',
+                            initialDate: waterStartDate,
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime.now(),
+                            onDateChanged: (date) {
+                              setDialogState(() => waterStartDate = date);
+                            },
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 12),
+                    
+                    // End reading and date
                     Row(
                       children: [
                         Expanded(
@@ -639,36 +558,23 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> w
                         ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: TextFormField(
-                            readOnly: true,
-                            decoration: InputDecoration(
-                              labelText: 'Đến ngày',
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                              suffixIcon: IconButton(
-                                icon: const Icon(Icons.calendar_today, size: 20),
-                                onPressed: () async {
-                                  final picked = await showDatePicker(
-                                    context: context,
-                                    initialDate: waterEndDate ?? DateTime.now(),
-                                    firstDate: DateTime(2020),
-                                    lastDate: DateTime.now(),
-                                  );
-                                  if (picked != null) {
-                                    setDialogState(() => waterEndDate = picked);
-                                  }
-                                },
-                              ),
-                            ),
-                            controller: TextEditingController(
-                              text: waterEndDate != null 
-                                  ? DateFormat('dd/MM/yyyy').format(waterEndDate!) 
-                                  : '',
-                            ),
+                          child: CompactVietnameseDatePicker(
+                            labelText: 'Đến ngày',
+                            initialDate: waterEndDate,
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime.now(),
+                            onDateChanged: (date) {
+                              setDialogState(() {
+                                waterEndDate = date;
+                                calculateAmount();
+                              });
+                            },
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 12),
+                    
                     TextFormField(
                       controller: waterPriceController,
                       inputFormatters: [CurrencyInputFormatter()],
@@ -692,60 +598,26 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> w
                     Row(
                       children: [
                         Expanded(
-                          child: TextFormField(
-                            readOnly: true,
-                            decoration: InputDecoration(
-                              labelText: 'Từ ngày',
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                              suffixIcon: IconButton(
-                                icon: const Icon(Icons.calendar_today, size: 20),
-                                onPressed: () async {
-                                  final picked = await showDatePicker(
-                                    context: context,
-                                    initialDate: billingStart ?? DateTime.now(),
-                                    firstDate: DateTime(2020),
-                                    lastDate: DateTime(2030),
-                                  );
-                                  if (picked != null) {
-                                    setDialogState(() => billingStart = picked);
-                                  }
-                                },
-                              ),
-                            ),
-                            controller: TextEditingController(
-                              text: billingStart != null 
-                                  ? DateFormat('dd/MM/yyyy').format(billingStart!) 
-                                  : '',
-                            ),
+                          child: CompactVietnameseDatePicker(
+                            labelText: 'Từ ngày',
+                            initialDate: billingStart,
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime(2030),
+                            onDateChanged: (date) {
+                              setDialogState(() => billingStart = date);
+                            },
                           ),
                         ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: TextFormField(
-                            readOnly: true,
-                            decoration: InputDecoration(
-                              labelText: 'Đến ngày',
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                              suffixIcon: IconButton(
-                                icon: const Icon(Icons.calendar_today, size: 20),
-                                onPressed: () async {
-                                  final picked = await showDatePicker(
-                                    context: context,
-                                    initialDate: billingEnd ?? DateTime.now(),
-                                    firstDate: DateTime(2020),
-                                    lastDate: DateTime(2030),
-                                  );
-                                  if (picked != null) {
-                                    setDialogState(() => billingEnd = picked);
-                                  }
-                                },
-                              ),
-                            ),
-                            controller: TextEditingController(
-                              text: billingEnd != null 
-                                  ? DateFormat('dd/MM/yyyy').format(billingEnd!) 
-                                  : '',
-                            ),
+                          child: CompactVietnameseDatePicker(
+                            labelText: 'Đến ngày',
+                            initialDate: billingEnd,
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime(2030),
+                            onDateChanged: (date) {
+                              setDialogState(() => billingEnd = date);
+                            },
                           ),
                         ),
                       ],
@@ -1408,19 +1280,24 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> w
                             const SizedBox(height: 24),
                             
                             // Due Date
-                            TextFormField(
-                              readOnly: true,
-                              decoration: InputDecoration(
-                                labelText: 'Hạn thanh toán *',
-                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                                suffixIcon: IconButton(
-                                  icon: const Icon(Icons.calendar_today),
-                                  onPressed: () => _selectDate('due'),
-                                ),
-                              ),
-                              controller: TextEditingController(
-                                text: _dueDate != null ? DateFormat('dd/MM/yyyy').format(_dueDate!) : '',
-                              ),
+                            VietnameseDatePicker(
+                              labelText: 'Hạn thanh toán',
+                              prefixIcon: Icons.event,
+                              required: true,
+                              initialDate: DateTime.now().add(const Duration(days: 30)), // Default: 30 days from now
+                              firstDate: DateTime.now(), // Can't set due date in the past
+                              lastDate: DateTime.now().add(const Duration(days: 365)), // Maximum 1 year ahead
+                              onDateChanged: (date) {
+                                setState(() {
+                                  _dueDate = date;
+                                });
+                              },
+                              validator: (date) {
+                                if (date == null) {
+                                  return 'Vui lòng chọn hạn thanh toán';
+                                }
+                                return null;
+                              },
                             ),
                             const SizedBox(height: 12),
                             

@@ -11,6 +11,8 @@ import 'package:apartment_management_project_2/services/payments_service.dart';
 import 'package:apartment_management_project_2/services/room_service.dart';
 import 'package:apartment_management_project_2/services/tenants_service.dart';
 import 'package:apartment_management_project_2/utils/currency_formatter.dart';
+import 'package:apartment_management_project_2/widgets/date_picker.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -161,7 +163,7 @@ List<InvoiceLineItem> _parseLineItems(Payment payment) {
 }
 
 // ========================================
-// VIEW PAYMENT DETAILS DIALOG
+// VIEW PAYMENT DETAILS DIALOG (unchanged)
 // ========================================
 class ViewPaymentDetailsDialog extends StatefulWidget {
   final Payment payment;
@@ -192,7 +194,6 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog> wit
   Building? _building;
   bool _isLoadingRoomData = true;
 
-  // Track how many overlays (dialogs/bottom sheets) are currently open
   int _overlayCount = 0;
 
   @override
@@ -208,17 +209,12 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog> wit
     super.dispose();
   }
 
-  // Debounce timer for resize handling
   Timer? _resizeDebounceTimer;
-
-  // Guard to prevent overlapping dismiss calls
   bool _isDismissing = false;
 
-  // ─── Called whenever screen size / metrics change ───
   @override
   void didChangeMetrics() {
     super.didChangeMetrics();
-    // Cancel any pending debounce before setting a new one
     _resizeDebounceTimer?.cancel();
     _resizeDebounceTimer = Timer(const Duration(milliseconds: 300), () {
       if (!mounted) return;
@@ -230,7 +226,6 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog> wit
     });
   }
 
-  // Pops all open dialogs/bottom sheets by popping until only the base route remains.
   Future<void> _dismissAllOverlays() async {
     if (!mounted || _isDismissing) return;
     _isDismissing = true;
@@ -239,9 +234,6 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog> wit
       final nav = Navigator.of(context);
       while (nav.canPop()) {
         nav.pop();
-        // Yield to the framework between each pop so it can finish
-        // destroying the previous overlay before we pop the next one.
-        // This prevents back-to-back surface destruction that triggers EGL errors.
         await Future.delayed(const Duration(milliseconds: 50));
         if (!mounted) break;
       }
@@ -249,8 +241,6 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog> wit
       _isDismissing = false;
     }
   }
-
-  // ─── Overlay helpers ───
 
   Future<T?> _showTrackedDialog<T>({
     required BuildContext context,
@@ -271,14 +261,12 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog> wit
 
   Future<void> _loadRoomAndBuildingData() async {
     try {
-      // Load room data
       final room = await widget.roomService.getRoomById(widget.payment.roomId);
       if (room != null && mounted) {
         setState(() {
           _room = room;
         });
         
-        // Load building data
         final building = await widget.buildingService.getBuildingById(room.buildingId);
         if (building != null && mounted) {
           setState(() {
@@ -484,7 +472,6 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog> wit
               ),
             ],
             
-            // FIXED: ALWAYS show meter reading section for water, display N/A for null values
             if (item.type == PaymentType.water) ...[
               const SizedBox(height: 8),
               const Divider(),
@@ -559,7 +546,6 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog> wit
               ),
             ],
             
-            // Billing period
             if (item.billingStartDate != null && item.billingEndDate != null) ...[
               const SizedBox(height: 8),
               Text(
@@ -568,7 +554,6 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog> wit
               ),
             ],
             
-            // Description
             if (item.description != null && item.description!.isNotEmpty) ...[
               const SizedBox(height: 4),
               Text(
@@ -596,7 +581,6 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog> wit
         ),
         child: Column(
           children: [
-            // Header
             Padding(
               padding: const EdgeInsets.all(16),
               child: Row(
@@ -641,7 +625,6 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog> wit
             ),
             const Divider(height: 1),
             
-            // Body
             Expanded(
               child: SingleChildScrollView(
                 child: Padding(
@@ -649,7 +632,6 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog> wit
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // Basic Info
                       _buildDetailRow('Người Thuê', widget.payment.tenantName ?? 'Chưa xác định'),
                       if (_room != null)
                         _buildDetailRow('Phòng', _room!.roomNumber),
@@ -663,7 +645,6 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog> wit
                       const Divider(),
                       const SizedBox(height: 16),
                       
-                      // Line Items Section
                       const Text(
                         'Chi Tiết Các Khoản',
                         style: TextStyle(
@@ -682,7 +663,6 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog> wit
                       const Divider(thickness: 2),
                       const SizedBox(height: 8),
                       
-                      // Total
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -704,7 +684,6 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog> wit
                         ],
                       ),
                       
-                      // Late Fee
                       if (widget.payment.lateFee != null && widget.payment.lateFee! > 0) ...[
                         const SizedBox(height: 8),
                         Row(
@@ -728,7 +707,6 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog> wit
                       
                       const SizedBox(height: 12),
                       
-                      // Subtotal (TỔNG CỘNG)
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -752,7 +730,6 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog> wit
                       
                       const SizedBox(height: 8),
                       
-                      // Tax Amount (always display)
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -799,9 +776,6 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog> wit
                 ),
               ),
             ),
-            // ========================================
-            // BOTTOM ACTION BUTTONS
-            // ========================================
             Container(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
               child: Column(
@@ -903,7 +877,7 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog> wit
 }
 
 // ========================================
-// EDIT PAYMENT DIALOG (unchanged, just included for completeness)
+// EDIT PAYMENT DIALOG - WITH UPDATED DATE PICKERS
 // ========================================
 class EditPaymentDialog extends StatefulWidget {
   final Payment payment;
@@ -928,7 +902,6 @@ class EditPaymentDialog extends StatefulWidget {
 }
 
 class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindingObserver {
-   // Track how many overlays (dialogs/bottom sheets) are currently open
   int _overlayCount = 0;
 
   final _formKey = GlobalKey<FormState>();
@@ -958,23 +931,17 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
     _selectedPaymentStatus = widget.payment.status;
     _dueDate = widget.payment.dueDate;
     
-    // Parse existing line items
     _lineItems = _parseLineItems(widget.payment);
     
     _loadData();
   }
 
-  // Debounce timer for resize handling
   Timer? _resizeDebounceTimer;
-
-  // Guard to prevent overlapping dismiss calls
   bool _isDismissing = false;
 
-  // ─── Called whenever screen size / metrics change ───
   @override
   void didChangeMetrics() {
     super.didChangeMetrics();
-    // Cancel any pending debounce before setting a new one
     _resizeDebounceTimer?.cancel();
     _resizeDebounceTimer = Timer(const Duration(milliseconds: 300), () {
       if (!mounted) return;
@@ -986,7 +953,6 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
     });
   }
 
-  // Pops all open dialogs/bottom sheets by popping until only the base route remains.
   Future<void> _dismissAllOverlays() async {
     if (!mounted || _isDismissing) return;
     _isDismissing = true;
@@ -995,9 +961,6 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
       final nav = Navigator.of(context);
       while (nav.canPop()) {
         nav.pop();
-        // Yield to the framework between each pop so it can finish
-        // destroying the previous overlay before we pop the next one.
-        // This prevents back-to-back surface destruction that triggers EGL errors.
         await Future.delayed(const Duration(milliseconds: 50));
         if (!mounted) break;
       }
@@ -1005,8 +968,6 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
       _isDismissing = false;
     }
   }
-
-  // ─── Overlay helpers ───
 
   Future<T?> _showTrackedDialog<T>({
     required BuildContext context,
@@ -1048,41 +1009,23 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
     }
   }
 
-  Future<void> _selectDate() async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: _dueDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2030),
-    );
-    
-    if (picked != null) {
-      setState(() {
-        _dueDate = picked;
-      });
-    }
-  }
-
   Future<void> _showAddLineItemDialog() async {
     PaymentType? selectedType;
     final amountController = TextEditingController();
     final descriptionController = TextEditingController();
     
-    // Electricity fields
     final electricityStartReadingController = TextEditingController();
     DateTime? electricityStartDate;
     final electricityEndReadingController = TextEditingController();
     DateTime? electricityEndDate;
     final electricityPriceController = TextEditingController();
     
-    // Water fields
     final waterStartReadingController = TextEditingController();
     DateTime? waterStartDate;
     final waterEndReadingController = TextEditingController();
     DateTime? waterEndDate;
     final waterPriceController = TextEditingController();
     
-    // Billing period
     DateTime? billingStart;
     DateTime? billingEnd;
     
@@ -1143,33 +1086,77 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
                   ),
                   const SizedBox(height: 16),
                   
-                  // Electricity fields (simplified for edit - just show in view dialog)
+                  // UPDATED: Electricity fields with Vietnamese date pickers
                   if (selectedType == PaymentType.electricity) ...[
-                    TextFormField(
-                      controller: electricityStartReadingController,
-                      decoration: InputDecoration(
-                        labelText: 'Chỉ số đầu',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                      keyboardType: TextInputType.number,
-                      onChanged: (_) => calculateAmount(),
+                    const Text(
+                      'Chỉ số điện',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: electricityStartReadingController,
+                            decoration: InputDecoration(
+                              labelText: 'Chỉ số đầu *',
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                            keyboardType: TextInputType.number,
+                            onChanged: (_) => calculateAmount(),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: CompactVietnameseDatePicker(
+                            labelText: 'Từ ngày',
+                            initialDate: electricityStartDate,
+                            firstDate: DateTime.now().subtract(const Duration(days: 365)),
+                            lastDate: DateTime.now(),
+                            onDateChanged: (date) {
+                              setDialogState(() => electricityStartDate = date);
+                            },
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 12),
-                    TextFormField(
-                      controller: electricityEndReadingController,
-                      decoration: InputDecoration(
-                        labelText: 'Chỉ số cuối',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                      keyboardType: TextInputType.number,
-                      onChanged: (_) => calculateAmount(),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: electricityEndReadingController,
+                            decoration: InputDecoration(
+                              labelText: 'Chỉ số cuối *',
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                            keyboardType: TextInputType.number,
+                            onChanged: (_) => calculateAmount(),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: CompactVietnameseDatePicker(
+                            labelText: 'Đến ngày',
+                            initialDate: electricityEndDate ?? DateTime.now(),
+                            firstDate: electricityStartDate ?? DateTime.now().subtract(const Duration(days: 365)),
+                            lastDate: DateTime.now(),
+                            onDateChanged: (date) {
+                              setDialogState(() {
+                                electricityEndDate = date;
+                                calculateAmount();
+                              });
+                            },
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: electricityPriceController,
                       inputFormatters: [CurrencyInputFormatter()],
                       decoration: InputDecoration(
-                        labelText: 'Giá điện (VND/kWh)',
+                        labelText: 'Giá điện (VND/kWh) *',
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                       ),
                       keyboardType: TextInputType.number,
@@ -1178,37 +1165,118 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
                     const SizedBox(height: 16),
                   ],
                   
-                  // Water fields
+                  // UPDATED: Water fields with Vietnamese date pickers
                   if (selectedType == PaymentType.water) ...[
-                    TextFormField(
-                      controller: waterStartReadingController,
-                      decoration: InputDecoration(
-                        labelText: 'Chỉ số đầu',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                      keyboardType: TextInputType.number,
-                      onChanged: (_) => calculateAmount(),
+                    const Text(
+                      'Chỉ số nước',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: waterStartReadingController,
+                            decoration: InputDecoration(
+                              labelText: 'Chỉ số đầu *',
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                            keyboardType: TextInputType.number,
+                            onChanged: (_) => calculateAmount(),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: CompactVietnameseDatePicker(
+                            labelText: 'Từ ngày',
+                            initialDate: waterStartDate,
+                            firstDate: DateTime.now().subtract(const Duration(days: 365)),
+                            lastDate: DateTime.now(),
+                            onDateChanged: (date) {
+                              setDialogState(() => waterStartDate = date);
+                            },
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 12),
-                    TextFormField(
-                      controller: waterEndReadingController,
-                      decoration: InputDecoration(
-                        labelText: 'Chỉ số cuối',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                      keyboardType: TextInputType.number,
-                      onChanged: (_) => calculateAmount(),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: waterEndReadingController,
+                            decoration: InputDecoration(
+                              labelText: 'Chỉ số cuối *',
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                            keyboardType: TextInputType.number,
+                            onChanged: (_) => calculateAmount(),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: CompactVietnameseDatePicker(
+                            labelText: 'Đến ngày',
+                            initialDate: waterEndDate ?? DateTime.now(),
+                            firstDate: waterStartDate ?? DateTime.now().subtract(const Duration(days: 365)),
+                            lastDate: DateTime.now(),
+                            onDateChanged: (date) {
+                              setDialogState(() {
+                                waterEndDate = date;
+                                calculateAmount();
+                              });
+                            },
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: waterPriceController,
                       inputFormatters: [CurrencyInputFormatter()],
                       decoration: InputDecoration(
-                        labelText: 'Giá nước (VND/m³)',
+                        labelText: 'Giá nước (VND/m³) *',
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                       ),
                       keyboardType: TextInputType.number,
                       onChanged: (_) => calculateAmount(),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  
+                  // UPDATED: Billing period with Vietnamese date pickers
+                  if (selectedType == PaymentType.rent || selectedType == PaymentType.water) ...[
+                    const Text(
+                      'Kỳ thanh toán',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: CompactVietnameseDatePicker(
+                            labelText: 'Từ ngày',
+                            initialDate: billingStart,
+                            firstDate: DateTime.now().subtract(const Duration(days: 365 * 2)),
+                            lastDate: DateTime.now().add(const Duration(days: 180)),
+                            onDateChanged: (date) {
+                              setDialogState(() => billingStart = date);
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: CompactVietnameseDatePicker(
+                            labelText: 'Đến ngày',
+                            initialDate: billingEnd,
+                            firstDate: billingStart ?? DateTime.now().subtract(const Duration(days: 365 * 2)),
+                            lastDate: DateTime.now().add(const Duration(days: 180)),
+                            onDateChanged: (date) {
+                              setDialogState(() => billingEnd = date);
+                            },
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 16),
                   ],
@@ -1254,14 +1322,23 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
                       
                       if (selectedType == PaymentType.electricity) {
                         result['electricityStartReading'] = double.tryParse(electricityStartReadingController.text);
+                        result['electricityStartDate'] = electricityStartDate;
                         result['electricityEndReading'] = double.tryParse(electricityEndReadingController.text);
+                        result['electricityEndDate'] = electricityEndDate;
                         result['electricityPricePerUnit'] = double.tryParse(electricityPriceController.text);
                       }
                       
                       if (selectedType == PaymentType.water) {
                         result['waterStartReading'] = double.tryParse(waterStartReadingController.text);
+                        result['waterStartDate'] = waterStartDate;
                         result['waterEndReading'] = double.tryParse(waterEndReadingController.text);
+                        result['waterEndDate'] = waterEndDate;
                         result['waterPricePerUnit'] = double.tryParse(waterPriceController.text);
+                      }
+                      
+                      if (selectedType == PaymentType.rent || selectedType == PaymentType.water) {
+                        result['billingStartDate'] = billingStart;
+                        result['billingEndDate'] = billingEnd;
                       }
                       
                       Navigator.pop(context, result);
@@ -1284,11 +1361,17 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
           amount: result['amount'] as double,
           description: result['description'] as String?,
           electricityStartReading: result['electricityStartReading'] as double?,
+          electricityStartDate: result['electricityStartDate'] as DateTime?,
           electricityEndReading: result['electricityEndReading'] as double?,
+          electricityEndDate: result['electricityEndDate'] as DateTime?,
           electricityPricePerUnit: result['electricityPricePerUnit'] as double?,
           waterStartReading: result['waterStartReading'] as double?,
+          waterStartDate: result['waterStartDate'] as DateTime?,
           waterEndReading: result['waterEndReading'] as double?,
+          waterEndDate: result['waterEndDate'] as DateTime?,
           waterPricePerUnit: result['waterPricePerUnit'] as double?,
+          billingStartDate: result['billingStartDate'] as DateTime?,
+          billingEndDate: result['billingEndDate'] as DateTime?,
         ));
       });
     }
@@ -1423,7 +1506,6 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
     }
 
     try {
-      // Create description from line items
       final lineItemsDescription = _lineItems.map((item) {
         const labels = {
           'rent': 'Tiền thuê',
@@ -1441,6 +1523,10 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
         return '${typeLabel}: ${NumberFormat('#,###').format(item.amount)} VND$desc';
       }).join('\n');
 
+      // --- CALCULATE TOTALS ---
+      final double tax = _taxAmountController.text.isEmpty ? 0 : double.parse(_taxAmountController.text.replaceAll(',', ''));
+      final double totalToCollect = _totalAmount + tax + (widget.payment.lateFee ?? 0);
+
       final Map<String, dynamic> updates = {
         'tenantId': _selectedTenantId,
         'tenantName': _selectedTenantName,
@@ -1452,18 +1538,39 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
         'taxAmount': _taxAmountController.text.isEmpty ? null : double.parse(_taxAmountController.text),
       };
       
-      // If single item with meter readings, preserve those
+      // --- ADDED LOGIC: Update paidAmount and paidAt based on status ---
+      if (_selectedPaymentStatus == PaymentStatus.paid) {
+        // If user manually set status to Paid, ensure paidAmount matches the total
+        updates['paidAmount'] = totalToCollect;
+        // Also set the payment date if it wasn't already set
+        updates['paidAt'] = widget.payment.paidAt != null 
+            ? Timestamp.fromDate(widget.payment.paidAt!) 
+            : Timestamp.now();
+      } else if (_selectedPaymentStatus == PaymentStatus.pending) {
+        // If changed back to pending, reset paidAmount (optional, depending on your business logic)
+        updates['paidAmount'] = 0.0;
+        updates['paidAt'] = null;
+      }
+
       if (_lineItems.length == 1) {
         final item = _lineItems.first;
         if (item.electricityStartReading != null) {
           updates['electricityStartReading'] = item.electricityStartReading;
+          updates['electricityStartDate'] = item.electricityStartDate;
           updates['electricityEndReading'] = item.electricityEndReading;
+          updates['electricityEndDate'] = item.electricityEndDate;
           updates['electricityPricePerUnit'] = item.electricityPricePerUnit;
         }
         if (item.waterStartReading != null) {
           updates['waterStartReading'] = item.waterStartReading;
+          updates['waterStartDate'] = item.waterStartDate;
           updates['waterEndReading'] = item.waterEndReading;
+          updates['waterEndDate'] = item.waterEndDate;
           updates['waterPricePerUnit'] = item.waterPricePerUnit;
+        }
+        if (item.billingStartDate != null) {
+          updates['billingStartDate'] = item.billingStartDate;
+          updates['billingEndDate'] = item.billingEndDate;
         }
       }
 
@@ -1508,7 +1615,6 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
             ),
             child: Column(
               children: [
-                // Header
                 Padding(
                   padding: const EdgeInsets.all(12),
                   child: Row(
@@ -1530,7 +1636,6 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
                 ),
                 const Divider(height: 1),
                 
-                // Body
                 Expanded(
                   child: SingleChildScrollView(
                     child: Form(
@@ -1540,7 +1645,6 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            // Tenant Selection
                             DropdownButtonFormField<String?>(
                               value: _tenants.any((t) => t.id == _selectedTenantId) ? _selectedTenantId : null,
                               decoration: InputDecoration(
@@ -1568,7 +1672,6 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
                             ),
                             const SizedBox(height: 24),
                             
-                            // Line Items Section
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
@@ -1587,24 +1690,30 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
                             _buildLineItemsList(),
                             const SizedBox(height: 24),
                             
-                            // Due Date
-                            TextFormField(
-                              readOnly: true,
-                              decoration: InputDecoration(
-                                labelText: 'Hạn thanh toán *',
-                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                                suffixIcon: IconButton(
-                                  icon: const Icon(Icons.calendar_today),
-                                  onPressed: _selectDate,
-                                ),
-                              ),
-                              controller: TextEditingController(
-                                text: DateFormat('dd/MM/yyyy').format(_dueDate),
-                              ),
+                            // UPDATED: Due Date with Vietnamese date picker
+                            VietnameseDatePicker(
+                              labelText: 'Hạn thanh toán',
+                              prefixIcon: Icons.event,
+                              required: true,
+                              initialDate: _dueDate,
+                              firstDate: DateTime.now(),
+                              lastDate: DateTime.now().add(const Duration(days: 365)),
+                              onDateChanged: (date) {
+                                if (date != null) {
+                                  setState(() {
+                                    _dueDate = date;
+                                  });
+                                }
+                              },
+                              validator: (date) {
+                                if (date == null) {
+                                  return 'Vui lòng chọn hạn thanh toán';
+                                }
+                                return null;
+                              },
                             ),
                             const SizedBox(height: 12),
                             
-                            // Status
                             DropdownButtonFormField<PaymentStatus>(
                               value: _selectedPaymentStatus,
                               decoration: InputDecoration(
@@ -1626,7 +1735,6 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
                             ),
                             const SizedBox(height: 12),
                             
-                            // Notes
                             TextFormField(
                               controller: _notesController,
                               decoration: InputDecoration(
@@ -1637,7 +1745,6 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
                             ),
                             const SizedBox(height: 12),
                             
-                            // Tax Amount
                             TextFormField(
                               controller: _taxAmountController,
                               inputFormatters: [CurrencyInputFormatter()],
@@ -1666,7 +1773,6 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
                 
                 const Divider(height: 1),
                 
-                // Footer Buttons
                 Padding(
                   padding: const EdgeInsets.all(8),
                   child: Row(

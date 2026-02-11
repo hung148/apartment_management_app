@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:apartment_management_project_2/widgets/date_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:apartment_management_project_2/models/tenants_model.dart';
@@ -20,6 +21,7 @@ class TenantsTab extends StatefulWidget {
   final RoomService roomService;
   final OrganizationService organizationService;
   final AuthService authService;
+  final VoidCallback? onChanged;
 
   const TenantsTab({
     Key? key,
@@ -29,6 +31,7 @@ class TenantsTab extends StatefulWidget {
     required this.roomService,
     required this.organizationService,
     required this.authService,
+    this.onChanged,
   }) : super(key: key);
 
   @override
@@ -1748,6 +1751,7 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
   Future<void> _showEditTenantDialog(Tenant tenant) async {
     final buildings = await _getBuildings();
     final allRooms = await _getAllRooms();
+    if (!mounted) return;
     final isPhone = MediaQuery.of(context).size.width < 600;
 
     final nameController = TextEditingController(text: tenant.fullName);
@@ -1760,62 +1764,88 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
     final areaController = TextEditingController(text: tenant.apartmentArea?.toString() ?? '');
     final typeController = TextEditingController(text: tenant.apartmentType ?? '');
 
+    DateTime editedMoveInDate = tenant.moveInDate;
+
     final result = await _showTrackedDialog<Map<String, dynamic>>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Chỉnh sửa thông tin'),
-        content: SizedBox(
-          width: isPhone ? double.maxFinite : 500,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildInputField(nameController, 'Họ và tên', Icons.person),
-                _buildInputField(phoneController, 'Số điện thoại', Icons.phone, keyboardType: TextInputType.phone),
-                _buildInputField(monthlyRentController, 'Giá thuê', Icons.money, suffix: '₫', keyboardType: TextInputType.number),
-                const Divider(height: 32),
-                const Text('Hóa đơn & Căn hộ', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
-                const SizedBox(height: 12),
-                Row(
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: const Text('Chỉnh sửa thông tin'),
+            content: SizedBox(
+              width: isPhone ? double.maxFinite : 500,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Expanded(child: _buildInputField(typeController, 'Loại căn hộ', Icons.category)),
-                    const SizedBox(width: 12),
-                    Expanded(child: _buildInputField(areaController, 'Diện tích', Icons.square_foot, suffix: 'm²', keyboardType: TextInputType.number)),
+                    _buildInputField(nameController, 'Họ và tên', Icons.person),
+                    _buildInputField(phoneController, 'Số điện thoại', Icons.phone, keyboardType: TextInputType.phone),
+                    _buildInputField(monthlyRentController, 'Giá thuê', Icons.money, suffix: '₫', keyboardType: TextInputType.number),
+                    const Divider(height: 32),
+                    VietnameseDatePicker(
+                      labelText: 'Ngày chuyển vào',
+                      initialDate: editedMoveInDate,
+                      required: true,
+                      prefixIcon: Icons.calendar_today,
+                      onDateChanged: (date) {
+                        if (date != null) {
+                          // We don't strictly need setDialogState here if we just want to save the value,
+                          // but it's good practice so the UI shows the new date string below the input.
+                          setDialogState(() {
+                            editedMoveInDate = date;
+                          });
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 16),
+          
+                    const Text('Hóa đơn & Căn hộ', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(child: _buildInputField(typeController, 'Loại căn hộ', Icons.category)),
+                        const SizedBox(width: 12),
+                        Expanded(child: _buildInputField(areaController, 'Diện tích', Icons.square_foot, suffix: 'm²', keyboardType: TextInputType.number)),
+                      ],
+                    ),
+                    _buildInputField(emailController, 'Email', Icons.email),
+                    _buildInputField(nationalIdController, 'CMND/CCCD', Icons.badge),
+                    _buildInputField(occupationController, 'Nghề nghiệp', Icons.work),
+                    _buildInputField(workplaceController, 'Nơi làm việc', Icons.location_city),
                   ],
                 ),
-                _buildInputField(emailController, 'Email', Icons.email),
-                _buildInputField(nationalIdController, 'CMND/CCCD', Icons.badge),
-                _buildInputField(occupationController, 'Nghề nghiệp', Icons.work),
-                _buildInputField(workplaceController, 'Nơi làm việc', Icons.location_city),
-              ],
+              ),
             ),
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Hủy')),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context, {
-                'fullName': nameController.text.trim(),
-                'phoneNumber': phoneController.text.trim(),
-                'email': emailController.text.trim().isEmpty ? null : emailController.text.trim(),
-                'nationalId': nationalIdController.text.trim().isEmpty ? null : nationalIdController.text.trim(),
-                'occupation': occupationController.text.trim().isEmpty ? null : occupationController.text.trim(),
-                'workplace': workplaceController.text.trim().isEmpty ? null : workplaceController.text.trim(),
-                'monthlyRent': double.tryParse(monthlyRentController.text.trim()),
-                'apartmentArea': double.tryParse(areaController.text.trim()),
-                'apartmentType': typeController.text.trim(),
-              });
-            },
-            child: const Text('Lưu thay đổi'),
-          ),
-        ],
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Hủy')),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context, {
+                    'fullName': nameController.text.trim(),
+                    'phoneNumber': phoneController.text.trim(),
+                    'email': emailController.text.trim().isEmpty ? null : emailController.text.trim(),
+                    'nationalId': nationalIdController.text.trim().isEmpty ? null : nationalIdController.text.trim(),
+                    'occupation': occupationController.text.trim().isEmpty ? null : occupationController.text.trim(),
+                    'workplace': workplaceController.text.trim().isEmpty ? null : workplaceController.text.trim(),
+                    'monthlyRent': double.tryParse(monthlyRentController.text.trim()),
+                    'apartmentArea': double.tryParse(areaController.text.trim()),
+                    'apartmentType': typeController.text.trim(),
+                  });
+                },
+                child: const Text('Lưu thay đổi'),
+              ),
+            ],
+          );
+        }
       ),
     );
 
     if (result != null) {
       await widget.tenantService.updateTenant(tenant.id, result);
+      // Check mounted again after the async update call
+      if (!mounted) return;
       _refreshAll();
+      widget.onChanged?.call();
     }
   }
 
@@ -1899,6 +1929,7 @@ Future<void> _showMoveRoomDialog(Tenant tenant) async {
         backgroundColor: success ? Colors.green : Colors.red),
       );
       _refreshAll();
+      widget.onChanged?.call();
     }
   }
 }
@@ -2081,16 +2112,21 @@ Future<void> _showMoveRoomDialog(Tenant tenant) async {
                         _buildInputField(nationalIdController, 'CMND/CCCD', Icons.badge),
                         _buildInputField(occupationController, 'Nghề nghiệp', Icons.work),
 
-                        ListTile(
-                          title: const Text('Ngày chuyển vào *'),
-                          subtitle: Text(DateFormat('dd/MM/yyyy').format(moveInDate)),
-                          trailing: const Icon(Icons.calendar_today),
-                          contentPadding: EdgeInsets.zero,
-                          onTap: () async {
-                            final picked = await showDatePicker(context: context, initialDate: moveInDate, firstDate: DateTime(2000), lastDate: DateTime(2100));
-                            if (picked != null) setDialogState(() => moveInDate = picked);
+                        const SizedBox(height: 16),
+
+                        VietnameseDatePicker(
+                          labelText: 'Ngày chuyển vào',
+                          initialDate: moveInDate,
+                          required: true,
+                          prefixIcon: Icons.calendar_today,
+                          onDateChanged: (date) {
+                            if (date != null) {
+                              setDialogState(() => moveInDate = date);
+                            }
                           },
                         ),
+
+                        const SizedBox(height: 16),
                       ],
                     ),
                   ),
@@ -2149,6 +2185,7 @@ Future<void> _showMoveRoomDialog(Tenant tenant) async {
       );
       await widget.tenantService.addTenant(tenant);
       _refreshAll();
+      widget.onChanged?.call(); 
     }
   }
 
