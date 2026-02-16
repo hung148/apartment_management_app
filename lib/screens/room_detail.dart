@@ -16,6 +16,7 @@ import 'package:apartment_management_project_2/services/payments_service.dart';
 import 'package:apartment_management_project_2/services/payments_notifier.dart';
 import 'package:apartment_management_project_2/services/organization_service.dart';
 import 'package:apartment_management_project_2/widgets/shared.dart';
+import 'package:apartment_management_project_2/widgets/date_picker.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:intl/intl.dart';
@@ -256,7 +257,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
   }
 
   // =========================
-  // TENANT CRUD OPERATIONS
+  // TENANT CRUD OPERATIONS (UPDATED TO MATCH TENANTS_TAB)
   // =========================
   
   void _showAddEditTenantDialog({Tenant? tenant}) {
@@ -276,6 +277,8 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
     final depositController = TextEditingController(
       text: tenant?.deposit?.toString() ?? '',
     );
+    final areaController = TextEditingController(text: tenant?.apartmentArea?.toString() ?? '');
+    final typeController = TextEditingController(text: tenant?.apartmentType ?? '');
     
     Gender? selectedGender = tenant?.gender;
     bool isMainTenant = tenant?.isMainTenant ?? (_tenants?.isEmpty ?? true);
@@ -320,6 +323,64 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                         labelText: 'Số điện thoại *',
                         prefixIcon: Icon(Icons.phone),
                       ),
+                    ),
+                    const SizedBox(height: 16),
+                    
+                    // Monthly Rent
+                    TextField(
+                      controller: rentController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Tiền thuê hàng tháng',
+                        prefixIcon: Icon(Icons.attach_money),
+                        suffixText: 'VND',
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    
+                    // Move In Date
+                    VietnameseDatePicker(
+                      labelText: 'Ngày vào ở',
+                      initialDate: moveInDate,
+                      required: true,
+                      prefixIcon: Icons.calendar_today,
+                      onDateChanged: (date) {
+                        if (date != null) {
+                          setDialogState(() {
+                            moveInDate = date;
+                          });
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    
+                    const Divider(height: 32),
+                    const Text('Thông tin bổ sung (Dùng cho hóa đơn)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(child: TextField(
+                          controller: typeController,
+                          decoration: const InputDecoration(
+                            labelText: 'Loại căn hộ',
+                            prefixIcon: Icon(Icons.category, size: 20),
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                          ),
+                        )),
+                        const SizedBox(width: 12),
+                        Expanded(child: TextField(
+                          controller: areaController,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'Diện tích',
+                            prefixIcon: Icon(Icons.square_foot, size: 20),
+                            suffixText: 'm²',
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                          ),
+                        )),
+                      ],
                     ),
                     const SizedBox(height: 16),
                     
@@ -397,18 +458,6 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                     ),
                     const SizedBox(height: 16),
                     
-                    // Monthly Rent
-                    TextField(
-                      controller: rentController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Tiền thuê hàng tháng',
-                        prefixIcon: Icon(Icons.attach_money),
-                        suffixText: 'VND',
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    
                     // Deposit
                     TextField(
                       controller: depositController,
@@ -420,27 +469,6 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                       ),
                     ),
                     const SizedBox(height: 16),
-                    
-                    // Move In Date
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const Icon(Icons.calendar_today),
-                      title: const Text('Ngày vào ở'),
-                      subtitle: Text(_formatDate(moveInDate)),
-                      onTap: () async {
-                        final date = await showDatePicker(
-                          context: context,
-                          initialDate: moveInDate,
-                          firstDate: DateTime(2000),
-                          lastDate: DateTime.now().add(const Duration(days: 365)),
-                        );
-                        if (date != null) {
-                          setDialogState(() {
-                            moveInDate = date;
-                          });
-                        }
-                      },
-                    ),
                     
                     // Contract Start Date
                     ListTile(
@@ -565,6 +593,10 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                         deposit: depositController.text.isNotEmpty
                             ? double.tryParse(depositController.text)
                             : null,
+                        apartmentArea: areaController.text.isNotEmpty
+                            ? double.tryParse(areaController.text)
+                            : null,
+                        apartmentType: typeController.text.trim().isEmpty ? null : typeController.text.trim(),
                         moveInDate: moveInDate,
                         contractStartDate: contractStartDate,
                         contractEndDate: contractEndDate,
@@ -587,6 +619,8 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                             'isMainTenant': newTenant.isMainTenant,
                             'monthlyRent': newTenant.monthlyRent,
                             'deposit': newTenant.deposit,
+                            'apartmentArea': newTenant.apartmentArea,
+                            'apartmentType': newTenant.apartmentType,
                             'moveInDate': newTenant.moveInDate,
                             'contractStartDate': newTenant.contractStartDate,
                             'contractEndDate': newTenant.contractEndDate,
@@ -645,8 +679,16 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
     }
   }
 
-  void _showTenantDetailDialog(Tenant tenant) {
+  // Updated tenant detail dialog to match tenants_tab
+  void _showTenantDetailDialog(Tenant tenant) async {
     final isPhone = MediaQuery.of(context).size.width < 600;
+    final bool isMovedOut = tenant.status == TenantStatus.moveOut;
+    
+    // Get building name for display
+    final building = await widget.buildingService.getBuildingById(tenant.buildingId);
+    final buildingName = building?.name ?? 'Không xác định';
+    
+    if (!mounted) return;
     
     _showTrackedDialog(
       context: context,
@@ -703,153 +745,225 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                  _buildDetailSection('Thông tin liên hệ', [
-                    _buildDetailRow('Số điện thoại', tenant.phoneNumber),
-                    if (tenant.email != null) _buildDetailRow('Email', tenant.email!),
-                  ]),
-                  const Divider(),
-                  _buildDetailSection('Thông tin cá nhân', [
-                    if (tenant.gender != null) 
-                      _buildDetailRow('Giới tính', tenant.getGenderDisplayName()!),
-                    if (tenant.nationalId != null)
-                      _buildDetailRow('CMND/CCCD', tenant.nationalId!),
-                    if (tenant.occupation != null)
-                      _buildDetailRow('Nghề nghiệp', tenant.occupation!),
-                    if (tenant.workplace != null)
-                      _buildDetailRow('Nơi làm việc', tenant.workplace!),
-                  ]),
-                  const Divider(),
-                  _buildDetailSection('Thông tin thuê', [
-                    _buildDetailRow('Ngày vào ở', _formatDate(tenant.moveInDate)),
-                    _buildDetailRow('Số ngày ở', '${tenant.daysLiving} ngày'),
-                    if (tenant.monthlyRent != null)
-                      _buildDetailRow('Tiền thuê', _formatCurrency(tenant.monthlyRent!)),
-                    if (tenant.deposit != null)
-                      _buildDetailRow('Tiền cọc', _formatCurrency(tenant.deposit!)),
-                  ]),
-                  if (tenant.contractStartDate != null || tenant.contractEndDate != null) ...[
-                    const Divider(),
-                    _buildDetailSection('Hợp đồng', [
-                      if (tenant.contractStartDate != null)
-                        _buildDetailRow('Bắt đầu', _formatDate(tenant.contractStartDate!)),
-                      if (tenant.contractEndDate != null) ...[
-                        _buildDetailRow('Kết thúc', _formatDate(tenant.contractEndDate!)),
-                        if (tenant.daysUntilContractEnd != null)
-                          _buildDetailRow(
-                            'Còn lại',
-                            '${tenant.daysUntilContractEnd} ngày',
-                          ),
+                    // ========================================
+                    // LOCATION SECTION
+                    // ========================================
+                    _buildDetailSection(
+                      isMovedOut ? 'Vị trí trước đây' : 'Vị trí',
+                      [
+                        _buildDetailRow('Toà nhà', buildingName),
+                        _buildDetailRow('Phòng', widget.room.roomNumber),
                       ],
-                    ]),
-                  ],
-                  // Vehicle information
-                  if (tenant.vehicles != null && tenant.vehicles!.isNotEmpty) ...[
+                    ),
                     const Divider(),
-                    _buildDetailSection('Phương tiện (${tenant.vehicles!.length})', [
-                      ...tenant.vehicles!.map((vehicle) => Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: Colors.purple.shade50,
-                            borderRadius: BorderRadius.circular(8),
+                    
+                    // ========================================
+                    // CONTACT INFORMATION
+                    // ========================================
+                    _buildDetailSection('Thông tin liên hệ', [
+                      _buildDetailRow('Số điện thoại', tenant.phoneNumber),
+                      if (tenant.email != null) _buildDetailRow('Email', tenant.email!),
+                    ]),
+                    const Divider(),
+                    
+                    // ========================================
+                    // PERSONAL INFORMATION
+                    // ========================================
+                    _buildDetailSection('Thông tin cá nhân', [
+                      if (tenant.gender != null) 
+                        _buildDetailRow('Giới tính', tenant.getGenderDisplayName()!),
+                      if (tenant.nationalId != null)
+                        _buildDetailRow('CMND/CCCD', tenant.nationalId!),
+                      if (tenant.occupation != null)
+                        _buildDetailRow('Nghề nghiệp', tenant.occupation!),
+                      if (tenant.workplace != null)
+                        _buildDetailRow('Nơi làm việc', tenant.workplace!),
+                    ]),
+                    
+                    // ========================================
+                    // RENTAL INFORMATION - Only show if NOT moved out
+                    // ========================================
+                    if (!isMovedOut) ...[
+                      const Divider(),
+                      _buildDetailSection('Thông tin thuê', [
+                        _buildDetailRow('Ngày vào ở', _formatDate(tenant.moveInDate)),
+                        _buildDetailRow('Số ngày ở', '${tenant.daysLiving} ngày'),
+                        if (tenant.monthlyRent != null)
+                          _buildDetailRow('Tiền thuê', _formatCurrency(tenant.monthlyRent!)),
+                        if (tenant.deposit != null)
+                          _buildDetailRow('Tiền cọc', _formatCurrency(tenant.deposit!)),
+                      ]),
+                    ],
+                    
+                    // ========================================
+                    // MOVED OUT INFORMATION - Only show if moved out
+                    // ========================================
+                    if (isMovedOut && tenant.moveOutDate != null) ...[
+                      const Divider(),
+                      _buildDetailSection('Thông tin chuyển đi', [
+                        _buildDetailRow('Ngày chuyển đi', _formatDate(tenant.moveOutDate!)),
+                        _buildDetailRow(
+                          'Thời gian ở',
+                          '${tenant.moveOutDate!.difference(tenant.moveInDate).inDays} ngày',
+                        ),
+                        if (tenant.contractTerminationReason != null)
+                          _buildDetailRow('Lý do', tenant.contractTerminationReason!),
+                        if (tenant.notes != null && tenant.notes!.isNotEmpty)
+                          _buildDetailRow('Ghi chú', tenant.notes!),
+                      ]),
+                    ],
+                    
+                    // ========================================
+                    // CONTRACT INFORMATION - Updated to show termination status
+                    // ========================================
+                    if (tenant.contractStartDate != null || tenant.contractEndDate != null) ...[
+                      const Divider(),
+                      _buildDetailSection('Hợp đồng', [
+                        if (tenant.contractStartDate != null)
+                          _buildDetailRow('Bắt đầu', _formatDate(tenant.contractStartDate!)),
+                        if (tenant.contractEndDate != null)
+                          _buildDetailRow(
+                            isMovedOut ? 'Ngày kết thúc hợp đồng' : 'Kết thúc', 
+                            _formatDate(tenant.contractEndDate!)
                           ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Icon(_getVehicleIcon(vehicle.type), 
-                                       size: 16, 
-                                       color: Colors.purple.shade700),
-                                  const SizedBox(width: 8),
+                        
+                        // Show contract status
+                        if (isMovedOut) ...[
+                          _buildDetailRow('Trạng thái hợp đồng', tenant.getContractStatusDisplayName()),
+                          if (tenant.moveOutDate != null && tenant.contractEndDate != null)
+                            _buildDetailRow(
+                              tenant.moveOutDate!.isBefore(tenant.contractEndDate!) 
+                                ? 'Chấm dứt sớm' 
+                                : 'Kết thúc',
+                              tenant.moveOutDate!.isBefore(tenant.contractEndDate!)
+                                ? '${tenant.contractEndDate!.difference(tenant.moveOutDate!).inDays} ngày trước hạn'
+                                : 'Đúng thời hạn hợp đồng',
+                            ),
+                        ] else ...[
+                          if (tenant.daysUntilContractEnd != null)
+                            _buildDetailRow(
+                              'Còn lại',
+                              '${tenant.daysUntilContractEnd} ngày',
+                            ),
+                        ],
+                      ]),
+                    ],
+                    
+                    // Rest remains the same (vehicles, rental history, etc.)
+                    if (tenant.vehicles != null && tenant.vehicles!.isNotEmpty) ...[
+                      const Divider(),
+                      _buildDetailSection('Phương tiện (${tenant.vehicles!.length})', [
+                        ...tenant.vehicles!.map((vehicle) => Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.purple.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(_getVehicleIcon(vehicle.type), 
+                                        size: 16, 
+                                        color: Colors.purple.shade700),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      vehicle.licensePlate,
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.purple.shade900,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                if (vehicle.brand != null || vehicle.model != null)
                                   Text(
-                                    vehicle.licensePlate,
+                                    '${vehicle.brand ?? ''} ${vehicle.model ?? ''}'.trim(),
                                     style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.purple.shade900,
+                                      fontSize: 12,
+                                      color: Colors.grey.shade700,
                                     ),
                                   ),
-                                ],
-                              ),
-                              if (vehicle.brand != null || vehicle.model != null)
+                                if (vehicle.isParkingRegistered && vehicle.parkingSpot != null)
+                                  Text(
+                                    'Bãi đỗ: ${vehicle.parkingSpot}',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.green.shade700,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        )),
+                      ]),
+                    ],
+                    if (tenant.previousRentals != null && tenant.previousRentals!.isNotEmpty) ...[
+                      const Divider(),
+                      _buildDetailSection('Lịch sử thuê (${tenant.previousRentals!.length})', [
+                        ...tenant.previousRentals!.map((rental) => Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
                                 Text(
-                                  '${vehicle.brand ?? ''} ${vehicle.model ?? ''}'.trim(),
+                                  '${rental.buildingName} - Phòng ${rental.roomNumber}',
+                                  style: const TextStyle(fontWeight: FontWeight.bold),
+                                ),
+                                Text(
+                                  'Từ ${_formatDate(rental.moveInDate)} đến ${_formatDate(rental.moveOutDate)}',
                                   style: TextStyle(
                                     fontSize: 12,
                                     color: Colors.grey.shade700,
                                   ),
                                 ),
-                              if (vehicle.isParkingRegistered && vehicle.parkingSpot != null)
                                 Text(
-                                  'Bãi đỗ: ${vehicle.parkingSpot}',
+                                  '${rental.duration} ngày',
                                   style: TextStyle(
                                     fontSize: 12,
-                                    color: Colors.green.shade700,
+                                    color: Colors.grey.shade700,
                                   ),
                                 ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
-                      )),
-                    ]),
-                  ],
-                  // Rental History
-                  if (tenant.previousRentals != null && tenant.previousRentals!.isNotEmpty) ...[
+                        )),
+                      ]),
+                    ],
                     const Divider(),
-                    _buildDetailSection('Lịch sử thuê (${tenant.previousRentals!.length})', [
-                      ...tenant.previousRentals!.map((rental) => Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: Colors.orange.shade50,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                '${rental.buildingName} - Phòng ${rental.roomNumber}',
-                                style: const TextStyle(fontWeight: FontWeight.bold),
-                              ),
-                              Text(
-                                'Từ ${_formatDate(rental.moveInDate)} đến ${_formatDate(rental.moveOutDate)}',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey.shade700,
-                                ),
-                              ),
-                              Text(
-                                '${rental.duration} ngày',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey.shade700,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      )),
-                    ]),
+                    _buildDetailRow('Trạng thái', tenant.getStatusDisplayName()),
                   ],
-                  const Divider(),
-                  _buildDetailRow('Trạng thái', tenant.getStatusDisplayName()),
-                ],
+                ),
               ),
-            ),
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context),
                 child: const Text('Đóng'),
               ),
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  _showTenantOptionsMenu(tenant);
+              FutureBuilder<Membership?>(
+                future: _getMyMembership(),
+                builder: (context, snapshot) {
+                  if (snapshot.hasData && snapshot.data!.role == 'admin') {
+                    return TextButton(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        _showTenantOptionsMenu(tenant);
+                      },
+                      child: const Text('Tùy chọn'),
+                    );
+                  }
+                  return const SizedBox.shrink();
                 },
-                child: const Text('Tùy chọn'),
               ),
             ],
           ),
@@ -892,67 +1006,121 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
   }
 
   // =========================
-  // TENANT OPTIONS MENU
+  // TENANT OPTIONS MENU (UPDATED TO MATCH TENANTS_TAB)
   // =========================
   Future<void> _showTenantOptionsMenu(Tenant tenant) async {
-    await _showTrackedBottomSheet(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.edit),
-              title: const Text('Chỉnh sửa thông tin'),
-              onTap: () {
-                Navigator.pop(context);
-                _showAddEditTenantDialog(tenant: tenant);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.directions_car),
-              title: const Text('Quản lý phương tiện'),
-              subtitle: tenant.vehicles != null && tenant.vehicles!.isNotEmpty
-                  ? Text('${tenant.vehicles!.length} phương tiện')
-                  : null,
-              onTap: () {
-                Navigator.pop(context);
-                _showVehicleManagementDialog(tenant);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.history),
-              title: const Text('Lịch sử thuê phòng'),
-              onTap: () {
-                Navigator.pop(context);
-                _showRentalHistoryDialog(tenant);
-              },
-            ),
-            if (tenant.status != TenantStatus.moveOut)
-              ListTile(
-                leading: const Icon(Icons.logout),
-                title: const Text('Đánh dấu đã chuyển đi'),
-                onTap: () {
-                  Navigator.pop(context);
-                  _confirmMoveOut(tenant);
-                },
-              ),
-            ListTile(
-              leading: Icon(Icons.delete, color: Colors.red.shade700),
-              title: Text('Xóa', style: TextStyle(color: Colors.red.shade700)),
-              onTap: () {
-                Navigator.pop(context);
-                _deleteTenant(tenant);
-              },
-            ),
-          ],
-        ),
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final isLargeScreen = screenWidth >= 600;
+
+    // Shared list of menu items
+    List<Widget> menuItems = [
+      ListTile(
+        leading: const Icon(Icons.info_outline),
+        title: const Text('Xem chi tiết'),
+        onTap: () {
+          Navigator.pop(context);
+          _showTenantDetailDialog(tenant);
+        },
       ),
-    );
+      ListTile(
+        leading: const Icon(Icons.edit),
+        title: const Text('Chỉnh sửa thông tin'),
+        onTap: () {
+          Navigator.pop(context);
+          _showAddEditTenantDialog(tenant: tenant);
+        },
+      ),
+      ListTile(
+        leading: const Icon(Icons.directions_car),
+        title: const Text('Quản lý phương tiện'),
+        subtitle: tenant.vehicles != null && tenant.vehicles!.isNotEmpty
+            ? Text('${tenant.vehicles!.length} phương tiện')
+            : null,
+        onTap: () {
+          Navigator.pop(context);
+          _showVehicleManagementDialog(tenant);
+        },
+      ),
+      ListTile(
+        leading: const Icon(Icons.history),
+        title: const Text('Lịch sử thuê phòng'),
+        onTap: () {
+          Navigator.pop(context);
+          _showRentalHistoryDialog(tenant);
+        },
+      ),
+      if (tenant.status != TenantStatus.moveOut)
+        ListTile(
+          leading: const Icon(Icons.logout),
+          title: const Text('Đánh dấu đã chuyển đi'),
+          onTap: () {
+            Navigator.pop(context);
+            _confirmMoveOut(tenant);
+          },
+        ),
+      ListTile(
+        leading: Icon(Icons.delete, color: Colors.red.shade700),
+        title: Text('Xóa', style: TextStyle(color: Colors.red.shade700)),
+        onTap: () {
+          Navigator.pop(context);
+          _deleteTenant(tenant);
+        },
+      ),
+    ];
+
+    if (isLargeScreen) {
+      // ─── Tablet / Desktop: show as a centered Dialog ───
+      await _showTrackedDialog(
+        context: context,
+        builder: (context) => Dialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 40.0, vertical: 24.0),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: SizedBox(
+            width: 360,
+            child: SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ListTile(
+                    title: const Text(
+                      'Tùy chọn',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ),
+                  const Divider(height: 0),
+                  ...menuItems,
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    } else {
+      // ─── Mobile: show as a ModalBottomSheet ───
+      await _showTrackedBottomSheet(
+        context: context,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(16),
+            topRight: Radius.circular(16),
+          ),
+        ),
+        builder: (context) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: menuItems,
+          ),
+        ),
+      );
+    }
   }
 
   // =========================
-  // VEHICLE MANAGEMENT
+  // VEHICLE MANAGEMENT (UPDATED TO MATCH TENANTS_TAB)
   // =========================
   Future<void> _showVehicleManagementDialog(Tenant tenant) async {
     final isPhone = MediaQuery.of(context).size.width < 600;
@@ -967,84 +1135,98 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
           ),
           child: StatefulBuilder(
             builder: (context, setDialogState) {
-              return FutureBuilder<Tenant?>(
-                future: widget.tenantService.getTenantById(tenant.id),
-                builder: (context, snapshot) {
-                  final currentTenant = snapshot.data ?? tenant;
-                  
-                  return Column(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.directions_car),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    'Quản lý phương tiện',
-                                    style: TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  Text(
-                                    currentTenant.fullName,
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      color: Colors.grey.shade600,
-                                    ),
-                                  ),
-                                ],
+              return Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.directions_car),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Quản lý phương tiện',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.add),
-                              onPressed: () async {
-                                final vehicle = await _showAddVehicleDialog();
-                                if (vehicle != null) {
-                                  final success = await widget.tenantService.addVehicle(
-                                    currentTenant.id,
-                                    vehicle,
-                                  );
-                                  if (success) {
+                              Text(
+                                tenant.fullName,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.add),
+                          onPressed: () async {
+                            try {
+                              final result = await _showAddVehicleDialog();
+                              if (result != null) {
+                                final success = await widget.tenantService.addVehicle(
+                                  tenant.id,
+                                  result,
+                                );
+                                if (success) {
+                                  // Fetch updated tenant
+                                  final updatedTenant = await widget.tenantService.getTenantById(tenant.id);
+                                  if (updatedTenant != null) {
                                     setDialogState(() {});
-                                    if (mounted) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text('Đã thêm phương tiện')),
-                                      );
-                                    }
+                                  }
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('Đã thêm phương tiện')),
+                                    );
                                   }
                                 }
-                              },
-                              tooltip: 'Thêm phương tiện',
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.close),
-                              onPressed: () => Navigator.pop(context),
-                            ),
-                          ],
+                              }
+                            } catch (e) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Lỗi: $e'),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                              }
+                            }
+                          },
+                          tooltip: 'Thêm phương tiện',
                         ),
-                      ),
-                      const Divider(height: 1),
-                      Expanded(
-                        child: currentTenant.vehicles == null || currentTenant.vehicles!.isEmpty
-                            ? const Center(
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(Icons.directions_car_outlined, size: 48, color: Colors.grey),
-                                    SizedBox(height: 12),
-                                    Text('Chưa có phương tiện nào'),
-                                  ],
-                                ),
-                              )
-                            : ListView.separated(
+                        IconButton(
+                          icon: const Icon(Icons.close),
+                          onPressed: () => Navigator.pop(context),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  Expanded(
+                    child: tenant.vehicles == null || tenant.vehicles!.isEmpty
+                        ? const Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.directions_car_outlined, size: 48, color: Colors.grey),
+                                SizedBox(height: 12),
+                                Text('Chưa có phương tiện nào'),
+                              ],
+                            ),
+                          )
+                        : FutureBuilder<Tenant?>(
+                            future: widget.tenantService.getTenantById(tenant.id),
+                            builder: (context, snapshot) {
+                              final currentTenant = snapshot.data ?? tenant;
+                              return ListView.separated(
                                 padding: const EdgeInsets.all(16),
-                                itemCount: currentTenant.vehicles!.length,
+                                itemCount: currentTenant.vehicles?.length ?? 0,
                                 separatorBuilder: (_, __) => const Divider(),
                                 itemBuilder: (context, index) {
                                   final vehicle = currentTenant.vehicles![index];
@@ -1179,6 +1361,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                                                   child: const Text('Hủy'),
                                                 ),
                                                 ElevatedButton(
+                                                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
                                                   onPressed: () => Navigator.pop(context, true),
                                                   child: const Text('Xóa'),
                                                 ),
@@ -1204,11 +1387,11 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                                     ),
                                   );
                                 },
-                              ),
-                      ),
-                    ],
-                  );
-                },
+                              );
+                            },
+                          ),
+                  ),
+                ],
               );
             },
           ),
@@ -1224,100 +1407,107 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
     final colorController = TextEditingController();
     VehicleType selectedType = VehicleType.motorcycle;
 
-    return await _showTrackedDialog<VehicleInfo>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          return AlertDialog(
-            title: const Text('Thêm phương tiện'),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: licensePlateController,
-                    decoration: const InputDecoration(
-                      labelText: 'Biển số xe *',
-                      hintText: '29A-12345',
+    try {
+      return await _showTrackedDialog<VehicleInfo>(
+        context: context,
+        builder: (context) => StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Thêm phương tiện'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: licensePlateController,
+                      decoration: const InputDecoration(
+                        labelText: 'Biển số xe *',
+                        hintText: '29A-12345',
+                      ),
+                      textCapitalization: TextCapitalization.characters,
                     ),
-                    textCapitalization: TextCapitalization.characters,
-                  ),
-                  const SizedBox(height: 16),
-                  DropdownButtonFormField<VehicleType>(
-                    value: selectedType,
-                    decoration: const InputDecoration(labelText: 'Loại xe *'),
-                    items: VehicleType.values.map((type) {
-                      return DropdownMenuItem(
-                        value: type,
-                        child: Text(_getVehicleTypeDisplayName(type)),
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<VehicleType>(
+                      value: selectedType,
+                      decoration: const InputDecoration(labelText: 'Loại xe *'),
+                      items: VehicleType.values.map((type) {
+                        return DropdownMenuItem(
+                          value: type,
+                          child: Text(_getVehicleTypeDisplayName(type)),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        if (value != null) {
+                          setDialogState(() {
+                            selectedType = value;
+                          });
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: brandController,
+                      decoration: const InputDecoration(
+                        labelText: 'Hãng xe',
+                        hintText: 'Honda, Yamaha, Toyota...',
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: modelController,
+                      decoration: const InputDecoration(
+                        labelText: 'Model',
+                        hintText: 'Wave, Vision, Vios...',
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: colorController,
+                      decoration: const InputDecoration(
+                        labelText: 'Màu sắc',
+                        hintText: 'Đen, Trắng, Xanh...',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Hủy'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    if (licensePlateController.text.trim().isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Vui lòng nhập biển số xe')),
                       );
-                    }).toList(),
-                    onChanged: (value) {
-                      if (value != null) {
-                        setDialogState(() {
-                          selectedType = value;
-                        });
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: brandController,
-                    decoration: const InputDecoration(
-                      labelText: 'Hãng xe',
-                      hintText: 'Honda, Yamaha, Toyota...',
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: modelController,
-                    decoration: const InputDecoration(
-                      labelText: 'Model',
-                      hintText: 'Wave, Vision, Vios...',
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: colorController,
-                    decoration: const InputDecoration(
-                      labelText: 'Màu sắc',
-                      hintText: 'Đen, Trắng, Xanh...',
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Hủy'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  if (licensePlateController.text.trim().isEmpty) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Vui lòng nhập biển số xe')),
+                      return;
+                    }
+
+                    final vehicle = VehicleInfo(
+                      licensePlate: licensePlateController.text.trim().toUpperCase(),
+                      type: selectedType,
+                      brand: brandController.text.trim().isEmpty ? null : brandController.text.trim(),
+                      model: modelController.text.trim().isEmpty ? null : modelController.text.trim(),
+                      color: colorController.text.trim().isEmpty ? null : colorController.text.trim(),
                     );
-                    return;
-                  }
 
-                  final vehicle = VehicleInfo(
-                    licensePlate: licensePlateController.text.trim().toUpperCase(),
-                    type: selectedType,
-                    brand: brandController.text.trim().isEmpty ? null : brandController.text.trim(),
-                    model: modelController.text.trim().isEmpty ? null : modelController.text.trim(),
-                    color: colorController.text.trim().isEmpty ? null : colorController.text.trim(),
-                  );
-
-                  Navigator.pop(context, vehicle);
-                },
-                child: const Text('Thêm'),
-              ),
-            ],
-          );
-        },
-      ),
-    );
+                    Navigator.pop(context, vehicle);
+                  },
+                  child: const Text('Thêm'),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+    } finally {
+      licensePlateController.dispose();
+      brandController.dispose();
+      modelController.dispose();
+      colorController.dispose();
+    }
   }
 
   Future<VehicleInfo?> _showEditVehicleDialog(VehicleInfo vehicle) async {
@@ -1327,126 +1517,137 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
     final colorController = TextEditingController(text: vehicle.color);
     VehicleType selectedType = vehicle.type;
 
-    return await _showTrackedDialog<VehicleInfo>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          return AlertDialog(
-            title: const Text('Chỉnh sửa phương tiện'),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: licensePlateController,
-                    decoration: const InputDecoration(labelText: 'Biển số xe *'),
-                    textCapitalization: TextCapitalization.characters,
-                  ),
-                  const SizedBox(height: 16),
-                  DropdownButtonFormField<VehicleType>(
-                    value: selectedType,
-                    decoration: const InputDecoration(labelText: 'Loại xe *'),
-                    items: VehicleType.values.map((type) {
-                      return DropdownMenuItem(
-                        value: type,
-                        child: Text(_getVehicleTypeDisplayName(type)),
+    try {
+      return await _showTrackedDialog<VehicleInfo>(
+        context: context,
+        builder: (context) => StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Chỉnh sửa phương tiện'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: licensePlateController,
+                      decoration: const InputDecoration(labelText: 'Biển số xe *'),
+                      textCapitalization: TextCapitalization.characters,
+                    ),
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<VehicleType>(
+                      value: selectedType,
+                      decoration: const InputDecoration(labelText: 'Loại xe *'),
+                      items: VehicleType.values.map((type) {
+                        return DropdownMenuItem(
+                          value: type,
+                          child: Text(_getVehicleTypeDisplayName(type)),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        if (value != null) {
+                          setDialogState(() {
+                            selectedType = value;
+                          });
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: brandController,
+                      decoration: const InputDecoration(labelText: 'Hãng xe'),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: modelController,
+                      decoration: const InputDecoration(labelText: 'Model'),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: colorController,
+                      decoration: const InputDecoration(labelText: 'Màu sắc'),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Hủy'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    if (licensePlateController.text.trim().isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Vui lòng nhập biển số xe')),
                       );
-                    }).toList(),
-                    onChanged: (value) {
-                      if (value != null) {
-                        setDialogState(() {
-                          selectedType = value;
-                        });
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: brandController,
-                    decoration: const InputDecoration(labelText: 'Hãng xe'),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: modelController,
-                    decoration: const InputDecoration(labelText: 'Model'),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: colorController,
-                    decoration: const InputDecoration(labelText: 'Màu sắc'),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Hủy'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  if (licensePlateController.text.trim().isEmpty) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Vui lòng nhập biển số xe')),
+                      return;
+                    }
+
+                    final updatedVehicle = VehicleInfo(
+                      licensePlate: licensePlateController.text.trim().toUpperCase(),
+                      type: selectedType,
+                      brand: brandController.text.trim().isEmpty ? null : brandController.text.trim(),
+                      model: modelController.text.trim().isEmpty ? null : modelController.text.trim(),
+                      color: colorController.text.trim().isEmpty ? null : colorController.text.trim(),
+                      isParkingRegistered: vehicle.isParkingRegistered,
+                      parkingSpot: vehicle.parkingSpot,
                     );
-                    return;
-                  }
 
-                  final updatedVehicle = VehicleInfo(
-                    licensePlate: licensePlateController.text.trim().toUpperCase(),
-                    type: selectedType,
-                    brand: brandController.text.trim().isEmpty ? null : brandController.text.trim(),
-                    model: modelController.text.trim().isEmpty ? null : modelController.text.trim(),
-                    color: colorController.text.trim().isEmpty ? null : colorController.text.trim(),
-                    isParkingRegistered: vehicle.isParkingRegistered,
-                    parkingSpot: vehicle.parkingSpot,
-                  );
-
-                  Navigator.pop(context, updatedVehicle);
-                },
-                child: const Text('Lưu'),
-              ),
-            ],
-          );
-        },
-      ),
-    );
+                    Navigator.pop(context, updatedVehicle);
+                  },
+                  child: const Text('Lưu'),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+    } finally {
+      licensePlateController.dispose();
+      brandController.dispose();
+      modelController.dispose();
+      colorController.dispose();
+    }
   }
 
   Future<String?> _showParkingSpotDialog() async {
     final controller = TextEditingController();
-    return await _showTrackedDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Đăng ký bãi đỗ'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            labelText: 'Vị trí bãi đỗ',
-            hintText: 'A1, B2, C3...',
+    try {
+      return await _showTrackedDialog<String>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Đăng ký bãi đỗ'),
+          content: TextField(
+            controller: controller,
+            decoration: const InputDecoration(
+              labelText: 'Vị trí bãi đỗ',
+              hintText: 'A1, B2, C3...',
+            ),
+            textCapitalization: TextCapitalization.characters,
           ),
-          textCapitalization: TextCapitalization.characters,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Hủy'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                if (controller.text.trim().isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Vui lòng nhập vị trí')),
+                  );
+                  return;
+                }
+                Navigator.pop(context, controller.text.trim().toUpperCase());
+              },
+              child: const Text('Đăng ký'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Hủy'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (controller.text.trim().isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Vui lòng nhập vị trí')),
-                );
-                return;
-              }
-              Navigator.pop(context, controller.text.trim().toUpperCase());
-            },
-            child: const Text('Đăng ký'),
-          ),
-        ],
-      ),
-    );
+      );
+    } finally {
+      controller.dispose();
+    }
   }
 
   String _getVehicleTypeDisplayName(VehicleType type) {
@@ -1523,9 +1724,26 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                           final r = tenant.previousRentals![i];
                           final durationDays = r.duration;
                           return ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: Colors.orange.shade100,
+                              child: Icon(Icons.home, color: Colors.orange.shade700),
+                            ),
                             title: Text('${r.buildingName} - Phòng ${r.roomNumber}'),
-                            subtitle: Text(
-                              'Từ ${DateFormat.yMd().format(r.moveInDate)} đến ${DateFormat.yMd().format(r.moveOutDate)} • $durationDays ngày',
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Từ ${DateFormat.yMd().format(r.moveInDate)} đến ${DateFormat.yMd().format(r.moveOutDate)}',
+                                  style: const TextStyle(fontSize: 13),
+                                ),
+                                Text(
+                                  '$durationDays ngày',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                ),
+                              ],
                             ),
                           );
                         },
@@ -1543,26 +1761,115 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
   // MOVE OUT CONFIRMATION
   // =========================
   Future<void> _confirmMoveOut(Tenant tenant) async {
-    final ok = await _showTrackedDialog<bool>(
+    DateTime selectedDate = DateTime.now();
+    String? selectedReason = 'Chuyển đi';
+    final reasonOptions = [
+      'Chuyển đi',
+      'Hết hạn hợp đồng',
+      'Chấm dứt hợp đồng sớm',
+      'Vi phạm hợp đồng',
+      'Khác',
+    ];
+    
+    final result = await _showTrackedDialog<Map<String, dynamic>>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Đánh dấu đã chuyển đi'),
-        content: Text('Đánh dấu ${tenant.fullName} là đã chuyển đi?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Hủy'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Xác nhận'),
-          ),
-        ],
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: const Text('Đánh dấu đã chuyển đi'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('Đánh dấu ${tenant.fullName} là đã chuyển đi?'),
+                const SizedBox(height: 16),
+                
+                VietnameseDatePicker(
+                  labelText: 'Ngày chuyển đi',
+                  initialDate: selectedDate,
+                  required: true,
+                  prefixIcon: Icons.calendar_today,
+                  onDateChanged: (date) {
+                    if (date != null) {
+                      setDialogState(() => selectedDate = date);
+                    }
+                  },
+                ),
+                
+                const SizedBox(height: 16),
+                
+                DropdownButtonFormField<String>(
+                  value: selectedReason,
+                  decoration: const InputDecoration(
+                    labelText: 'Lý do',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: reasonOptions.map((reason) {
+                    return DropdownMenuItem(
+                      value: reason,
+                      child: Text(reason),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    setDialogState(() => selectedReason = value);
+                  },
+                ),
+                
+                // Show warning if moving out before contract end
+                if (tenant.contractEndDate != null && 
+                    selectedDate.isBefore(tenant.contractEndDate!)) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orange.shade300),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.warning_amber, color: Colors.orange.shade700),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Chấm dứt sớm ${tenant.contractEndDate!.difference(selectedDate).inDays} ngày',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.orange.shade900,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Hủy'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, {
+                  'date': selectedDate,
+                  'reason': selectedReason,
+                }),
+                child: const Text('Xác nhận'),
+              ),
+            ],
+          );
+        },
       ),
     );
 
-    if (ok == true) {
-      final success = await widget.tenantService.markTenantAsMovedOut(tenant.id);
+    if (result != null) {
+      final success = await widget.tenantService.markTenantAsMovedOut(
+        tenant.id,
+        moveOutDate: result['date'],
+        moveOutReason: result['reason'],
+      );
+      
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(success ? 'Đã đánh dấu chuyển đi' : 'Thất bại')),
@@ -2444,8 +2751,10 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(label, style: TextStyle(color: Colors.grey[600])),
+          const SizedBox(width: 16),
           Flexible(
             child: Text(
               value,
@@ -2466,6 +2775,9 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
     return LayoutBuilder(
       builder: (context, constraints) {
         // Check minimum size
+        const minWidth = 360.0;
+        const minHeight = 600.0;
+        
         if (constraints.maxWidth < minWidth || constraints.maxHeight < minHeight) {
           return Scaffold(
             body: _buildMinimumSizeWarning(context, constraints),
@@ -2489,17 +2801,25 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
               _buildPaymentsTab(),
             ],
           ),
-          floatingActionButton: FloatingActionButton(
-            onPressed: () {
-              if (_tabController.index == 0) {
-                // Add tenant
-                _showAddEditTenantDialog();
-              } else {
-                // Add payment
-                _showAddPaymentDialog();
+          floatingActionButton: FutureBuilder<Membership?>(
+            future: _getMyMembership(),
+            builder: (context, snapshot) {
+              if (snapshot.hasData && snapshot.data!.role == 'admin') {
+                return FloatingActionButton(
+                  onPressed: () {
+                    if (_tabController.index == 0) {
+                      // Add tenant
+                      _showAddEditTenantDialog();
+                    } else {
+                      // Add payment
+                      _showAddPaymentDialog();
+                    }
+                  },
+                  child: const Icon(Icons.add),
+                );
               }
+              return const SizedBox.shrink();
             },
-            child: const Icon(Icons.add),
           ),
         );
       },

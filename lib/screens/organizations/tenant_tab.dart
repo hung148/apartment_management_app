@@ -352,7 +352,7 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
     late final String displayRoomNumber;
 
     final bool isMovedOut = tenant.status == TenantStatus.moveOut;
-
+    
     if (isMovedOut && tenant.lastBuildingName != null && tenant.lastRoomNumber != null) {
       displayBuildingName = tenant.lastBuildingName!;
       displayRoomNumber = tenant.lastRoomNumber!;
@@ -676,10 +676,11 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
   }
 
   // =========================
-  // TENANT DETAIL DIALOG (NEW - Enhanced)
+  // TENANT DETAIL DIALOG
   // =========================
   void _showTenantDetailDialog(Tenant tenant, String buildingName, String roomNumber) {
     final isPhone = MediaQuery.of(context).size.width < 600;
+    final bool isMovedOut = tenant.status == TenantStatus.moveOut;
     
     _showTrackedDialog(
       context: context,
@@ -736,16 +737,30 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _buildDetailSection('Vị trí', [
-                      _buildDetailRow('Toà nhà', buildingName),
-                      _buildDetailRow('Phòng', roomNumber),
-                    ]),
+                    // ========================================
+                    // LOCATION SECTION - Show "Previous Location" if moved out
+                    // ========================================
+                    _buildDetailSection(
+                      isMovedOut ? 'Vị trí trước đây' : 'Vị trí',
+                      [
+                        _buildDetailRow('Toà nhà', buildingName),
+                        _buildDetailRow('Phòng', roomNumber),
+                      ],
+                    ),
                     const Divider(),
+                    
+                    // ========================================
+                    // CONTACT INFORMATION
+                    // ========================================
                     _buildDetailSection('Thông tin liên hệ', [
                       _buildDetailRow('Số điện thoại', tenant.phoneNumber),
                       if (tenant.email != null) _buildDetailRow('Email', tenant.email!),
                     ]),
                     const Divider(),
+                    
+                    // ========================================
+                    // PERSONAL INFORMATION
+                    // ========================================
                     _buildDetailSection('Thông tin cá nhân', [
                       if (tenant.gender != null) 
                         _buildDetailRow('Giới tính', tenant.getGenderDisplayName()!),
@@ -756,22 +771,67 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                       if (tenant.workplace != null)
                         _buildDetailRow('Nơi làm việc', tenant.workplace!),
                     ]),
-                    const Divider(),
-                    _buildDetailSection('Thông tin thuê', [
-                      _buildDetailRow('Ngày vào ở', _formatDate(tenant.moveInDate)),
-                      _buildDetailRow('Số ngày ở', '${tenant.daysLiving} ngày'),
-                      if (tenant.monthlyRent != null)
-                        _buildDetailRow('Tiền thuê', _formatCurrency(tenant.monthlyRent!)),
-                      if (tenant.deposit != null)
-                        _buildDetailRow('Tiền cọc', _formatCurrency(tenant.deposit!)),
-                    ]),
+                    
+                    // ========================================
+                    // RENTAL INFORMATION - Only show if NOT moved out
+                    // ========================================
+                    if (!isMovedOut) ...[
+                      const Divider(),
+                      _buildDetailSection('Thông tin thuê', [
+                        _buildDetailRow('Ngày vào ở', _formatDate(tenant.moveInDate)),
+                        _buildDetailRow('Số ngày ở', '${tenant.daysLiving} ngày'),
+                        if (tenant.monthlyRent != null)
+                          _buildDetailRow('Tiền thuê', _formatCurrency(tenant.monthlyRent!)),
+                        if (tenant.deposit != null)
+                          _buildDetailRow('Tiền cọc', _formatCurrency(tenant.deposit!)),
+                      ]),
+                    ],
+                    
+                    // ========================================
+                    // MOVED OUT INFORMATION - Only show if moved out
+                    // ========================================
+                    if (isMovedOut && tenant.moveOutDate != null) ...[
+                      const Divider(),
+                      _buildDetailSection('Thông tin chuyển đi', [
+                        _buildDetailRow('Ngày chuyển đi', _formatDate(tenant.moveOutDate!)),
+                        _buildDetailRow(
+                          'Thời gian ở',
+                          '${tenant.moveOutDate!.difference(tenant.moveInDate).inDays} ngày',
+                        ),
+                        if (tenant.contractTerminationReason != null)
+                          _buildDetailRow('Lý do', tenant.contractTerminationReason!),
+                        if (tenant.notes != null && tenant.notes!.isNotEmpty)
+                          _buildDetailRow('Ghi chú', tenant.notes!),
+                      ]),
+                    ],
+                    
+                    // ========================================
+                    // CONTRACT INFORMATION - Updated to show termination status
+                    // ========================================
                     if (tenant.contractStartDate != null || tenant.contractEndDate != null) ...[
                       const Divider(),
                       _buildDetailSection('Hợp đồng', [
                         if (tenant.contractStartDate != null)
                           _buildDetailRow('Bắt đầu', _formatDate(tenant.contractStartDate!)),
-                        if (tenant.contractEndDate != null) ...[
-                          _buildDetailRow('Kết thúc', _formatDate(tenant.contractEndDate!)),
+                        if (tenant.contractEndDate != null)
+                          _buildDetailRow(
+                            isMovedOut ? 'Ngày kết thúc hợp đồng' : 'Kết thúc', 
+                            _formatDate(tenant.contractEndDate!)
+                          ),
+                        
+                        // Show contract status
+                        if (isMovedOut) ...[
+                          _buildDetailRow('Trạng thái hợp đồng', tenant.getContractStatusDisplayName()),
+                          if (tenant.moveOutDate != null && tenant.contractEndDate != null)
+                            _buildDetailRow(
+                              tenant.moveOutDate!.isBefore(tenant.contractEndDate!) 
+                                ? 'Chấm dứt sớm' 
+                                : 'Kết thúc',
+                              tenant.moveOutDate!.isBefore(tenant.contractEndDate!)
+                                ? '${tenant.contractEndDate!.difference(tenant.moveOutDate!).inDays} ngày trước hạn'
+                                : 'Đúng thời hạn hợp đồng',
+                            ),
+                        ] else ...[
                           if (tenant.daysUntilContractEnd != null)
                             _buildDetailRow(
                               'Còn lại',
@@ -780,6 +840,10 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                         ],
                       ]),
                     ],
+                    
+                    // ========================================
+                    // VEHICLES SECTION
+                    // ========================================
                     if (tenant.vehicles != null && tenant.vehicles!.isNotEmpty) ...[
                       const Divider(),
                       _buildDetailSection('Phương tiện (${tenant.vehicles!.length})', [
@@ -797,8 +861,8 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                                 Row(
                                   children: [
                                     Icon(_getVehicleIcon(vehicle.type), 
-                                         size: 16, 
-                                         color: Colors.purple.shade700),
+                                        size: 16, 
+                                        color: Colors.purple.shade700),
                                     const SizedBox(width: 8),
                                     Text(
                                       vehicle.licensePlate,
@@ -831,6 +895,10 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                         )),
                       ]),
                     ],
+                    
+                    // ========================================
+                    // RENTAL HISTORY SECTION
+                    // ========================================
                     if (tenant.previousRentals != null && tenant.previousRentals!.isNotEmpty) ...[
                       const Divider(),
                       _buildDetailSection('Lịch sử thuê (${tenant.previousRentals!.length})', [
@@ -869,6 +937,10 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                         )),
                       ]),
                     ],
+                    
+                    // ========================================
+                    // STATUS
+                    // ========================================
                     const Divider(),
                     _buildDetailRow('Trạng thái', tenant.getStatusDisplayName()),
                   ],
@@ -884,7 +956,7 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                 TextButton(
                   onPressed: () {
                     Navigator.pop(context);
-                    _showTenantOptionsMenu(tenant, tenant.status == TenantStatus.moveOut);
+                    _showTenantOptionsMenu(tenant, isMovedOut);
                   },
                   child: const Text('Tùy chọn'),
                 ),
@@ -1037,13 +1109,15 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Optional header
-                  const ListTile(
+                  ListTile(
                     title: Text(
                       'Tùy chọn',
                       style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                     ),
-                    trailing: CloseButtonIcon(),
+                    trailing: IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.pop(context),
+                    ),
                   ),
                   const Divider(height: 0),
                   ...menuItems,
@@ -1935,22 +2009,119 @@ Future<void> _showMoveRoomDialog(Tenant tenant) async {
 }
 
   Future<void> _showMoveOutDialog(Tenant tenant) async {
-    final ok = await _showTrackedDialog<bool>(
+    DateTime selectedDate = DateTime.now();
+    String? selectedReason = 'Chuyển đi';
+    final reasonOptions = [
+      'Chuyển đi',
+      'Hết hạn hợp đồng',
+      'Chấm dứt hợp đồng sớm',
+      'Vi phạm hợp đồng',
+      'Khác',
+    ];
+    
+    final result = await _showTrackedDialog<Map<String, dynamic>>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Đánh dấu đã chuyển đi'),
-        content: Text('Đánh dấu ${tenant.fullName} là đã chuyển đi?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Hủy')),
-          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Xác nhận')),
-        ],
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: const Text('Đánh dấu đã chuyển đi'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('Đánh dấu ${tenant.fullName} là đã chuyển đi?'),
+                const SizedBox(height: 16),
+                
+                VietnameseDatePicker(
+                  labelText: 'Ngày chuyển đi',
+                  initialDate: selectedDate,
+                  required: true,
+                  prefixIcon: Icons.calendar_today,
+                  onDateChanged: (date) {
+                    if (date != null) {
+                      setDialogState(() => selectedDate = date);
+                    }
+                  },
+                ),
+                
+                const SizedBox(height: 16),
+                
+                DropdownButtonFormField<String>(
+                  value: selectedReason,
+                  decoration: const InputDecoration(
+                    labelText: 'Lý do',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: reasonOptions.map((reason) {
+                    return DropdownMenuItem(
+                      value: reason,
+                      child: Text(reason),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    setDialogState(() => selectedReason = value);
+                  },
+                ),
+                
+                // Show warning if moving out before contract end
+                if (tenant.contractEndDate != null && 
+                    selectedDate.isBefore(tenant.contractEndDate!)) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orange.shade300),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.warning_amber, color: Colors.orange.shade700),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Chấm dứt sớm ${tenant.contractEndDate!.difference(selectedDate).inDays} ngày',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.orange.shade900,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Hủy'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, {
+                  'date': selectedDate,
+                  'reason': selectedReason,
+                }),
+                child: const Text('Xác nhận'),
+              ),
+            ],
+          );
+        },
       ),
     );
 
-    if (ok == true) {
-      final success = await widget.tenantService.markTenantAsMovedOut(tenant.id);
+    if (result != null) {
+      final success = await widget.tenantService.markTenantAsMovedOut(
+        tenant.id,
+        moveOutDate: result['date'],
+        moveOutReason: result['reason'],
+      );
+      
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(success ? 'Đã đánh dấu chuyển đi' : 'Thất bại')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(success ? 'Đã đánh dấu chuyển đi' : 'Thất bại')),
+      );
       await _refreshAll();
     }
   }
@@ -2111,6 +2282,7 @@ Future<void> _showMoveRoomDialog(Tenant tenant) async {
                         _buildInputField(emailController, 'Email', Icons.email, keyboardType: TextInputType.emailAddress),
                         _buildInputField(nationalIdController, 'CMND/CCCD', Icons.badge),
                         _buildInputField(occupationController, 'Nghề nghiệp', Icons.work),
+                        _buildInputField(workplaceController, 'Nơi làm việc', Icons.location_city),
 
                         const SizedBox(height: 16),
 

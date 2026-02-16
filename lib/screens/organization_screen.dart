@@ -121,7 +121,8 @@ class _OrganizationScreenState extends State<OrganizationScreen> with WidgetsBin
   final RoomService _roomService = getIt<RoomService>();
   
   String? _selectedBuildingId; // For occupancy trend chart
-
+  String? _selectedOccupancyBuildingId;
+  
   final TextEditingController _searchController = TextEditingController();
   
   Future<List<dynamic>>? _statsFuture;
@@ -1555,7 +1556,7 @@ Widget _buildPaymentsList(List<Payment> allPayments, String searchText, bool isA
                     ),
                   ),
                   const SizedBox(height: 16),
-                  _buildBuildingOccupancyChart(buildingOccupancy),
+                  _buildBuildingOccupancyChart(buildingOccupancy, buildings),
                   
                   // Monthly Occupancy Trend Chart
                   const SizedBox(height: 24),
@@ -2796,34 +2797,37 @@ Future<void> _exportStatisticsToPdf({
   ) {
     final Map<String, Map<String, dynamic>> occupancy = {};
     
+    // Track occurrences for display names only
+    final Map<String, int> nameOccurrences = {};
+    for (var b in buildings) {
+      nameOccurrences[b.name] = (nameOccurrences[b.name] ?? 0) + 1;
+    }
+    final Map<String, int> nameCounters = {};
+    
     for (var building in buildings) {
-      // Count actual rooms in this building
       final totalRooms = rooms.where((r) => r.buildingId == building.id).length;
-      
-      // Count rooms with active tenants (occupied rooms)
       final occupiedRooms = rooms
           .where((r) => r.buildingId == building.id)
-          .where((room) {
-            // Check if this room has any active tenants
-            return tenants.any((t) => 
-              t.roomId == room.id && 
-              t.status == TenantStatus.active
-            );
-          })
+          .where((room) => tenants.any((t) => t.roomId == room.id && t.status == TenantStatus.active))
           .length;
       
-      // Force double calculation by converting to double first
-      final percentage = totalRooms > 0 
-          ? (occupiedRooms.toDouble() / totalRooms.toDouble() * 100) 
-          : 0.0;
+      final percentage = totalRooms > 0 ? (occupiedRooms / totalRooms * 100) : 0.0;
       
-      occupancy[building.name] = {
+      // Create unique display name for the UI
+      String displayName = building.name;
+      if (nameOccurrences[building.name]! > 1) {
+        nameCounters[building.name] = (nameCounters[building.name] ?? 0) + 1;
+        displayName = '${building.name} (${nameCounters[building.name]})';
+      }
+      
+      // KEY CHANGE: Use building.id as the key
+      occupancy[building.id] = {
+        'name': displayName, // Store the name here
         'occupied': occupiedRooms,
         'total': totalRooms,
         'percentage': percentage,
       };
     }
-    
     return occupancy;
   }
 
@@ -2953,81 +2957,128 @@ Future<void> _exportStatisticsToPdf({
     );
   }
 
-  Widget _buildBuildingOccupancyChart(Map<String, Map<String, dynamic>> occupancy) {
+  Widget _buildBuildingOccupancyChart(Map<String, Map<String, dynamic>> occupancy, List<Building> buildings) {
     if (occupancy.isEmpty) {
-      return Card(
+      return const Card(
         child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Center(
-            child: Text(
-              'Chưa có dữ liệu toà nhà',
-              style: TextStyle(color: Colors.grey[600]),
-            ),
-          ),
+          padding: EdgeInsets.all(20),
+          child: Center(child: Text('Chưa có dữ liệu toà nhà')),
         ),
       );
+    }
+
+    // Filter occupancy data based on selected building ID
+    Map<String, Map<String, dynamic>> displayOccupancy;
+    
+    if (_selectedOccupancyBuildingId == null) {
+      // Show all buildings
+      displayOccupancy = occupancy;
+    } else {
+      // Show only the selected building using its ID as the key
+      if (occupancy.containsKey(_selectedOccupancyBuildingId)) {
+        displayOccupancy = {
+          _selectedOccupancyBuildingId!: occupancy[_selectedOccupancyBuildingId]!
+        };
+      } else {
+        displayOccupancy = {};
+      }
     }
 
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
-          children: occupancy.entries.map((entry) {
-            final buildingName = entry.key;
-            final data = entry.value;
-            final percentage = data['percentage'] as double;
-            final occupied = data['occupied'] as int;
-            final total = data['total'] as int;
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Dropdown Filter
+            Row(
+              children: [
+                const Text(
+                  'Lọc theo toà nhà:',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: DropdownButton<String?>(
+                    isExpanded: true,
+                    value: _selectedOccupancyBuildingId,
+                    hint: const Text('Tất cả toà nhà'),
+                    items: [
+                      const DropdownMenuItem<String?>(
+                        value: null,
+                        child: Text('Tất cả toà nhà'),
+                      ),
+                      ...buildings.map((building) {
+                        return DropdownMenuItem<String?>(
+                          value: building.id,
+                          child: Text(building.name),
+                        );
+                      }),
+                    ],
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedOccupancyBuildingId = value;
+                      });
+                    },
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
             
-            Color barColor;
-            if (percentage >= 80) {
-              barColor = Colors.green;
-            } else if (percentage >= 50) {
-              barColor = Colors.orange;
-            } else {
-              barColor = Colors.red;
-            }
-            
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          buildingName,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
+            // Occupancy Bars
+            ...displayOccupancy.entries.map((entry) {
+              final data = entry.value;
+              
+              final String buildingName = data['name'] ?? "Không xác định";
+              
+              final percentage = (data['percentage'] as num).toDouble();
+              final occupied = data['occupied'] as int;
+              final total = data['total'] as int;
+              
+              Color barColor = percentage >= 80 ? Colors.green : (percentage >= 50 ? Colors.orange : Colors.red);
+              
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            buildingName, // Displays the name (e.g. "Toà A")
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                            ),
                           ),
                         ),
-                      ),
-                      Text(
-                        '$occupied/$total (${percentage.toStringAsFixed(0)}%)',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: barColor,
+                        Text(
+                          '$occupied/$total (${percentage.toStringAsFixed(0)}%)',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: barColor,
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: LinearProgressIndicator(
-                      value: percentage / 100,
-                      backgroundColor: Colors.grey[200],
-                      color: barColor,
-                      minHeight: 12,
+                      ],
                     ),
-                  ),
-                ],
-              ),
-            );
-          }).toList(),
+                    const SizedBox(height: 8),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: LinearProgressIndicator(
+                        value: percentage / 100,
+                        backgroundColor: Colors.grey[200],
+                        color: barColor,
+                        minHeight: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
         ),
       ),
     );
@@ -3053,7 +3104,16 @@ Future<void> _exportStatisticsToPdf({
     }
 
     // Set default selected building if not set
-    if (_selectedBuildingId == null && buildings.isNotEmpty) {
+    if (_selectedBuildingId == null || !buildings.any((b) => b.id == _selectedBuildingId)) {
+      // Use WidgetsBinding to avoid calling setState during build
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          setState(() {
+            _selectedBuildingId = buildings.first.id;
+          });
+        }
+      });
+      // For this frame, use the first building
       _selectedBuildingId = buildings.first.id;
     }
 

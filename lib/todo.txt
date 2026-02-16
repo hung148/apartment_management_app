@@ -4,10 +4,6 @@ better date chooser that support vietnamese and be able to directly enter day, m
 
 add room type and area in tenant information view if they are currently renting
 
-fix Vi tri should display khong xac dinh if tenant move out
-
-show tenant email in export to hoa don
-
 ma so thue
 Show example format in the hint text or helper text
 If supporting multiple countries, add country-specific tax code validation
@@ -16,10 +12,7 @@ fix security rule
 
 add app icon
 
-ti lap day toa nha hien tai doesn't allow to choose
+fix Vi tri should display khong xac dinh if tenant move out
 
-noi lam viec not show up in add Tenant
-
-update tanent in room to be the same as tenantTab
-
+show tenant email in export to hoa don
 

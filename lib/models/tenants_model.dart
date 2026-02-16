@@ -13,6 +13,12 @@ enum Gender {
   other,        // Khác
 }
 
+enum ContractStatus {
+  active,       // Đang hiệu lực
+  terminated,   // Đã chấm dứt
+  expired,      // Đã hết hạn
+}
+
 class Tenant {
   final String id;
   final String organizationId;
@@ -49,6 +55,11 @@ class Tenant {
   final double? deposit;                 // Tiền cọc
   final bool isMainTenant;               // Người thuê chính hay người ở cùng
   final String? mainTenantId;            // Nếu không phải người thuê chính
+  
+  // Contract Status (NEW)
+  final ContractStatus? contractStatus;
+  final DateTime? contractTerminationDate;
+  final String? contractTerminationReason;
   
   // NEW: Room/Apartment Details (for PDF generation)
   final String? apartmentType;           // NEW: Loại căn hộ (1PN, 2PN, 3PN, Studio, etc.)
@@ -107,8 +118,11 @@ class Tenant {
     this.deposit,
     this.isMainTenant = true,
     this.mainTenantId,
-    this.apartmentType,          // NEW
-    this.apartmentArea,           // NEW
+    this.contractStatus,              // NEW
+    this.contractTerminationDate,     // NEW
+    this.contractTerminationReason,   // NEW
+    this.apartmentType,
+    this.apartmentArea,
     this.lastBuildingName,
     this.lastRoomNumber,
     this.documentUrls,
@@ -151,6 +165,9 @@ class Tenant {
     if (contractEndDate == null) return false;
     return DateTime.now().isAfter(contractEndDate!);
   }
+  
+  bool get isContractActive => contractStatus == ContractStatus.active || contractStatus == null;
+  bool get isContractTerminated => contractStatus == ContractStatus.terminated;
   
   int? get age {
     if (dateOfBirth == null) return null;
@@ -212,8 +229,13 @@ class Tenant {
       'deposit': deposit,
       'isMainTenant': isMainTenant,
       'mainTenantId': mainTenantId,
-      'apartmentType': apartmentType,        // NEW
-      'apartmentArea': apartmentArea,         // NEW
+      'contractStatus': contractStatus?.name,                          // NEW
+      'contractTerminationDate': contractTerminationDate != null       // NEW
+          ? Timestamp.fromDate(contractTerminationDate!)
+          : null,
+      'contractTerminationReason': contractTerminationReason,          // NEW
+      'apartmentType': apartmentType,
+      'apartmentArea': apartmentArea,
       'lastBuildingName': lastBuildingName,
       'lastRoomNumber': lastRoomNumber,
       'documentUrls': documentUrls,
@@ -281,8 +303,18 @@ class Tenant {
       deposit: (map['deposit'] as num?)?.toDouble(),
       isMainTenant: map['isMainTenant'] ?? true,
       mainTenantId: map['mainTenantId'],
-      apartmentType: map['apartmentType'],        // NEW
-      apartmentArea: (map['apartmentArea'] as num?)?.toDouble(),  // NEW
+      contractStatus: map['contractStatus'] != null                    // NEW
+          ? ContractStatus.values.firstWhere(
+              (e) => e.name == map['contractStatus'],
+              orElse: () => ContractStatus.active,
+            )
+          : null,
+      contractTerminationDate: map['contractTerminationDate'] != null  // NEW
+          ? (map['contractTerminationDate'] as Timestamp).toDate()
+          : null,
+      contractTerminationReason: map['contractTerminationReason'],     // NEW
+      apartmentType: map['apartmentType'],
+      apartmentArea: (map['apartmentArea'] as num?)?.toDouble(),
       lastBuildingName: map['lastBuildingName'],
       lastRoomNumber: map['lastRoomNumber'],
       documentUrls: map['documentUrls'] != null
@@ -342,8 +374,11 @@ class Tenant {
     double? deposit,
     bool? isMainTenant,
     String? mainTenantId,
-    String? apartmentType,        // NEW
-    double? apartmentArea,         // NEW
+    ContractStatus? contractStatus,
+    DateTime? contractTerminationDate,
+    String? contractTerminationReason,
+    String? apartmentType,
+    double? apartmentArea,
     String? lastBuildingName,
     String? lastRoomNumber,
     List<String>? documentUrls,
@@ -388,8 +423,11 @@ class Tenant {
       deposit: deposit ?? this.deposit,
       isMainTenant: isMainTenant ?? this.isMainTenant,
       mainTenantId: mainTenantId ?? this.mainTenantId,
-      apartmentType: apartmentType ?? this.apartmentType,     // NEW
-      apartmentArea: apartmentArea ?? this.apartmentArea,      // NEW
+      contractStatus: contractStatus ?? this.contractStatus,
+      contractTerminationDate: contractTerminationDate ?? this.contractTerminationDate,
+      contractTerminationReason: contractTerminationReason ?? this.contractTerminationReason,
+      apartmentType: apartmentType ?? this.apartmentType,
+      apartmentArea: apartmentArea ?? this.apartmentArea,
       lastBuildingName: lastBuildingName ?? this.lastBuildingName,
       lastRoomNumber: lastRoomNumber ?? this.lastRoomNumber,
       documentUrls: documentUrls ?? this.documentUrls,
@@ -431,6 +469,18 @@ class Tenant {
         return 'Nữ';
       case Gender.other:
         return 'Khác';
+    }
+  }
+
+  String getContractStatusDisplayName() {
+    if (contractStatus == null) return 'Không xác định';
+    switch (contractStatus!) {
+      case ContractStatus.active:
+        return 'Đang hiệu lực';
+      case ContractStatus.terminated:
+        return 'Đã chấm dứt';
+      case ContractStatus.expired:
+        return 'Đã hết hạn';
     }
   }
 }

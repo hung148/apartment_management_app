@@ -1,8 +1,13 @@
 import 'package:apartment_management_project_2/models/tenants_model.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 
 class TenantService {
   FirebaseFirestore get _firestore => FirebaseFirestore.instance;
+
+  String _formatDate(DateTime date) {
+    return DateFormat('dd/MM/yyyy').format(date);
+  }
 
   // ========================================
   // CREATE - Add a new tenant
@@ -319,11 +324,12 @@ class TenantService {
   }
 
   // ========================================
-  // UPDATE - Mark tenant as moved out
+  // UPDATE - Mark tenant as moved out with contract termination
   // ========================================
   Future<bool> markTenantAsMovedOut(
     String tenantId, {
     DateTime? moveOutDate,
+    String? moveOutReason,
     String? newBuildingName,
     String? newBuildingAddress,
     String? newRoomNumber,
@@ -332,6 +338,8 @@ class TenantService {
       // Get current tenant info
       final tenant = await getTenantById(tenantId);
       if (tenant == null) return false;
+
+      final actualMoveOutDate = moveOutDate ?? DateTime.now();
 
       // Get current building and room info
       final building = await _firestore
@@ -356,16 +364,36 @@ class TenantService {
           ? room.data()!['roomNumber'] as String
           : '?';
 
+      // Determine contract termination status and reason
+      String finalMoveOutReason = moveOutReason ?? 'Chuyển đi';
+      String? contractNotes;
+      ContractStatus contractStatus = ContractStatus.terminated;
+      
+      if (tenant.contractEndDate != null) {
+        if (actualMoveOutDate.isBefore(tenant.contractEndDate!)) {
+          final daysEarly = tenant.contractEndDate!.difference(actualMoveOutDate).inDays;
+          contractNotes = 'Hợp đồng chấm dứt sớm $daysEarly ngày (Hết hạn: ${_formatDate(tenant.contractEndDate!)})';
+        } else if (actualMoveOutDate.isAfter(tenant.contractEndDate!)) {
+          final daysLate = actualMoveOutDate.difference(tenant.contractEndDate!).inDays;
+          contractNotes = 'Chuyển đi sau khi hợp đồng hết hạn $daysLate ngày';
+          contractStatus = ContractStatus.expired;
+        } else {
+          contractNotes = 'Hợp đồng kết thúc đúng hạn';
+        }
+      }
+
       // Create new rental history entry
       final previousRental = PreviousRentalHistory(
         buildingName: currentBuildingName,
         buildingAddress: currentBuildingAddress,
         roomNumber: currentRoomNumber,
         moveInDate: tenant.moveInDate,
-        moveOutDate: moveOutDate ?? DateTime.now(),
+        moveOutDate: actualMoveOutDate,
         monthlyRent: tenant.monthlyRent,
-        moveOutReason: 'Chuyển đi',
-        notes: tenant.notes,
+        moveOutReason: finalMoveOutReason,
+        notes: contractNotes != null 
+          ? '${tenant.notes ?? ''}\n$contractNotes'.trim()
+          : tenant.notes,
       );
 
       // Update previous rentals list
@@ -375,10 +403,13 @@ class TenantService {
       // Prepare update data
       final updateData = {
         'status': TenantStatus.moveOut.name,
-        'moveOutDate': Timestamp.fromDate(moveOutDate ?? DateTime.now()),
+        'moveOutDate': Timestamp.fromDate(actualMoveOutDate),
         'lastBuildingName': currentBuildingName,
         'lastRoomNumber': currentRoomNumber,
         'previousRentals': previousRentals.map((r) => r.toMap()).toList(),
+        'contractStatus': contractStatus.name,
+        'contractTerminationDate': Timestamp.fromDate(actualMoveOutDate),
+        'contractTerminationReason': finalMoveOutReason,
       };
 
       // If moving to a new location, add that info to notes
@@ -387,6 +418,10 @@ class TenantService {
         updateData['notes'] = tenant.notes != null 
             ? '${tenant.notes}\n$newLocationNote'
             : newLocationNote;
+      } else if (contractNotes != null) {
+        updateData['notes'] = tenant.notes != null 
+            ? '${tenant.notes}\n$contractNotes'
+            : contractNotes;
       }
 
       return updateTenant(tenantId, updateData);
@@ -463,11 +498,14 @@ class TenantService {
         'roomId': newRoomId,
         'moveInDate': Timestamp.now(),
         'previousRentals': previousRentals.map((r) => r.toMap()).toList(),
-        // Reactivate tenant
+        // Reactivate tenant and contract
         'status': TenantStatus.active.name,
+        'contractStatus': ContractStatus.active.name,
         'moveOutDate': null,
-        'lastBuildingName': null, // Clear moved-out metadata
+        'lastBuildingName': null,
         'lastRoomNumber': null,
+        'contractTerminationDate': null,
+        'contractTerminationReason': null,
         'updatedAt': Timestamp.now(),
       });
     } catch (e) {
@@ -579,6 +617,7 @@ class TenantService {
   ) async {
     return updateTenant(tenantId, {
       'contractEndDate': Timestamp.fromDate(newEndDate),
+      'contractStatus': ContractStatus.active.name,
     });
   }
 
@@ -899,6 +938,9 @@ class TenantService {
           'lastBuildingName': buildingName,
           'lastRoomNumber': roomNumber,
           'previousRentals': previousRentals.map((r) => r.toMap()).toList(),
+          'contractStatus': ContractStatus.terminated.name,
+          'contractTerminationDate': Timestamp.fromDate(now),
+          'contractTerminationReason': 'Toà nhà bị xoá',
           'notes': 'Tự động chuyển trạng thái do xóa toà nhà',
         });
       }
@@ -935,7 +977,8 @@ class TenantService {
       return false;
     }
   }
-    // ========================================
+  
+  // ========================================
   // VEHICLE - Add vehicle to tenant (simpler approach without transaction)
   // ========================================
   Future<bool> addVehicle(String tenantId, VehicleInfo vehicle) async {
