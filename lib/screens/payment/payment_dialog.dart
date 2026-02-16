@@ -444,7 +444,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> w
                         ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: CompactVietnameseDatePicker(
+                          child: CompactLocalizedDatePicker(
                             labelText: 'Từ ngày',
                             initialDate: electricityStartDate,
                             firstDate: DateTime(2020),
@@ -474,7 +474,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> w
                         ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: CompactVietnameseDatePicker(
+                          child: CompactLocalizedDatePicker(
                             labelText: 'Đến ngày',
                             initialDate: electricityEndDate,
                             firstDate: DateTime(2020),
@@ -528,7 +528,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> w
                         ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: CompactVietnameseDatePicker(
+                          child: CompactLocalizedDatePicker(
                             labelText: 'Từ ngày',
                             initialDate: waterStartDate,
                             firstDate: DateTime(2020),
@@ -558,7 +558,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> w
                         ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: CompactVietnameseDatePicker(
+                          child: CompactLocalizedDatePicker(
                             labelText: 'Đến ngày',
                             initialDate: waterEndDate,
                             firstDate: DateTime(2020),
@@ -598,7 +598,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> w
                     Row(
                       children: [
                         Expanded(
-                          child: CompactVietnameseDatePicker(
+                          child: CompactLocalizedDatePicker(
                             labelText: 'Từ ngày',
                             initialDate: billingStart,
                             firstDate: DateTime(2020),
@@ -610,7 +610,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> w
                         ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: CompactVietnameseDatePicker(
+                          child: CompactLocalizedDatePicker(
                             labelText: 'Đến ngày',
                             initialDate: billingEnd,
                             firstDate: DateTime(2020),
@@ -1280,7 +1280,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> w
                             const SizedBox(height: 24),
                             
                             // Due Date
-                            VietnameseDatePicker(
+                            LocalizedDatePicker(
                               labelText: 'Hạn thanh toán',
                               prefixIcon: Icons.event,
                               required: true,

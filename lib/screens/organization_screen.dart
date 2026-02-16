@@ -23,12 +23,12 @@ import 'package:apartment_management_project_2/services/room_service.dart';
 import 'package:apartment_management_project_2/widgets/shared.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:excel/excel.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:path/path.dart' as p;
+import 'package:syncfusion_flutter_xlsio/xlsio.dart' as xlsio;
 
 // Helper class for invoice line items
 class InvoiceLineItem {
@@ -2310,15 +2310,11 @@ Future<void> _exportStatisticsToPdf({
 
     try {
       // ============================================
-      // FORMATTERS
+      // FORMATTERS & PRE-CALCULATIONS
       // ============================================
-      final currencyFormatter = NumberFormat.currency(locale: 'vi_VN', symbol: '₫', decimalDigits: 0);
+      final currencyFormat = '#,##0 "₫"';
       final dateFormatter = DateFormat('dd/MM/yyyy – HH:mm');
 
-      // ============================================
-      // CALCULATE COMPREHENSIVE STATISTICS
-      // ============================================
-      
       // Overall stats
       final totalBuildings = buildings.length;
       final totalRooms = rooms.length;
@@ -2327,191 +2323,81 @@ Future<void> _exportStatisticsToPdf({
       final movedOutTenants = tenants.where((t) => t.status == TenantStatus.moveOut).length;
       final suspendedTenants = tenants.where((t) => t.status == TenantStatus.suspended).length;
       
-      // Payment stats
+      // Revenue calculations
       final paidPayments = payments.where((p) => p.status == PaymentStatus.paid).toList();
       final pendingPayments = payments.where((p) => p.status == PaymentStatus.pending).toList();
       final overduePayments = payments.where((p) => p.isOverdue).toList();
       final cancelledPayments = payments.where((p) => p.status == PaymentStatus.cancelled).toList();
       
-      final totalRevenue = payments.fold<double>(0, (sum, p) {
-        // If status is 'paid' but paidAmount is accidentally 0, fallback to totalWithAllFees
-        if (p.status == PaymentStatus.paid && p.paidAmount == 0) {
-          return sum + p.totalWithAllFees;
-        }
-        return sum + p.paidAmount;
-      });
-      final pendingRevenue = payments.fold<double>(0, (sum, p) {
-        // We ignore Paid (remaining is 0) and Cancelled (we don't expect to collect it)
-        if (p.status == PaymentStatus.paid || p.status == PaymentStatus.cancelled) {
-          return sum;
-        }
-        
-        // For Pending, Overdue, and Partial, use the model property
-        return sum + p.remainingAmount;
-      });
-      final overdueRevenue =  payments.fold<double>(0, (sum, p) {
-        // We ignore Paid (remaining is 0) and Cancelled (we don't expect to collect it)
-        if (p.status == PaymentStatus.paid || p.status == PaymentStatus.cancelled) {
-          return sum;
-        }
-        
-        // For Pending, Overdue, and Partial, use the model property
-        return sum + p.remainingAmount;
-      });
-      
-      // Building-specific stats
-      final Map<String, _BuildingStats> statsByBuilding = {};
-      for (final b in buildings) {
-        statsByBuilding[b.id] = _BuildingStats(
-          buildingId: b.id,
-          buildingName: b.name,
-          totalRooms: 0,
-          occupiedRooms: 0,
-          revenue: 0.0,
-        );
-      }
-
-      for (final r in rooms) {
-        final s = statsByBuilding[r.buildingId];
-        if (s != null) s.totalRooms += 1;
-      }
-
-      for (final t in tenants) {
-        if (t.buildingId.isEmpty) continue;
-        if (t.status == TenantStatus.active) {
-          final s = statsByBuilding[t.buildingId];
-          if (s != null) s.occupiedRooms += 1;
-        }
-      }
-
-      for (final pmt in paidPayments) {
-        if (pmt.buildingId.isNotEmpty) {
-          final s = statsByBuilding[pmt.buildingId];
-          if (s != null) s.revenue += pmt.paidAmount;
-        } else if (pmt.roomId.isNotEmpty) {
-          final room = rooms.firstWhere(
-            (r) => r.id == pmt.roomId, 
-            orElse: () => Room(id: '', area: 0.0, roomType: '', organizationId: '', buildingId: '', roomNumber: '', createdAt: DateTime.now())
-          );
-          if (room.id.isNotEmpty) {
-            final s = statsByBuilding[room.buildingId];
-            if (s != null) s.revenue += pmt.paidAmount;
-          }
-        }
-      }
-
-      // Build building table rows
-      final List<List<dynamic>> buildingTableRows = [];
-      int grandTotalRooms = 0;
-      int grandOccupied = 0;
-      double grandRevenue = 0.0;
-
-      for (final s in statsByBuilding.values) {
-        final emptyRooms = (s.totalRooms - s.occupiedRooms).clamp(0, s.totalRooms);
-        final occupancyRate = s.totalRooms > 0 
-            ? ((s.occupiedRooms / s.totalRooms) * 100).toStringAsFixed(1) 
-            : '0.0';
-        
-        buildingTableRows.add([
-          s.buildingName,
-          s.totalRooms,
-          s.occupiedRooms,
-          emptyRooms,
-          '$occupancyRate%',
-          s.revenue,
-        ]);
-
-        grandTotalRooms += s.totalRooms;
-        grandOccupied += s.occupiedRooms;
-        grandRevenue += s.revenue;
-      }
-
-      buildingTableRows.sort((a, b) => a[0].toString().compareTo(b[0].toString()));
+      final totalRevenue = payments.fold<double>(0, (sum, p) => sum + (p.status == PaymentStatus.paid ? (p.paidAmount > 0 ? p.paidAmount : p.totalWithAllFees) : p.paidAmount));
+      final pendingRevenue = payments.fold<double>(0, (sum, p) => sum + (p.status != PaymentStatus.paid && p.status != PaymentStatus.cancelled ? p.remainingAmount : 0));
+      final overdueRevenue = payments.fold<double>(0, (sum, p) => sum + (p.isOverdue ? p.remainingAmount : 0));
 
       // ============================================
-      // CREATE EXCEL WORKBOOK
+      // CREATE WORKBOOK (Syncfusion)
       // ============================================
-      var excel = Excel.createExcel();
+      final xlsio.Workbook workbook = xlsio.Workbook();
       
-      // Remove default sheet
-      excel.delete('Sheet1');
+      // --------------------------------------------
+      // SHEET 1: TỔNG QUAN
+      // --------------------------------------------
+      final xlsio.Worksheet summarySheet = workbook.worksheets[0];
+      summarySheet.name = 'Tổng Quan';
+      int rowIdx = 1;
 
-      // ============================================
-      // SHEET 1: EXECUTIVE SUMMARY
-      // ============================================
-      var summarySheet = excel['Tổng Quan'];
-      
-      int row = -1;
-      
-      // Title and Header
-      row++;
-      summarySheet.merge(CellIndex.indexByString('A${row + 1}'), CellIndex.indexByString('F${row + 1}'));
-      var titleCell = summarySheet.cell(CellIndex.indexByString('A${row + 1}'));
-      titleCell.value = TextCellValue(organizationName ?? 'Tổ chức');
-      titleCell.cellStyle = CellStyle(bold: true, fontSize: 16);
+      // Title
+      xlsio.Range range = summarySheet.getRangeByIndex(rowIdx, 1, rowIdx, 6);
+      range.merge();
+      range.setText(organizationName ?? 'Tổ chức');
+      range.cellStyle.bold = true;
+      range.cellStyle.fontSize = 16;
+      rowIdx++;
 
-      row++;
-      summarySheet.merge(CellIndex.indexByString('A${row + 1}'), CellIndex.indexByString('F${row + 1}'));
-      var headerCell = summarySheet.cell(CellIndex.indexByString('A${row + 1}'));
-      headerCell.value = TextCellValue('BÁO CÁO THỐNG KÊ TỔNG QUAN');
-      headerCell.cellStyle = CellStyle(bold: true, fontSize: 14);
+      range = summarySheet.getRangeByIndex(rowIdx, 1, rowIdx, 6);
+      range.merge();
+      range.setText('BÁO CÁO THỐNG KÊ TỔNG QUAN');
+      range.cellStyle.bold = true;
+      range.cellStyle.fontSize = 14;
+      rowIdx++;
 
-      row++;
-      summarySheet.merge(CellIndex.indexByString('A${row + 1}'), CellIndex.indexByString('F${row + 1}'));
-      var dateCell = summarySheet.cell(CellIndex.indexByString('A${row + 1}'));
-      dateCell.value = TextCellValue('Ngày tạo: ${dateFormatter.format(DateTime.now())}');
-      dateCell.cellStyle = CellStyle(italic: true);
-      row += 2;
+      summarySheet.getRangeByIndex(rowIdx, 1).setText('Ngày tạo: ${dateFormatter.format(DateTime.now())}');
+      rowIdx += 2;
 
-      // Section 1: Overall Statistics
-      var sectionCell = summarySheet.cell(CellIndex.indexByString('A${row + 1}'));
-      sectionCell.value = TextCellValue('1. TỔNG QUAN');
-      sectionCell.cellStyle = CellStyle(bold: true, fontSize: 12);
-      row += 2;
+      // Section 1: Overview
+      summarySheet.getRangeByIndex(rowIdx, 1).setText('1. TỔNG QUAN');
+      summarySheet.getRangeByIndex(rowIdx, 1).cellStyle.bold = true;
+      rowIdx += 2;
 
-      // Create stat cards data
-      final statsData = [
-        ['Toà nhà', totalBuildings, 'Tổng phòng', totalRooms],
-        ['Đang thuê', activeTenants, 'Tỷ lệ lấp đầy', totalRooms > 0 ? '${((activeTenants / totalRooms) * 100).toStringAsFixed(1)}%' : '0%'],
-        ['Phòng trống', totalRooms - activeTenants, 'Đã chuyển đi', movedOutTenants],
-      ];
-
-      for (var statRow in statsData) {
-        var cell1 = summarySheet.cell(CellIndex.indexByString('A${row + 1}'));
-        cell1.value = TextCellValue(statRow[0].toString());
-        cell1.cellStyle = CellStyle(bold: true);
-        
-        var cell2 = summarySheet.cell(CellIndex.indexByString('B${row + 1}'));
-        cell2.value = TextCellValue(statRow[1].toString());
-        
-        var cell3 = summarySheet.cell(CellIndex.indexByString('C${row + 1}'));
-        cell3.value = TextCellValue(statRow[2].toString());
-        cell3.cellStyle = CellStyle(bold: true);
-        
-        var cell4 = summarySheet.cell(CellIndex.indexByString('D${row + 1}'));
-        cell4.value = TextCellValue(statRow[3].toString());
-        
-        row++;
+      // Grid data
+      void writeStatRow(int r, String label1, dynamic val1, String label2, dynamic val2) {
+        summarySheet.getRangeByIndex(r, 1).setText(label1);
+        summarySheet.getRangeByIndex(r, 1).cellStyle.bold = true;
+        summarySheet.getRangeByIndex(r, 2).setValue(val1);
+        summarySheet.getRangeByIndex(r, 3).setText(label2);
+        summarySheet.getRangeByIndex(r, 3).cellStyle.bold = true;
+        summarySheet.getRangeByIndex(r, 4).setValue(val2);
       }
 
-      row += 2;
+      writeStatRow(rowIdx++, 'Toà nhà', totalBuildings, 'Tổng phòng', totalRooms);
+      writeStatRow(rowIdx++, 'Đang thuê', activeTenants, 'Tỷ lệ lấp đầy', totalRooms > 0 ? '${((activeTenants / totalRooms) * 100).toStringAsFixed(1)}%' : '0%');
+      writeStatRow(rowIdx++, 'Phòng trống', totalRooms - activeTenants, 'Đã chuyển đi', movedOutTenants);
+      rowIdx += 2;
 
       // Section 2: Tenant Status
-      var tenantSectionCell = summarySheet.cell(CellIndex.indexByString('A${row + 1}'));
-      tenantSectionCell.value = TextCellValue('2. TÌNH TRẠNG NGƯỜI THUÊ');
-      tenantSectionCell.cellStyle = CellStyle(bold: true, fontSize: 12);
-      row += 2;
+      summarySheet.getRangeByIndex(rowIdx, 1).setText('2. TÌNH TRẠNG NGƯỜI THUÊ');
+      summarySheet.getRangeByIndex(rowIdx, 1).cellStyle.bold = true;
+      rowIdx++;
 
-      // Tenant status headers
-      final tenantHeaders = ['Trạng thái', 'Số lượng', 'Tỷ lệ'];
-      for (int i = 0; i < tenantHeaders.length; i++) {
-        var cell = summarySheet.cell(CellIndex.indexByColumnRow(columnIndex: i, rowIndex: row));
-        cell.value = TextCellValue(tenantHeaders[i]);
-        cell.cellStyle = CellStyle(bold: true, backgroundColorHex: ExcelColor.fromHexString('FF0099FF'));
+      List<String> tHeaders = ['Trạng thái', 'Số lượng', 'Tỷ lệ'];
+      for (int i = 0; i < tHeaders.length; i++) {
+        xlsio.Range header = summarySheet.getRangeByIndex(rowIdx, i + 1);
+        header.setText(tHeaders[i]);
+        header.cellStyle.bold = true;
+        header.cellStyle.backColor = '#0099FF';
+        header.cellStyle.fontColor = '#FFFFFF';
       }
-      row++;
+      rowIdx++;
 
-      // Tenant status data
       final tenantStatusData = [
         ['Đang hoạt động', activeTenants, tenants.isNotEmpty ? '${((activeTenants / tenants.length) * 100).toStringAsFixed(1)}%' : '0%'],
         ['Không hoạt động', inactiveTenants, tenants.isNotEmpty ? '${((inactiveTenants / tenants.length) * 100).toStringAsFixed(1)}%' : '0%'],
@@ -2520,245 +2406,168 @@ Future<void> _exportStatisticsToPdf({
         ['TỔNG', tenants.length, '100%'],
       ];
 
-      for (var statusRow in tenantStatusData) {
-        for (int i = 0; i < statusRow.length; i++) {
-          var cell = summarySheet.cell(CellIndex.indexByColumnRow(columnIndex: i, rowIndex: row));
-          cell.value = TextCellValue(statusRow[i].toString());
-          if (statusRow[0] == 'TỔNG') {
-            cell.cellStyle = CellStyle(bold: true);
-          }
-        }
-        row++;
+      for (var data in tenantStatusData) {
+        summarySheet.getRangeByIndex(rowIdx, 1).setText(data[0].toString());
+        summarySheet.getRangeByIndex(rowIdx, 2).setNumber(double.parse(data[1].toString()));
+        summarySheet.getRangeByIndex(rowIdx, 3).setText(data[2].toString());
+        if (data[0] == 'TỔNG') summarySheet.getRangeByIndex(rowIdx, 1, rowIdx, 3).cellStyle.bold = true;
+        rowIdx++;
+      }
+      rowIdx += 2;
+
+      // Section 3: Revenue
+      summarySheet.getRangeByIndex(rowIdx, 1).setText('3. TỔNG KẾT THANH TOÁN');
+      summarySheet.getRangeByIndex(rowIdx, 1).cellStyle.bold = true;
+      rowIdx++;
+
+      void writeRevenueRow(int r, String label, double amount, String label2, int count) {
+        summarySheet.getRangeByIndex(r, 1).setText(label);
+        summarySheet.getRangeByIndex(r, 1).cellStyle.bold = true;
+        xlsio.Range valRange = summarySheet.getRangeByIndex(r, 2);
+        valRange.setNumber(amount);
+        valRange.numberFormat = currencyFormat;
+        summarySheet.getRangeByIndex(r, 3).setText(label2);
+        summarySheet.getRangeByIndex(r, 4).setNumber(count.toDouble());
       }
 
-      row += 2;
+      writeRevenueRow(rowIdx++, 'Đã thu', totalRevenue, 'Số hóa đơn', paidPayments.length);
+      writeRevenueRow(rowIdx++, 'Chưa thu', pendingRevenue, 'Số hóa đơn', pendingPayments.length);
+      writeRevenueRow(rowIdx++, 'Quá hạn', overdueRevenue, 'Số hóa đơn', overduePayments.length);
+      summarySheet.getRangeByIndex(rowIdx, 1).setText('Đã hủy');
+      summarySheet.getRangeByIndex(rowIdx, 2).setNumber(cancelledPayments.length.toDouble());
+      rowIdx++;
 
-      // Section 3: Payment Summary
-      var paymentSectionCell = summarySheet.cell(CellIndex.indexByString('A${row + 1}'));
-      paymentSectionCell.value = TextCellValue('3. TỔNG KẾT THANH TOÁN');
-      paymentSectionCell.cellStyle = CellStyle(bold: true, fontSize: 12);
-      row += 2;
+      // --------------------------------------------
+      // SHEET 2: CHI TIẾT TÒA NHÀ
+      // --------------------------------------------
+      final xlsio.Worksheet buildingSheet = workbook.worksheets.addWithName('Chi Tiết Tòa Nhà');
+      int bRow = 1;
+      buildingSheet.getRangeByIndex(bRow, 1).setText('CHI TIẾT THEO TÒA NHÀ');
+      buildingSheet.getRangeByIndex(bRow, 1).cellStyle.bold = true;
+      buildingSheet.getRangeByIndex(bRow, 1).cellStyle.fontSize = 14;
+      bRow += 2;
 
-      final paymentSummaryData = [
-        ['Đã thu', currencyFormatter.format(totalRevenue), 'Số hóa đơn', paidPayments.length],
-        ['Chưa thu', currencyFormatter.format(pendingRevenue), 'Số hóa đơn', pendingPayments.length],
-        ['Quá hạn', currencyFormatter.format(overdueRevenue), 'Số hóa đơn', overduePayments.length],
-        ['Đã hủy', cancelledPayments.length, 'Số hóa đơn', ''],
-      ];
+      List<String> bHeaders = ['Toà nhà', 'Tổng phòng', 'Đang thuê', 'Trống', 'Tỷ lệ', 'Doanh thu'];
+      for (int i = 0; i < bHeaders.length; i++) {
+        xlsio.Range header = buildingSheet.getRangeByIndex(bRow, i + 1);
+        header.setText(bHeaders[i]);
+        header.cellStyle.bold = true;
+        header.cellStyle.backColor = '#0099FF';
+        header.cellStyle.fontColor = '#FFFFFF';
+      }
+      bRow++;
 
-      for (var paymentRow in paymentSummaryData) {
-        var cell1 = summarySheet.cell(CellIndex.indexByString('A${row + 1}'));
-        cell1.value = TextCellValue(paymentRow[0].toString());
-        cell1.cellStyle = CellStyle(bold: true);
-        
-        var cell2 = summarySheet.cell(CellIndex.indexByString('B${row + 1}'));
-        cell2.value = TextCellValue(paymentRow[1].toString());
-        
-        var cell3 = summarySheet.cell(CellIndex.indexByString('C${row + 1}'));
-        cell3.value = TextCellValue(paymentRow[2].toString());
-        cell3.cellStyle = CellStyle(bold: true);
-        
-        var cell4 = summarySheet.cell(CellIndex.indexByString('D${row + 1}'));
-        cell4.value = TextCellValue(paymentRow[3].toString());
-        
-        row++;
+      // Aggregate building stats logic
+      double grandRevenue = 0;
+      int grandRooms = 0;
+      int grandOccupied = 0;
+
+      for (var b in buildings) {
+        final bRooms = rooms.where((r) => r.buildingId == b.id).length;
+        final bOccupied = rooms.where((r) => r.buildingId == b.id && tenants.any((t) => t.roomId == r.id && t.status == TenantStatus.active)).length;
+        final bRevenue = paidPayments.where((p) => p.buildingId == b.id).fold<double>(0, (s, p) => s + p.paidAmount);
+        final rate = bRooms > 0 ? (bOccupied / bRooms * 100).toStringAsFixed(1) : '0.0';
+
+        buildingSheet.getRangeByIndex(bRow, 1).setText(b.name);
+        buildingSheet.getRangeByIndex(bRow, 2).setNumber(bRooms.toDouble());
+        buildingSheet.getRangeByIndex(bRow, 3).setNumber(bOccupied.toDouble());
+        buildingSheet.getRangeByIndex(bRow, 4).setNumber((bRooms - bOccupied).toDouble());
+        buildingSheet.getRangeByIndex(bRow, 5).setText('$rate%');
+        xlsio.Range revRange = buildingSheet.getRangeByIndex(bRow, 6);
+        revRange.setNumber(bRevenue);
+        revRange.numberFormat = currencyFormat;
+
+        grandRevenue += bRevenue;
+        grandRooms += bRooms;
+        grandOccupied += bOccupied;
+        bRow++;
       }
 
-      // ============================================
-      // SHEET 2: BUILDING DETAILS
-      // ============================================
-      var buildingSheet = excel['Chi Tiết Tòa Nhà'];
-      
-      row = -1;
-      
-      // Header
-      row++;
-      var buildingTitleCell = buildingSheet.cell(CellIndex.indexByString('A${row + 1}'));
-      buildingTitleCell.value = TextCellValue('CHI TIẾT THEO TÒA NHÀ');
-      buildingTitleCell.cellStyle = CellStyle(bold: true, fontSize: 14);
-      row += 2;
+      // Totals
+      xlsio.Range totalLabel = buildingSheet.getRangeByIndex(bRow, 1);
+      totalLabel.setText('TỔNG CỘNG');
+      totalLabel.cellStyle.bold = true;
+      buildingSheet.getRangeByIndex(bRow, 2).setNumber(grandRooms.toDouble());
+      buildingSheet.getRangeByIndex(bRow, 3).setNumber(grandOccupied.toDouble());
+      xlsio.Range gRevRange = buildingSheet.getRangeByIndex(bRow, 6);
+      gRevRange.setNumber(grandRevenue);
+      gRevRange.cellStyle.bold = true;
+      gRevRange.numberFormat = currencyFormat;
 
-      // Building table headers
-      final buildingHeaders = ['Toà nhà', 'Tổng phòng', 'Đang thuê', 'Trống', 'Tỷ lệ', 'Doanh thu'];
-      for (int i = 0; i < buildingHeaders.length; i++) {
-        var cell = buildingSheet.cell(CellIndex.indexByColumnRow(columnIndex: i, rowIndex: row));
-        cell.value = TextCellValue(buildingHeaders[i]);
-        cell.cellStyle = CellStyle(bold: true, backgroundColorHex: ExcelColor.fromHexString('FF0099FF'));
+      // --------------------------------------------
+      // SHEET 3: CHI TIẾT THANH TOÁN
+      // --------------------------------------------
+      final xlsio.Worksheet pSheet = workbook.worksheets.addWithName('Thanh Toán Chi Tiết');
+      int pRow = 1;
+      pSheet.getRangeByIndex(pRow, 1).setText('DANH SÁCH THANH TOÁN CHI TIẾT');
+      pSheet.getRangeByIndex(pRow, 1).cellStyle.bold = true;
+      pRow += 2;
+
+      List<String> pHeaders = ['Mã hóa đơn', 'Người thuê', 'Số tiền', 'Trạng thái', 'Ngày thanh toán', 'Hạn thanh toán'];
+      for (int i = 0; i < pHeaders.length; i++) {
+        xlsio.Range header = pSheet.getRangeByIndex(pRow, i + 1);
+        header.setText(pHeaders[i]);
+        header.cellStyle.bold = true;
+        header.cellStyle.backColor = '#FF9900';
+        header.cellStyle.fontColor = '#FFFFFF';
       }
-      row++;
+      pRow++;
 
-      // Building table data
-      for (var buildingRow in buildingTableRows) {
-        var cell0 = buildingSheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: row));
-        cell0.value = TextCellValue(buildingRow[0].toString());
-        
-        var cell1 = buildingSheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: row));
-        cell1.value = IntCellValue(buildingRow[1] as int);
-        
-        var cell2 = buildingSheet.cell(CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: row));
-        cell2.value = IntCellValue(buildingRow[2] as int);
-        
-        var cell3 = buildingSheet.cell(CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: row));
-        cell3.value = IntCellValue(buildingRow[3] as int);
-        
-        var cell4 = buildingSheet.cell(CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: row));
-        cell4.value = TextCellValue(buildingRow[4].toString());
-        
-        var cell5 = buildingSheet.cell(CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: row));
-        cell5.value = DoubleCellValue(buildingRow[5] as double);
-        
-        row++;
+      final sortedPayments = List<Payment>.from(payments)..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+      for (var p in sortedPayments) {
+        pSheet.getRangeByIndex(pRow, 1).setText(p.id);
+        pSheet.getRangeByIndex(pRow, 2).setText(p.tenantName ?? '');
+        xlsio.Range amtRange = pSheet.getRangeByIndex(pRow, 3);
+        amtRange.setNumber(p.totalAmount);
+        amtRange.numberFormat = currencyFormat;
+        pSheet.getRangeByIndex(pRow, 4).setText(p.getStatusDisplayName());
+        pSheet.getRangeByIndex(pRow, 5).setText(p.paidAt != null ? DateFormat('dd/MM/yyyy').format(p.paidAt!) : '-');
+        pSheet.getRangeByIndex(pRow, 6).setText(DateFormat('dd/MM/yyyy').format(p.dueDate));
+        pRow++;
       }
 
-      // Totals row
-      row++;
-      var totalLabelCell = buildingSheet.cell(CellIndex.indexByString('A${row + 1}'));
-      totalLabelCell.value = TextCellValue('TỔNG CỘNG');
-      totalLabelCell.cellStyle = CellStyle(bold: true);
-
-      var totalRoomsCell = buildingSheet.cell(CellIndex.indexByString('B${row + 1}'));
-      totalRoomsCell.value = IntCellValue(grandTotalRooms);
-      totalRoomsCell.cellStyle = CellStyle(bold: true);
-
-      var totalOccupiedCell = buildingSheet.cell(CellIndex.indexByString('C${row + 1}'));
-      totalOccupiedCell.value = IntCellValue(grandOccupied);
-      totalOccupiedCell.cellStyle = CellStyle(bold: true);
-
-      var totalEmptyCell = buildingSheet.cell(CellIndex.indexByString('D${row + 1}'));
-      totalEmptyCell.value = IntCellValue(grandTotalRooms - grandOccupied);
-      totalEmptyCell.cellStyle = CellStyle(bold: true);
-
-      var totalRevenueCell = buildingSheet.cell(CellIndex.indexByString('F${row + 1}'));
-      totalRevenueCell.value = DoubleCellValue(grandRevenue);
-      totalRevenueCell.cellStyle = CellStyle(bold: true);
-
-      // ============================================
-      // SHEET 3: DETAILED PAYMENTS
-      // ============================================
-      var paymentsSheet = excel['Thanh Toán Chi Tiết'];
-      
-      row = -1;
-      
-      row++;
-      var paymentsTitleCell = paymentsSheet.cell(CellIndex.indexByString('A${row + 1}'));
-      paymentsTitleCell.value = TextCellValue('DANH SÁCH THANH TOÁN CHI TIẾT');
-      paymentsTitleCell.cellStyle = CellStyle(bold: true, fontSize: 14);
-      row += 2;
-
-      // Payment table headers
-      final paymentHeaders = ['Mã thanh toán', 'Số tiền', 'Trạng thái', 'Ngày thanh toán', 'Ngày quá hạn', 'Ghi chú'];
-      for (int i = 0; i < paymentHeaders.length; i++) {
-        var cell = paymentsSheet.cell(CellIndex.indexByColumnRow(columnIndex: i, rowIndex: row));
-        cell.value = TextCellValue(paymentHeaders[i]);
-        cell.cellStyle = CellStyle(bold: true, backgroundColorHex: ExcelColor.fromHexString('FFFF9900'));
-      }
-      row++;
-
-      // Payment data - sorted by date (newest first)
-      final sortedPayments = List<Payment>.from(payments);
-      sortedPayments.sort((a, b) {
-        final dateA = a.createdAt;
-        final dateB = b.createdAt;
-        return dateB.compareTo(dateA);
-      });
-
-      for (var payment in sortedPayments) {
-        var cell0 = paymentsSheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: row));
-        cell0.value = TextCellValue(payment.id);
-        
-        var cell1 = paymentsSheet.cell(CellIndex.indexByColumnRow(columnIndex: 1, rowIndex: row));
-        cell1.value = DoubleCellValue(payment.totalAmount);
-        
-        var cell2 = paymentsSheet.cell(CellIndex.indexByColumnRow(columnIndex: 2, rowIndex: row));
-        final statusText = payment.status == PaymentStatus.paid ? 'Đã thanh toán' :
-                          payment.status == PaymentStatus.pending ? 'Chưa thanh toán' :
-                          payment.status == PaymentStatus.cancelled ? 'Đã hủy' : 'Khác';
-        cell2.value = TextCellValue(statusText);
-        
-        var cell3 = paymentsSheet.cell(CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: row));
-        final paidDateText = payment.paidAt != null ? DateFormat('dd/MM/yyyy').format(payment.paidAt!) : '';
-        cell3.value = TextCellValue(paidDateText);
-        
-        var cell4 = paymentsSheet.cell(CellIndex.indexByColumnRow(columnIndex: 4, rowIndex: row));
-        final dueDateText = DateFormat('dd/MM/yyyy').format(payment.dueDate);
-        cell4.value = TextCellValue(dueDateText);
-        
-        var cell5 = paymentsSheet.cell(CellIndex.indexByColumnRow(columnIndex: 5, rowIndex: row));
-        cell5.value = TextCellValue(payment.notes ?? '');
-        
-        row++;
-      }
-
-      // ============================================
-      // AUTO-FIT COLUMNS FOR ALL SHEETS
-      // ============================================
-      // Set auto-fit column widths for all sheets
-      for (var sheet in excel.sheets.keys) {
-        var sheetObject = excel[sheet];
-        
-        // Get the maximum column index used in this sheet
-        int maxCol = 0;
-        for (var row in sheetObject.rows) {
-          if (row.isNotEmpty) {
-            maxCol = maxCol < row.length ? row.length : maxCol;
-          }
-        }
-        
-        // Set auto-fit width for each column
-        for (int col = 0; col < maxCol; col++) {
-          sheetObject.setColumnAutoFit(col);
+      // Auto-fit all columns in all sheets
+      for(int i = 0; i < workbook.worksheets.count; i++) {
+        for(int col = 1; col <= 10; col++) {
+          workbook.worksheets[i].autoFitColumn(col);
         }
       }
 
       // ============================================
-      // SAVE EXCEL FILE
+      // SAVE AND EXPORT
       // ============================================
-      final excelBytes = excel.encode();
-      
-      // Close progress dialog
-      if (mounted) Navigator.of(context).pop();
+      final List<int> bytes = workbook.saveAsStream();
+      workbook.dispose();
 
-      // Platform-specific behavior
+      if (mounted) Navigator.of(context).pop(); // Close progress
+
       if (Platform.isWindows) {
-        final file = await getSaveLocation(
+        final fileLocation = await getSaveLocation(
           suggestedName: 'statistics_${DateTime.now().millisecondsSinceEpoch}.xlsx',
           acceptedTypeGroups: [const XTypeGroup(label: 'Excel', extensions: ['xlsx'])],
         );
 
-        if (file == null) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Hủy xuất Excel'))
-            );
-          }
-          return;
-        }
+        if (fileLocation == null) return;
 
-        final path = file.path;
-        await File(path).writeAsBytes(excelBytes!);
-        await Process.run('explorer', [path]);
+        final file = File(fileLocation.path);
+        await file.writeAsBytes(bytes);
+        await Process.run('explorer', [fileLocation.path]);
 
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Đã lưu Excel: ${p.basename(path)}'))
-          );
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Đã lưu Excel: ${p.basename(fileLocation.path)}')));
         }
       } else {
-        // For other platforms, show a snackbar
+        // Logic cho mobile (nếu cần)
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Tệp Excel đã được tạo'))
-          );
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tệp Excel đã được tạo thành công')));
         }
       }
     } catch (e) {
-      // Close progress dialog if still open
       if (mounted) Navigator.of(context).pop();
-
+      debugPrint('Excel Export Error: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi khi xuất Excel: $e'))
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Lỗi khi xuất Excel: $e'), backgroundColor: Colors.red));
       }
     }
   }

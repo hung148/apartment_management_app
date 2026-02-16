@@ -1856,7 +1856,7 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                     _buildInputField(phoneController, 'Số điện thoại', Icons.phone, keyboardType: TextInputType.phone),
                     _buildInputField(monthlyRentController, 'Giá thuê', Icons.money, suffix: '₫', keyboardType: TextInputType.number),
                     const Divider(height: 32),
-                    VietnameseDatePicker(
+                    LocalizedDatePicker(
                       labelText: 'Ngày chuyển vào',
                       initialDate: editedMoveInDate,
                       required: true,
@@ -2032,7 +2032,7 @@ Future<void> _showMoveRoomDialog(Tenant tenant) async {
                 Text('Đánh dấu ${tenant.fullName} là đã chuyển đi?'),
                 const SizedBox(height: 16),
                 
-                VietnameseDatePicker(
+                LocalizedDatePicker(
                   labelText: 'Ngày chuyển đi',
                   initialDate: selectedDate,
                   required: true,
@@ -2286,7 +2286,7 @@ Future<void> _showMoveRoomDialog(Tenant tenant) async {
 
                         const SizedBox(height: 16),
 
-                        VietnameseDatePicker(
+                        LocalizedDatePicker(
                           labelText: 'Ngày chuyển vào',
                           initialDate: moveInDate,
                           required: true,

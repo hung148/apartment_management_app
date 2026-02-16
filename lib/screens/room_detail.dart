@@ -339,7 +339,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                     const SizedBox(height: 16),
                     
                     // Move In Date
-                    VietnameseDatePicker(
+                    LocalizedDatePicker(
                       labelText: 'Ngày vào ở',
                       initialDate: moveInDate,
                       required: true,
@@ -1784,7 +1784,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                 Text('Đánh dấu ${tenant.fullName} là đã chuyển đi?'),
                 const SizedBox(height: 16),
                 
-                VietnameseDatePicker(
+                LocalizedDatePicker(
                   labelText: 'Ngày chuyển đi',
                   initialDate: selectedDate,
                   required: true,

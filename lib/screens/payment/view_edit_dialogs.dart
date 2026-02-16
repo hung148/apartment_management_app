@@ -1108,7 +1108,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
                         ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: CompactVietnameseDatePicker(
+                          child: CompactLocalizedDatePicker(
                             labelText: 'Từ ngày',
                             initialDate: electricityStartDate,
                             firstDate: DateTime.now().subtract(const Duration(days: 365)),
@@ -1136,7 +1136,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
                         ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: CompactVietnameseDatePicker(
+                          child: CompactLocalizedDatePicker(
                             labelText: 'Đến ngày',
                             initialDate: electricityEndDate ?? DateTime.now(),
                             firstDate: electricityStartDate ?? DateTime.now().subtract(const Duration(days: 365)),
@@ -1187,7 +1187,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
                         ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: CompactVietnameseDatePicker(
+                          child: CompactLocalizedDatePicker(
                             labelText: 'Từ ngày',
                             initialDate: waterStartDate,
                             firstDate: DateTime.now().subtract(const Duration(days: 365)),
@@ -1215,7 +1215,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
                         ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: CompactVietnameseDatePicker(
+                          child: CompactLocalizedDatePicker(
                             labelText: 'Đến ngày',
                             initialDate: waterEndDate ?? DateTime.now(),
                             firstDate: waterStartDate ?? DateTime.now().subtract(const Duration(days: 365)),
@@ -1254,7 +1254,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
                     Row(
                       children: [
                         Expanded(
-                          child: CompactVietnameseDatePicker(
+                          child: CompactLocalizedDatePicker(
                             labelText: 'Từ ngày',
                             initialDate: billingStart,
                             firstDate: DateTime.now().subtract(const Duration(days: 365 * 2)),
@@ -1266,7 +1266,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
                         ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: CompactVietnameseDatePicker(
+                          child: CompactLocalizedDatePicker(
                             labelText: 'Đến ngày',
                             initialDate: billingEnd,
                             firstDate: billingStart ?? DateTime.now().subtract(const Duration(days: 365 * 2)),
@@ -1691,7 +1691,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
                             const SizedBox(height: 24),
                             
                             // UPDATED: Due Date with Vietnamese date picker
-                            VietnameseDatePicker(
+                            LocalizedDatePicker(
                               labelText: 'Hạn thanh toán',
                               prefixIcon: Icons.event,
                               required: true,

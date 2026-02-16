@@ -137,6 +137,12 @@ class AppTranslations {
       'user_data_not_found': 'Không tìm thấy dữ liệu người dùng',
       'logout_action': 'Đăng xuất',
       'org_options': 'Tùy chọn tổ chức',
+      'day_hint': 'Ngày',
+      'month_hint': 'Tháng',
+      'year_hint': 'Năm',
+      'select_from_calendar': 'Chọn từ lịch',
+      'please_enter_date': 'Vui lòng nhập ngày',
+      'date_must_be_between': 'Ngày phải từ {{first}} đến {{last}}',
     },
     'en': {
       'lang': 'language',
@@ -266,6 +272,12 @@ class AppTranslations {
       'user_data_not_found': 'User data not found',
       'logout_action': 'Logout',
       'org_options': 'Organization Options',
+      'day_hint': 'Day',
+      'month_hint': 'Month',
+      'year_hint': 'Year',
+      'select_from_calendar': 'Pick from calendar',
+      'please_enter_date': 'Please enter a date',
+      'date_must_be_between': 'Date must be between {{first}} and {{last}}',
     },
   };
 
@@ -295,6 +307,65 @@ class AppTranslationsDelegate extends LocalizationsDelegate<AppTranslations> {
   @override
   bool shouldReload(AppTranslationsDelegate old) => false;
 }
+
+extension DatePickerFormatting on AppTranslations {
+  bool get isVietnamese => locale.languageCode == 'vi';
+  
+  // Returns the appropriate date format pattern
+  String get dateFormat => isVietnamese ? 'dd/MM/yyyy' : 'MM/dd/yyyy';
+  
+  // Format a date in a readable way
+  String formatLongDate(DateTime date) {
+    if (isVietnamese) {
+      return _formatVietnameseDate(date);
+    } else {
+      return _formatEnglishDate(date);
+    }
+  }
+
+  String _formatVietnameseDate(DateTime date) {
+    final weekdays = [
+      'Chủ nhật', 'Thứ hai', 'Thứ ba', 'Thứ tư',
+      'Thứ năm', 'Thứ sáu', 'Thứ bảy',
+    ];
+    
+    final weekday = weekdays[date.weekday % 7];
+    return '$weekday, ngày ${date.day} tháng ${date.month} năm ${date.year}';
+  }
+
+  String _formatEnglishDate(DateTime date) {
+    final weekdays = [
+      'Sunday', 'Monday', 'Tuesday', 'Wednesday',
+      'Thursday', 'Friday', 'Saturday',
+    ];
+    
+    final months = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    
+    final weekday = weekdays[date.weekday % 7];
+    final day = date.day;
+    final month = months[date.month - 1];
+    final year = date.year;
+    
+    // Add ordinal suffix (st, nd, rd, th)
+    String daySuffix;
+    if (day >= 11 && day <= 13) {
+      daySuffix = 'th';
+    } else {
+      switch (day % 10) {
+        case 1: daySuffix = 'st'; break;
+        case 2: daySuffix = 'nd'; break;
+        case 3: daySuffix = 'rd'; break;
+        default: daySuffix = 'th';
+      }
+    }
+    
+    return '$weekday, $month $day$daySuffix, $year';
+  }
+}
+
 
 /* Usage Examples:
 // Simple translation (no parameters)

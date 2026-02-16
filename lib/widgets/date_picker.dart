@@ -1,17 +1,11 @@
+import 'package:apartment_management_project_2/utils/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
-/// A date picker that supports Vietnamese locale and allows direct text input
-/// Usage:
-/// ```dart
-/// VietnameseDatePicker(
-///   labelText: 'Ngày sinh',
-///   initialDate: DateTime.now(),
-///   onDateChanged: (date) => print(date),
-/// )
-/// ```
-class VietnameseDatePicker extends StatefulWidget {
+/// Localized Date Picker supporting Vietnamese and English
+/// Uses your existing AppTranslations class for translations
+class LocalizedDatePicker extends StatefulWidget {
   final String labelText;
   final DateTime? initialDate;
   final DateTime? firstDate;
@@ -22,7 +16,7 @@ class VietnameseDatePicker extends StatefulWidget {
   final IconData? prefixIcon;
   final bool enabled;
 
-  const VietnameseDatePicker({
+  const LocalizedDatePicker({
     super.key,
     required this.labelText,
     this.initialDate,
@@ -36,10 +30,10 @@ class VietnameseDatePicker extends StatefulWidget {
   });
 
   @override
-  State<VietnameseDatePicker> createState() => _VietnameseDatePickerState();
+  State<LocalizedDatePicker> createState() => _LocalizedDatePickerState();
 }
 
-class _VietnameseDatePickerState extends State<VietnameseDatePicker> {
+class _LocalizedDatePickerState extends State<LocalizedDatePicker> {
   late TextEditingController _dayController;
   late TextEditingController _monthController;
   late TextEditingController _yearController;
@@ -47,8 +41,8 @@ class _VietnameseDatePickerState extends State<VietnameseDatePicker> {
   DateTime? _currentDate;
   
   // Smart default date ranges
-  DateTime get _defaultFirstDate => DateTime.now().subtract(const Duration(days: 365 * 10)); // 10 years ago
-  DateTime get _defaultLastDate => DateTime.now().add(const Duration(days: 365 * 5)); // 5 years ahead
+  DateTime get _defaultFirstDate => DateTime.now().subtract(const Duration(days: 365 * 10));
+  DateTime get _defaultLastDate => DateTime.now().add(const Duration(days: 365 * 5));
   
   @override
   void initState() {
@@ -65,7 +59,6 @@ class _VietnameseDatePickerState extends State<VietnameseDatePicker> {
       text: _currentDate != null ? _currentDate!.year.toString() : '',
     );
     
-    // Add listeners to auto-construct date
     _dayController.addListener(_updateDateFromFields);
     _monthController.addListener(_updateDateFromFields);
     _yearController.addListener(_updateDateFromFields);
@@ -104,12 +97,14 @@ class _VietnameseDatePickerState extends State<VietnameseDatePicker> {
   }
   
   Future<void> _showCalendarPicker() async {
+    final translations = AppTranslations.of(context);
+    
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: _currentDate ?? DateTime.now(),
       firstDate: widget.firstDate ?? _defaultFirstDate,
       lastDate: widget.lastDate ?? _defaultLastDate,
-      locale: const Locale('vi', 'VN'),
+      locale: translations.locale,
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
@@ -136,15 +131,23 @@ class _VietnameseDatePickerState extends State<VietnameseDatePicker> {
   }
   
   String? _validate() {
+    final translations = AppTranslations.of(context);
+    
     if (widget.required && _currentDate == null) {
-      return 'Vui lòng nhập ngày';
+      return translations['please_enter_date'];
     }
     
     if (_currentDate != null) {
       if (!_isValidDate(_currentDate!)) {
         final firstDate = widget.firstDate ?? _defaultFirstDate;
         final lastDate = widget.lastDate ?? _defaultLastDate;
-        return 'Ngày phải từ ${DateFormat('dd/MM/yyyy').format(firstDate)} đến ${DateFormat('dd/MM/yyyy').format(lastDate)}';
+        final format = translations.dateFormat;
+        final firstDateStr = DateFormat(format).format(firstDate);
+        final lastDateStr = DateFormat(format).format(lastDate);
+        return translations.textWithParams('date_must_be_between', {
+          'first': firstDateStr,
+          'last': lastDateStr,
+        });
       }
     }
     
@@ -161,6 +164,9 @@ class _VietnameseDatePickerState extends State<VietnameseDatePicker> {
   
   @override
   Widget build(BuildContext context) {
+    final translations = AppTranslations.of(context);
+    final isVietnamese = translations.isVietnamese;
+    
     return FormField<DateTime>(
       initialValue: _currentDate,
       validator: (_) => _validate(),
@@ -201,58 +207,9 @@ class _VietnameseDatePickerState extends State<VietnameseDatePicker> {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
-                children: [
-                  // Day field
-                  Expanded(
-                    flex: 2,
-                    child: _buildNumberField(
-                      controller: _dayController,
-                      hintText: 'Ngày',
-                      maxLength: 2,
-                      enabled: widget.enabled,
-                    ),
-                  ),
-                  
-                  _buildSeparator(),
-                  
-                  // Month field
-                  Expanded(
-                    flex: 2,
-                    child: _buildNumberField(
-                      controller: _monthController,
-                      hintText: 'Tháng',
-                      maxLength: 2,
-                      enabled: widget.enabled,
-                    ),
-                  ),
-                  
-                  _buildSeparator(),
-                  
-                  // Year field
-                  Expanded(
-                    flex: 3,
-                    child: _buildNumberField(
-                      controller: _yearController,
-                      hintText: 'Năm',
-                      maxLength: 4,
-                      enabled: widget.enabled,
-                    ),
-                  ),
-                  
-                  // Calendar button
-                  Container(
-                    decoration: BoxDecoration(
-                      border: Border(
-                        left: BorderSide(color: Colors.grey.shade300),
-                      ),
-                    ),
-                    child: IconButton(
-                      icon: const Icon(Icons.calendar_today, size: 20),
-                      onPressed: widget.enabled ? _showCalendarPicker : null,
-                      tooltip: 'Chọn từ lịch',
-                    ),
-                  ),
-                ],
+                children: isVietnamese 
+                  ? _buildVietnameseFields(translations)
+                  : _buildEnglishFields(translations),
               ),
             ),
             
@@ -261,7 +218,7 @@ class _VietnameseDatePickerState extends State<VietnameseDatePicker> {
               Padding(
                 padding: const EdgeInsets.only(top: 4, left: 12),
                 child: Text(
-                  _formatVietnameseDate(_currentDate!),
+                  translations.formatLongDate(_currentDate!),
                   style: TextStyle(
                     fontSize: 12,
                     color: Colors.grey.shade600,
@@ -284,6 +241,111 @@ class _VietnameseDatePickerState extends State<VietnameseDatePicker> {
           ],
         );
       },
+    );
+  }
+  
+  // Vietnamese: Day / Month / Year
+  List<Widget> _buildVietnameseFields(AppTranslations translations) {
+    return [
+      // Day field
+      Expanded(
+        flex: 2,
+        child: _buildNumberField(
+          controller: _dayController,
+          hintText: translations['day_hint'],
+          maxLength: 2,
+          enabled: widget.enabled,
+        ),
+      ),
+      
+      _buildSeparator(),
+      
+      // Month field
+      Expanded(
+        flex: 2,
+        child: _buildNumberField(
+          controller: _monthController,
+          hintText: translations['month_hint'],
+          maxLength: 2,
+          enabled: widget.enabled,
+        ),
+      ),
+      
+      _buildSeparator(),
+      
+      // Year field
+      Expanded(
+        flex: 3,
+        child: _buildNumberField(
+          controller: _yearController,
+          hintText: translations['year_hint'],
+          maxLength: 4,
+          enabled: widget.enabled,
+        ),
+      ),
+      
+      // Calendar button
+      _buildCalendarButton(translations),
+    ];
+  }
+  
+  // English: Month / Day / Year
+  List<Widget> _buildEnglishFields(AppTranslations translations) {
+    return [
+      // Month field (first for English)
+      Expanded(
+        flex: 2,
+        child: _buildNumberField(
+          controller: _monthController,
+          hintText: translations['month_hint'],
+          maxLength: 2,
+          enabled: widget.enabled,
+        ),
+      ),
+      
+      _buildSeparator(),
+      
+      // Day field (second for English)
+      Expanded(
+        flex: 2,
+        child: _buildNumberField(
+          controller: _dayController,
+          hintText: translations['day_hint'],
+          maxLength: 2,
+          enabled: widget.enabled,
+        ),
+      ),
+      
+      _buildSeparator(),
+      
+      // Year field
+      Expanded(
+        flex: 3,
+        child: _buildNumberField(
+          controller: _yearController,
+          hintText: translations['year_hint'],
+          maxLength: 4,
+          enabled: widget.enabled,
+        ),
+      ),
+      
+      // Calendar button
+      _buildCalendarButton(translations),
+    ];
+  }
+  
+  Widget _buildCalendarButton(AppTranslations translations) {
+    return Container(
+      decoration: BoxDecoration(
+        border: Border(
+          left: BorderSide(color: Colors.grey.shade300),
+        ),
+      ),
+      child: IconButton(
+        icon: const Icon(Icons.calendar_today, size: 20),
+        onPressed: widget.enabled ? _showCalendarPicker : null,
+        tooltip: translations['select_from_calendar'],
+      ),
     );
   }
   
@@ -322,29 +384,10 @@ class _VietnameseDatePickerState extends State<VietnameseDatePicker> {
       ),
     );
   }
-  
-  String _formatVietnameseDate(DateTime date) {
-    final weekdays = [
-      'Chủ nhật',
-      'Thứ hai',
-      'Thứ ba',
-      'Thứ tư',
-      'Thứ năm',
-      'Thứ sáu',
-      'Thứ bảy',
-    ];
-    
-    final weekday = weekdays[date.weekday % 7];
-    final day = date.day;
-    final month = date.month;
-    final year = date.year;
-    
-    return '$weekday, ngày $day tháng $month năm $year';
-  }
 }
 
 /// Compact version for space-constrained layouts
-class CompactVietnameseDatePicker extends StatefulWidget {
+class CompactLocalizedDatePicker extends StatefulWidget {
   final String? labelText;
   final DateTime? initialDate;
   final DateTime? firstDate;
@@ -353,7 +396,7 @@ class CompactVietnameseDatePicker extends StatefulWidget {
   final String? Function(DateTime?)? validator;
   final bool required;
 
-  const CompactVietnameseDatePicker({
+  const CompactLocalizedDatePicker({
     super.key,
     this.labelText,
     this.initialDate,
@@ -365,16 +408,15 @@ class CompactVietnameseDatePicker extends StatefulWidget {
   });
 
   @override
-  State<CompactVietnameseDatePicker> createState() => _CompactVietnameseDatePickerState();
+  State<CompactLocalizedDatePicker> createState() => _CompactLocalizedDatePickerState();
 }
 
-class _CompactVietnameseDatePickerState extends State<CompactVietnameseDatePicker> {
+class _CompactLocalizedDatePickerState extends State<CompactLocalizedDatePicker> {
   late TextEditingController _controller;
   DateTime? _currentDate;
   
-  // Smart default date ranges
-  DateTime get _defaultFirstDate => DateTime.now().subtract(const Duration(days: 365 * 10)); // 10 years ago
-  DateTime get _defaultLastDate => DateTime.now().add(const Duration(days: 365 * 5)); // 5 years ahead
+  DateTime get _defaultFirstDate => DateTime.now().subtract(const Duration(days: 365 * 10));
+  DateTime get _defaultLastDate => DateTime.now().add(const Duration(days: 365 * 5));
   
   @override
   void initState() {
@@ -382,31 +424,46 @@ class _CompactVietnameseDatePickerState extends State<CompactVietnameseDatePicke
     _currentDate = widget.initialDate;
     _controller = TextEditingController(
       text: _currentDate != null 
-          ? DateFormat('dd/MM/yyyy').format(_currentDate!) 
+          ? _formatDate(_currentDate!) 
           : '',
     );
   }
   
+  String _formatDate(DateTime date) {
+    // This will be called during initState, so we can't use context yet
+    // We'll format it properly in the build method if needed
+    return DateFormat('dd/MM/yyyy').format(date);
+  }
+  
+  String _getHintText(BuildContext context) {
+    final translations = AppTranslations.of(context);
+    return translations.dateFormat.toLowerCase();
+  }
+  
   Future<void> _showCalendarPicker() async {
+    final translations = AppTranslations.of(context);
+    final format = translations.dateFormat;
+    
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: _currentDate ?? DateTime.now(),
       firstDate: widget.firstDate ?? _defaultFirstDate,
       lastDate: widget.lastDate ?? _defaultLastDate,
-      locale: const Locale('vi', 'VN'),
+      locale: translations.locale,
     );
     
     if (picked != null) {
       setState(() {
         _currentDate = picked;
-        _controller.text = DateFormat('dd/MM/yyyy').format(picked);
+        _controller.text = DateFormat(format).format(picked);
       });
       widget.onDateChanged?.call(picked);
     }
   }
   
   void _handleTextInput(String value) {
-    // Auto-format as user types: dd/MM/yyyy
+    final translations = AppTranslations.of(context);
+    final isVietnamese = translations.isVietnamese;
     final digitsOnly = value.replaceAll(RegExp(r'[^0-9]'), '');
     
     if (digitsOnly.isEmpty) {
@@ -420,6 +477,7 @@ class _CompactVietnameseDatePickerState extends State<CompactVietnameseDatePicke
     
     String formatted = '';
     
+    // Format based on language
     if (digitsOnly.length <= 2) {
       formatted = digitsOnly;
     } else if (digitsOnly.length <= 4) {
@@ -431,9 +489,19 @@ class _CompactVietnameseDatePickerState extends State<CompactVietnameseDatePicke
     // Try to parse complete date
     if (digitsOnly.length == 8) {
       try {
-        final day = int.parse(digitsOnly.substring(0, 2));
-        final month = int.parse(digitsOnly.substring(2, 4));
-        final year = int.parse(digitsOnly.substring(4, 8));
+        int day, month, year;
+        
+        if (isVietnamese) {
+          // User typed DD/MM/YYYY
+          day = int.parse(digitsOnly.substring(0, 2));
+          month = int.parse(digitsOnly.substring(2, 4));
+        } else {
+          // User typed MM/DD/YYYY
+          month = int.parse(digitsOnly.substring(0, 2));
+          day = int.parse(digitsOnly.substring(2, 4));
+        }
+        
+        year = int.parse(digitsOnly.substring(4, 8));
         
         final date = DateTime(year, month, day);
         setState(() {
@@ -462,25 +530,27 @@ class _CompactVietnameseDatePickerState extends State<CompactVietnameseDatePicke
   
   @override
   Widget build(BuildContext context) {
+    final translations = AppTranslations.of(context);
+    
     return TextFormField(
       controller: _controller,
       decoration: InputDecoration(
         labelText: widget.labelText != null 
             ? '${widget.labelText}${widget.required ? ' *' : ''}'
             : null,
-        hintText: 'dd/MM/yyyy',
+        hintText: _getHintText(context),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
         suffixIcon: IconButton(
           icon: const Icon(Icons.calendar_today),
           onPressed: _showCalendarPicker,
-          tooltip: 'Chọn từ lịch',
+          tooltip: translations['select_from_calendar'],
         ),
       ),
       keyboardType: TextInputType.number,
       onChanged: _handleTextInput,
       validator: (_) {
         if (widget.required && _currentDate == null) {
-          return 'Vui lòng nhập ngày';
+          return translations['please_enter_date'];
         }
         return widget.validator?.call(_currentDate);
       },
