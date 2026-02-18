@@ -21,11 +21,10 @@ class BuildingRoomScreen extends StatefulWidget {
 }
 
 class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBindingObserver {
-  // Track how many overlays (dialogs/bottom sheets) are currently open
   int _overlayCount = 0;
 
-  Set<String> _selectedRoomIds = {}; // Stores IDs of selected rooms
-  bool _isSelectionMode = false;     // Toggles selection UI
+  Set<String> _selectedRoomIds = {};
+  bool _isSelectionMode = false;
 
   bool _isSmallScreen(BuildContext context) => MediaQuery.of(context).size.width < 600;
   bool _isMediumScreen(BuildContext context) {
@@ -84,120 +83,144 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
   List<Room>? _cachedRooms;
   String? _errorMessage;
   bool _isLoading = true;
-  bool _isInitialized = false;  // Track if we've gotten the building from route
+  bool _isInitialized = false;
 
   @override
   void initState() {
     super.initState();
+    _isNavigating = false; // prevent stale state from hot reload
+    print('🟢 [initState] START — building.id=${widget.building.id}, org.id=${widget.organization.id}');
     WidgetsBinding.instance.addObserver(this);
     try {  
-      // Initialize stream subscription once on widget creation
       _initializeStream();
     } catch (e, stackTrace) {
-      print('❌ ERROR in initState: $e');
+      print('❌ [initState] CAUGHT ERROR: $e');
       print('Stack trace: $stackTrace');
     }
+    print('🟢 [initState] END');
   }
 
   void _initializeStream() {
-    if (!mounted) return; // Add this
-    print('Initializing room stream for building: ${widget.building.id}');
-    
-    // Cancel existing subscription if any
+    print('🔵 [_initializeStream] START — mounted=$mounted');
+    if (!mounted) {
+      print('⚠️ [_initializeStream] Not mounted, returning early');
+      return;
+    }
+
+    print('🔵 [_initializeStream] Cancelling existing subscription...');
     _roomSubscription?.cancel();
+    print('🔵 [_initializeStream] Subscription cancelled');
     
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
+    print('🔵 [_initializeStream] setState(loading=true) done');
     
     try {
-      _roomSubscription = _roomService
-          .streamBuildingRooms(widget.building.id)
-          .listen(
-            (rooms) {
-              print('✓ Stream received ${rooms.length} rooms');
-              if (mounted) {
-                setState(() {
-                  _cachedRooms = rooms;
-                  _isLoading = false;
-                  _errorMessage = null;
-                });
-              }
-            },
-            onError: (error, stackTrace) {
-              print('❌ Stream ERROR: $error');
-              print('Stack trace: $stackTrace');
-              if (mounted) {
-                setState(() {
-                  _errorMessage = 'Stream error: $error';
-                  _isLoading = false;
-                });
-              }
-            },
-            cancelOnError: false,
-          );
+      print('🔵 [_initializeStream] Calling _roomService.streamBuildingRooms...');
+      final stream = _roomService.streamBuildingRooms(
+        widget.building.id,
+        widget.organization.id,
+      );
+      print('🔵 [_initializeStream] Stream object created: $stream');
+
+      _roomSubscription = stream.listen(
+        (rooms) {
+          print('✅ [stream.onData] Received ${rooms.length} rooms — mounted=$mounted');
+          if (mounted) {
+            setState(() {
+              _cachedRooms = rooms;
+              _isLoading = false;
+              _errorMessage = null;
+            });
+            print('✅ [stream.onData] setState done, _cachedRooms.length=${_cachedRooms?.length}');
+          } else {
+            print('⚠️ [stream.onData] Widget unmounted, skipping setState');
+          }
+        },
+        onError: (error, stackTrace) {
+          print('❌ [stream.onError] $error');
+          print('Stack trace: $stackTrace');
+          if (mounted) {
+            setState(() {
+              _errorMessage = 'Stream error: $error';
+              _isLoading = false;
+            });
+          }
+        },
+        onDone: () {
+          // This fires when the stream closes — should NOT happen for a real-time stream
+          print('⚠️ [stream.onDone] Stream closed unexpectedly! mounted=$mounted');
+        },
+        cancelOnError: false,
+      );
+      print('🔵 [_initializeStream] listen() called, subscription=$_roomSubscription');
     } catch (e, stackTrace) {
-      print('❌ ERROR setting up stream: $e');
+      print('❌ [_initializeStream] Exception setting up stream: $e');
       print('Stack trace: $stackTrace');
       setState(() {
         _errorMessage = 'Failed to setup stream: $e';
         _isLoading = false;
       });
     }
+    print('🔵 [_initializeStream] END');
   }
 
   @override
   void dispose() {
-    print('BuildingRoomScreen: disposing');
+    print('🔴 [dispose] START — cancelling subscription');
     WidgetsBinding.instance.removeObserver(this);
     _roomSubscription?.cancel();
+    _resizeDebounceTimer?.cancel();
+    print('🔴 [dispose] END');
     super.dispose();
   }
 
-   // Debounce timer for resize handling
   Timer? _resizeDebounceTimer;
-
-  // Guard to prevent overlapping dismiss calls
   bool _isDismissing = false;
 
-  // ─── Called whenever screen size / metrics change ───
   @override
   void didChangeMetrics() {
     super.didChangeMetrics();
-    // Cancel any pending debounce before setting a new one
     _resizeDebounceTimer?.cancel();
     _resizeDebounceTimer = Timer(const Duration(milliseconds: 300), () {
       if (!mounted) return;
-      final screenWidth = MediaQuery.sizeOf(context).width;
-      final screenHeight = MediaQuery.sizeOf(context).height;
-      if (screenWidth < 360 || screenHeight < 600) {
+      // Use WidgetsBinding instead of MediaQuery to avoid frame scheduling issues
+      final view = WidgetsBinding.instance.platformDispatcher.views.first;
+      final size = view.physicalSize / view.devicePixelRatio;
+      print('📐 [didChangeMetrics] size=${size.width}x${size.height}');
+      if (size.width < 360 || size.height < 600) {
+        print('📐 [didChangeMetrics] Below minimum, dismissing overlays');
         _dismissAllOverlays();
       }
     });
   }
 
-  // Pops all open dialogs/bottom sheets by popping until only the base route remains.
   Future<void> _dismissAllOverlays() async {
+    print('🔔 [_dismissAllOverlays] START — _isDismissing=$_isDismissing, mounted=$mounted');
     if (!mounted || _isDismissing) return;
     _isDismissing = true;
 
     try {
       final nav = Navigator.of(context);
+      int popCount = 0;
       while (nav.canPop()) {
         nav.pop();
-        // Yield to the framework between each pop so it can finish
-        // destroying the previous overlay before we pop the next one.
-        // This prevents back-to-back surface destruction that triggers EGL errors.
+        popCount++;
+        print('🔔 [_dismissAllOverlays] Popped overlay #$popCount');
         await Future.delayed(const Duration(milliseconds: 50));
-        if (!mounted) break;
+        if (!mounted) {
+          print('🔔 [_dismissAllOverlays] Unmounted during pop loop, breaking');
+          break;
+        }
       }
+      print('🔔 [_dismissAllOverlays] Done — total pops=$popCount');
     } finally {
       _isDismissing = false;
+      print('🔔 [_dismissAllOverlays] END');
     }
   }
-
-  // ─── Overlay helpers ───
 
   Future<T?> _showTrackedDialog<T>({
     required BuildContext context,
@@ -205,14 +228,20 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
     bool barrierDismissible = true,
   }) async {
     _overlayCount++;
+    print('🪟 [_showTrackedDialog] Showing dialog — overlayCount=$_overlayCount');
     try {
-      return await showDialog<T>(
+      final result = await showDialog<T>(
         context: context,
         barrierDismissible: barrierDismissible,
         builder: builder,
       );
+      print('🪟 [_showTrackedDialog] Dialog closed — result=$result');
+      return result;
     } finally {
-      if (mounted) _overlayCount--;
+      if (mounted) {
+        _overlayCount--;
+        print('🪟 [_showTrackedDialog] overlayCount now=$_overlayCount');
+      }
     }
   }
 
@@ -220,15 +249,14 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
   // ADD / EDIT ROOM DIALOG
   // =========================
   void _showRoomDialog({Room? room}) {
+    print('📝 [_showRoomDialog] Opening — editing=${room != null}, room=${room?.id}');
     final numberController = TextEditingController(text: room?.roomNumber ?? '');
     final typeController = TextEditingController(text: room?.roomType ?? 'Tiêu chuẩn');
-
-    // Use a local variable to prevent double-submissions
     bool isSaving = false;
 
     _showTrackedDialog(
       context: context,
-      builder: (dialogContext) => StatefulBuilder( // Add StatefulBuilder here
+      builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) {
           return AlertDialog(
             title: Text(room == null ? 'Thêm phòng mới' : 'Chỉnh sửa phòng'),
@@ -239,31 +267,33 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                   controller: numberController,
                   decoration: const InputDecoration(labelText: 'Số phòng *', hintText: 'VD: A101'),
                   autofocus: true,
-                  enabled: !isSaving, // Disable input while saving
+                  enabled: !isSaving,
                   textCapitalization: TextCapitalization.characters,
                 ),
                 const SizedBox(height: 16),
                 TextField(
                   controller: typeController,
                   decoration: const InputDecoration(labelText: 'Loại phòng', hintText: 'VD: Studio, 1PN, 2PN...'),
-                  enabled: !isSaving, // Disable input while saving
+                  enabled: !isSaving,
                   textCapitalization: TextCapitalization.words,
                 ),
               ],
             ),
             actions: [
               TextButton(
-                // Disable cancel button while saving
-                onPressed: isSaving ? null : () => Navigator.pop(dialogContext),
+                onPressed: isSaving ? null : () {
+                  print('📝 [_showRoomDialog] Cancel pressed');
+                  Navigator.pop(dialogContext);
+                },
                 child: const Text('Huỷ'),
               ),
               ElevatedButton(
-                // If isSaving is true, onPressed is null, which disables the button
                 onPressed: isSaving 
                   ? null 
                   : () async {
                       final roomNumber = numberController.text.trim();
                       final roomType = typeController.text.trim();
+                      print('📝 [_showRoomDialog] Save pressed — roomNumber="$roomNumber", roomType="$roomType"');
                       
                       if (roomNumber.isEmpty) {
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -272,11 +302,12 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                         return;
                       }
 
-                      // Start saving state
                       setDialogState(() => isSaving = true);
+                      print('📝 [_showRoomDialog] isSaving=true, calling service...');
 
                       try {
                         if (room == null) {
+                          print('📝 [_showRoomDialog] Calling addRoom...');
                           await _roomService.addRoom(
                             Room(
                               id: '',
@@ -288,26 +319,30 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                               createdAt: DateTime.now(),
                             ),
                           );
+                          print('📝 [_showRoomDialog] addRoom completed');
                         } else {
+                          print('📝 [_showRoomDialog] Calling updateRoom for id=${room.id}...');
                           await _roomService.updateRoom(room.id, {
                             'roomNumber': roomNumber,
                             'roomType': roomType.isEmpty ? 'Standard' : roomType,
                           });
+                          print('📝 [_showRoomDialog] updateRoom completed');
                         }
 
-                        // Important: Check if the dialog is still open before popping
+                        print('📝 [_showRoomDialog] Checking canPop...');
                         if (Navigator.of(dialogContext).canPop()) {
                           Navigator.pop(dialogContext);
-                          
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(content: Text(room == null ? 'Đã thêm thành công' : 'Đã cập nhật thành công')),
                             );
                           }
+                        } else {
+                          print('⚠️ [_showRoomDialog] canPop=false, dialog may already be closed');
                         }
-                      } catch (e) {
-                        print('❌ ERROR saving room: $e');
-                        // Reset saving state so user can try again
+                      } catch (e, stackTrace) {
+                        print('❌ [_showRoomDialog] Save error: $e');
+                        print('Stack trace: $stackTrace');
                         setDialogState(() => isSaving = false);
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -331,7 +366,8 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
   // DELETE ROOM
   // =========================
   void _deleteRoom(Room room) {
-    bool isDeleting = false; // Add state guard
+    print('🗑️ [_deleteRoom] Opening confirm dialog for room=${room.id}, number=${room.roomNumber}');
+    bool isDeleting = false;
 
     _showTrackedDialog(
       context: context,
@@ -350,7 +386,10 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                 : Text('Bạn có chắc muốn xoá phòng ${room.roomNumber}?'),
             actions: [
               TextButton(
-                onPressed: isDeleting ? null : () => Navigator.pop(dialogContext),
+                onPressed: isDeleting ? null : () {
+                  print('🗑️ [_deleteRoom] Cancel pressed');
+                  Navigator.pop(dialogContext);
+                },
                 child: const Text('Huỷ'),
               ),
               ElevatedButton(
@@ -358,11 +397,13 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                 onPressed: isDeleting 
                   ? null 
                   : () async {
-                      setDialogState(() => isDeleting = true); // Disable button
+                      print('🗑️ [_deleteRoom] Delete confirmed for room=${room.id}');
+                      setDialogState(() => isDeleting = true);
                       try {
+                        print('🗑️ [_deleteRoom] Calling _roomService.deleteRoom...');
                         final success = await _roomService.deleteRoom(room.id);
+                        print('🗑️ [_deleteRoom] deleteRoom returned success=$success');
                         
-                        // Safety check before popping
                         if (Navigator.of(dialogContext).canPop()) {
                           Navigator.pop(dialogContext);
                           if (mounted && success) {
@@ -370,9 +411,13 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                               const SnackBar(content: Text('Đã xoá phòng thành công')),
                             );
                           }
+                        } else {
+                          print('⚠️ [_deleteRoom] canPop=false after delete');
                         }
-                      } catch (e) {
-                        setDialogState(() => isDeleting = false); // Re-enable on error
+                      } catch (e, stackTrace) {
+                        print('❌ [_deleteRoom] Error: $e');
+                        print('Stack trace: $stackTrace');
+                        setDialogState(() => isDeleting = false);
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(content: Text('Lỗi: $e'), backgroundColor: Colors.red),
@@ -393,6 +438,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
   // MULTI-SELECTION LOGIC
   // =========================
   void _toggleRoomSelection(String roomId) {
+    print('☑️ [_toggleRoomSelection] roomId=$roomId, currently selected=${_selectedRoomIds.contains(roomId)}');
     setState(() {
       if (_selectedRoomIds.contains(roomId)) {
         _selectedRoomIds.remove(roomId);
@@ -404,6 +450,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
   }
 
   void _clearSelection() {
+    print('☑️ [_clearSelection] Clearing ${_selectedRoomIds.length} selections');
     setState(() {
       _selectedRoomIds.clear();
       _isSelectionMode = false;
@@ -412,6 +459,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
 
   void _selectAll() {
     if (_cachedRooms == null) return;
+    print('☑️ [_selectAll] Selecting all ${_cachedRooms!.length} rooms');
     setState(() {
       _selectedRoomIds = _cachedRooms!.map((r) => r.id).toSet();
       _isSelectionMode = true;
@@ -423,6 +471,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
   // =========================
   void _deleteSelectedRooms() {
     final count = _selectedRoomIds.length;
+    print('🗑️ [_deleteSelectedRooms] Opening confirm for $count rooms: $_selectedRoomIds');
     bool isDeleting = false;
 
     _showTrackedDialog(
@@ -436,7 +485,10 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                 : 'Bạn có chắc muốn xoá $count phòng đã chọn? Thao tác này không thể hoàn tác.'),
             actions: [
               TextButton(
-                onPressed: isDeleting ? null : () => Navigator.pop(dialogContext),
+                onPressed: isDeleting ? null : () {
+                  print('🗑️ [_deleteSelectedRooms] Cancel pressed');
+                  Navigator.pop(dialogContext);
+                },
                 child: const Text('Huỷ'),
               ),
               ElevatedButton(
@@ -444,9 +496,12 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                 onPressed: isDeleting 
                   ? null 
                   : () async {
+                      print('🗑️ [_deleteSelectedRooms] Delete confirmed — ids=$_selectedRoomIds');
                       setDialogState(() => isDeleting = true);
                       try {
+                        print('🗑️ [_deleteSelectedRooms] Calling deleteMultipleRooms...');
                         final success = await _roomService.deleteMultipleRooms(_selectedRoomIds.toList());
+                        print('🗑️ [_deleteSelectedRooms] deleteMultipleRooms returned success=$success');
                         
                         if (Navigator.of(dialogContext).canPop()) {
                           Navigator.pop(dialogContext);
@@ -456,8 +511,12 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                             );
                             _clearSelection();
                           }
+                        } else {
+                          print('⚠️ [_deleteSelectedRooms] canPop=false after delete');
                         }
-                      } catch (e) {
+                      } catch (e, stackTrace) {
+                        print('❌ [_deleteSelectedRooms] Error: $e');
+                        print('Stack trace: $stackTrace');
                         setDialogState(() => isDeleting = false);
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -481,6 +540,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
   // SHOW ROOM INFO DIALOG
   // =========================
   void _showRoomInfoDialog(Room room) {
+    print('ℹ️ [_showRoomInfoDialog] room=${room.id}, number=${room.roomNumber}');
     _showTrackedDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -515,7 +575,10 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
         ),
         actions: [
           ElevatedButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () {
+              print('ℹ️ [_showRoomInfoDialog] Close pressed');
+              Navigator.pop(context);
+            },
             child: const Text('Đóng'),
           ),
         ],
@@ -549,10 +612,10 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
   // BUILD ROOM LIST
   // =========================
   bool _isNavigating = false;
+
   Widget _buildRoomList() {
-    print('Building room list widget - Loading: $_isLoading, Error: $_errorMessage, Rooms: ${_cachedRooms?.length}');
+    print('🏗️ [_buildRoomList] _isLoading=$_isLoading, _errorMessage=$_errorMessage, rooms=${_cachedRooms?.length}');
     
-    // Show error state
     if (_errorMessage != null) {
       return Center(
         child: Padding(
@@ -564,22 +627,14 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
               const SizedBox(height: 16),
               Text(
                 'Lỗi',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.red[700],
-                ),
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.red[700]),
               ),
               const SizedBox(height: 8),
-              Text(
-                _errorMessage!,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.grey),
-              ),
+              Text(_errorMessage!, textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey)),
               const SizedBox(height: 24),
               ElevatedButton.icon(
                 onPressed: () {
-                  print('Retry button pressed');
+                  print('🔄 [_buildRoomList] Retry pressed');
                   _initializeStream();
                 },
                 icon: const Icon(Icons.refresh),
@@ -591,7 +646,6 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
       );
     }
 
-    // Show loading state
     if (_isLoading) {
       return const Center(
         child: Column(
@@ -605,7 +659,6 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
       );
     }
 
-    // Show empty state
     if (_cachedRooms == null || _cachedRooms!.isEmpty) {
       return Center(
         child: Column(
@@ -613,22 +666,15 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
           children: [
             const Icon(Icons.meeting_room_outlined, size: 64, color: Colors.grey),
             const SizedBox(height: 16),
-            const Text(
-              'Chưa có phòng nào',
-              style: TextStyle(fontSize: 16, color: Colors.grey),
-            ),
+            const Text('Chưa có phòng nào', style: TextStyle(fontSize: 16, color: Colors.grey)),
             const SizedBox(height: 8),
-            const Text(
-              'Nhấn nút + để thêm phòng mới',
-              style: TextStyle(fontSize: 14, color: Colors.grey),
-            ),
+            const Text('Nhấn nút + để thêm phòng mới', style: TextStyle(fontSize: 14, color: Colors.grey)),
           ],
         ),
       );
     }
 
-    // Show room list
-    print('Rendering ${_cachedRooms!.length} rooms');
+    print('🏗️ [_buildRoomList] Rendering ListView with ${_cachedRooms!.length} items');
     
     return ListView.builder(
       padding: const EdgeInsets.all(8),
@@ -639,9 +685,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
         
         return Card(
           margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          // Highlight the card with a light blue background when selected
           color: isSelected ? Colors.blue.shade50 : null,
-          // Add a blue border when selected
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(8),
             side: isSelected 
@@ -668,26 +712,47 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
             ),
             subtitle: room.roomType != null ? Text(room.roomType!) : null,
             onTap: () {
+              print('🔥 RAW TAP FIRED');
+              print('👆 [onTap] room=${room.id}, _isSelectionMode=$_isSelectionMode, _isNavigating=$_isNavigating');
               if (_isSelectionMode) {
                 _toggleRoomSelection(room.id);
               } else {
-                if (_isNavigating) return; // Prevent double push
+                if (_isNavigating) {
+                  print('👆 [onTap] Already navigating, ignoring tap');
+                  return;
+                }
                 _isNavigating = true;
-                // Normal navigation
+                print('👆 [onTap] PRE-PUSH — about to call Navigator.pushNamed');
+                print('👆 [onTap] Route: /room-detail, args: room.id=${room.id}, room.number=${room.roomNumber}');
+                
+                final sw = Stopwatch()..start();
+                // ------------------NAVIGATE TO ROOM DETAIL-----------------
                 Navigator.pushNamed(
                   context,
                   '/room-detail',
                   arguments: {'room': room, 'organization': widget.organization},
-                );
-                _isNavigating = false; // Reset when they come back
+                ).then((_) {
+                  print('👆 [onTap] POST-PUSH resolved — total=${sw.elapsedMilliseconds}ms');
+                  _isNavigating = false;
+                }).catchError((e, st) {
+                  print('❌ [onTap] pushNamed threw: $e');
+                  print('Stack trace: $st');
+                  _isNavigating = false;
+                });
+                
+                // This prints immediately after push is REGISTERED (sync), before the route builds
+                print('👆 [onTap] POST-PUSH sync done — elapsed=${sw.elapsedMilliseconds}ms');
+                // ⚠️ If the line above never prints, Navigator.pushNamed itself is blocking
+                // ⚠️ If it prints but [onTap] POST-PUSH resolved never appears, the route screen hangs on build/init
               }
             },
-            onLongPress: () => _toggleRoomSelection(room.id),
-            // Hide the menu button when in selection mode
+            onLongPress: () {
+              print('👆 [onLongPress] room=${room.id}');
+              _toggleRoomSelection(room.id);
+            },
             trailing: _isSelectionMode ? null : PopupMenuButton<String>(
               onSelected: (value) {
-                print('Menu selected: $value for room ${room.roomNumber}');
-                
+                print('📋 [PopupMenu] Selected "$value" for room=${room.id}');
                 if (value == 'view') {
                   _showRoomInfoDialog(room);
                 } else if (value == 'edit') {
@@ -699,33 +764,15 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
               itemBuilder: (_) => const [
                 PopupMenuItem(
                   value: 'view',
-                  child: Row(
-                    children: [
-                      Icon(Icons.info_outline, size: 20),
-                      SizedBox(width: 8),
-                      Text('Chi tiết'),
-                    ],
-                  ),
+                  child: Row(children: [Icon(Icons.info_outline, size: 20), SizedBox(width: 8), Text('Chi tiết')]),
                 ),
                 PopupMenuItem(
                   value: 'edit',
-                  child: Row(
-                    children: [
-                      Icon(Icons.edit, size: 20),
-                      SizedBox(width: 8),
-                      Text('Chỉnh sửa'),
-                    ],
-                  ),
+                  child: Row(children: [Icon(Icons.edit, size: 20), SizedBox(width: 8), Text('Chỉnh sửa')]),
                 ),
                 PopupMenuItem(
                   value: 'delete',
-                  child: Row(
-                    children: [
-                      Icon(Icons.delete, size: 20, color: Colors.red),
-                      SizedBox(width: 8),
-                      Text('Xoá', style: TextStyle(color: Colors.red)),
-                    ],
-                  ),
+                  child: Row(children: [Icon(Icons.delete, size: 20, color: Colors.red), SizedBox(width: 8), Text('Xoá', style: TextStyle(color: Colors.red))]),
                 ),
               ],
             ),
@@ -740,12 +787,14 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
   // =========================
   @override
   Widget build(BuildContext context) {
-    print('BuildingRoomScreen: build called');
+    print('🏗️ [build] called — _isLoading=$_isLoading, rooms=${_cachedRooms?.length}, _isSelectionMode=$_isSelectionMode');
     
     return LayoutBuilder(
       builder: (context, constraints) {
-        // Check minimum size
+        print('🏗️ [LayoutBuilder] constraints=${constraints.maxWidth}x${constraints.maxHeight}');
+        
         if (constraints.maxWidth < minWidth || constraints.maxHeight < minHeight) {
+          print('⚠️ [LayoutBuilder] Below minimum size, showing warning widget');
           return Scaffold(
             body: _buildMinimumSizeWarning(context, constraints),
           );
@@ -761,13 +810,11 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
               : Text(widget.building.name),
             actions: [
               if (_isSelectionMode) ...[
-                // Actions when selecting
                 IconButton(
                   icon: const Icon(Icons.select_all),
                   onPressed: _selectAll,
                   tooltip: 'Chọn tất cả',
                 ),
-                // Only show the delete button if at least one room is selected
                 if (_selectedRoomIds.isNotEmpty)
                   IconButton(
                     icon: const Icon(Icons.delete, color: Colors.redAccent),
@@ -775,34 +822,33 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                     tooltip: 'Xoá đã chọn',
                   ),
               ] else ...[
-                // NEW: Action when NOT selecting (to enter mode)
                 IconButton(
                   icon: const Icon(Icons.checklist_rtl),
-                  onPressed: () => setState(() => _isSelectionMode = true),
+                  onPressed: () {
+                    print('☑️ [AppBar] Entering selection mode');
+                    setState(() => _isSelectionMode = true);
+                  },
                   tooltip: 'Chọn nhiều phòng',
                 ),
               ]
             ],
           ),
-          // Hide FAB when selecting to avoid confusion
           floatingActionButton: _isSelectionMode ? null : FloatingActionButton(
-            onPressed: () => _showRoomDialog(),
+            onPressed: () {
+              print('➕ [FAB] Add room pressed');
+              _showRoomDialog();
+            },
             child: const Icon(Icons.add),
           ),
           body: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // =========================
-              // BUILDING INFO
-              // =========================
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: Colors.blue.shade50,
-                  border: Border(
-                    bottom: BorderSide(color: Colors.grey.shade300),
-                  ),
+                  border: Border(bottom: BorderSide(color: Colors.grey.shade300)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -814,11 +860,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                         Expanded(
                           child: Text(
                             widget.building.name,
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.blue.shade900,
-                            ),
+                            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.blue.shade900),
                           ),
                         ),
                       ],
@@ -829,32 +871,19 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                         const Icon(Icons.location_on, size: 16, color: Colors.grey),
                         const SizedBox(width: 4),
                         Expanded(
-                          child: Text(
-                            widget.building.address,
-                            style: const TextStyle(color: Colors.grey),
-                          ),
+                          child: Text(widget.building.address, style: const TextStyle(color: Colors.grey)),
                         ),
                       ],
                     ),
                     const SizedBox(height: 4),
                     Text(
                       'Tổng số phòng: ${_cachedRooms?.length ?? 0}',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.blue.shade700,
-                        fontWeight: FontWeight.w500,
-                      ),
+                      style: TextStyle(fontSize: 14, color: Colors.blue.shade700, fontWeight: FontWeight.w500),
                     ),
                   ],
                 ),
               ),
-
-              // =========================
-              // ROOM LIST
-              // =========================
-              Expanded(
-                child: _buildRoomList(),
-              ),
+              Expanded(child: _buildRoomList()),
             ],
           ),
         );

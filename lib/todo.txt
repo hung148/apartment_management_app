@@ -14,5 +14,43 @@ add app icon
 
 show tenant email in export to hoa don
 
-excel qua han bi sai
+Fix button in preview
 
+Never trust what a user types into a TextField. Someone might try to send 10GB of text or a script.  Always validate length, format, and type on the server side.
+
+⚠️ Risk: If someone can forge a membership document, they could read org data. You should validate that memberships documents are securely created and can’t be faked
+
+⚠️ List access has some subtle logic:
+
+exists(...) checks if the current user has a membership in the target org.
+
+Be careful: exists only checks the path, not the contents of the membership. If someone can guess an ID like "randomUser_org123", they might be able to access a doc. Consider enforcing an ID convention or using a query-based rule instead.
+
+⚠️ Same potential weakness: if membership IDs can be guessed, unauthorized access may happen.
+
+⚠️ write rules don’t check what fields are being modified. For example, a member could change organizationId or other sensitive fields. Consider field-level validation:
+
+Use random, unguessable IDs for membership documents.
+
+For example, use Firestore auto-generated IDs:
+
+db.collection("memberships").add({
+  ownerId: "userId",
+  organizationId: "orgId"
+});
+
+
+Then, instead of exists(/.../membershipId), do a query:
+
+get(/databases/$(database)/documents/memberships)
+  .where('ownerId', '==', request.auth.uid)
+  .where('organizationId', '==', resource.data.organizationId)
+
+
+Or for rules:
+
+exists(/databases/$(database)/documents/memberships/{id}) &&
+get(/databases/$(database)/documents/memberships/{id}).data.ownerId == request.auth.uid
+
+
+Never rely on concatenated IDs that can be predicted. Always check fields inside the document for ownership.

@@ -114,13 +114,13 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
     _tabController = TabController(length: 2, vsync: this);
     _initializeStreams();
     // Load payments for this room
-    widget.paymentsNotifier.loadRoomPayments(widget.room.id);
+    widget.paymentsNotifier.loadRoomPayments(widget.room.id, widget.organization.id);
   }
 
   void _initializeStreams() {
     // Initialize tenant stream
     _tenantSubscription = widget.tenantService
-        .streamRoomTenants(widget.room.id)
+        .streamRoomTenants(widget.room.id, widget.organization.id)
         .listen(
           (tenants) {
             if (mounted) {
@@ -2217,7 +2217,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
     ).then((result) {
       if (result == true) {
         // Refresh the payment list from database
-        widget.paymentsNotifier.loadRoomPayments(widget.room.id);
+        widget.paymentsNotifier.loadRoomPayments(widget.room.id, widget.organization.id);
       }
     });
   }
@@ -2263,7 +2263,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
     ).then((result) {
       if (result == true) {
         // Refresh the payment list from database
-        widget.paymentsNotifier.loadRoomPayments(widget.room.id);
+        widget.paymentsNotifier.loadRoomPayments(widget.room.id, widget.organization.id);
       }
     });
   }
@@ -2276,7 +2276,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
         paymentService: widget.paymentService,
         onDeleted: () {
           // Refresh the payment list from database
-          widget.paymentsNotifier.loadRoomPayments(widget.room.id);
+          widget.paymentsNotifier.loadRoomPayments(widget.room.id, widget.organization.id);
         },
       ),
     );

@@ -274,16 +274,17 @@ class BuildingService {
   // ========================================
   // DELETE - Delete building with rooms and mark tenants as moved out
   // ========================================
-  Future<Map<String, int>> deleteBuildingWithRoomsAndTenants(String buildingId) async {
+  Future<Map<String, int>> deleteBuildingWithRoomsAndTenants(String buildingId, String organizationId) async {
     try {
       final tenantService = TenantService();
       
       // Step 1: Mark all tenants as moved out (preserve data)
-      final tenantsAffected = await tenantService.markBuildingTenantsAsMovedOut(buildingId);
+      final tenantsAffected = await tenantService.markBuildingTenantsAsMovedOut(buildingId, organizationId);
       
       // Step 2: Delete all rooms in this building
       final roomsSnapshot = await _firestore
           .collection('rooms')
+          .where('organizationId', isEqualTo: organizationId)
           .where('buildingId', isEqualTo: buildingId)
           .get();
 

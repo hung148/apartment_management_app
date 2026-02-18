@@ -42,10 +42,11 @@ class RoomService {
   // ========================================
   // READ - Get all rooms in a building
   // ========================================
-  Future<List<Room>> getBuildingRooms(String buildingId) async {
+  Future<List<Room>> getBuildingRooms(String organizationId, String buildingId) async {
     try {
       final snapshot = await _firestore
           .collection('rooms')
+          .where('organizationId', isEqualTo: organizationId)
           .where('buildingId', isEqualTo: buildingId)
           .orderBy('roomNumber', descending: false)
           .get();
@@ -101,10 +102,11 @@ class RoomService {
   // ========================================
   // READ - Get room by room number in a building
   // ========================================
-  Future<Room?> getRoomByNumber(String buildingId, String roomNumber) async {
+  Future<Room?> getRoomByNumber(String organizationId, String buildingId, String roomNumber) async {
     try {
       final snapshot = await _firestore
           .collection('rooms')
+          .where('organizationId', isEqualTo: organizationId)
           .where('buildingId', isEqualTo: buildingId)
           .where('roomNumber', isEqualTo: roomNumber)
           .limit(1)
@@ -124,9 +126,10 @@ class RoomService {
   // ========================================
   // READ - Stream rooms (real-time updates)
   // ========================================
-  Stream<List<Room>> streamBuildingRooms(String buildingId) {
+  Stream<List<Room>> streamBuildingRooms(String buildingId, String orgId) {
     return _firestore
         .collection('rooms')
+        .where('organizationId', isEqualTo: orgId) // Add this line!
         .where('buildingId', isEqualTo: buildingId)
         .orderBy('roomNumber', descending: false)
         .snapshots()
@@ -191,10 +194,11 @@ class RoomService {
   // ========================================
   // DELETE - Delete all rooms in a building
   // ========================================
-  Future<bool> deleteAllBuildingRooms(String buildingId) async {
+  Future<bool> deleteAllBuildingRooms(String organizationId, String buildingId) async {
     try {
       final snapshot = await _firestore
           .collection('rooms')
+          .where('organizationId', isEqualTo: organizationId)
           .where('buildingId', isEqualTo: buildingId)
           .get();
 
@@ -235,10 +239,11 @@ class RoomService {
   // ========================================
   // UTILITY - Count rooms in a building
   // ========================================
-  Future<int> countBuildingRooms(String buildingId) async {
+  Future<int> countBuildingRooms(String organizationId, String buildingId) async {
     try {
       final snapshot = await _firestore
           .collection('rooms')
+          .where('organizationId', isEqualTo: organizationId)
           .where('buildingId', isEqualTo: buildingId)
           .count()
           .get();
@@ -271,10 +276,11 @@ class RoomService {
   // ========================================
   // UTILITY - Check if room number exists in building
   // ========================================
-  Future<bool> isRoomNumberExists(String buildingId, String roomNumber) async {
+  Future<bool> isRoomNumberExists(String organizationId, String buildingId, String roomNumber) async {
     try {
       final snapshot = await _firestore
           .collection('rooms')
+          .where('organizationId', isEqualTo: organizationId)
           .where('buildingId', isEqualTo: buildingId)
           .where('roomNumber', isEqualTo: roomNumber)
           .limit(1)
@@ -291,12 +297,14 @@ class RoomService {
   // UTILITY - Search rooms by room number
   // ========================================
   Future<List<Room>> searchRoomsByNumber(
+    String organizationId,
     String buildingId, 
     String searchTerm,
   ) async {
     try {
       final snapshot = await _firestore
           .collection('rooms')
+          .where('organizationId', isEqualTo: organizationId)
           .where('buildingId', isEqualTo: buildingId)
           .get();
 

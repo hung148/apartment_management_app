@@ -302,12 +302,12 @@ class PaymentsNotifier extends ChangeNotifier {
   }
 
   // Load payments for a specific room
-  Future<void> loadRoomPayments(String roomId) async {
+  Future<void> loadRoomPayments(String roomId, String organizationId) async {
     _isLoading = true;
     notifyListeners();
 
     try {
-      _payments = await _paymentService.getRoomPayments(roomId);
+      _payments = await _paymentService.getRoomPayments(roomId, organizationId);
     } catch (e) {
       print('Error loading room payments: $e');
       _payments = [];
@@ -318,8 +318,8 @@ class PaymentsNotifier extends ChangeNotifier {
   }
 
   // Refresh payments for a specific room
-  Future<void> refreshRoomPayments(String roomId) async {
-    await loadRoomPayments(roomId);
+  Future<void> refreshRoomPayments(String roomId, String organizationId) async {
+    await loadRoomPayments(roomId, organizationId);
   }
 
   // Clear all payments

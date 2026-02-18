@@ -45,10 +45,11 @@ class TenantService {
   // ========================================
   // READ - Get all tenants in a room
   // ========================================
-  Future<List<Tenant>> getRoomTenants(String roomId) async {
+  Future<List<Tenant>> getRoomTenants(String organizationId, String roomId) async {
     try {
       final snapshot = await _firestore
           .collection('tenants')
+          .where('organizationId', isEqualTo: organizationId) 
           .where('roomId', isEqualTo: roomId)
           .orderBy('isMainTenant', descending: true) // Main tenant first
           .orderBy('createdAt', descending: false)
@@ -66,10 +67,11 @@ class TenantService {
   // ========================================
   // READ - Get all active tenants in a room
   // ========================================
-  Future<List<Tenant>> getActiveRoomTenants(String roomId) async {
+  Future<List<Tenant>> getActiveRoomTenants(String organizationId, String roomId) async {
     try {
       final snapshot = await _firestore
           .collection('tenants')
+          .where('organizationId', isEqualTo: organizationId)
           .where('roomId', isEqualTo: roomId)
           .where('status', isEqualTo: 'active')
           .orderBy('isMainTenant', descending: true)
@@ -87,10 +89,11 @@ class TenantService {
   // ========================================
   // READ - Get all tenants in a building
   // ========================================
-  Future<List<Tenant>> getBuildingTenants(String buildingId) async {
+  Future<List<Tenant>> getBuildingTenants(String organizationId, String buildingId) async {
     try {
       final snapshot = await _firestore
           .collection('tenants')
+          .where('organizationId', isEqualTo: organizationId)
           .where('buildingId', isEqualTo: buildingId)
           .orderBy('createdAt', descending: true)
           .get();
@@ -260,9 +263,10 @@ class TenantService {
   // ========================================
   // READ - Stream tenants (real-time updates)
   // ========================================
-  Stream<List<Tenant>> streamRoomTenants(String roomId) {
+  Stream<List<Tenant>> streamRoomTenants(String organizationId, String roomId) {
     return _firestore
         .collection('tenants')
+        .where('organizationId', isEqualTo: organizationId)
         .where('roomId', isEqualTo: roomId)
         .orderBy('isMainTenant', descending: true)
         .orderBy('createdAt', descending: false)
@@ -272,9 +276,10 @@ class TenantService {
             .toList());
   }
 
-  Stream<List<Tenant>> streamBuildingTenants(String buildingId) {
+  Stream<List<Tenant>> streamBuildingTenants(String organizationId, String buildingId) {
     return _firestore
         .collection('tenants')
+        .where('organizationId', isEqualTo: organizationId)
         .where('buildingId', isEqualTo: buildingId)
         .orderBy('createdAt', descending: true)
         .snapshots()
@@ -672,10 +677,11 @@ class TenantService {
   // ========================================
   // DELETE - Delete all tenants in a room
   // ========================================
-  Future<bool> deleteAllRoomTenants(String roomId) async {
+  Future<bool> deleteAllRoomTenants(String organizationId, String roomId) async {
     try {
       final snapshot = await _firestore
           .collection('tenants')
+          .where('organizationId', isEqualTo: organizationId)
           .where('roomId', isEqualTo: roomId)
           .get();
 
@@ -696,10 +702,11 @@ class TenantService {
   // ========================================
   // UTILITY - Count tenants
   // ========================================
-  Future<int> countRoomTenants(String roomId) async {
+  Future<int> countRoomTenants(String organizationId, String roomId) async {
     try {
       final snapshot = await _firestore
           .collection('tenants')
+          .where('organizationId', isEqualTo: organizationId)
           .where('roomId', isEqualTo: roomId)
           .count()
           .get();
@@ -730,10 +737,11 @@ class TenantService {
   // ========================================
   // UTILITY - Check if room has active tenants
   // ========================================
-  Future<bool> hasActiveTenants(String roomId) async {
+  Future<bool> hasActiveTenants(String organizationId, String roomId) async {
     try {
       final snapshot = await _firestore
           .collection('tenants')
+          .where('organizationId', isEqualTo: organizationId)
           .where('roomId', isEqualTo: roomId)
           .where('status', isEqualTo: 'active')
           .limit(1)
@@ -749,10 +757,11 @@ class TenantService {
   // ========================================
   // UTILITY - Get main tenant of a room
   // ========================================
-  Future<Tenant?> getMainTenant(String roomId) async {
+  Future<Tenant?> getMainTenant(String organizationId, String roomId) async {
     try {
       final snapshot = await _firestore
           .collection('tenants')
+          .where('organizationId', isEqualTo: organizationId)
           .where('roomId', isEqualTo: roomId)
           .where('isMainTenant', isEqualTo: true)
           .where('status', isEqualTo: 'active')
@@ -857,10 +866,11 @@ class TenantService {
   // ========================================
   // UPDATE - Mark all building tenants as moved out
   // ========================================
-  Future<int> markBuildingTenantsAsMovedOut(String buildingId) async {
+  Future<int> markBuildingTenantsAsMovedOut(String organizationId, String buildingId) async {
     try {
       final snapshot = await _firestore
           .collection('tenants')
+          .where('organizationId', isEqualTo: organizationId)
           .where('buildingId', isEqualTo: buildingId)
           .where('status', whereIn: ['active', 'inactive', 'suspended'])
           .get();
@@ -957,10 +967,11 @@ class TenantService {
   // ========================================
   // DELETE - Delete all tenants in a building (hard delete)
   // ========================================
-  Future<bool> deleteAllBuildingTenants(String buildingId) async {
+  Future<bool> deleteAllBuildingTenants(String organizationId, String buildingId) async {
     try {
       final snapshot = await _firestore
           .collection('tenants')
+          .where('organizationId', isEqualTo: organizationId)
           .where('buildingId', isEqualTo: buildingId)
           .get();
 

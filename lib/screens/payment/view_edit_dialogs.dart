@@ -907,6 +907,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
   final _formKey = GlobalKey<FormState>();
   late TextEditingController _notesController;
   late TextEditingController _taxAmountController;
+  late TextEditingController _paidAmountController;
   
   late String? _selectedTenantId;
   late String? _selectedTenantName;
@@ -925,6 +926,9 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
     _notesController = TextEditingController(text: widget.payment.notes);
     _taxAmountController = TextEditingController(
       text: widget.payment.taxAmount != null ? widget.payment.taxAmount.toString() : '0.0',
+    );
+    _paidAmountController = TextEditingController(
+      text: widget.payment.paidAmount.toStringAsFixed(0),
     );
     _selectedTenantId = widget.payment.tenantId;
     _selectedTenantName = widget.payment.tenantName;
@@ -1538,16 +1542,19 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
         'taxAmount': _taxAmountController.text.isEmpty ? null : double.parse(_taxAmountController.text),
       };
       
-      // --- ADDED LOGIC: Update paidAmount and paidAt based on status ---
       if (_selectedPaymentStatus == PaymentStatus.paid) {
-        // If user manually set status to Paid, ensure paidAmount matches the total
         updates['paidAmount'] = totalToCollect;
-        // Also set the payment date if it wasn't already set
-        updates['paidAt'] = widget.payment.paidAt != null 
-            ? Timestamp.fromDate(widget.payment.paidAt!) 
+        updates['paidAt'] = widget.payment.paidAt != null
+            ? Timestamp.fromDate(widget.payment.paidAt!)
             : Timestamp.now();
-      } else if (_selectedPaymentStatus == PaymentStatus.pending) {
-        // If changed back to pending, reset paidAmount (optional, depending on your business logic)
+      } else if (_selectedPaymentStatus == PaymentStatus.partial) {
+        final partialAmount = double.tryParse(
+          _paidAmountController.text.replaceAll(',', '')
+        ) ?? 0.0;
+        updates['paidAmount'] = partialAmount;
+        updates['paidAt'] = Timestamp.now();
+      } else {
+        // pending, overdue, cancelled, refunded
         updates['paidAmount'] = 0.0;
         updates['paidAt'] = null;
       }
@@ -1596,6 +1603,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
     WidgetsBinding.instance.removeObserver(this);
     _notesController.dispose();
     _taxAmountController.dispose();
+    _paidAmountController.dispose(); 
     super.dispose();
   }
 
@@ -1715,7 +1723,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
                             const SizedBox(height: 12),
                             
                             DropdownButtonFormField<PaymentStatus>(
-                              value: _selectedPaymentStatus,
+                              initialValue: _selectedPaymentStatus,
                               decoration: InputDecoration(
                                 labelText: 'Trạng thái *',
                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
@@ -1735,6 +1743,28 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
                             ),
                             const SizedBox(height: 12),
                             
+                            if (_selectedPaymentStatus == PaymentStatus.partial) ...[
+                              TextFormField(
+                                controller: _paidAmountController,
+                                inputFormatters: [CurrencyInputFormatter()],
+                                decoration: InputDecoration(
+                                  labelText: 'Số tiền đã thanh toán (VND) *',
+                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                  helperText: 'Tổng hóa đơn: ${NumberFormat('#,###').format(_totalAmount)} VND',
+                                ),
+                                keyboardType: TextInputType.number,
+                                validator: (v) {
+                                  if (_selectedPaymentStatus == PaymentStatus.partial) {
+                                    final val = double.tryParse(v?.replaceAll(',', '') ?? '');
+                                    if (val == null || val <= 0) return 'Vui lòng nhập số tiền đã thanh toán';
+                                    if (val >= _totalAmount) return 'Phải nhỏ hơn tổng hóa đơn';
+                                  }
+                                  return null;
+                                },
+                              ),
+                              const SizedBox(height: 12),
+                            ],
+
                             TextFormField(
                               controller: _notesController,
                               decoration: InputDecoration(

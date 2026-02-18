@@ -297,10 +297,11 @@ class PaymentService {
   // ========================================
   // READ - Get all payments for a room
   // ========================================
-  Future<List<Payment>> getRoomPayments(String roomId) async {
+  Future<List<Payment>> getRoomPayments(String roomId, String organizationId) async {
     try {
       final snapshot = await _firestore
           .collection('payments')
+          .where('organizationId', isEqualTo: organizationId)
           .where('roomId', isEqualTo: roomId)
           .orderBy('dueDate', descending: true)
           .get();

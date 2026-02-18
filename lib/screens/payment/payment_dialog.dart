@@ -239,7 +239,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> w
   Future<void> _loadRooms() async {
     if (_selectedBuildingId == null) return;
     try {
-      final rooms = await widget.roomService.getBuildingRooms(_selectedBuildingId!);
+      final rooms = await widget.roomService.getBuildingRooms(_selectedBuildingId!, widget.organization.id);
       setState(() {
         _rooms = rooms;
         // Only reset room/tenant if not pre-set by widget.room

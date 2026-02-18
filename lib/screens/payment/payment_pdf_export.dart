@@ -54,7 +54,7 @@ class PaymentPDFExporter {
     required Payment payment,
     required Organization organization,
     Tenant? tenant, 
-    Room? room, // NEW: Thêm Room để lấy Type và Area
+    Room? room, 
     String? roomNumber,
     String? buildingName,
     String? apartmentTypeOverride,
@@ -98,7 +98,8 @@ class PaymentPDFExporter {
                     (room?.area.toDouble() ?? 0.0);
 
       // 5. Email liên hệ
-      String contactEmail = email ?? tenant?.email ?? organization.email ?? '';
+      String tenantEmail = email ?? tenant?.email ?? '';
+      String organizationEmail = organization.email ?? '';
 
       // 6. Xử lý ngày tháng hóa đơn
       DateTime? billingEnd = payment.billingEndDate ?? payment.electricityEndDate ?? payment.waterEndDate ?? payment.dueDate;
@@ -140,13 +141,12 @@ class PaymentPDFExporter {
       final billingPeriodStr = '${formatDate(handoverDate)} - ${formatDate(billingEnd)}';
 
       pdf.addPage(
-        pw.Page(
+        pw.MultiPage(
           pageFormat: PdfPageFormat.a4,
           margin: const pw.EdgeInsets.all(40),
+          // header: (context) => _buildHeader(organization, boldFont, regularFont), // Optional: keep header on every page
           build: (context) {
-            return pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
+            return [
                 // HEADER
                 pw.Row(
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
@@ -154,26 +154,13 @@ class PaymentPDFExporter {
                     pw.Column(
                       crossAxisAlignment: pw.CrossAxisAlignment.start,
                       children: [
-                        pw.Text(
-                          organization.name.toUpperCase(),
-                          style: pw.TextStyle(
-                            fontSize: 14, 
-                            fontWeight: pw.FontWeight.bold, 
-                            font: boldFont, 
-                            color: PdfColors.blue900
-                          )
-                        ),
-                        // ADDED: Tax Code in header
-                        if (organization.taxCode != null && organization.taxCode!.isNotEmpty)
-                          pw.SizedBox(height: 4),
-                        if (organization.taxCode != null && organization.taxCode!.isNotEmpty)
-                          pw.Text(
-                            'Mã số thuế / Tax Code: ${organization.taxCode}',
-                            style: pw.TextStyle(
-                              fontSize: 9, 
-                              font: regularFont,
-                              color: PdfColors.grey800
-                            )
+                        pw.Text(organization.name.toUpperCase(),
+                          style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, font: boldFont, color: PdfColors.blue900)),
+                        if (organization.taxCode?.isNotEmpty ?? false)
+                          pw.Padding(
+                            padding: const pw.EdgeInsets.only(top: 4),
+                            child: pw.Text('Mã số thuế / Tax Code: ${organization.taxCode}',
+                              style: pw.TextStyle(fontSize: 9, font: regularFont, color: PdfColors.grey800)),
                           ),
                       ],
                     ),
@@ -186,14 +173,13 @@ class PaymentPDFExporter {
                   child: pw.Column(children: [
                     pw.Text('THU PHÍ CHỦ CĂN HỘ / APARTMENT OWNER FEE RECEIPT ${roomNumber ?? room?.roomNumber ?? ""}',
                       style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, font: boldFont)),
-                    if (billingPeriodStr.isNotEmpty)
-                      pw.Text('($billingPeriodStr)', style: pw.TextStyle(fontSize: 9, font: regularFont, fontStyle: pw.FontStyle.italic)),
+                    pw.Text('($billingPeriodStr)', style: pw.TextStyle(fontSize: 9, font: regularFont, fontStyle: pw.FontStyle.italic)),
                     pw.Text('Đơn vị tính/Currency: VND', style: pw.TextStyle(fontSize: 8, font: regularFont)),
                   ]),
                 ),
                 pw.SizedBox(height: 20),
                 
-                // THÔNG TIN CƠ BẢN
+                // DATA TABLES
                 pw.Table(
                   border: pw.TableBorder.all(color: PdfColors.grey600, width: 0.5),
                   children: [
@@ -212,7 +198,6 @@ class PaymentPDFExporter {
                 
                 pw.SizedBox(height: 10),
                 
-                // ĐIỆN & NƯỚC
                 pw.Table(
                   border: pw.TableBorder.all(color: PdfColors.grey600, width: 0.5),
                   children: [
@@ -227,27 +212,16 @@ class PaymentPDFExporter {
 
                 pw.Table(
                   border: pw.TableBorder.all(color: PdfColors.grey600, width: 0.5),
-                  columnWidths: {
-                    0: const pw.FlexColumnWidth(2),
-                    1: const pw.FlexColumnWidth(1),
-                  },
+                  columnWidths: { 0: const pw.FlexColumnWidth(2), 1: const pw.FlexColumnWidth(1) },
                   children: [
                     _buildInfoRow('PHÍ INTERNET / INTERNET FEE', formatCurrency(actualInternetFee), regularFont, boldFont),
                     _buildInfoRow('PHÍ TRUYỀN HÌNH CÁP / CABLE TV FEE', formatCurrency(actualCableTVFee), regularFont, boldFont),
-                    
-                    // SỬ DỤNG BIẾN actualHotWaterPercent Ở ĐÂY:
-                    _buildInfoRow(
-                      'PHÍ NƯỚC NÓNG (${actualHotWaterPercent.toStringAsFixed(0)}%) / HOT WATER FEE (${actualHotWaterPercent.toStringAsFixed(0)}%)', 
-                      formatCurrency(actualHotWaterFee), 
-                      regularFont, 
-                      boldFont
-                    ),
+                    _buildInfoRow('PHÍ NƯỚC NÓNG (${actualHotWaterPercent.toStringAsFixed(0)}%) / HOT WATER FEE', formatCurrency(actualHotWaterFee), regularFont, boldFont),
                   ],
                 ),
 
                 pw.SizedBox(height: 10),
                 
-                // TỔNG CỘNG
                 pw.Table(
                   border: pw.TableBorder.all(color: PdfColors.grey600, width: 0.5),
                   children: [
@@ -258,18 +232,19 @@ class PaymentPDFExporter {
                 ),
                 
                 pw.SizedBox(height: 10),
+
+                // THIS IS THE SECTION THAT WAS FREEZING
                 pw.Table(
                   border: pw.TableBorder.all(color: PdfColors.grey600, width: 0.5),
-                  columnWidths: {
-                    0: const pw.FlexColumnWidth(2),
-                    1: const pw.FlexColumnWidth(1),
-                  },
+                  columnWidths: { 0: const pw.FlexColumnWidth(2), 1: const pw.FlexColumnWidth(1) },
                   children: [
-                    _buildInfoRow('Email', contactEmail, regularFont, boldFont, isLink: true),
-                    _buildInfoRow('GHI CHÚ/ REMARK', remark ?? payment.notes ?? '', regularFont, boldFont, isMultiline: true),
+                    _buildInfoRow('EMAIL KHÁCH THUÊ / TENANT EMAIL', tenantEmail, regularFont, boldFont, isLink: tenantEmail.isNotEmpty),
+                    _buildInfoRow('EMAIL CÔNG TY / ORGANIZATION EMAIL', organizationEmail, regularFont, boldFont, isLink: organizationEmail.isNotEmpty),
+                    _buildInfoRow('GHI CHÚ / REMARK', remark ?? payment.notes ?? '', regularFont, boldFont),
                   ],
                 ),
-                pw.Spacer(),
+
+                pw.SizedBox(height: 20), // Replaced pw.Spacer() with fixed gap
                 
                 // BANK INFO
                 if (organization.hasBankInfo)
@@ -288,7 +263,7 @@ class PaymentPDFExporter {
                     ),
                   ),
                 
-                pw.SizedBox(height: 10),
+                pw.SizedBox(height: 20),
                 pw.Divider(color: PdfColors.grey400),
                 pw.Row(
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
@@ -297,8 +272,7 @@ class PaymentPDFExporter {
                     pw.Text('Receipt ID: ${payment.id.substring(0, min(8, payment.id.length)).toUpperCase()}', style: pw.TextStyle(fontSize: 7, font: regularFont)),
                   ],
                 ),
-              ],
-            );
+            ];
           },
         ),
       );

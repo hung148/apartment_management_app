@@ -457,8 +457,8 @@ class _OrganizationScreenState extends State<OrganizationScreen> with WidgetsBin
     }
   }
 
-  Future<void> _deleteBuilding(Building building) async {
-    final tenants = await _tenantService.getBuildingTenants(building.id);
+  Future<void> _deleteBuilding(Building building, Organization organization) async {
+    final tenants = await _tenantService.getBuildingTenants(building.id, organization.id);
     final activeTenants = tenants.where((t) =>
         t.status == TenantStatus.active ||
         t.status == TenantStatus.inactive ||
@@ -633,7 +633,7 @@ class _OrganizationScreenState extends State<OrganizationScreen> with WidgetsBin
     );
 
     try {
-      final result = await _buildingService.deleteBuildingWithRoomsAndTenants(building.id);
+      final result = await _buildingService.deleteBuildingWithRoomsAndTenants(building.id, widget.organization.id);
       if (!mounted) return;
       Navigator.of(context).pop(); // close loading
 
@@ -899,7 +899,7 @@ class _OrganizationScreenState extends State<OrganizationScreen> with WidgetsBin
                                           if (value == 'edit') {
                                             _showEditBuildingDialog(building);
                                           } else if (value == 'delete') {
-                                            _deleteBuilding(building);
+                                            _deleteBuilding(building, widget.organization);
                                           } else if (value == 'rooms') {
                                             Navigator.pushNamed(
                                               context,
@@ -1687,7 +1687,11 @@ Future<void> _exportStatisticsToPdf({
       }
       
       // For Pending, Overdue, and Partial, use the model property
-      return sum + p.remainingAmount;
+      if (p.status == PaymentStatus.overdue) {
+        return sum + p.remainingAmount;
+      } else {
+        return sum;
+      }
     });
     
     // Monthly revenue calculation
@@ -2331,7 +2335,19 @@ Future<void> _exportStatisticsToPdf({
       
       final totalRevenue = payments.fold<double>(0, (sum, p) => sum + (p.status == PaymentStatus.paid ? (p.paidAmount > 0 ? p.paidAmount : p.totalWithAllFees) : p.paidAmount));
       final pendingRevenue = payments.fold<double>(0, (sum, p) => sum + (p.status != PaymentStatus.paid && p.status != PaymentStatus.cancelled ? p.remainingAmount : 0));
-      final overdueRevenue = payments.fold<double>(0, (sum, p) => sum + (p.isOverdue ? p.remainingAmount : 0));
+      final overdueRevenue = payments.fold<double>(0, (sum, p) {
+        // We ignore Paid (remaining is 0) and Cancelled (we don't expect to collect it)
+        if (p.status == PaymentStatus.paid || p.status == PaymentStatus.cancelled) {
+          return sum;
+        }
+        
+        // For Pending, Overdue, and Partial, use the model property
+        if (p.status == PaymentStatus.overdue) {
+          return sum + p.remainingAmount;
+        } else {
+          return sum;
+        }
+      });
 
       // ============================================
       // CREATE WORKBOOK (Syncfusion)
