@@ -345,8 +345,8 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> w
     
     // Load last readings if room is selected
     if (_selectedRoomId != null) {
-      final lastElecReading = await widget.paymentService.getLastElectricityReading(_selectedRoomId!);
-      final lastWaterReading = await widget.paymentService.getLastWaterReading(_selectedRoomId!);
+      final lastElecReading = await widget.paymentService.getLastElectricityReading(_selectedRoomId!, widget.organization.id);
+      final lastWaterReading = await widget.paymentService.getLastWaterReading(_selectedRoomId!, widget.organization.id);
       
       if (lastElecReading != null) {
         electricityStartReadingController.text = lastElecReading['reading']?.toString() ?? '';

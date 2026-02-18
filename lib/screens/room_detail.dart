@@ -118,29 +118,31 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
   }
 
   void _initializeStreams() {
-    // Initialize tenant stream
     _tenantSubscription = widget.tenantService
-        .streamRoomTenants(widget.room.id, widget.organization.id)
-        .listen(
-          (tenants) {
-            if (mounted) {
-              setState(() {
-                _tenants = tenants;
-                _isLoadingTenants = false;
-              });
-            }
-          },
-          onError: (error, stackTrace) {
-            print('❌ Stream ERROR for tenants: $error');
-            print('Stack trace: $stackTrace');
-            if (mounted) {
-              setState(() {
-                _isLoadingTenants = false;
-              });
-            }
-          },
-          cancelOnError: false,
-        );
+    .streamRoomTenants(widget.room.id, widget.organization.id)
+    .listen(
+      (tenants) {
+        if (mounted) {
+          setState(() {
+            _tenants = tenants;
+            _isLoadingTenants = false;
+          });
+        }
+      },
+      onError: (error) {
+        debugPrint('❌ Firestore Error: $error');
+        if (mounted) {
+          setState(() {
+            _isLoadingTenants = false; // Stop the spinner!
+            _tenants = []; // Prevent null errors
+          });
+          // Show a snackbar so you know why it "froze"
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Lỗi tải dữ liệu: $error')),
+          );
+        }
+      },
+    );
   }
 
   String? get _userId => widget.authService.currentUser?.uid;

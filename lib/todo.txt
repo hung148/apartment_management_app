@@ -54,3 +54,35 @@ get(/databases/$(database)/documents/memberships/{id}).data.ownerId == request.a
 
 
 Never rely on concatenated IDs that can be predicted. Always check fields inside the document for ownership.
+
+Application-level security
+
+Firestore rules only protect the database. Your app code might still leak data if you return sensitive fields accidentally.
+
+Privilege escalation in app logic
+
+If your app lets users call admin-only functions without proper checks, Firestore rules can’t stop it unless those functions are backed by secure server code or callable functions.
+
+Other attack vectors
+
+XSS, CSRF, social engineering, phishing, or compromised user accounts are outside Firestore rules.
+
+Firestore rules only enforce who can read/write what; they don’t defend against every type of hack.
+
+3️⃣ Safer alternatives
+
+Check uniqueness in your database
+
+When you generate a code, query your inviteCodes collection to make sure it doesn’t exist.
+
+If it exists, generate a new one.
+
+Use more characters
+
+Instead of 8, use 10–12 characters.
+
+Each extra character multiplies the number of possible codes by 16 (hex).
+
+Use full UUID
+
+Use all 32 characters. No need to truncate.

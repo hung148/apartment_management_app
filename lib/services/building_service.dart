@@ -176,11 +176,12 @@ class BuildingService {
   // ========================================
   // DELETE - Delete a building
   // ========================================
-  Future<bool> deleteBuilding(String buildingId) async {
+  Future<bool> deleteBuilding(String buildingId, String organizationId) async {
     try {
       // Optional: Check if building has rooms before deleting
       final rooms = await _firestore
           .collection('rooms')
+          .where('organizationId', isEqualTo: organizationId)
           .where('buildingId', isEqualTo: buildingId)
           .limit(1)
           .get();
@@ -202,11 +203,12 @@ class BuildingService {
   // ========================================
   // DELETE - Force delete building and all its rooms
   // ========================================
-  Future<bool> deleteBuildingWithRooms(String buildingId) async {
+  Future<bool> deleteBuildingWithRooms(String buildingId, String organizationId) async {
     try {
       // First, delete all rooms in this building
       final roomsSnapshot = await _firestore
           .collection('rooms')
+          .where('organizationId', isEqualTo: organizationId)
           .where('buildingId', isEqualTo: buildingId)
           .get();
 

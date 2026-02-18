@@ -263,7 +263,7 @@ class TenantService {
   // ========================================
   // READ - Stream tenants (real-time updates)
   // ========================================
-  Stream<List<Tenant>> streamRoomTenants(String organizationId, String roomId) {
+  Stream<List<Tenant>> streamRoomTenants(String roomId, String organizationId) {
     return _firestore
         .collection('tenants')
         .where('organizationId', isEqualTo: organizationId)

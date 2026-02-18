@@ -342,10 +342,11 @@ class PaymentService {
   // ========================================
   // READ - Get pending payments for a room
   // ========================================
-  Future<List<Payment>> getPendingRoomPayments(String roomId) async {
+  Future<List<Payment>> getPendingRoomPayments(String organizationId, String roomId) async {
     try {
       final snapshot = await _firestore
           .collection('payments')
+          .where('organizationId', isEqualTo: organizationId)
           .where('roomId', isEqualTo: roomId)
           .where('status', isEqualTo: 'pending')
           .orderBy('dueDate', descending: false)
@@ -388,10 +389,11 @@ class PaymentService {
   // ========================================
   // READ - Get payments by tenant
   // ========================================
-  Future<List<Payment>> getTenantPayments(String tenantId) async {
+  Future<List<Payment>> getTenantPayments(String organizationId, String tenantId) async {
     try {
       final snapshot = await _firestore
           .collection('payments')
+          .where('organizationId', isEqualTo: organizationId)
           .where('tenantId', isEqualTo: tenantId)
           .orderBy('dueDate', descending: true)
           .get();
@@ -408,10 +410,11 @@ class PaymentService {
   // ========================================
   // READ - Get payments by building
   // ========================================
-  Future<List<Payment>> getBuildingPayments(String buildingId) async {
+  Future<List<Payment>> getBuildingPayments(String organizationId, String buildingId) async {
     try {
       final snapshot = await _firestore
           .collection('payments')
+          .where('organizationId', isEqualTo: organizationId)
           .where('buildingId', isEqualTo: buildingId)
           .orderBy('dueDate', descending: true)
           .get();
@@ -498,10 +501,11 @@ class PaymentService {
   // ========================================
   // READ - Get last electricity reading for a room
   // ========================================
-  Future<Map<String, dynamic>?> getLastElectricityReading(String roomId) async {
+  Future<Map<String, dynamic>?> getLastElectricityReading(String organizationId, String roomId) async {
     try {
       final snapshot = await _firestore
           .collection('payments')
+          .where('organizationId', isEqualTo: organizationId)
           .where('roomId', isEqualTo: roomId)
           .where('type', isEqualTo: 'electricity')
           .orderBy('electricityEndDate', descending: true)
@@ -526,10 +530,11 @@ class PaymentService {
   // ========================================
   // READ - Get last water reading for a room
   // ========================================
-  Future<Map<String, dynamic>?> getLastWaterReading(String roomId) async {
+  Future<Map<String, dynamic>?> getLastWaterReading(String organizationId, String roomId) async {
     try {
       final snapshot = await _firestore
           .collection('payments')
+          .where('organizationId', isEqualTo: organizationId)
           .where('roomId', isEqualTo: roomId)
           .where('type', isEqualTo: 'water')
           .orderBy('waterEndDate', descending: true)
@@ -554,9 +559,10 @@ class PaymentService {
   // ========================================
   // READ - Stream payments (real-time updates)
   // ========================================
-  Stream<List<Payment>> streamRoomPayments(String roomId) {
+  Stream<List<Payment>> streamRoomPayments(String organizationId, String roomId) {
     return _firestore
         .collection('payments')
+        .where('organizationId', isEqualTo: organizationId)
         .where('roomId', isEqualTo: roomId)
         .orderBy('dueDate', descending: true)
         .snapshots()
@@ -565,9 +571,10 @@ class PaymentService {
             .toList());
   }
 
-  Stream<List<Payment>> streamBuildingPayments(String buildingId) {
+  Stream<List<Payment>> streamBuildingPayments(String organizationId, String buildingId) {
     return _firestore
         .collection('payments')
+        .where('organizationId', isEqualTo: organizationId)
         .where('buildingId', isEqualTo: buildingId)
         .orderBy('dueDate', descending: true)
         .snapshots()
@@ -815,10 +822,11 @@ class PaymentService {
   // ========================================
   // DELETE - Delete all room payments
   // ========================================
-  Future<bool> deleteAllRoomPayments(String roomId) async {
+  Future<bool> deleteAllRoomPayments(String organizationId, String roomId) async {
     try {
       final snapshot = await _firestore
           .collection('payments')
+          .where('organizationId', isEqualTo: organizationId)
           .where('roomId', isEqualTo: roomId)
           .get();
 
@@ -839,9 +847,9 @@ class PaymentService {
   // ========================================
   // UTILITY - Calculate total amount due (with combined payment support)
   // ========================================
-  Future<double> calculateTotalDue(String roomId) async {
+  Future<double> calculateTotalDue(String organizationId, String roomId) async {
     try {
-      final payments = await getPendingRoomPayments(roomId);
+      final payments = await getPendingRoomPayments(roomId, organizationId);
       return payments.fold<double>(0.0, (sum, payment) => sum + payment.remainingAmount);
     } catch (e) {
       print('Error calculating total due: $e');
@@ -853,6 +861,7 @@ class PaymentService {
   // UTILITY - Calculate combined fees breakdown
   // ========================================
   Future<Map<String, double>> calculateCombinedFeesBreakdown(
+    String organizationId,
     String roomId,
     DateTime startDate,
     DateTime endDate,
@@ -860,6 +869,7 @@ class PaymentService {
     try {
       final snapshot = await _firestore
           .collection('payments')
+          .where('organizationId', isEqualTo: organizationId)
           .where('roomId', isEqualTo: roomId)
           .where('billingStartDate', isGreaterThanOrEqualTo: Timestamp.fromDate(startDate))
           .where('billingEndDate', isLessThanOrEqualTo: Timestamp.fromDate(endDate))
