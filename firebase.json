@@ -1,1 +1,39 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"apartment-management-app-776b9","appId":"1:595994118808:android:f099dea390668bee271eed","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"apartment-management-app-776b9","configurations":{"android":"1:595994118808:android:f099dea390668bee271eed","ios":"1:595994118808:ios:bf9f0ea4d4a26a69271eed","macos":"1:595994118808:ios:bf9f0ea4d4a26a69271eed","web":"1:595994118808:web:4cbc3b57688c6ef7271eed","windows":"1:595994118808:web:5af7c088a203ac12271eed"}}}}}}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "apartment-management-app-776b9",
+          "appId": "1:595994118808:android:f099dea390668bee271eed",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "apartment-management-app-776b9",
+          "configurations": {
+            "android": "1:595994118808:android:f099dea390668bee271eed",
+            "ios": "1:595994118808:ios:bf9f0ea4d4a26a69271eed",
+            "macos": "1:595994118808:ios:bf9f0ea4d4a26a69271eed",
+            "web": "1:595994118808:web:4cbc3b57688c6ef7271eed",
+            "windows": "1:595994118808:web:5af7c088a203ac12271eed"
+          }
+        }
+      }
+    }
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "disallowLegacyRuntimeConfig": true,
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ]
+    }
+  ]
+}

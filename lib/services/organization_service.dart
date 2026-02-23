@@ -316,6 +316,7 @@ class OrganizationService {
           .collection('memberships')
           .where('organizationId', isEqualTo: orgId)
           .where('status', isEqualTo: 'active')
+          .limit(100)
           .get();
 
       return snapshot.docs
@@ -405,6 +406,7 @@ class OrganizationService {
           .collection('memberships')
           .where('ownerId', isEqualTo: ownerId)
           .where('status', isEqualTo: 'active')
+          .limit(100)
           .get();
 
       if (membershipsSnap.docs.isEmpty) {

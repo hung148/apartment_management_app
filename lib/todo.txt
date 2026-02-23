@@ -28,7 +28,6 @@ Firestore rules only enforce who can read/write what; they don’t defend agains
 
 can't create or join or refreshInviteCode with new rule
 
-
 If you are talking about protecting your logic and preventing hackers from messing with your data when you release your app, there are three layers you need to handle:
 1. Hide the Logic (Code Obfuscation)
 When you build your Flutter app for the App Store or Play Store, hackers can "decompile" your app to see your code. To prevent them from reading your logic (like how you generate invite codes), you should use obfuscation.
@@ -68,3 +67,7 @@ flutter build apk --release --obfuscate --split-debug-info=symbols/android
 flutter build windows --release --obfuscate --split-debug-info=symbols/windows
 
 Use kReleaseMode: Use this constant to disable all print() logs in your release app so users don't see your debug data in the Windows Event Viewer.
+
+974744DA
+test
+test1234
