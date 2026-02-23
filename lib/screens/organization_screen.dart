@@ -1013,7 +1013,9 @@ class _OrganizationScreenState extends State<OrganizationScreen> with WidgetsBin
                           Expanded(
                             child: TextField(
                               controller: _searchController,
+                              maxLength: 100,
                               decoration: InputDecoration(
+                                counterText: "",
                                 hintText: 'Tìm kiếm hóa đơn...',
                                 prefixIcon: const Icon(Icons.search),
                                 suffixIcon: value.text.isNotEmpty

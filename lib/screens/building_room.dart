@@ -265,7 +265,8 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
               children: [
                 TextField(
                   controller: numberController,
-                  decoration: const InputDecoration(labelText: 'Số phòng *', hintText: 'VD: A101'),
+                  maxLength: 20,
+                  decoration: const InputDecoration(counterText: "", labelText: 'Số phòng *', hintText: 'VD: A101'),
                   autofocus: true,
                   enabled: !isSaving,
                   textCapitalization: TextCapitalization.characters,
@@ -273,7 +274,8 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                 const SizedBox(height: 16),
                 TextField(
                   controller: typeController,
-                  decoration: const InputDecoration(labelText: 'Loại phòng', hintText: 'VD: Studio, 1PN, 2PN...'),
+                  maxLength: 50,
+                  decoration: const InputDecoration(counterText: "", labelText: 'Loại phòng', hintText: 'VD: Studio, 1PN, 2PN...'),
                   enabled: !isSaving,
                   textCapitalization: TextCapitalization.words,
                 ),

@@ -434,7 +434,9 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> w
                         Expanded(
                           child: TextFormField(
                             controller: electricityStartReadingController,
+                            maxLength: 10,
                             decoration: InputDecoration(
+                              counterText: "",
                               labelText: 'Chỉ số đầu *',
                               border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                             ),
@@ -464,7 +466,9 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog> w
                         Expanded(
                           child: TextFormField(
                             controller: electricityEndReadingController,
+                            maxLength: 10,
                             decoration: InputDecoration(
+                              counterText: "",
                               labelText: 'Chỉ số cuối *',
                               border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                             ),

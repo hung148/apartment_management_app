@@ -501,9 +501,11 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                       children: [
                         TextFormField(
                           controller: nameController,
+                          maxLength: 100,
                           autofocus: !_isSmallScreen(context),
                           textCapitalization: TextCapitalization.words,
                           decoration: InputDecoration(
+                            counterText: "",
                             labelText: AppTranslations.of(context).text('org_name_required'),
                             hintText: AppTranslations.of(context).text('org_name_example'),
                             prefixIcon: const Icon(Icons.business),
@@ -523,8 +525,10 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                         TextFormField(
                           controller: addressController,
                           textCapitalization: TextCapitalization.words,
+                          maxLength: 300,
                           maxLines: 2,
                           decoration: InputDecoration(
+                            counterText: "",
                             labelText: AppTranslations.of(context).text('address'),
                             hintText: AppTranslations.of(context).text('address_example'),
                             prefixIcon: const Icon(Icons.location_on),
@@ -539,8 +543,10 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                         
                         TextFormField(
                           controller: phoneController,
+                          maxLength: 20,
                           keyboardType: TextInputType.phone,
                           decoration: InputDecoration(
+                            counterText: "",
                             labelText: AppTranslations.of(context).text('phone'),
                             hintText: AppTranslations.of(context).text('phone_example'),
                             prefixIcon: const Icon(Icons.phone),
@@ -555,8 +561,10 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                         
                         TextFormField(
                           controller: emailController,
+                          maxLength: 254,
                           keyboardType: TextInputType.emailAddress,
                           decoration: InputDecoration(
+                            counterText: "",
                             labelText: AppTranslations.of(context).text('email'),
                             hintText: AppTranslations.of(context).text('email_example'),
                             prefixIcon: const Icon(Icons.email),
@@ -581,8 +589,10 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                         // ADDED: Tax Code Field
                         TextFormField(
                           controller: taxCodeController,
+                          maxLength: 14,
                           keyboardType: TextInputType.number,
                           decoration: InputDecoration(
+                            counterText: "",
                             labelText: AppTranslations.of(context).text('tax_code'),
                             hintText: '0123456789 or 0123456789-001',
                             prefixIcon: const Icon(Icons.receipt_long),
@@ -995,7 +1005,9 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                         const SizedBox(height: 8),
                         TextFormField(
                           controller: nameController,
+                          maxLength: 100,
                           decoration: InputDecoration(
+                            counterText: "",
                             hintText: org.name,
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(8),
@@ -1260,7 +1272,9 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                     const SizedBox(height: 16),
                     TextField(
                       controller: targetController,
+                      maxLength: 50,
                       decoration: InputDecoration(
+                        counterText: "",
                         labelText: AppTranslations.of(context).text('target_org_id'),
                         hintText: AppTranslations.of(context).text('enter_target_org_id'),
                         helperText: AppTranslations.of(context).text('target_org_id_placeholder'),

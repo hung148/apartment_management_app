@@ -310,7 +310,9 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                     // Full Name
                     TextField(
                       controller: nameController,
+                      maxLength: 100,
                       decoration: const InputDecoration(
+                        counterText: "",
                         labelText: 'Họ và tên *',
                         prefixIcon: Icon(Icons.person),
                       ),
@@ -320,8 +322,10 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                     // Phone Number
                     TextField(
                       controller: phoneController,
+                      maxLength: 20,
                       keyboardType: TextInputType.phone,
                       decoration: const InputDecoration(
+                        counterText: "", 
                         labelText: 'Số điện thoại *',
                         prefixIcon: Icon(Icons.phone),
                       ),
@@ -331,8 +335,10 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                     // Monthly Rent
                     TextField(
                       controller: rentController,
+                      maxLength: 20,
                       keyboardType: TextInputType.number,
                       decoration: const InputDecoration(
+                        counterText: "",
                         labelText: 'Tiền thuê hàng tháng',
                         prefixIcon: Icon(Icons.attach_money),
                         suffixText: 'VND',
@@ -363,7 +369,9 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                       children: [
                         Expanded(child: TextField(
                           controller: typeController,
+                          maxLength: 50,
                           decoration: const InputDecoration(
+                            counterText: "",
                             labelText: 'Loại căn hộ',
                             prefixIcon: Icon(Icons.category, size: 20),
                             border: OutlineInputBorder(),
@@ -373,8 +381,10 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                         const SizedBox(width: 12),
                         Expanded(child: TextField(
                           controller: areaController,
+                          maxLength: 10,
                           keyboardType: TextInputType.number,
                           decoration: const InputDecoration(
+                            counterText: "",
                             labelText: 'Diện tích',
                             prefixIcon: Icon(Icons.square_foot, size: 20),
                             suffixText: 'm²',
@@ -389,8 +399,10 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                     // Email
                     TextField(
                       controller: emailController,
+                      maxLength: 254,
                       keyboardType: TextInputType.emailAddress,
                       decoration: const InputDecoration(
+                        counterText: "",
                         labelText: 'Email',
                         prefixIcon: Icon(Icons.email),
                       ),
@@ -400,7 +412,9 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                     // National ID
                     TextField(
                       controller: nationalIdController,
+                      maxLength: 20,
                       decoration: const InputDecoration(
+                        counterText: "",
                         labelText: 'CMND/CCCD',
                         prefixIcon: Icon(Icons.credit_card),
                       ),
@@ -410,7 +424,9 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                     // Occupation
                     TextField(
                       controller: occupationController,
+                      maxLength: 100,
                       decoration: const InputDecoration(
+                        counterText: "",
                         labelText: 'Nghề nghiệp',
                         prefixIcon: Icon(Icons.work),
                       ),
@@ -420,7 +436,9 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                     // Workplace
                     TextField(
                       controller: workplaceController,
+                      maxLength: 150,
                       decoration: const InputDecoration(
+                        counterText: "",
                         labelText: 'Nơi làm việc',
                         prefixIcon: Icon(Icons.business),
                       ),
@@ -463,8 +481,10 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                     // Deposit
                     TextField(
                       controller: depositController,
+                      maxLength: 20,
                       keyboardType: TextInputType.number,
                       decoration: const InputDecoration(
+                        counterText: "", 
                         labelText: 'Tiền cọc',
                         prefixIcon: Icon(Icons.account_balance_wallet),
                         suffixText: 'VND',
@@ -1422,7 +1442,9 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                   children: [
                     TextField(
                       controller: licensePlateController,
+                      maxLength: 15,
                       decoration: const InputDecoration(
+                        counterText: "",
                         labelText: 'Biển số xe *',
                         hintText: '29A-12345',
                       ),
@@ -1449,7 +1471,9 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                     const SizedBox(height: 16),
                     TextField(
                       controller: brandController,
+                      maxLength: 50,
                       decoration: const InputDecoration(
+                        counterText: "",
                         labelText: 'Hãng xe',
                         hintText: 'Honda, Yamaha, Toyota...',
                       ),
@@ -1457,7 +1481,9 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                     const SizedBox(height: 16),
                     TextField(
                       controller: modelController,
+                      maxLength: 50,
                       decoration: const InputDecoration(
+                        counterText: "",
                         labelText: 'Model',
                         hintText: 'Wave, Vision, Vios...',
                       ),
@@ -1465,7 +1491,9 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                     const SizedBox(height: 16),
                     TextField(
                       controller: colorController,
+                      maxLength: 30,
                       decoration: const InputDecoration(
+                        counterText: "",
                         labelText: 'Màu sắc',
                         hintText: 'Đen, Trắng, Xanh...',
                       ),
@@ -1621,7 +1649,9 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
           title: const Text('Đăng ký bãi đỗ'),
           content: TextField(
             controller: controller,
+            maxLength: 10,
             decoration: const InputDecoration(
+              counterText: "",
               labelText: 'Vị trí bãi đỗ',
               hintText: 'A1, B2, C3...',
             ),

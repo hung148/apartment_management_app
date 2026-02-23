@@ -11,6 +11,11 @@ If supporting multiple countries, add country-specific tax code validation
 add app icon
 
 Never trust what a user types into a TextField. Someone might try to send 10GB of text or a script.  Always validate length, format, and type on the server side.
+fix payement_dialog
+payement_pdf_export
+view_edit_dialog
+tenant_tab
+building_dialog
 
 Application-level security
 
@@ -18,15 +23,7 @@ Firestore rules only protect the database. Your app code might still leak data i
 
 Privilege escalation in app logic
 
-If your app lets users call admin-only functions without proper checks, Firestore rules can’t stop it unless those functions are backed by secure server code or callable functions.
-
-Other attack vectors
-
-XSS, CSRF, social engineering, phishing, or compromised user accounts are outside Firestore rules.
-
-Firestore rules only enforce who can read/write what; they don’t defend against every type of hack.
-
-can't create or join or refreshInviteCode with new rule
+consider changing to cloud function in future
 
 If you are talking about protecting your logic and preventing hackers from messing with your data when you release your app, there are three layers you need to handle:
 1. Hide the Logic (Code Obfuscation)

@@ -17,14 +17,15 @@ class PdfFontService {
 }
 
 
-// text fields
 Widget inputField({
   required String label,
   required TextEditingController controller,
   String? Function(String?)? validator,
   void Function(String)? onChanged, 
   bool obscureText = false, 
-  bool optional = false
+  bool optional = false,
+  int? maxLength,                                       
+  MaxLengthEnforcement? maxLengthEnforcement,           
 }) {
   return Column(
     crossAxisAlignment: CrossAxisAlignment.start,
@@ -58,7 +59,11 @@ Widget inputField({
           obscureText: obscureText,
           validator: validator,
           onChanged: onChanged,
+          maxLength: maxLength,                         
+          maxLengthEnforcement: maxLengthEnforcement    
+              ?? MaxLengthEnforcement.enforced,
           decoration: InputDecoration(
+            counterText: "",   // hides the "0/100" counter
             contentPadding: EdgeInsets.symmetric(vertical: 0, horizontal: 10),
             enabledBorder: OutlineInputBorder(
               borderSide: BorderSide(

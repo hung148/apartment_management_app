@@ -6,6 +6,7 @@ import 'package:apartment_management_project_2/widgets/loading.dart';
 import 'package:apartment_management_project_2/widgets/shared.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 class LoginScreen extends StatelessWidget {
@@ -197,7 +198,13 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
                 inputField(
                   label: "Email", 
                   controller: loginEmailController,
-                  validator: (val) => val!.isEmpty ? "Điền Email!" : null,
+                  maxLength: 100,
+                  maxLengthEnforcement: MaxLengthEnforcement.enforced,
+                  validator: (val) {
+                    if (val!.isEmpty) return "Điền Email!";
+                    if (val.length > 254) return "Email không hợp lệ!";  // RFC 5321 max
+                    return null;
+                  },
                   optional: false,
                 ),
                 inputField(
@@ -261,19 +268,32 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
                 inputField(
                   label: "Tên", 
                   controller: registerNameController,
-                  validator: (val) => val!.isEmpty ? "Điền tên!" : null,
+                  validator: (val) {
+                    if (val!.isEmpty) return "Điền tên!";
+                    if (val.length > 100) return "Tên quá dài!";
+                    return null;
+                  },
                   optional: false,
                 ),
                 inputField(
                   label: "Email", 
                   controller: registerEmailController,
-                  validator: (val) => val!.isEmpty ? "Điền Email!" : null,
+                  validator: (val) {
+                    if (val!.isEmpty) return "Điền Email!";
+                    if (val.length > 254) return "Email không hợp lệ!";  // RFC 5321 max
+                    return null;
+                  },
                   optional: false,
                 ),
                 inputField(
                   label: "Mật khẩu", 
                   controller: registerPasswordController,
-                  validator: (val) => val!.length < 6 ? val.isEmpty ? "Điền mật khẩu!" : "Mật khẩu quá đơn giản!" : null,
+                  validator: (val) {
+                    if (val!.isEmpty) return "Điền mật khẩu!";
+                    if (val.length < 6) return "Mật khẩu quá đơn giản!";
+                    if (val.length > 128) return "Mật khẩu quá dài!";
+                    return null;
+                  },
                   obscureText: true, 
                   optional: false,
                 ),
