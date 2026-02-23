@@ -5,7 +5,6 @@ class Membership {
   final String organizationId;
   final String ownerId;
   final String role; // "admin" or "member"
-  final String inviteCode; // Unique per organization
   final String status; // "active" or "pending_removal"
   final DateTime joinedAt;
 
@@ -14,7 +13,6 @@ class Membership {
     required this.organizationId,
     required this.ownerId,
     required this.role,
-    required this.inviteCode,
     required this.status,
     required this.joinedAt,
   });
@@ -24,7 +22,6 @@ class Membership {
       'organizationId': organizationId,
       'ownerId': ownerId,
       'role': role,
-      'inviteCode': inviteCode,
       'status': status,
       'joinedAt': Timestamp.fromDate(joinedAt),
     };
@@ -36,7 +33,6 @@ class Membership {
       organizationId: map['organizationId'] ?? '',
       ownerId: map['ownerId'] ?? '',
       role: map['role'] ?? 'member',
-      inviteCode: map['inviteCode'] ?? '',
       status: map['status'] ?? 'active',
       joinedAt: (map['joinedAt'] as Timestamp).toDate(),
     );

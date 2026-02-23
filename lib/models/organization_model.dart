@@ -13,6 +13,7 @@ class Organization {
   final String createdBy;          // Owner ID who created it
   final DateTime createdAt;
   final DateTime? updatedAt;       // NEW: Track last update
+  final String inviteCode;
 
   Organization({
     required this.id,
@@ -27,6 +28,7 @@ class Organization {
     required this.createdBy,
     required this.createdAt,
     this.updatedAt,
+    required this.inviteCode,
   });
 
   Map<String, dynamic> toMap() {
@@ -42,6 +44,7 @@ class Organization {
       'createdBy': createdBy,
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': updatedAt != null ? Timestamp.fromDate(updatedAt!) : null,
+      'inviteCode': inviteCode,
     };
   }
 
@@ -61,6 +64,7 @@ class Organization {
       updatedAt: map['updatedAt'] != null 
           ? (map['updatedAt'] as Timestamp).toDate() 
           : null,
+      inviteCode: map['inviteCode'] ?? '',
     );
   }
 
@@ -78,6 +82,7 @@ class Organization {
     String? createdBy,
     DateTime? createdAt,
     DateTime? updatedAt,
+    String? inviteCode,
   }) {
     return Organization(
       id: id ?? this.id,
@@ -92,6 +97,7 @@ class Organization {
       createdBy: createdBy ?? this.createdBy,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      inviteCode: inviteCode ?? this.inviteCode,
     );
   }
 

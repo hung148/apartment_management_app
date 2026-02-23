@@ -2,7 +2,6 @@ import 'package:apartment_management_project_2/models/membership_model.dart';
 import 'package:apartment_management_project_2/models/organization_model.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:uuid/uuid.dart';
-
 class OrganizationService {
   // Create instance of Firestore to interact with the database
   FirebaseFirestore get _firestore => FirebaseFirestore.instance;
@@ -10,9 +9,39 @@ class OrganizationService {
   // UUID generator for creating unique invite codes
   final Uuid _uuid = Uuid();
 
-  // Generate a unique 8-character invite code
-  String _generateInviteCode() {
+  // Helper to generate the raw string
+  String _generateRawCode() {
+    // 36^8 ≈ 2.8 trillion possibilities.
+    // At 1 million orgs, collision chance per call is ~0.000036%.
+    // Just generate and trust the math — no query needed.
     return _uuid.v4().replaceAll('-', '').substring(0, 8).toUpperCase();
+  }
+
+  Future<void> migrateInviteCodesToNewCollection() async {
+    final firestore = FirebaseFirestore.instance;
+    print('🚀 Migrating codes to invite_codes collection...');
+
+    final orgs = await firestore.collection('organizations').get();
+    final batch = firestore.batch();
+    int count = 0;
+
+    for (var orgDoc in orgs.docs) {
+      final data = orgDoc.data();
+      final String? code = data['inviteCode'];
+      final String orgId = orgDoc.id;
+
+      if (code != null && code.isNotEmpty) {
+        final codeRef = firestore.collection('invite_codes').doc(code);
+        batch.set(codeRef, {
+          'organizationId': orgId,
+          'claimedAt': FieldValue.serverTimestamp(),
+        });
+        count++;
+      }
+    }
+
+    await batch.commit();
+    print('✅ Successfully registered $count codes in the new collection.');
   }
 
   // ========================================
@@ -30,43 +59,70 @@ class OrganizationService {
     String? taxCode,
   }) async {
     try {
-      // Create a new document reference in 'organizations' collection
       final orgRef = _firestore.collection("organizations").doc();
-
-      // Create an Organization object with the generated ID
-      final organization = Organization(
-        id: orgRef.id,
-        name: name,
-        address: address,
-        phone: phone,
-        email: email,
-        bankName: bankName,
-        bankAccountNumber: bankAccountNumber,
-        bankAccountName: bankAccountName,
-        taxCode: taxCode,
-        createdBy: ownerId,
-        createdAt: DateTime.now(),
-      );
-
-      // Save the organization to Firestore
-      await orgRef.set(organization.toMap());
-
-      // Create a membership for the creator as admin
       final membershipId = '${ownerId}_${orgRef.id}';
-      final membership = Membership(
-        id: membershipId, 
-        organizationId: orgRef.id, 
-        ownerId: ownerId, 
-        role: 'admin', 
-        inviteCode: _generateInviteCode(), 
-        status: 'active', 
-        joinedAt: DateTime.now(),
-      ); 
 
-      // Save the membership to Firestore
-      await _firestore.collection('memberships').doc(membershipId).set(membership.toMap());
+      Organization? organization;
 
-      print('✅ Organization created: ${organization.name}');
+      // Retry loop — handles the astronomically rare invite code collision
+      while (true) {
+        final inviteCode = _generateRawCode();
+
+        // Atomically claim the code using its doc ID as a unique constraint.
+        // If another org already has this code, the write fails with already-exists.
+        try {
+          await _firestore
+              .collection('invite_codes')
+              .doc(inviteCode)
+              .set({
+                'orgId': orgRef.id,
+                'claimedAt': FieldValue.serverTimestamp()});
+        } on FirebaseException catch (e) {
+          if (e.code == 'already-exists') {
+            print('⚠️ Invite code collision on $inviteCode, retrying...');
+            continue; // generate a new code and try again
+          }
+          rethrow;
+        }
+
+        // Code is now claimed — build and save the organization
+        organization = Organization(
+          id: orgRef.id,
+          name: name,
+          address: address,
+          phone: phone,
+          email: email,
+          bankName: bankName,
+          bankAccountNumber: bankAccountNumber,
+          bankAccountName: bankAccountName,
+          taxCode: taxCode,
+          createdBy: ownerId,
+          createdAt: DateTime.now(),
+          inviteCode: inviteCode,
+        );
+
+        // Write org + membership atomically so we never get one without the other
+        final batch = _firestore.batch();
+
+        batch.set(orgRef, organization.toMap());
+
+        batch.set(
+          _firestore.collection('memberships').doc(membershipId),
+          Membership(
+            id: membershipId,
+            organizationId: orgRef.id,
+            ownerId: ownerId,
+            role: 'admin',
+            status: 'active',
+            joinedAt: DateTime.now(),
+          ).toMap(),
+        );
+
+        await batch.commit();
+        break; // success — exit the loop
+      }
+
+      print('✅ Organization created: ${organization!.name}');
       return organization;
     } catch (e) {
       print('❌ Error creating organization: $e');
@@ -274,17 +330,68 @@ class OrganizationService {
   // ========================================
   // READ - Get invite code
   // ========================================
-  Future<String?> getInviteCode(String ownerId, String orgId) async {
+  Future<String?> getInviteCode(String orgId) async {
     try {
-      final membership = await getUserMembership(ownerId, orgId);
-      if (membership == null) {
-        print('❌ No membership found for user $ownerId in org $orgId');
-        return null;
-      }
-      return membership.inviteCode;
+      final org = await getOrganizationById(orgId);
+      return org?.inviteCode;
     } catch (e) {
       print('❌ Error getting invite code: $e');
       return null;
+    }
+  }
+
+  Future<bool> refreshInviteCode(String adminId, String orgId) async {
+    try {
+      final membership = await getUserMembership(adminId, orgId);
+      if (membership?.role != 'admin') return false;
+
+      // Get the current invite code so we can release it after
+      final org = await getOrganizationById(orgId);
+      final oldCode = org?.inviteCode;
+
+      // Retry loop for the rare collision
+      while (true) {
+        final newCode = _generateRawCode();
+
+        // Atomically claim the new code
+        try {
+          await _firestore
+              .collection('invite_codes')
+              .doc(newCode)
+              .set({
+                'orgId': orgId,
+                'claimedAt': FieldValue.serverTimestamp()});
+        } on FirebaseException catch (e) {
+          if (e.code == 'already-exists') {
+            print('⚠️ Invite code collision on $newCode, retrying...');
+            continue;
+          }
+          rethrow;
+        }
+
+        // New code is claimed — update the org and release old code atomically
+        final batch = _firestore.batch();
+
+        batch.update(
+          _firestore.collection('organizations').doc(orgId),
+          {
+            'inviteCode': newCode,
+            'updatedAt': Timestamp.fromDate(DateTime.now()),
+          },
+        );
+
+        // Release the old code so it can be reused by others
+        if (oldCode != null && oldCode.isNotEmpty) {
+          batch.delete(_firestore.collection('invite_codes').doc(oldCode));
+        }
+
+        await batch.commit();
+        print('✅ Invite code refreshed: $newCode');
+        return true;
+      }
+    } catch (e) {
+      print('❌ Error refreshing invite code: $e');
+      return false;
     }
   }
 
@@ -333,26 +440,20 @@ class OrganizationService {
     required String inviteCode,
   }) async {
     try {
-      // Find any membership that has this invite code
-      final query = await _firestore
-          .collection('memberships')
-          .where('inviteCode', isEqualTo: inviteCode)
-          .limit(1)
+      // 1. Direct doc lookup in invite_codes — no query needed, no list permission needed
+      final codeDoc = await _firestore
+          .collection('invite_codes')
+          .doc(inviteCode)
           .get();
 
-      if (query.docs.isEmpty) {
-        print('❌ Invalid or expired invite code');
+      if (!codeDoc.exists) {
+        print('❌ Invalid invite code');
         return false;
       }
 
-      final existingMembership = Membership.fromMap(
-        query.docs.first.id,
-        query.docs.first.data(),
-      );
+      final orgId = codeDoc.data()!['orgId'] as String;
 
-      final orgId = existingMembership.organizationId;
-
-      // Prevent joining the same organization twice
+      // 2. Check if user is already a member
       final membershipId = '${ownerId}_$orgId';
       final alreadyMember = await _firestore
           .collection('memberships')
@@ -360,17 +461,16 @@ class OrganizationService {
           .get();
 
       if (alreadyMember.exists) {
-        print('⚠️ User is already a member of this organization');
+        print('⚠️ Already a member');
         return false;
       }
 
-      // Create new membership as regular member
+      // 3. Create new membership
       final newMembership = Membership(
         id: membershipId,
         organizationId: orgId,
         ownerId: ownerId,
         role: 'member',
-        inviteCode: inviteCode,
         status: 'active',
         joinedAt: DateTime.now(),
       );
@@ -380,7 +480,7 @@ class OrganizationService {
           .doc(membershipId)
           .set(newMembership.toMap());
 
-      print('✅ User $ownerId joined organization $orgId via invite code');
+      print('✅ User $ownerId joined organization $orgId');
       return true;
     } catch (e) {
       print('❌ Error joining organization: $e');

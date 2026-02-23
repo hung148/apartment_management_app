@@ -2242,6 +2242,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
         buildingService: widget.buildingService,
         organization: widget.organization,
         paymentService: widget.paymentService,
+        tenantService: widget.tenantService,
         onEdit: () => _showEditPaymentDialog(payment),
         // TODO: Add these callbacks when ViewPaymentDetailsDialog is updated:
         // onDelete: () => _showDeletePaymentDialog(payment),

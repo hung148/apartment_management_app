@@ -12,7 +12,7 @@
 ; General Settings
 ;--------------------------------
 Name "Apartment Management"
-OutFile "installer_output\ApartmentManagement-Setup-Vietnamese-1.0.2+8.exe"
+OutFile "installer_output\ApartmentManagement-Setup-Vietnamese-1.0.2+9.exe"
 InstallDir "$PROGRAMFILES64\ApartmentManagement"
 InstallDirRegKey HKLM "Software\ApartmentManagement" "Install_Dir"
 RequestExecutionLevel admin
@@ -27,7 +27,7 @@ SetCompressor /SOLID lzma
 !define VCREDIST "vc_redist.x64.exe"
 !define APP_EXE "apartment_management_project_2.exe"
 !define APP_NAME "Apartment Management"
-!define APP_VERSION "1.0.2+8"
+!define APP_VERSION "1.0.2+9"
 !define PUBLISHER "Trinh Dinh Nguyen Hung"
 !define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\ApartmentManagement"
 !define REG_KEY "Software\ApartmentManagement"

@@ -12,6 +12,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:path/path.dart' as p;
+import 'dart:typed_data';
 
 class PaymentPDFExporter {
   // ========================================
@@ -98,7 +99,13 @@ class PaymentPDFExporter {
                     (room?.area.toDouble() ?? 0.0);
 
       // 5. Email liên hệ
-      String tenantEmail = email ?? tenant?.email ?? '';
+      String tenantEmail = '';
+      if (email != null && email.isNotEmpty) {
+        tenantEmail = email;
+      } else if (tenant?.email != null && tenant!.email!.isNotEmpty) {
+        tenantEmail = tenant.email!;
+      }
+
       String organizationEmail = organization.email ?? '';
 
       // 6. Xử lý ngày tháng hóa đơn
@@ -284,7 +291,7 @@ class PaymentPDFExporter {
   }
 
   // --- HELPER ROWS ---
-  static pw.TableRow _buildInfoRow(String label, String value, pw.Font reg, pw.Font bold, {bool isLink = false, bool isMultiline = false}) {
+  static pw.TableRow _buildInfoRow(String label, String value, pw.Font reg, pw.Font bold, {bool isLink = false}) {
     return pw.TableRow(children: [
       pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Text(label, style: pw.TextStyle(fontSize: 8, font: reg))),
       pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Text(value, textAlign: pw.TextAlign.right, style: pw.TextStyle(fontSize: 8, font: bold, color: isLink ? PdfColors.blue700 : PdfColors.black, decoration: isLink ? pw.TextDecoration.underline : null))),
@@ -311,13 +318,12 @@ class PaymentPDFExporter {
   // ========================================
   // WRAPPERS (PREVIEW & EXPORT)
   // ========================================
-  
   static Future<void> showPDFPreview({
     required BuildContext context,
     required Payment payment,
     required Organization organization,
     Tenant? tenant,
-    Room? room, // NEW
+    Room? room,
     String? roomNumber,
     String? buildingName,
     String? apartmentTypeOverride,
@@ -326,11 +332,18 @@ class PaymentPDFExporter {
     String? remark,
   }) async {
     try {
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(child: CircularProgressIndicator()),
+      );
+
       final pdf = await generateOwnerFeeReceipt(
         payment: payment,
         organization: organization,
         tenant: tenant,
-        room: room, // Pass room
+        room: room,
         roomNumber: roomNumber,
         buildingName: buildingName,
         apartmentTypeOverride: apartmentTypeOverride,
@@ -339,16 +352,25 @@ class PaymentPDFExporter {
         remark: remark,
       );
 
+      final bytes = await pdf.save();
+
       if (context.mounted) {
+        Navigator.pop(context); // Close loading dialog
+
         await Navigator.push(context, MaterialPageRoute(
-          builder: (context) => Scaffold(
-            appBar: AppBar(title: const Text('Xem Trước Hóa Đơn')),
-            body: PdfPreview(build: (format) => pdf.save(), allowPrinting: true, allowSharing: true),
+          builder: (context) => _PDFPreviewScreen(
+            bytes: bytes,
+            payment: payment,
           ),
         ));
       }
     } catch (e) {
-      print('PDF Error: $e');
+      if (context.mounted) {
+        Navigator.pop(context); // Close loading dialog if open
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lỗi xuất PDF: $e'), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 
@@ -362,6 +384,7 @@ class PaymentPDFExporter {
     String? buildingName,
     double? areaOverride,
     String? remark,
+    String? email,
   }) async {
     try {
       final pdf = await generateOwnerFeeReceipt(
@@ -373,6 +396,7 @@ class PaymentPDFExporter {
         buildingName: buildingName,
         areaOverride: areaOverride,
         remark: remark,
+        email: email,
       );
       await _savePDF(context, pdf, payment);
     } catch (e) {
@@ -393,5 +417,113 @@ class PaymentPDFExporter {
     } else {
       await Printing.sharePdf(bytes: bytes, filename: fileName);
     }
+  }
+}
+
+class _PDFPreviewScreen extends StatelessWidget {
+  final Uint8List bytes;
+  final Payment payment;
+
+  const _PDFPreviewScreen({required this.bytes, required this.payment});
+
+  String get _fileName => 'receipt_${payment.id.substring(0, min(8, payment.id.length))}.pdf';
+
+  Future<void> _printPDF(BuildContext context) async {
+    try {
+      await Printing.layoutPdf(
+        onLayout: (_) async => bytes,
+        name: _fileName,
+      );
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lỗi in: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  Future<void> _sharePDF(BuildContext context) async {
+    try {
+      await Printing.sharePdf(bytes: bytes, filename: _fileName);
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lỗi chia sẻ: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  Future<void> _savePDF(BuildContext context) async {
+    try {
+      if (Platform.isWindows || Platform.isMacOS) {
+        final saveLocation = await getSaveLocation(
+          suggestedName: _fileName,
+          acceptedTypeGroups: [const XTypeGroup(label: 'PDF', extensions: ['pdf'])],
+        );
+        if (saveLocation != null) {
+          final file = XFile.fromData(bytes, name: p.basename(saveLocation.path), mimeType: 'application/pdf');
+          await file.saveTo(saveLocation.path);
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Đã lưu PDF thành công'), backgroundColor: Colors.green),
+            );
+          }
+        }
+      } else {
+        await Printing.sharePdf(bytes: bytes, filename: _fileName);
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lỗi lưu file: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Xem Trước Hóa Đơn'),
+        actions: [
+          Tooltip(
+            message: 'In hóa đơn ra máy in',
+            child: IconButton(
+              icon: const Icon(Icons.print),
+              onPressed: () => _printPDF(context),
+            ),
+          ),
+          if (!Platform.isWindows && !Platform.isMacOS)
+            Tooltip(
+              message: 'Chia sẻ PDF qua ứng dụng khác',
+              child: IconButton(
+                icon: const Icon(Icons.share),
+                onPressed: () => _sharePDF(context),
+              ),
+            ),
+          Tooltip(
+            message: Platform.isWindows || Platform.isMacOS
+                ? 'Lưu PDF vào máy tính'
+                : 'Tải xuống PDF',
+            child: IconButton(
+              icon: const Icon(Icons.download),
+              onPressed: () => _savePDF(context),
+            ),
+          ),
+        ],
+      ),
+      body: PdfPreview(
+        build: (_) async => bytes,
+        allowPrinting: false,    // We handle print ourselves above
+        allowSharing: false,     // We handle share ourselves above
+        canChangeOrientation: false,  // Remove useless orientation toggle
+        canChangePageFormat: false,   // Remove useless Letter/A4 toggle
+        canDebug: false,              // Remove debug toggle
+        initialPageFormat: PdfPageFormat.a4,
+      ),
+    );
   }
 }

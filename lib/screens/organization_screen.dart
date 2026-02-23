@@ -220,6 +220,7 @@ class _OrganizationScreenState extends State<OrganizationScreen> with WidgetsBin
 
   String? inviteCode;
   bool loadingInvite = false;
+   bool _refreshingCode = false;
 
   String? get _userId => _authService.currentUser?.uid;
 
@@ -258,7 +259,6 @@ class _OrganizationScreenState extends State<OrganizationScreen> with WidgetsBin
     setState(() => loadingInvite = true);
 
     final code = await _orgService.getInviteCode(
-      _userId!,
       widget.organization.id,
     );
 
@@ -1258,6 +1258,7 @@ Widget _buildPaymentsList(List<Payment> allPayments, String searchText, bool isA
       buildingService: _buildingService,
       organization: widget.organization,
       paymentService: _paymentService,
+      tenantService:  _tenantService,
       onEdit: () => _showEditPaymentDialog(payment),
     ),
   );
@@ -3154,17 +3155,101 @@ Future<void> _exportStatisticsToPdf({
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  ElevatedButton(
-                    onPressed: loadingInvite ? null : _loadInviteCode,
-                    child: const Text("Lấy mã mời"),
+                  // --- Invite code row with get + refresh buttons ---
+                  Row(
+                    children: [
+                      ElevatedButton(
+                        onPressed: loadingInvite ? null : _loadInviteCode,
+                        child: const Text('Lấy mã mời'),
+                      ),
+                      if (inviteCode != null) ...[
+                        const SizedBox(width: 8),
+                        ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.orange,
+                            foregroundColor: Colors.white,
+                          ),
+                          onPressed: _refreshingCode
+                              ? null
+                              : () async {
+                                  // Warn admin before rotating the code
+                                  final confirm = await _showTrackedDialog<bool>(
+                                    context: context,
+                                    builder: (ctx) => AlertDialog(
+                                      title: const Text('Làm mới mã mời?'),
+                                      content: const Text(
+                                        'Mã mời cũ sẽ không còn hoạt động nữa. '
+                                        'Những người chưa tham gia cần mã mới. '
+                                        'Bạn có chắc muốn tiếp tục?',
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(ctx, false),
+                                          child: const Text('Hủy'),
+                                        ),
+                                        ElevatedButton(
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: Colors.orange,
+                                            foregroundColor: Colors.white,
+                                          ),
+                                          onPressed: () => Navigator.pop(ctx, true),
+                                          child: const Text('Làm mới'),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+
+                                  if (confirm != true || !mounted) return;
+
+                                  setState(() => _refreshingCode = true);
+                                  try {
+                                    final success = await _orgService.refreshInviteCode(
+                                      membership.ownerId,
+                                      widget.organization.id,
+                                    );
+                                    if (success && mounted) {
+                                      // Reload displayed code
+                                      await _loadInviteCode();
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Mã mời đã được làm mới'),
+                                          backgroundColor: Colors.green,
+                                        ),
+                                      );
+                                    } else if (mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Không thể làm mới mã mời'),
+                                          backgroundColor: Colors.red,
+                                        ),
+                                      );
+                                    }
+                                  } finally {
+                                    if (mounted) setState(() => _refreshingCode = false);
+                                  }
+                                },
+                          icon: _refreshingCode
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Icon(Icons.refresh, size: 18),
+                          label: const Text('Làm mới mã'),
+                        ),
+                      ],
+                    ],
                   ),
+
+                  // --- Show current invite code ---
                   if (inviteCode != null) ...[
                     const SizedBox(height: 8),
                     SelectableText(
-                      "Mã mời: $inviteCode",
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                      ),
+                      'Mã mời: $inviteCode',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                   ],
                   const Divider(height: 32),
@@ -3175,7 +3260,7 @@ Future<void> _exportStatisticsToPdf({
 
           /// ===== MEMBERS LIST =====
           const Text(
-            "Thành viên",
+            'Thành viên',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
@@ -3189,7 +3274,7 @@ Future<void> _exportStatisticsToPdf({
                 }
 
                 if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                  return const Center(child: Text("Không tìm thấy thành viên."));
+                  return const Center(child: Text('Không tìm thấy thành viên.'));
                 }
 
                 final members = snapshot.data!;
@@ -3198,18 +3283,15 @@ Future<void> _exportStatisticsToPdf({
                   itemCount: members.length,
                   itemBuilder: (context, index) {
                     final member = members[index];
-                    
+
                     return FutureBuilder(
                       future: _authService.getOwnerData(member.ownerId),
                       builder: (context, ownerSnapshot) {
-                        if (ownerSnapshot.connectionState ==
-                            ConnectionState.waiting) {
+                        if (ownerSnapshot.connectionState == ConnectionState.waiting) {
                           return Card(
                             margin: const EdgeInsets.only(bottom: 8),
                             child: ListTile(
-                              leading: const CircleAvatar(
-                                child: Icon(Icons.person),
-                              ),
+                              leading: const CircleAvatar(child: Icon(Icons.person)),
                               title: const Text('Đang tải...'),
                               subtitle: Text(member.role.toUpperCase()),
                             ),
@@ -3219,7 +3301,6 @@ Future<void> _exportStatisticsToPdf({
                         final ownerName = ownerSnapshot.data?.name ??
                             ownerSnapshot.data?.email ??
                             member.ownerId;
-
                         final ownerEmail = ownerSnapshot.data?.email;
                         final roleText = member.role == 'admin' ? 'Quản trị viên' : 'Thành viên';
 
@@ -3227,43 +3308,25 @@ Future<void> _exportStatisticsToPdf({
                           margin: const EdgeInsets.only(bottom: 8),
                           child: ListTile(
                             leading: CircleAvatar(
-                              backgroundColor: member.role == 'admin'
-                                  ? Colors.orange
-                                  : Colors.blue,
+                              backgroundColor: member.role == 'admin' ? Colors.orange : Colors.blue,
                               child: Icon(
-                                member.role == 'admin'
-                                    ? Icons.admin_panel_settings
-                                    : Icons.person,
+                                member.role == 'admin' ? Icons.admin_panel_settings : Icons.person,
                                 color: Colors.white,
                               ),
                             ),
-                            title: Text(
-                              ownerName,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
+                            title: Text(ownerName,
+                                style: const TextStyle(fontWeight: FontWeight.w500)),
                             subtitle: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  roleText,
-                                  style: TextStyle(
-                                    color: member.role == 'admin'
-                                        ? Colors.orange
-                                        : Colors.grey,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12,
-                                  ),
-                                ),
+                                Text(roleText,
+                                    style: TextStyle(
+                                        color: member.role == 'admin' ? Colors.orange : Colors.grey,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12)),
                                 if (ownerEmail != null)
-                                  Text(
-                                    ownerEmail,
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.grey,
-                                    ),
-                                  ),
+                                  Text(ownerEmail,
+                                      style: const TextStyle(fontSize: 12, color: Colors.grey)),
                               ],
                             ),
                             trailing: FutureBuilder<Membership?>(
@@ -3271,42 +3334,22 @@ Future<void> _exportStatisticsToPdf({
                               builder: (context, myMembershipSnapshot) {
                                 if (!myMembershipSnapshot.hasData) {
                                   return member.status == 'active'
-                                      ? const Icon(
-                                          Icons.check_circle,
-                                          color: Colors.green,
-                                          size: 20,
-                                        )
-                                      : const Icon(
-                                          Icons.pending,
-                                          color: Colors.orange,
-                                          size: 20,
-                                        );
+                                      ? const Icon(Icons.check_circle, color: Colors.green, size: 20)
+                                      : const Icon(Icons.pending, color: Colors.orange, size: 20);
                                 }
-                                
+
                                 final myMembership = myMembershipSnapshot.data!;
-                                
+
                                 if (myMembership.role != 'admin') {
                                   return member.status == 'active'
-                                      ? const Icon(
-                                          Icons.check_circle,
-                                          color: Colors.green,
-                                          size: 20,
-                                        )
-                                      : const Icon(
-                                          Icons.pending,
-                                          color: Colors.orange,
-                                          size: 20,
-                                        );
+                                      ? const Icon(Icons.check_circle, color: Colors.green, size: 20)
+                                      : const Icon(Icons.pending, color: Colors.orange, size: 20);
                                 }
-                                
+
                                 if (member.ownerId == myMembership.ownerId) {
-                                  return const Icon(
-                                    Icons.check_circle,
-                                    color: Colors.green,
-                                    size: 20,
-                                  );
+                                  return const Icon(Icons.check_circle, color: Colors.green, size: 20);
                                 }
-                                
+
                                 return Builder(
                                   builder: (BuildContext context) {
                                     return IconButton(
@@ -3314,11 +3357,16 @@ Future<void> _exportStatisticsToPdf({
                                       onPressed: () {
                                         final scaffoldMessenger = ScaffoldMessenger.of(context);
                                         final RenderBox button = context.findRenderObject() as RenderBox;
-                                        final RenderBox overlay = Navigator.of(context).overlay!.context.findRenderObject() as RenderBox;
+                                        final RenderBox overlay = Navigator.of(context)
+                                            .overlay!
+                                            .context
+                                            .findRenderObject() as RenderBox;
                                         final RelativeRect position = RelativeRect.fromRect(
                                           Rect.fromPoints(
-                                            button.localToGlobal(Offset.zero, ancestor: overlay) + const Offset(0, 48),
-                                            button.localToGlobal(button.size.bottomRight(Offset.zero), ancestor: overlay),
+                                            button.localToGlobal(Offset.zero, ancestor: overlay) +
+                                                const Offset(0, 48),
+                                            button.localToGlobal(
+                                                button.size.bottomRight(Offset.zero), ancestor: overlay),
                                           ),
                                           Offset.zero & overlay.size,
                                         );
@@ -3330,25 +3378,22 @@ Future<void> _exportStatisticsToPdf({
                                             if (member.role == 'member')
                                               const PopupMenuItem(
                                                 value: 'promote',
-                                                child: Row(
-                                                  children: [
-                                                    Icon(Icons.arrow_upward, size: 20),
-                                                    SizedBox(width: 8),
-                                                    Text('Thăng cấp Admin'),
-                                                  ],
-                                                ),
+                                                child: Row(children: [
+                                                  Icon(Icons.arrow_upward, size: 20),
+                                                  SizedBox(width: 8),
+                                                  Text('Thăng cấp Admin'),
+                                                ]),
                                               ),
                                             if (member.role == 'admin')
-                                            const PopupMenuItem(
-                                              value: 'remove',
-                                              child: Row(
-                                                children: [
+                                              const PopupMenuItem(
+                                                value: 'remove',
+                                                child: Row(children: [
                                                   Icon(Icons.remove_circle, size: 20, color: Colors.red),
                                                   SizedBox(width: 8),
-                                                  Text('Xóa khỏi tổ chức', style: TextStyle(color: Colors.red)),
-                                                ],
+                                                  Text('Xóa khỏi tổ chức',
+                                                      style: TextStyle(color: Colors.red)),
+                                                ]),
                                               ),
-                                            ),
                                           ],
                                         ).then((value) async {
                                           if (value == 'promote') {
@@ -3358,9 +3403,8 @@ Future<void> _exportStatisticsToPdf({
                                               orgId: widget.organization.id,
                                             );
                                             if (success && mounted) {
-                                              scaffoldMessenger.showSnackBar(
-                                                const SnackBar(content: Text('Đã thăng cấp thành admin')),
-                                              );
+                                              scaffoldMessenger.showSnackBar(const SnackBar(
+                                                  content: Text('Đã thăng cấp thành admin')));
                                               setState(() {});
                                             }
                                           } else if (value == 'remove') {
@@ -3368,7 +3412,8 @@ Future<void> _exportStatisticsToPdf({
                                               context: context,
                                               builder: (context) => AlertDialog(
                                                 title: const Text('Xác nhận xóa'),
-                                                content: Text('Bạn có chắc muốn xóa $ownerName khỏi tổ chức?'),
+                                                content: Text(
+                                                    'Bạn có chắc muốn xóa $ownerName khỏi tổ chức?'),
                                                 actions: [
                                                   TextButton(
                                                     onPressed: () => Navigator.pop(context, false),
@@ -3376,12 +3421,13 @@ Future<void> _exportStatisticsToPdf({
                                                   ),
                                                   TextButton(
                                                     onPressed: () => Navigator.pop(context, true),
-                                                    child: const Text('Xóa', style: TextStyle(color: Colors.red)),
+                                                    child: const Text('Xóa',
+                                                        style: TextStyle(color: Colors.red)),
                                                   ),
                                                 ],
                                               ),
                                             );
-                                            
+
                                             if (confirm == true) {
                                               final success = await _orgService.leaveOrganization(
                                                 member.ownerId,
@@ -3389,8 +3435,7 @@ Future<void> _exportStatisticsToPdf({
                                               );
                                               if (success && mounted) {
                                                 ScaffoldMessenger.of(context).showSnackBar(
-                                                  const SnackBar(content: Text('Đã xóa thành viên')),
-                                                );
+                                                    const SnackBar(content: Text('Đã xóa thành viên')));
                                                 setState(() {});
                                               }
                                             }

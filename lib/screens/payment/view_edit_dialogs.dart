@@ -173,6 +173,7 @@ class ViewPaymentDetailsDialog extends StatefulWidget {
   final RoomService roomService;
   final BuildingService buildingService;
   final PaymentService paymentService;
+  final TenantService tenantService;
 
   const ViewPaymentDetailsDialog({
     super.key,
@@ -182,6 +183,7 @@ class ViewPaymentDetailsDialog extends StatefulWidget {
     required this.roomService,
     required this.buildingService,
     required this.paymentService,
+    required this.tenantService,
     this.onEdit,
   });
 
@@ -192,6 +194,7 @@ class ViewPaymentDetailsDialog extends StatefulWidget {
 class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog> with WidgetsBindingObserver {
   Room? _room;
   Building? _building;
+  Tenant? _tenant;
   bool _isLoadingRoomData = true;
 
   int _overlayCount = 0;
@@ -273,6 +276,13 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog> wit
             _building = building;
           });
         }
+
+        if (widget.payment.tenantId != null) {
+          final tenant = await widget.tenantService.getTenantById(widget.payment.tenantId!);
+          if (tenant != null && mounted) {
+            setState(() => _tenant = tenant);
+          }
+        }
       }
     } catch (e) {
       print('Error loading room/building data: $e');
@@ -292,6 +302,7 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog> wit
       organization: widget.organization,
       roomNumber: _room?.roomNumber,
       buildingName: _building?.name,
+      email: _tenant?.email ?? '',
     );
   }
 
