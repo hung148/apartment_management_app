@@ -1113,7 +1113,9 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
                         Expanded(
                           child: TextFormField(
                             controller: electricityStartReadingController,
+                            maxLength: 10,
                             decoration: InputDecoration(
+                              counterText: "",
                               labelText: 'Chỉ số đầu *',
                               border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                             ),
@@ -1141,7 +1143,9 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
                         Expanded(
                           child: TextFormField(
                             controller: electricityEndReadingController,
+                            maxLength: 10,
                             decoration: InputDecoration(
+                              counterText: "",
                               labelText: 'Chỉ số cuối *',
                               border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                             ),
@@ -1169,8 +1173,10 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: electricityPriceController,
+                      maxLength: 15,
                       inputFormatters: [CurrencyInputFormatter()],
                       decoration: InputDecoration(
+                        counterText: "",
                         labelText: 'Giá điện (VND/kWh) *',
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                       ),
@@ -1192,7 +1198,9 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
                         Expanded(
                           child: TextFormField(
                             controller: waterStartReadingController,
+                            maxLength: 10,
                             decoration: InputDecoration(
+                              counterText: "",
                               labelText: 'Chỉ số đầu *',
                               border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                             ),
@@ -1220,7 +1228,9 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
                         Expanded(
                           child: TextFormField(
                             controller: waterEndReadingController,
+                            maxLength: 10,
                             decoration: InputDecoration(
+                              counterText: "",
                               labelText: 'Chỉ số cuối *',
                               border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                             ),
@@ -1248,8 +1258,10 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: waterPriceController,
+                      maxLength: 15,
                       inputFormatters: [CurrencyInputFormatter()],
                       decoration: InputDecoration(
+                        counterText: "",
                         labelText: 'Giá nước (VND/m³) *',
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                       ),
@@ -1298,8 +1310,10 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
                   
                   TextFormField(
                     controller: amountController,
+                    maxLength: 20,
                     inputFormatters: [CurrencyInputFormatter()],
                     decoration: InputDecoration(
+                      counterText: "",
                       labelText: 'Số tiền *',
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                       suffixText: 'VND',
@@ -1310,7 +1324,9 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
                   const SizedBox(height: 16),
                   TextFormField(
                     controller: descriptionController,
+                    maxLength: 200,
                     decoration: InputDecoration(
+                      counterText: "",
                       labelText: 'Mô tả',
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                     ),
@@ -1757,8 +1773,10 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
                             if (_selectedPaymentStatus == PaymentStatus.partial) ...[
                               TextFormField(
                                 controller: _paidAmountController,
+                                maxLength: 20,
                                 inputFormatters: [CurrencyInputFormatter()],
                                 decoration: InputDecoration(
+                                  counterText: "",
                                   labelText: 'Số tiền đã thanh toán (VND) *',
                                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                                   helperText: 'Tổng hóa đơn: ${NumberFormat('#,###').format(_totalAmount)} VND',
@@ -1778,7 +1796,9 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
 
                             TextFormField(
                               controller: _notesController,
+                              maxLength: 500,
                               decoration: InputDecoration(
+                                counterText: "",
                                 labelText: 'Ghi chú',
                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                               ),
@@ -1788,8 +1808,10 @@ class _EditPaymentDialogState extends State<EditPaymentDialog> with WidgetsBindi
                             
                             TextFormField(
                               controller: _taxAmountController,
+                              maxLength: 20,
                               inputFormatters: [CurrencyInputFormatter()],
                               decoration: InputDecoration(
+                                counterText: "",
                                 labelText: 'Tiền thuế (VND)',
                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                               ),

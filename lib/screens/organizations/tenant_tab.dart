@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:apartment_management_project_2/widgets/date_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:apartment_management_project_2/models/tenants_model.dart';
 import 'package:apartment_management_project_2/models/buildings_model.dart';
@@ -1470,7 +1471,9 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                   children: [
                     TextField(
                       controller: licensePlateController,
+                      maxLength: 11,
                       decoration: const InputDecoration(
+                        counterText: "",
                         labelText: 'Biển số xe *',
                         hintText: '29A-12345',
                       ),
@@ -1497,7 +1500,9 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                     const SizedBox(height: 16),
                     TextField(
                       controller: brandController,
+                      maxLength: 30,
                       decoration: const InputDecoration(
+                        counterText: "",
                         labelText: 'Hãng xe',
                         hintText: 'Honda, Yamaha, Toyota...',
                       ),
@@ -1505,7 +1510,9 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                     const SizedBox(height: 16),
                     TextField(
                       controller: modelController,
+                      maxLength: 50,
                       decoration: const InputDecoration(
+                        counterText: "",
                         labelText: 'Model',
                         hintText: 'Wave, Vision, Vios...',
                       ),
@@ -1513,7 +1520,10 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                     const SizedBox(height: 16),
                     TextField(
                       controller: colorController,
+                      maxLength: 30,
+                      textCapitalization: TextCapitalization.sentences, // Viết hoa chữ cái đầu dòng
                       decoration: const InputDecoration(
+                        counterText: "",
                         labelText: 'Màu sắc',
                         hintText: 'Đen, Trắng, Xanh...',
                       ),
@@ -1581,12 +1591,17 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                   children: [
                     TextField(
                       controller: licensePlateController,
-                      decoration: const InputDecoration(labelText: 'Biển số xe *'),
+                      maxLength: 12, 
+                      decoration: const InputDecoration(counterText: "", labelText: 'Biển số xe *'),
                       textCapitalization: TextCapitalization.characters,
+                      inputFormatters: [
+                        // Chỉ cho phép chữ cái, số, dấu gạch ngang và dấu chấm
+                        FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-0\-\.]')), 
+                      ],
                     ),
                     const SizedBox(height: 16),
                     DropdownButtonFormField<VehicleType>(
-                      value: selectedType,
+                      initialValue: selectedType,
                       decoration: const InputDecoration(labelText: 'Loại xe *'),
                       items: VehicleType.values.map((type) {
                         return DropdownMenuItem(

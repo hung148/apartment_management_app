@@ -11,9 +11,6 @@ If supporting multiple countries, add country-specific tax code validation
 add app icon
 
 Never trust what a user types into a TextField. Someone might try to send 10GB of text or a script.  Always validate length, format, and type on the server side.
-fix payement_dialog
-payement_pdf_export
-view_edit_dialog
 tenant_tab
 building_dialog
 
