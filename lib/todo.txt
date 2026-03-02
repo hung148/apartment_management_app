@@ -1,7 +1,5 @@
 add vehicle management tab where it only dislay tenant vehicle with currently renting status
 
-better date chooser that support vietnamese and be able to directly enter day, month, year
-
 add room type and area in tenant information view if they are currently renting
 
 ma so thue
@@ -11,7 +9,6 @@ If supporting multiple countries, add country-specific tax code validation
 add app icon
 
 Never trust what a user types into a TextField. Someone might try to send 10GB of text or a script.  Always validate length, format, and type on the server side.
-tenant_tab
 building_dialog
 
 Application-level security
@@ -61,7 +58,3 @@ flutter build apk --release --obfuscate --split-debug-info=symbols/android
 flutter build windows --release --obfuscate --split-debug-info=symbols/windows
 
 Use kReleaseMode: Use this constant to disable all print() logs in your release app so users don't see your debug data in the Windows Event Viewer.
-
-974744DA
-test
-test1234

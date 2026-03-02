@@ -1596,7 +1596,7 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                       textCapitalization: TextCapitalization.characters,
                       inputFormatters: [
                         // Chỉ cho phép chữ cái, số, dấu gạch ngang và dấu chấm
-                        FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-0\-\.]')), 
+                        FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9\-\.]')), 
                       ],
                     ),
                     const SizedBox(height: 16),
@@ -1620,17 +1620,20 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                     const SizedBox(height: 16),
                     TextField(
                       controller: brandController,
-                      decoration: const InputDecoration(labelText: 'Hãng xe'),
+                      maxLength: 30,
+                      decoration: const InputDecoration(counterText: "", labelText: 'Hãng xe'),
                     ),
                     const SizedBox(height: 16),
                     TextField(
                       controller: modelController,
-                      decoration: const InputDecoration(labelText: 'Model'),
+                      maxLength: 50,
+                      decoration: const InputDecoration(counterText: "", labelText: 'Model'),
                     ),
                     const SizedBox(height: 16),
                     TextField(
                       controller: colorController,
-                      decoration: const InputDecoration(labelText: 'Màu sắc'),
+                      maxLength: 30,
+                      decoration: const InputDecoration(counterText: "", labelText: 'Màu sắc'),
                     ),
                   ],
                 ),
@@ -1686,7 +1689,9 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
           title: const Text('Đăng ký bãi đỗ'),
           content: TextField(
             controller: controller,
+            maxLength: 10,
             decoration: const InputDecoration(
+              counterText: '',
               labelText: 'Vị trí bãi đỗ',
               hintText: 'A1, B2, C3...',
             ),
@@ -1867,9 +1872,9 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    _buildInputField(nameController, 'Họ và tên', Icons.person),
-                    _buildInputField(phoneController, 'Số điện thoại', Icons.phone, keyboardType: TextInputType.phone),
-                    _buildInputField(monthlyRentController, 'Giá thuê', Icons.money, suffix: '₫', keyboardType: TextInputType.number),
+                    _buildInputField(nameController, 'Họ và tên', Icons.person, maxLength: 100),
+                    _buildInputField(phoneController, 'Số điện thoại', Icons.phone, keyboardType: TextInputType.phone, maxLength: 15),
+                    _buildInputField(monthlyRentController, 'Giá thuê', Icons.money, suffix: '₫', keyboardType: TextInputType.number, maxLength: 12),
                     const Divider(height: 32),
                     LocalizedDatePicker(
                       labelText: 'Ngày chuyển vào',
@@ -1892,15 +1897,15 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                     const SizedBox(height: 12),
                     Row(
                       children: [
-                        Expanded(child: _buildInputField(typeController, 'Loại căn hộ', Icons.category)),
+                        Expanded(child: _buildInputField(typeController, 'Loại căn hộ', Icons.category, maxLength: 50)),
                         const SizedBox(width: 12),
-                        Expanded(child: _buildInputField(areaController, 'Diện tích', Icons.square_foot, suffix: 'm²', keyboardType: TextInputType.number)),
+                        Expanded(child: _buildInputField(areaController, 'Diện tích', Icons.square_foot, suffix: 'm²', keyboardType: TextInputType.number, maxLength: 6)),
                       ],
                     ),
-                    _buildInputField(emailController, 'Email', Icons.email),
-                    _buildInputField(nationalIdController, 'CMND/CCCD', Icons.badge),
-                    _buildInputField(occupationController, 'Nghề nghiệp', Icons.work),
-                    _buildInputField(workplaceController, 'Nơi làm việc', Icons.location_city),
+                    _buildInputField(emailController, 'Email', Icons.email, maxLength: 100),
+                    _buildInputField(nationalIdController, 'CMND/CCCD', Icons.badge, maxLength: 12),
+                    _buildInputField(occupationController, 'Nghề nghiệp', Icons.work, maxLength: 100),
+                    _buildInputField(workplaceController, 'Nơi làm việc', Icons.location_city, maxLength: 150),
                   ],
                 ),
               ),
@@ -1939,18 +1944,27 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
   }
 
   // Widget phụ trợ để code gọn hơn
-  Widget _buildInputField(TextEditingController controller, String label, IconData icon, {String? suffix, TextInputType? keyboardType}) {
+  Widget _buildInputField(
+    TextEditingController controller, 
+    String label, 
+    IconData icon, {
+      String? suffix, 
+      TextInputType? keyboardType,
+      int? maxLength,
+    }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: TextField(
         controller: controller,
         keyboardType: keyboardType,
+        maxLength: maxLength,
         decoration: InputDecoration(
           labelText: label,
           prefixIcon: Icon(icon, size: 20),
           suffixText: suffix,
           border: const OutlineInputBorder(),
           isDense: true,
+          counterText: maxLength != null ? null : '',
         ),
       ),
     );
@@ -2214,12 +2228,12 @@ Future<void> _showMoveRoomDialog(Tenant tenant) async {
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        _buildInputField(nameController, 'Họ và tên *', Icons.person),
-                        _buildInputField(phoneController, 'Số điện thoại *', Icons.phone, keyboardType: TextInputType.phone),
+                        _buildInputField(nameController, 'Họ và tên *', Icons.person, maxLength: 100),
+                        _buildInputField(phoneController, 'Số điện thoại *', Icons.phone, keyboardType: TextInputType.phone, maxLength: 15),
                         
                         const SizedBox(height: 16),
                         DropdownButtonFormField<String>(
-                          value: selectedBuildingId,
+                          initialValue: selectedBuildingId,
                           decoration: const InputDecoration(labelText: 'Toà nhà *', border: OutlineInputBorder()),
                           items: buildings.map((b) => DropdownMenuItem(value: b.id, child: Text(b.name))).toList(),
                           onChanged: (val) => setDialogState(() {
@@ -2229,7 +2243,7 @@ Future<void> _showMoveRoomDialog(Tenant tenant) async {
                         ),
                         const SizedBox(height: 16),
                         DropdownButtonFormField<String>(
-                          value: selectedRoomId,
+                          initialValue: selectedRoomId,
                           decoration: const InputDecoration(labelText: 'Phòng *', border: OutlineInputBorder()),
                           items: availableRooms.map((room) {
                             final bool isOccupied = occupiedRoomIds.contains(room.id);
@@ -2282,22 +2296,22 @@ Future<void> _showMoveRoomDialog(Tenant tenant) async {
                           ],
                         ),
                         const SizedBox(height: 16),
-                        _buildInputField(monthlyRentController, 'Tiền thuê hàng tháng *', Icons.money, suffix: '₫', keyboardType: TextInputType.number),
+                        _buildInputField(monthlyRentController, 'Tiền thuê hàng tháng *', Icons.money, suffix: '₫', keyboardType: TextInputType.number, maxLength: 12),
                         
                         const Divider(height: 32),
                         const Text('Thông tin bổ sung (Dùng cho hóa đơn)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
                         const SizedBox(height: 12),
                         Row(
                           children: [
-                            Expanded(child: _buildInputField(typeController, 'Loại căn hộ', Icons.category)),
+                            Expanded(child: _buildInputField(typeController, 'Loại căn hộ', Icons.category, maxLength: 50)),
                             const SizedBox(width: 12),
-                            Expanded(child: _buildInputField(areaController, 'Diện tích', Icons.square_foot, suffix: 'm²', keyboardType: TextInputType.number)),
+                            Expanded(child: _buildInputField(areaController, 'Diện tích', Icons.square_foot, suffix: 'm²', keyboardType: TextInputType.number, maxLength: 6)),
                           ],
                         ),
-                        _buildInputField(emailController, 'Email', Icons.email, keyboardType: TextInputType.emailAddress),
-                        _buildInputField(nationalIdController, 'CMND/CCCD', Icons.badge),
-                        _buildInputField(occupationController, 'Nghề nghiệp', Icons.work),
-                        _buildInputField(workplaceController, 'Nơi làm việc', Icons.location_city),
+                        _buildInputField(emailController, 'Email', Icons.email, keyboardType: TextInputType.emailAddress, maxLength: 100),
+                        _buildInputField(nationalIdController, 'CMND/CCCD', Icons.badge, maxLength: 12),
+                        _buildInputField(occupationController, 'Nghề nghiệp', Icons.work, maxLength: 100),
+                        _buildInputField(workplaceController, 'Nơi làm việc', Icons.location_city, maxLength: 150),
 
                         const SizedBox(height: 16),
 

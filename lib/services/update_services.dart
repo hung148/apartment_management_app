@@ -41,20 +41,55 @@ class UpdateService {
   }
 
   /// Perform update based on platform
-  Future<bool> performUpdate() async {
+  Future<bool> performUpdate({void Function(double)? onProgress}) async {
     try {
       if (Platform.isAndroid) {
         return await performFlexibleUpdate();
       } else if (Platform.isIOS) {
         return await _openAppStore();
       } else if (Platform.isWindows) {
-        return await _openWindowsDownloadPage();
+        return await performWindowsUpdateWithProgress(
+          onProgress ?? (_) {}, // no-op if no callback provided
+        );
       } else {
-        debugPrint('Update not supported on this platform');
         return false;
       }
     } catch (e) {
       debugPrint('Error performing update: $e');
+      return false;
+    }
+  }
+
+  Future<bool> performWindowsUpdateWithProgress(
+    void Function(double progress) onProgress,
+  ) async {
+    try {
+      final url = 'https://github.com/hung148/apartment_management_app_version/releases/latest/download/installer.exe';
+      final savePath = '${Directory.systemTemp.path}/installer.exe';
+
+      final request = http.Request('GET', Uri.parse(url));
+      final response = await request.send();
+      final totalBytes = response.contentLength ?? 0;
+      
+      int receivedBytes = 0;
+      final bytes = <int>[];
+
+      await for (final chunk in response.stream) {
+        bytes.addAll(chunk);
+        receivedBytes += chunk.length;
+        if (totalBytes > 0) {
+          onProgress(receivedBytes / totalBytes);
+        }
+      }
+
+      final file = File(savePath);
+      await file.writeAsBytes(bytes);
+
+      await Process.start(savePath, [], runInShell: true);
+      exit(0);
+      
+    } catch (e) {
+      debugPrint('Error: $e');
       return false;
     }
   }

@@ -354,25 +354,43 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
       );
 
       if (confirm == true) {
-        final success = await _updateService.performUpdate();
-        
+        final progressNotifier = ValueNotifier<double>(0.0);
+
+        _showTrackedDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Text(AppTranslations.of(context).text('downloading_update')),
+            content: ValueListenableBuilder<double>(
+              valueListenable: progressNotifier,
+              builder: (context, progress, _) => Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  LinearProgressIndicator(value: progress <= 0 ? null : progress),
+                  const SizedBox(height: 8),
+                  Text(progress <= 0
+                    ? '${AppTranslations.of(context).text("connecting")}...'
+                    : '${(progress * 100).toStringAsFixed(0)}%'),
+                ],
+              ),
+            ),
+          ),
+        );
+
+        await _updateService.performUpdate(
+          onProgress: (p) => progressNotifier.value = p,
+        );
+
+        // Only reached if download failed (success calls exit(0))
+        if (mounted) Navigator.pop(context);
         if (mounted) {
-          if (success) {
-            setState(() => _updateAvailable = false);
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(AppTranslations.of(context).text('opening_download_page')),
-                backgroundColor: Colors.green,
-              ),
-            );
-          } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(AppTranslations.of(context).text('cannot_open_browser')),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(AppTranslations.of(context).text('update_failed')),
+              backgroundColor: Colors.red,
+            ),
+          );
         }
       }
       return;

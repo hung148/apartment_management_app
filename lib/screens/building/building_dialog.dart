@@ -327,7 +327,9 @@ class _BuildingDialogState extends State<BuildingDialog> {
                       // ✅ Use TextFormField with validator
                       TextFormField(
                         controller: nameController,
+                        maxLength: 100,
                         decoration: const InputDecoration(
+                          counterText: '',
                           labelText: 'Tên toà nhà *',
                           hintText: 'vd: Toà A',
                           border: OutlineInputBorder(),
@@ -342,8 +344,10 @@ class _BuildingDialogState extends State<BuildingDialog> {
                       const SizedBox(height: 16),
                       TextFormField(
                         controller: addressController,
+                        maxLength: 200,
                         maxLines: 2,
                         decoration: const InputDecoration(
+                          counterText: '',
                           labelText: 'Địa chỉ *',
                           hintText: 'vd: 123 Đường ABC',
                           border: OutlineInputBorder(),
@@ -404,8 +408,28 @@ class _BuildingDialogState extends State<BuildingDialog> {
     );
   }
 
-  Widget _buildTextField(TextEditingController controller, String label, String hint, {int maxLines = 1, TextInputType? keyboardType, Function(String)? onChanged}) {
-    return TextField(controller: controller, maxLines: maxLines, keyboardType: keyboardType, onChanged: onChanged, decoration: InputDecoration(labelText: label, hintText: hint, border: const OutlineInputBorder()));
+  Widget _buildTextField(
+    TextEditingController controller, 
+    String label, 
+    String hint, {
+      int maxLines = 1, 
+      TextInputType? keyboardType, 
+      Function(String)? onChanged,
+      int? maxLength, 
+  }) {
+    return TextField(
+      controller: controller, 
+      maxLines: maxLines, 
+      keyboardType: keyboardType, 
+      onChanged: onChanged, 
+      maxLength: maxLength,
+      decoration: InputDecoration(
+        counterText: maxLength != null ? null : '',
+        labelText: label, 
+        hintText: hint, 
+        border: const OutlineInputBorder()
+      ),
+    );
   }
 
   Widget _buildDistributionToggle() {
@@ -509,8 +533,23 @@ class _BuildingDialogState extends State<BuildingDialog> {
     );
   }
 
-  Widget _buildCompactField(TextEditingController c, String l, TextInputType t) {
-    return TextField(controller: c, keyboardType: t, decoration: InputDecoration(labelText: l, isDense: true, border: const OutlineInputBorder()));
+  Widget _buildCompactField(
+    TextEditingController c, 
+    String l, 
+    TextInputType t,
+    {int? maxLength}
+  ) {
+      return TextField(
+        controller: c, 
+        keyboardType: t, 
+        maxLength: maxLength,
+        decoration: InputDecoration(
+          labelText: l, 
+          isDense: true, 
+          border: const OutlineInputBorder(),
+          counterText: maxLength != null ? null : '',
+        ),
+      );
   }
 
   Widget _buildActions() {
