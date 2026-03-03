@@ -703,6 +703,8 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
 
   // Updated tenant detail dialog to match tenants_tab
   void _showTenantDetailDialog(Tenant tenant) async {
+    //print('apartmentType: ${tenant.apartmentType}');
+    //print('apartmentArea: ${tenant.apartmentArea}');
     final isPhone = MediaQuery.of(context).size.width < 600;
     final bool isMovedOut = tenant.status == TenantStatus.moveOut;
     
@@ -814,6 +816,10 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
                           _buildDetailRow('Tiền thuê', _formatCurrency(tenant.monthlyRent!)),
                         if (tenant.deposit != null)
                           _buildDetailRow('Tiền cọc', _formatCurrency(tenant.deposit!)),
+                        if (tenant.apartmentType != null && tenant.apartmentType!.isNotEmpty)
+                          _buildDetailRow('Loại căn hộ', tenant.apartmentType!),
+                        if (tenant.apartmentArea != null && tenant.apartmentArea! > 0)
+                          _buildDetailRow('Diện tích', '${tenant.apartmentArea} m²'),
                       ]),
                     ],
                     

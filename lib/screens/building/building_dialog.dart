@@ -160,9 +160,7 @@ class _BuildingDialogState extends State<BuildingDialog> {
     });
   }
 
-  // ✅ UPDATED: Validate with error messages
   String? _validate() {
-    // Check basic fields
     if (nameController.text.trim().isEmpty) {
       return 'Vui lòng nhập tên toà nhà';
     }
@@ -170,16 +168,13 @@ class _BuildingDialogState extends State<BuildingDialog> {
       return 'Vui lòng nhập địa chỉ';
     }
 
-    // If auto-generate is disabled, we're done
     if (!autoGenerateRooms) return null;
 
-    // Check floors
     final floors = int.tryParse(floorsController.text.trim());
     if (floors == null || floors <= 0) {
       return 'Vui lòng nhập số tầng hợp lệ';
     }
 
-    // Check uniform mode
     if (uniformRoomsPerFloor) {
       final roomsPerFloor = int.tryParse(uniformRoomsController.text.trim());
       if (roomsPerFloor == null || roomsPerFloor <= 0) {
@@ -187,7 +182,7 @@ class _BuildingDialogState extends State<BuildingDialog> {
       }
     }
 
-    return null; // All valid
+    return null;
   }
 
   Map<String, dynamic>? _validateAndGetResult() {
@@ -260,6 +255,7 @@ class _BuildingDialogState extends State<BuildingDialog> {
                 padding: const EdgeInsets.only(bottom: 8),
                 child: TextField(
                   controller: controllers[index],
+                  maxLength: 50, // room custom name
                   decoration: InputDecoration(
                     labelText: 'Phòng ${index + 1}',
                     hintText: 'VD: Phòng VIP, Studio A...',
@@ -324,7 +320,6 @@ class _BuildingDialogState extends State<BuildingDialog> {
                   key: _formKey,
                   child: Column(
                     children: [
-                      // ✅ Use TextFormField with validator
                       TextFormField(
                         controller: nameController,
                         maxLength: 100,
@@ -369,7 +364,9 @@ class _BuildingDialogState extends State<BuildingDialog> {
                         TextFormField(
                           controller: floorsController,
                           keyboardType: TextInputType.number,
+                          maxLength: 3, // max 999 floors
                           decoration: const InputDecoration(
+                            counterText: '',
                             labelText: 'Số tầng *',
                             hintText: '1',
                             border: OutlineInputBorder(),
@@ -394,7 +391,12 @@ class _BuildingDialogState extends State<BuildingDialog> {
                         const SizedBox(height: 16),
                         if (uniformRoomsPerFloor) _buildUniformSection() else _buildCustomSection(),
                         const SizedBox(height: 16),
-                        _buildTextField(roomPrefixController, 'Tiền tố số phòng', 'A'),
+                        _buildTextField(
+                          roomPrefixController,
+                          'Tiền tố số phòng',
+                          'A',
+                          maxLength: 10,
+                        ),
                       ],
                     ],
                   ),
@@ -446,7 +448,9 @@ class _BuildingDialogState extends State<BuildingDialog> {
       TextFormField(
         controller: uniformRoomsController,
         keyboardType: TextInputType.number,
+        maxLength: 4, // max 9999 rooms per floor
         decoration: const InputDecoration(
+          counterText: '',
           labelText: 'Số phòng mỗi tầng',
           hintText: '10',
           border: OutlineInputBorder(),
@@ -464,9 +468,9 @@ class _BuildingDialogState extends State<BuildingDialog> {
       ),
       const SizedBox(height: 8),
       Row(children: [
-        Expanded(child: _buildTextField(uniformTypeController, 'Loại phòng', '')),
+        Expanded(child: _buildTextField(uniformTypeController, 'Loại phòng', '', maxLength: 50)),
         const SizedBox(width: 8),
-        Expanded(child: _buildTextField(uniformAreaController, 'Diện tích (m²)', '50', keyboardType: TextInputType.number)),
+        Expanded(child: _buildTextField(uniformAreaController, 'Diện tích (m²)', '50', keyboardType: TextInputType.number, maxLength: 7)),
       ])
     ]);
   }
@@ -488,17 +492,17 @@ class _BuildingDialogState extends State<BuildingDialog> {
       decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.blue.shade200)),
       child: Column(children: [
         Row(children: [
-          Expanded(child: _buildTextField(bulkStartFloorController, 'Từ tầng', '1', keyboardType: TextInputType.number)),
+          Expanded(child: _buildTextField(bulkStartFloorController, 'Từ tầng', '1', keyboardType: TextInputType.number, maxLength: 3)),
           const SizedBox(width: 8),
-          Expanded(child: _buildTextField(bulkEndFloorController, 'Đến tầng', floorsController.text, keyboardType: TextInputType.number)),
+          Expanded(child: _buildTextField(bulkEndFloorController, 'Đến tầng', floorsController.text, keyboardType: TextInputType.number, maxLength: 3)),
         ]),
         const SizedBox(height: 8),
         Row(children: [
-          Expanded(child: _buildTextField(bulkRoomsController, 'Số phòng', '10', keyboardType: TextInputType.number)),
+          Expanded(child: _buildTextField(bulkRoomsController, 'Số phòng', '10', keyboardType: TextInputType.number, maxLength: 4)),
           const SizedBox(width: 8),
-          Expanded(child: _buildTextField(bulkTypeController, 'Loại', '')),
+          Expanded(child: _buildTextField(bulkTypeController, 'Loại', '', maxLength: 50)),
           const SizedBox(width: 8),
-          Expanded(child: _buildTextField(bulkAreaController, 'm²', '50', keyboardType: TextInputType.number)),
+          Expanded(child: _buildTextField(bulkAreaController, 'm²', '50', keyboardType: TextInputType.number, maxLength: 7)),
         ]),
         const SizedBox(height: 8),
         ElevatedButton(onPressed: _applyBulkEdit, child: const Text('Áp dụng hàng loạt'))
@@ -514,11 +518,11 @@ class _BuildingDialogState extends State<BuildingDialog> {
       child: Row(children: [
         CircleAvatar(radius: 16, child: Text('${config.floorNumber}', style: const TextStyle(fontSize: 12))),
         const SizedBox(width: 8),
-        Expanded(child: _buildCompactField(config.countController, 'SL', TextInputType.number)),
+        Expanded(child: _buildCompactField(config.countController, 'SL', TextInputType.number, maxLength: 4)),
         const SizedBox(width: 4),
-        Expanded(flex: 2, child: _buildCompactField(config.typeController, 'Loại', TextInputType.text)),
+        Expanded(flex: 2, child: _buildCompactField(config.typeController, 'Loại', TextInputType.text, maxLength: 50)),
         const SizedBox(width: 4),
-        Expanded(child: _buildCompactField(config.areaController, 'm²', TextInputType.number)),
+        Expanded(child: _buildCompactField(config.areaController, 'm²', TextInputType.number, maxLength: 7)),
         const SizedBox(width: 4),
         IconButton(
           icon: Icon(
@@ -547,7 +551,7 @@ class _BuildingDialogState extends State<BuildingDialog> {
           labelText: l, 
           isDense: true, 
           border: const OutlineInputBorder(),
-          counterText: maxLength != null ? null : '',
+          counterText: '',
         ),
       );
   }
@@ -560,9 +564,7 @@ class _BuildingDialogState extends State<BuildingDialog> {
         const SizedBox(width: 8),
         ElevatedButton(
           onPressed: () {
-            // ✅ Validate form
             if (_formKey.currentState!.validate()) {
-              // Check additional validation
               final error = _validate();
               if (error != null) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -571,7 +573,6 @@ class _BuildingDialogState extends State<BuildingDialog> {
                 return;
               }
               
-              // Get result and close
               final r = _validateAndGetResult();
               if (r != null) {
                 Navigator.pop(context, r);

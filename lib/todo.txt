@@ -1,15 +1,10 @@
 add vehicle management tab where it only dislay tenant vehicle with currently renting status
 
-add room type and area in tenant information view if they are currently renting
-
 ma so thue
 Show example format in the hint text or helper text
 If supporting multiple countries, add country-specific tax code validation
 
 add app icon
-
-Never trust what a user types into a TextField. Someone might try to send 10GB of text or a script.  Always validate length, format, and type on the server side.
-building_dialog
 
 Application-level security
 

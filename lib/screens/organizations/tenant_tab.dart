@@ -415,7 +415,10 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                 Navigator.pushNamed(
                   context,
                   '/room-detail',
-                  arguments: room,
+                  arguments: {
+                    'room': room,
+                    'organization': widget.organization,
+                  },
                 );
               }
             : () => _showTenantDetailDialog(tenant, displayBuildingName, displayRoomNumber),
@@ -739,7 +742,7 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     // ========================================
-                    // LOCATION SECTION - Show "Previous Location" if moved out
+                    // LOCATION SECTION
                     // ========================================
                     _buildDetailSection(
                       isMovedOut ? 'Vị trí trước đây' : 'Vị trí',
@@ -785,6 +788,11 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                           _buildDetailRow('Tiền thuê', _formatCurrency(tenant.monthlyRent!)),
                         if (tenant.deposit != null)
                           _buildDetailRow('Tiền cọc', _formatCurrency(tenant.deposit!)),
+                        // ✅ NEW: Show apartment type and area if available
+                        if (tenant.apartmentType != null && tenant.apartmentType!.isNotEmpty)
+                          _buildDetailRow('Loại căn hộ', tenant.apartmentType!),
+                        if (tenant.apartmentArea != null && tenant.apartmentArea! > 0)
+                          _buildDetailRow('Diện tích', '${tenant.apartmentArea} m²'),
                       ]),
                     ],
                     
@@ -807,7 +815,7 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                     ],
                     
                     // ========================================
-                    // CONTRACT INFORMATION - Updated to show termination status
+                    // CONTRACT INFORMATION
                     // ========================================
                     if (tenant.contractStartDate != null || tenant.contractEndDate != null) ...[
                       const Divider(),
@@ -820,7 +828,6 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                             _formatDate(tenant.contractEndDate!)
                           ),
                         
-                        // Show contract status
                         if (isMovedOut) ...[
                           _buildDetailRow('Trạng thái hợp đồng', tenant.getContractStatusDisplayName()),
                           if (tenant.moveOutDate != null && tenant.contractEndDate != null)
@@ -1011,7 +1018,6 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
     final screenWidth = MediaQuery.sizeOf(context).width;
     final isLargeScreen = screenWidth >= 600;
 
-    // Shared list of menu items
     List<Widget> menuItems = [
       ListTile(
         leading: const Icon(Icons.info_outline),
@@ -1098,14 +1104,13 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
     ];
 
     if (isLargeScreen) {
-      // ─── Tablet / Desktop: show as a centered Dialog ───
       await _showTrackedDialog(
         context: context,
         builder: (context) => Dialog(
           insetPadding: const EdgeInsets.symmetric(horizontal: 40.0, vertical: 24.0),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           child: SizedBox(
-            width: 360, // fixed comfortable width on large screens
+            width: 360,
             child: SafeArea(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -1129,7 +1134,6 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
         ),
       );
     } else {
-      // ─── Mobile: show as a ModalBottomSheet ───
       await _showTrackedBottomSheet(
         context: context,
         shape: const RoundedRectangleBorder(
@@ -1205,10 +1209,7 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                                 print('addVehicle success: $success');
                                 if (success) {
                                   await _refreshAll();
-                                   // 🔥 Fetch updated tenant
                                   final updatedTenant = await widget.tenantService.getTenantById(tenant.id);
-
-                                  // 🔥 Update dialog state with new tenant data
                                   if (updatedTenant != null) {
                                     setDialogState(() {
                                       tenant = updatedTenant;
@@ -1521,7 +1522,7 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                     TextField(
                       controller: colorController,
                       maxLength: 30,
-                      textCapitalization: TextCapitalization.sentences, // Viết hoa chữ cái đầu dòng
+                      textCapitalization: TextCapitalization.sentences,
                       decoration: const InputDecoration(
                         counterText: "",
                         labelText: 'Màu sắc',
@@ -1563,7 +1564,6 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
         ),
       );
     } finally {
-      // Always dispose controllers to prevent memory leaks
       licensePlateController.dispose();
       brandController.dispose();
       modelController.dispose();
@@ -1595,7 +1595,6 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                       decoration: const InputDecoration(counterText: "", labelText: 'Biển số xe *'),
                       textCapitalization: TextCapitalization.characters,
                       inputFormatters: [
-                        // Chỉ cho phép chữ cái, số, dấu gạch ngang và dấu chấm
                         FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9\-\.]')), 
                       ],
                     ),
@@ -1672,7 +1671,6 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
         ),
       );
     } finally {
-      // Always dispose controllers to prevent memory leaks
       licensePlateController.dispose();
       brandController.dispose();
       modelController.dispose();
@@ -1718,7 +1716,6 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
         ),
       );
     } finally {
-      // Always dispose controller to prevent memory leaks
       controller.dispose();
     }
   }
@@ -1883,8 +1880,6 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                       prefixIcon: Icons.calendar_today,
                       onDateChanged: (date) {
                         if (date != null) {
-                          // We don't strictly need setDialogState here if we just want to save the value,
-                          // but it's good practice so the UI shows the new date string below the input.
                           setDialogState(() {
                             editedMoveInDate = date;
                           });
@@ -1936,14 +1931,12 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
 
     if (result != null) {
       await widget.tenantService.updateTenant(tenant.id, result);
-      // Check mounted again after the async update call
       if (!mounted) return;
       _refreshAll();
       widget.onChanged?.call();
     }
   }
 
-  // Widget phụ trợ để code gọn hơn
   Widget _buildInputField(
     TextEditingController controller, 
     String label, 
@@ -1971,7 +1964,6 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
   }
 
 Future<void> _showMoveRoomDialog(Tenant tenant) async {
-  // Đảm bảo lấy ID hiện tại từ object
   String? selectedBuildingId = tenant.buildingId.isNotEmpty ? tenant.buildingId : null;
   String? selectedRoomId = tenant.roomId.isNotEmpty ? tenant.roomId : null;
 
@@ -1979,7 +1971,6 @@ Future<void> _showMoveRoomDialog(Tenant tenant) async {
     context: context,
     builder: (context) => StatefulBuilder(
       builder: (context, setDialogState) {
-        // Lọc danh sách phòng dựa trên toà nhà đang chọn
         final availableRooms = _rooms.where((r) => r.buildingId == selectedBuildingId).toList();
 
         return AlertDialog(
@@ -1994,7 +1985,7 @@ Future<void> _showMoveRoomDialog(Tenant tenant) async {
                 onChanged: (val) {
                   setDialogState(() {
                     selectedBuildingId = val;
-                    selectedRoomId = null; // Reset phòng khi đổi toà nhà
+                    selectedRoomId = null;
                   });
                 },
               ),
@@ -2022,7 +2013,6 @@ Future<void> _showMoveRoomDialog(Tenant tenant) async {
   );
 
   if (result == true && selectedBuildingId != null && selectedRoomId != null) {
-    // Nếu chuyển sang đúng phòng cũ thì không làm gì
     if (selectedRoomId == tenant.roomId) return;
 
     final success = await widget.tenantService.moveTenantToRoom(tenant.id, selectedBuildingId!, selectedRoomId!);
@@ -2092,7 +2082,6 @@ Future<void> _showMoveRoomDialog(Tenant tenant) async {
                   },
                 ),
                 
-                // Show warning if moving out before contract end
                 if (tenant.contractEndDate != null && 
                     selectedDate.isBefore(tenant.contractEndDate!)) ...[
                   const SizedBox(height: 16),
@@ -2183,7 +2172,6 @@ Future<void> _showMoveRoomDialog(Tenant tenant) async {
   Future<void> _showAddTenantDialog(List<Building> buildings, List<Room> allRooms) async {
     final isPhone = MediaQuery.of(context).size.width < 600;
     
-    // Logic: Tìm các phòng đã có chủ hộ đang ở (Active & Main Tenant)
     final Set<String> occupiedRoomIds = _allTenants
         .where((t) => t.status == TenantStatus.active && t.isMainTenant)
         .map((t) => t.roomId)
@@ -2196,12 +2184,12 @@ Future<void> _showMoveRoomDialog(Tenant tenant) async {
     final occupationController = TextEditingController();
     final workplaceController = TextEditingController();
     final monthlyRentController = TextEditingController();
-    final areaController = TextEditingController(); // New
-    final typeController = TextEditingController(); // New
+    final areaController = TextEditingController();
+    final typeController = TextEditingController();
 
     String? selectedBuildingId = buildings.isNotEmpty ? buildings.first.id : null;
     String? selectedRoomId;
-    TenantStatus selectedStatus = TenantStatus.active; // New: Option to choose status
+    TenantStatus selectedStatus = TenantStatus.active;
     bool isMainTenant = true;
     DateTime moveInDate = DateTime.now();
     DateTime? contractEndDate;
@@ -2262,7 +2250,6 @@ Future<void> _showMoveRoomDialog(Tenant tenant) async {
                             final room = allRooms.firstWhere((r) => r.id == val);
                             setDialogState(() {
                               selectedRoomId = val;
-                              // Auto-fill area and type from Room data for the PDF Invoice
                               areaController.text = room.area.toString();
                               typeController.text = room.roomType;
                             });
