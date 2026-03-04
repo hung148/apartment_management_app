@@ -1,5 +1,6 @@
+import 'dart:ui';
+
 import 'package:apartment_management_project_2/main.dart';
-import 'package:apartment_management_project_2/screens/dashboard_screen.dart';
 import 'package:apartment_management_project_2/services/auth_service.dart';
 import 'package:apartment_management_project_2/utils/app_router.dart';
 import 'package:apartment_management_project_2/widgets/loading.dart';
@@ -15,26 +16,107 @@ class LoginScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: ChangeNotifierProvider(
-            // create this state
-            create: (context) => ChoiceState(),
-            child: Container(
-              padding: EdgeInsets.all(8.0),
-              margin: EdgeInsets.all(20.0),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceBright,
-                border: Border.all(color: Theme.of(context).colorScheme.outline, width: 1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min, // only as tall as your children
-                children: [
-                  ChoicesButton(),
-                  SizedBox(height: 10,),
-                  Content(),
-                ],
+      body: Container(
+        decoration: BoxDecoration(
+          image: DecorationImage(
+            image: AssetImage('assets/image/background_image.jpg'),
+            fit: BoxFit.cover,
+          ),
+        ),
+        child: SafeArea(
+          child: Center(
+            child: ChangeNotifierProvider(
+              // create this state
+              create: (context) => ChoiceState(),
+              child: Padding(
+                padding: EdgeInsets.all(20.0), // outer spacing
+                child: Container(
+                  padding: EdgeInsets.all(16.0),
+                  decoration: BoxDecoration(
+                    color: Colors.transparent, // was Colors.white.withValues(alpha: 0.20)
+                    border: Border.all(
+                      color: Colors.transparent, // remove the border too
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Theme(
+                    data: Theme.of(context).copyWith(
+                      // Make input fields have a light fill
+                      inputDecorationTheme: InputDecorationTheme(
+                        filled: true,
+                        fillColor: Colors.white.withValues(alpha: 0.15),
+                        errorStyle: TextStyle(
+                          color: Color(0xFFFF6B6B),
+                          fontWeight: FontWeight.bold,
+                        ),
+                        labelStyle: TextStyle(color: Colors.white70),
+                        hintStyle: TextStyle(color: Colors.white54),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide(color: Colors.white38),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide(color: Colors.white38),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide(color: Colors.white, width: 1.5),
+                        ),
+                      ),
+                      colorScheme: Theme.of(context).colorScheme.copyWith(
+                        error: Color(0xFFFF6B6B),
+                      ),
+                      // White text throughout
+                      textTheme: Theme.of(context).textTheme.apply(
+                        bodyColor: Colors.white,
+                        displayColor: Colors.white,
+                      ),
+                      // SegmentedButton styling
+                      segmentedButtonTheme: SegmentedButtonThemeData(
+                        style: ButtonStyle(
+                          foregroundColor: WidgetStateProperty.resolveWith((states) =>
+                            states.contains(WidgetState.selected) ? Colors.black87 : Colors.white70,
+                          ),
+                          backgroundColor: WidgetStateProperty.resolveWith((states) =>
+                            states.contains(WidgetState.selected)
+                              ? Colors.white.withValues(alpha: 0.85)
+                              : Colors.transparent,
+                          ),
+                          side: WidgetStateProperty.all(
+                            BorderSide(color: Colors.white38),
+                          ),
+                        ),
+                      ),
+                      textSelectionTheme: TextSelectionThemeData(
+                        cursorColor: Colors.white,
+                        selectionColor: Colors.white38,
+                        selectionHandleColor: Colors.white,
+                      ),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min, // only as tall as your children
+                      children: [
+                        // App branding
+                        Icon(Icons.apartment_rounded, size: 48, color: Colors.white70),
+                        SizedBox(height: 4),
+                        Text(
+                          "Phần Mền Quản Lý Căn Hộ",
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                            letterSpacing: 1.0,
+                          ),
+                        ),
+                        SizedBox(height: 16),
+                        ChoicesButton(),
+                        SizedBox(height: 10,),
+                        Content(),
+                      ],
+                    ),
+                  ),
+                ),
               ),
             ),
           ),
@@ -198,6 +280,7 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
                 inputField(
                   label: "Email", 
                   controller: loginEmailController,
+                  labelColor: Colors.white,
                   maxLength: 100,
                   maxLengthEnforcement: MaxLengthEnforcement.enforced,
                   validator: (val) {
@@ -210,6 +293,7 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
                 inputField(
                   label: "Mật khẩu", 
                   controller: loginPasswordController,
+                  labelColor: Colors.white, 
                   validator: (val) => val!.length < 6 ? val.isEmpty ? "Điền mật khẩu!" : "Mật khẩu quá đơn giản!" : null,
                   obscureText: true, 
                   optional: false,
@@ -223,38 +307,66 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
               child: Text(
                 login_error!,
                 style: TextStyle(
-                  color: Theme.of(context).colorScheme.error,
-                  fontWeight: FontWeight.w400,
+                  color: Color(0xFFFF6B6B),
+                  fontWeight: FontWeight.bold,
                 ),
                 textAlign: TextAlign.center,
               ),
             ),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.primary,
-                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                ),
-                onPressed: loading ? null : () => _handleLogin(), 
-                child: Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: Text(
-                    "Đăng nhập",
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w400,
+          const SizedBox(height: 20,),
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: 400),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch, // full width
+              children: [
+                Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: loading ? null : () => _handleLogin(),
+                    borderRadius: BorderRadius.circular(10),
+                    splashColor: Colors.blue.withValues(alpha: 0.9),
+                    highlightColor: Colors.blue.withValues(alpha: 0.75),
+                    hoverColor: Colors.blue.withValues(alpha: 0.8),
+                    child: Container(
+                      padding: EdgeInsets.symmetric(horizontal: 40, vertical: 14),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(10),
+                        gradient: LinearGradient(
+                          colors: loading
+                            ? [Colors.grey.withValues(alpha: 0.3), Colors.grey.withValues(alpha: 0.3)]
+                            : [Colors.blue.withValues(alpha: 0.6), Colors.lightBlue.withValues(alpha: 0.7)],
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.white.withValues(alpha: 0.15),
+                            blurRadius: 8,
+                            offset: Offset(0, 4),
+                          ),
+                        ],
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.4),
+                          width: 1,
+                        ),
+                      ),
+                      child: Text(
+                        "Đăng nhập",  
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ),
-              if (loading) ...[
-                SizedBox(width: 16,),
-                Loading2(size: 25),
+                if (loading) ...[
+                  SizedBox(width: 16,),
+                  Loading2(size: 25),
+                ],
               ],
-            ],
+            ),
           ),
         ],
       );
@@ -268,6 +380,7 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
                 inputField(
                   label: "Tên", 
                   controller: registerNameController,
+                  labelColor: Colors.white, 
                   validator: (val) {
                     if (val!.isEmpty) return "Điền tên!";
                     if (val.length > 100) return "Tên quá dài!";
@@ -278,6 +391,7 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
                 inputField(
                   label: "Email", 
                   controller: registerEmailController,
+                  labelColor: Colors.white, 
                   validator: (val) {
                     if (val!.isEmpty) return "Điền Email!";
                     if (val.length > 254) return "Email không hợp lệ!";  // RFC 5321 max
@@ -288,6 +402,7 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
                 inputField(
                   label: "Mật khẩu", 
                   controller: registerPasswordController,
+                  labelColor: Colors.white, 
                   validator: (val) {
                     if (val!.isEmpty) return "Điền mật khẩu!";
                     if (val.length < 6) return "Mật khẩu quá đơn giản!";
@@ -299,6 +414,7 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
                 ),
                 inputField(
                   label: "Xác Nhận Mật khẩu", 
+                  labelColor: Colors.white, 
                   controller: registerComfirmedPassController,
                   validator: (val) => val != registerPasswordController.text ? "Mật khẩu không khớp!" : null,
                   obscureText: true, 
@@ -314,37 +430,65 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
                 register_error!,
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.error,
-                  fontWeight: FontWeight.w400,
+                  fontWeight: FontWeight.bold,
                 ),
                 textAlign: TextAlign.center,
               ),
             ),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.primary,
-                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
-                ),
-                onPressed: loading ? null : () => _handleRegister(), 
-                child: Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: Text(
-                    "Đăng ký",
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w400,
+          const SizedBox(height: 20,),
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: 400),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch, // full width
+              children: [
+                Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: loading ? null : () => _handleRegister(),
+                    borderRadius: BorderRadius.circular(10),
+                    splashColor: Colors.blue.withValues(alpha: 0.9),
+                    highlightColor: Colors.blue.withValues(alpha: 0.75),
+                    hoverColor: Colors.blue.withValues(alpha: 0.8),
+                    child: Container(
+                      padding: EdgeInsets.symmetric(horizontal: 40, vertical: 14),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(10),
+                        gradient: LinearGradient(
+                          colors: loading
+                            ? [Colors.grey.withValues(alpha: 0.3), Colors.grey.withValues(alpha: 0.3)]
+                            : [Colors.blue.withValues(alpha: 0.6), Colors.lightBlue.withValues(alpha: 0.7)],
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.white.withValues(alpha: 0.15),
+                            blurRadius: 8,
+                            offset: Offset(0, 4),
+                          ),
+                        ],
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.4),
+                          width: 1,
+                        ),
+                      ),
+                      child: Text(
+                        "Đăng ký",  // or "Đăng ký"
+                        textAlign: TextAlign.center,  
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ),
-              if (loading) ...[
-                SizedBox(width: 16,),
-                Loading2(size: 25),
+                if (loading) ...[
+                  SizedBox(width: 16,),
+                  Loading2(size: 25),
+                ],
               ],
-            ],
+            ),
           ),
         ],
       );

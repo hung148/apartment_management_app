@@ -1,10 +1,16 @@
+make login / register page better
+
+add app icon
+
+add language support
+
 add vehicle management tab where it only dislay tenant vehicle with currently renting status
 
 ma so thue
 Show example format in the hint text or helper text
 If supporting multiple countries, add country-specific tax code validation
 
-add app icon
+
 
 Application-level security
 

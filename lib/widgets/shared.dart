@@ -25,7 +25,8 @@ Widget inputField({
   bool obscureText = false, 
   bool optional = false,
   int? maxLength,                                       
-  MaxLengthEnforcement? maxLengthEnforcement,           
+  MaxLengthEnforcement? maxLengthEnforcement, 
+  Color? labelColor,          
 }) {
   return Column(
     crossAxisAlignment: CrossAxisAlignment.start,
@@ -36,7 +37,7 @@ Widget inputField({
           style: TextStyle(
             fontSize: 15,
             fontWeight: FontWeight.w400,
-            color: Colors.black87,
+            color: labelColor ?? Colors.black87,
           ),
           children: [
             TextSpan(
