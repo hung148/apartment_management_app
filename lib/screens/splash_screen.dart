@@ -10,52 +10,59 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> {
+class _SplashScreenState extends State<SplashScreen>
+    with SingleTickerProviderStateMixin {
 
-  // initState runs ONCE when this widget is first created
-  // It's like the "start" or "setup" function
+  late AnimationController _animController;
+  late Animation<double> _fadeAnim;
+  late Animation<Offset> _slideAnim;
+
   @override
   void initState() {
-    // Call the parent class's initState (required by Flutter)
     super.initState();
 
-    // check if user is logged in
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
+
+    _fadeAnim = CurvedAnimation(
+      parent: _animController,
+      curve: Curves.easeIn,
+    );
+
+    _slideAnim = Tween<Offset>(
+      begin: const Offset(0, 0.12),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _animController,
+      curve: Curves.easeOut,
+    ));
+
+    _animController.forward();
     _checkAuthStatus();
   }
 
-  // This function checks if a user is logged in or not
+  @override
+  void dispose() {
+    _animController.dispose();
+    super.dispose();
+  }
+
   Future<void> _checkAuthStatus() async {
-    
-    // Wait for splash animation
     await Future.delayed(const Duration(seconds: 3));
-
-    // Check if this widget is still on screen
-    // If user closed the app durint the 2 seconds, don't continue
-    // This prevent errors when trying to navigate after widget is gone
-    if(!mounted) return;
-
-    // Wait for Firebase Auth to finish checking persistence
-    // This ensures we get the correct auth state
-    // Get current auth state
-    final user = FirebaseAuth.instance.currentUser;
-    
     if (!mounted) return;
-    
-    // Get the currently logged-in user from Firebase
-    // If someone is logged in, 'user' will have their info
-    // If nobody is logged in, 'user' will be null
-    // Firebase Auth stores login data LOCALLY on each device
-    // When you login on your phone, only your phone remembers you
-    // When your friend logs in on their phone, only their phone remembers them
-    
-    // Check if user exists (is logged in)
+
+    // Fade out before navigating
+    await _animController.reverse();
+    if (!mounted) return;
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (!mounted) return;
+
     if (user != null) {
-      // User is logged in
-      // Navigate to Dashboard and replace this splash screen
       Navigator.pushReplacementNamed(context, AppRouter.dashboardScreen);
     } else {
-      // User is NOT logged in
-      // Navigate to Login screen and replace this splash screen
       Navigator.pushReplacementNamed(context, AppRouter.loginScreen);
     }
   }
@@ -63,33 +70,54 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // Display an apartment icon
-            Icon(
-              Icons.apartment, // The icon type (building icon)
-              size: 100,
-              color: Theme.of(context).colorScheme.primary,
-            ),
-
-            const SizedBox(height: 24),
-
-            // Display text
-            const Text(
-              'Phần Mền Quản Lý Căn Hộ', // The text to show
-              style: TextStyle( // How the text should look
-                fontSize: 24,
-                fontWeight: FontWeight.bold, 
-              )
-            ),
-
-            const SizedBox(height: 24),
-
-            Loading(size: 50),
-          ],
-        ),
+      backgroundColor: Colors.black,
+      body: Image(
+        image: const AssetImage('assets/image/background_image.jpg'),
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+          if (frame == null) {
+            return const SizedBox.expand(
+              child: ColoredBox(color: Colors.black),
+            );
+          }
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              child,
+              SafeArea(
+                child: Center(
+                  child: FadeTransition(
+                    opacity: _fadeAnim,
+                    child: SlideTransition(
+                      position: _slideAnim,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.apartment_rounded, size: 80, color: Colors.white70),
+                          const SizedBox(height: 16),
+                          const Text(
+                            'Phần Mền Quản Lý Căn Hộ',
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                              letterSpacing: 1.0,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 48),
+                          Loading(size: 40, color: Colors.white),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

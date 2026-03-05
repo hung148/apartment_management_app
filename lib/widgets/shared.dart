@@ -21,65 +21,65 @@ Widget inputField({
   required String label,
   required TextEditingController controller,
   String? Function(String?)? validator,
-  void Function(String)? onChanged, 
-  bool obscureText = false, 
-  bool optional = false,
-  int? maxLength,                                       
-  MaxLengthEnforcement? maxLengthEnforcement, 
-  Color? labelColor,          
+  void Function(String)? onChanged,
+  bool obscureText = false,
+  int? maxLength,
+  MaxLengthEnforcement? maxLengthEnforcement,
+  Color? labelColor,
 }) {
-  return Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: <Widget>[
-      RichText(
-        text: TextSpan(
-          text: label,
-          style: TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w400,
-            color: labelColor ?? Colors.black87,
-          ),
-          children: [
-            TextSpan(
-              text: ((optional) ? "" : " *"),
-              style: TextStyle(
+  return Padding(
+    padding: const EdgeInsets.symmetric(vertical: 6.0),
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 400),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextFormField(
+            controller: controller,
+            obscureText: obscureText,
+            validator: validator,
+            onChanged: onChanged,
+            maxLength: maxLength,
+            maxLengthEnforcement:
+                maxLengthEnforcement ?? MaxLengthEnforcement.enforced,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              labelText: label,
+              labelStyle: TextStyle(
+                color: labelColor ?? Colors.white70,
                 fontSize: 15,
                 fontWeight: FontWeight.bold,
-                color: Colors.redAccent,
               ),
-            ),
-          ],
-        ), 
-      ),
-      ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: 400,
-        ), 
-        child: TextFormField(
-          controller: controller,
-          obscureText: obscureText,
-          validator: validator,
-          onChanged: onChanged,
-          maxLength: maxLength,                         
-          maxLengthEnforcement: maxLengthEnforcement    
-              ?? MaxLengthEnforcement.enforced,
-          decoration: InputDecoration(
-            counterText: "",   // hides the "0/100" counter
-            contentPadding: EdgeInsets.symmetric(vertical: 0, horizontal: 10),
-            enabledBorder: OutlineInputBorder(
-              borderSide: BorderSide(
-                color: Colors.grey.shade400,
+              floatingLabelStyle: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
               ),
-            ),
-            border: OutlineInputBorder(
-              borderSide: BorderSide(
-                color: Colors.grey.shade400
+              counterText: '',
+              filled: false,
+              contentPadding:
+                  const EdgeInsets.symmetric(vertical: 8, horizontal: 0),
+              // Underline only — no box
+              enabledBorder: const UnderlineInputBorder(
+                borderSide: BorderSide(color: Colors.white54, width: 2),
+              ),
+              focusedBorder: const UnderlineInputBorder(
+                borderSide: BorderSide(color: Colors.white, width: 2.5),
+              ),
+              errorBorder: const UnderlineInputBorder(
+                borderSide: BorderSide(color: Color(0xFFFF6B6B), width: 2),
+              ),
+              focusedErrorBorder: const UnderlineInputBorder(
+                borderSide: BorderSide(color: Color(0xFFFF6B6B), width: 2.5),
+              ),
+              errorStyle: const TextStyle(
+                color: Color(0xFFFF6B6B),
+                fontWeight: FontWeight.bold,
               ),
             ),
           ),
-        ),
+        ],
       ),
-      SizedBox(height: 10,),
-    ],
+    ),
   );
 }

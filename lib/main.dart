@@ -16,6 +16,7 @@ import 'package:flutter/foundation.dart';
 import 'firebase_options.dart';
 import 'package:get_it/get_it.dart';
 import 'package:flutter_localizations/flutter_localizations.dart'; 
+import 'package:window_manager/window_manager.dart';
 
 class LocaleNotifier extends ChangeNotifier {
   Locale _locale = const Locale('vi', 'VN'); // Mặc định tiếng Việt
@@ -48,6 +49,20 @@ void main() async {
     print('Flutter Error: ${details.exception}');
     print('Stack Trace: ${details.stack}');
   };
+
+   WidgetsFlutterBinding.ensureInitialized();
+
+  if (defaultTargetPlatform == TargetPlatform.windows) {
+    await windowManager.ensureInitialized();
+    WindowOptions windowOptions = const WindowOptions(
+      minimumSize: Size(480, 600),
+      size: Size(900, 700),        // initial size
+      center: true,                 // center on screen at launch
+      title: 'Phần Mền Quản Lý Căn Hộ',
+    );
+    await windowManager.waitUntilReadyToShow(windowOptions);
+    await windowManager.show();
+  }
 
   // initialize firebase
   WidgetsFlutterBinding.ensureInitialized();

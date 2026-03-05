@@ -57,6 +57,7 @@ dependencies:
   flutter_localizations:
     sdk: flutter
   crypto: ^3.0.7
+  window_manager: ^0.5.1
 
 dev_dependencies:
   flutter_test:

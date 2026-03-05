@@ -1,4 +1,6 @@
 make login / register page better
+add animation when switching between login and register
+
 
 add app icon
 

@@ -3,14 +3,15 @@ import 'package:flutter_spinkit/flutter_spinkit.dart';
 
 class Loading extends StatelessWidget {
   final double size;
+  final Color? color;
 
-  const Loading({required this.size});
+  const Loading({super.key, required this.size, this.color});
 
   @override
   Widget build(BuildContext context) {
     return Center(
       child: SpinKitPouringHourGlass(
-        color: Colors.black87,
+        color: color ?? Colors.black87,
         size: size,
       ),
     );
@@ -19,14 +20,15 @@ class Loading extends StatelessWidget {
 
 class Loading2 extends StatelessWidget {
   final double size;
+  final Color? color;
 
-  const Loading2({required this.size});
+  const Loading2({super.key, required this.size, this.color});
 
   @override
   Widget build(BuildContext context) {
     return Center(
       child: SpinKitCubeGrid(
-        color: Colors.black87,
+        color: color ?? Colors.black87,
         size: size,
       ),
     );
@@ -35,14 +37,15 @@ class Loading2 extends StatelessWidget {
 
 class Loading3 extends StatelessWidget {
   final double size;
+  final Color? color;
 
-  const Loading3({required this.size});
+  const Loading3({super.key, required this.size, this.color});
 
   @override
   Widget build(BuildContext context) {
     return Center(
       child: SpinKitWaveSpinner(
-        color: Colors.black87,
+        color: color ?? Colors.black87,
         size: size,
       ),
     );
