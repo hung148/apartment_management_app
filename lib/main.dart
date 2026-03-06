@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'firebase_options.dart';
 import 'package:get_it/get_it.dart';
 import 'package:flutter_localizations/flutter_localizations.dart'; 
@@ -44,10 +45,19 @@ void setup() {
 }
 
 void main() async {
-  // Set up global error handlers to catch uncaught exceptions
+   // Suppress permission-denied errors from logout race conditions
   FlutterError.onError = (FlutterErrorDetails details) {
+    final error = details.exception;
+    if (error is PlatformException && error.code == 'permission-denied') return;
+    if (error.toString().contains('permission-denied')) return;
     print('Flutter Error: ${details.exception}');
     print('Stack Trace: ${details.stack}');
+  };
+
+  PlatformDispatcher.instance.onError = (error, stack) {
+    if (error is PlatformException && error.code == 'permission-denied') return true;
+    if (error.toString().contains('permission-denied')) return true;
+    return false;
   };
 
    WidgetsFlutterBinding.ensureInitialized();

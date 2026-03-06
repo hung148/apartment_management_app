@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:apartment_management_project_2/main.dart';
 import 'package:apartment_management_project_2/models/membership_model.dart';
 import 'package:apartment_management_project_2/models/organization_model.dart';
@@ -26,6 +28,8 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
   final UpdateService _updateService = getIt<UpdateService>();
 
   Future<Owner?>? _ownerFuture;
+  Future<List<Organization>>? _orgsFuture;
+  final Map<String, Future<Membership?>> _membershipFutures = {};
 
   void _showLanguageDialog() {
     final notifier = getIt<LocaleNotifier>();
@@ -114,10 +118,25 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
   bool _isDisposed = false;
   Timer? _updateCheckTimer;
 
+  void _refreshOrgs(String ownerId) {
+    if (!mounted || _isDisposed) return;
+    setState(() {
+      _membershipFutures.clear();
+      _orgsFuture = _organizationService.getUserOrganizations(ownerId);
+    });
+  }
+
   @override
   void initState() {
     super.initState();
     _ownerFuture = _authService.getCurrentOwner();
+    _ownerFuture?.then((owner) {
+      if (owner != null && mounted) {
+        setState(() {
+          _orgsFuture = _organizationService.getUserOrganizations(owner.id);
+        });
+      }
+    });
     WidgetsBinding.instance.addObserver(this);
     debugPrint('🟢 DashboardScreen.initState() called');
     
@@ -706,7 +725,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                                 backgroundColor: Colors.green,
                               ),
                             );
-                            setState(() {});
+                            _refreshOrgs(owner.id);
                           }
                         });
                       },
@@ -815,7 +834,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                   ),
                 );
 
-                if (success) setState(() {});
+                if (success) _refreshOrgs(owner.id);
               });
             },
             icon: const Icon(Icons.login),
@@ -929,7 +948,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
           ),
         );
 
-        if (success) setState(() {});
+        if (success) _refreshOrgs(ownerId);
       });
     }
   }
@@ -1164,7 +1183,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
         ),
       );
 
-      if (success) setState(() {});
+      if (success) _refreshOrgs(ownerId);
     }
   }
 
@@ -1392,7 +1411,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                             ),
                           );
                         }
-                        this.setState(() {});
+                        _refreshOrgs(ownerId);
                       } else {
                         setState(() => status = AppTranslations.of(context).text('operation_failed'));
                       }
@@ -1671,10 +1690,18 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
       + confirm.toString());
     if (confirm == true) {
       _logoutLock.run(() async {
-        await _authService.signOut();
+        // Navigate away FIRST — this kills the FutureBuilders
         if (mounted) {
+          // Null out futures so any lingering build() calls skip Firestore
+          setState(() {
+            _ownerFuture = null;
+            _orgsFuture = null;
+            _membershipFutures.clear();
+          });
           Navigator.pushReplacementNamed(context, AppRouter.loginScreen);
         }
+        // THEN sign out — no widgets are listening anymore
+        await _authService.signOut();
       });
     }
   }
@@ -1682,6 +1709,87 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
   // ========================================
   // BUILD UI
   // ========================================
+
+  PreferredSizeWidget _buildModernAppBar(BuildContext context) {
+    final bool isSmall = MediaQuery.of(context).size.width < 600;
+
+    return AppBar(
+      // 1. Give it a tiny bit of color so the blur is visible
+      backgroundColor: Colors.transparent, 
+      elevation: 0,
+      centerTitle: false,
+      
+      // 2. THE BLUR ENGINE
+      flexibleSpace: ClipRect( // Prevents the blur from spreading outside the AppBar
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 2, sigmaY: 2), // Adjust these numbers for more/less blur
+          child: Container(
+            color: Colors.transparent, // Keeps it clear
+          ),
+        ),
+      ),
+      
+      title: Text(
+        AppTranslations.of(context).text('dashboard'),
+        style: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w800, // Extra bold for a modern SaaS look
+          fontSize: 24,
+          letterSpacing: -0.5,
+        ),
+      ),
+      actions: [
+        // Update Button
+        if (_updateAvailable && !_checkingUpdate)
+          _buildAppBarAction(
+            icon: Icons.system_update_rounded,
+            onTap: _performUpdate,
+            color: Colors.greenAccent,
+            tooltip: AppTranslations.of(context).text('update'),
+          ),
+
+        // Language Button
+        _buildAppBarAction(
+          icon: Icons.language_rounded,
+          onTap: _showLanguageDialog,
+          tooltip: AppTranslations.of(context).text('lang'),
+        ),
+
+        // Logout Button
+        _buildAppBarAction(
+          icon: Icons.logout_rounded,
+          onTap: _handleLogout,
+          isDestructive: true,
+          tooltip: AppTranslations.of(context).text('logout'),
+        ),
+        const SizedBox(width: 12), // Padding at the end
+      ],
+    );
+  }
+
+  // Helper for the "Unique" button look
+  Widget _buildAppBarAction({
+    required IconData icon,
+    required VoidCallback onTap,
+    required String tooltip,
+    Color color = Colors.white,
+    bool isDestructive = false,
+  }) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+      decoration: BoxDecoration(
+        color: isDestructive 
+            ? Colors.red.withValues(alpha: 0.2) // Red tint for logout
+            : Colors.white.withValues(alpha: 0.15), // Glass effect for others
+        shape: BoxShape.circle,
+      ),
+      child: IconButton(
+        onPressed: onTap,
+        tooltip: tooltip,
+        icon: Icon(icon, color: isDestructive ? Colors.orangeAccent : color, size: 20),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1694,46 +1802,8 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     const minHeight = 600.0;
     
     return Scaffold(
-      appBar: AppBar(
-        title: Text(AppTranslations.of(context).text('dashboard')),
-        elevation: 0,
-        actions: [
-          if (_updateAvailable && !_checkingUpdate)
-            Padding(
-              padding: EdgeInsets.only(right: isSmall ? 4 : 8),
-              child: isSmall
-                  ? IconButton(
-                      onPressed: _performUpdate,
-                      icon: const Icon(Icons.system_update),
-                      tooltip: AppTranslations.of(context).text('update'),
-                    )
-                  : TextButton.icon(
-                      onPressed: _performUpdate,
-                      icon: const Icon(Icons.system_update, color: Colors.white),
-                      label: Text(
-                        AppTranslations.of(context).text('update'),
-                        style: TextStyle(color: Colors.white),
-                      ),
-                      style: TextButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                      ),
-                    ),
-            ),
-          IconButton(
-            onPressed: _showLanguageDialog,
-            icon: const Icon(Icons.language),
-            tooltip: AppTranslations.of(context).text('lang'),
-          ),
-          IconButton(
-            onPressed: _handleLogout,
-            icon: const Icon(Icons.logout),
-            tooltip: AppTranslations.of(context).text('logout'),
-          ),
-        ],
-      ),
+      extendBodyBehindAppBar: true,
+      appBar: _buildModernAppBar(context),
       body: LayoutBuilder(
         builder: (context, constraints) {
           // Check minimum size
@@ -1818,7 +1888,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
 
               return RefreshIndicator(
                 onRefresh: () async {
-                  setState(() {});
+                  _refreshOrgs(owner.id);
                   await _checkForUpdate();
                 },
                 child: CustomScrollView(
@@ -1837,7 +1907,12 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                           ),
                         ),
                         child: Padding(
-                          padding: EdgeInsets.all(isSmall ? 16 : 24),
+                          padding: EdgeInsets.fromLTRB(
+                            isSmall ? 16 : 24, 
+                            kToolbarHeight + 40, // Space for the transparent app bar
+                            isSmall ? 16 : 24, 
+                            24
+                          ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -2019,7 +2094,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
 
                     // Organizations List
                     FutureBuilder<List<Organization>>(
-                      future: _organizationService.getUserOrganizations(owner.id),
+                      future: _orgsFuture,
                       builder: (context, snapshot) {
                         if (snapshot.connectionState == ConnectionState.waiting) {
                           return const SliverFillRemaining(
@@ -2120,9 +2195,9 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                                     borderRadius: BorderRadius.circular(16),
                                   ),
                                   child: FutureBuilder<Membership?>(
-                                    future: _organizationService.getUserMembership(
-                                      owner.id,
+                                    future: _membershipFutures.putIfAbsent(
                                       org.id,
+                                      () => _organizationService.getUserMembership(owner.id, org.id),
                                     ),
                                     builder: (context, snapshot) {
                                       final role = snapshot.data?.role ?? 'member';

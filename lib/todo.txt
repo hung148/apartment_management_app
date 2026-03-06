@@ -1,6 +1,12 @@
-make login / register page better
-add animation when switching between login and register
+You should apply this same pattern to every Firestore method in your service classes, since any of them could be in-flight during logout:
+dart// Add this at the top of every Firestore method
+if (FirebaseAuth.instance.currentUser == null) return null; // or [] or false etc.
 
+// And in every catch block:
+if (e is FirebaseException && e.code == 'permission-denied') return null;
+The caching fixes in dashboard_screen.dart prevent new queries from being created after logout, but any query that was already in-flight when logout started will still complete — and hit permission-denied if auth cleared before it resolved. The guard in the service layer is what catches those.
+
+style dashboard_screen
 
 add app icon
 

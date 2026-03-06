@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:apartment_management_project_2/main.dart';
+import 'package:apartment_management_project_2/screens/dashboard_screen.dart';
 import 'package:apartment_management_project_2/services/auth_service.dart';
 import 'package:apartment_management_project_2/utils/app_router.dart';
 import 'package:apartment_management_project_2/utils/responsive.dart';
@@ -233,10 +234,7 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
         print('🔍 Current user after login: ${currentUser?.uid}');
         // Navidate to dashboard
         if (mounted) {
-          Navigator.pushReplacementNamed(
-            context, 
-            AppRouter.dashboardScreen,
-          );
+          Navigator.pushReplacementNamed(context, AppRouter.dashboardScreen);
         }
       } else {
         // login fail
@@ -440,8 +438,8 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
                 ),
               ),
               if (loading) ...[
-                SizedBox(width: 16,),
-                Loading2(size: 25),
+                SizedBox(height: 16,),
+                Loading2(size: 25, color: Colors.grey,),
               ],
             ],
           ),
@@ -575,8 +573,8 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
                 ),
               ),
               if (loading) ...[
-                SizedBox(width: 16,),
-                Loading2(size: 25),
+                SizedBox(height: 16,),
+                Loading2(size: 25, color: Colors.grey,),
               ],
             ],
           ),

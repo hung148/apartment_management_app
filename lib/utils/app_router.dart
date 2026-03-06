@@ -18,6 +18,19 @@ class AppRouter {
   static const String tenantScreen = '/tenants';
   static const String reportScreen = '/report';
 
+  /// Use this with [Navigator.pushReplacement] for a smooth fade transition.
+  /// e.g. Navigator.pushReplacement(context, AppRouter.fadeRoute(const DashboardScreen()));
+  static Route<dynamic> fadeRoute(Widget page, {Duration duration = const Duration(milliseconds: 500)}) {
+    return PageRouteBuilder(
+      pageBuilder: (_, __, ___) => page,
+      transitionDuration: duration,
+      transitionsBuilder: (_, animation, __, child) => FadeTransition(
+        opacity: CurvedAnimation(parent: animation, curve: Curves.easeIn),
+        child: child,
+      ),
+    );
+  }
+
   static Route<dynamic> generateRoute(RouteSettings settings) {
 
     // settings.name tells us which screen they want
@@ -27,7 +40,7 @@ class AppRouter {
       case loginScreen:
         return MaterialPageRoute(builder: (_) => LoginScreen());
       case dashboardScreen:
-        return MaterialPageRoute(builder: (_) => DashboardScreen());
+        return fadeRoute(const DashboardScreen());
       case oranizationScreen:
         final args = settings.arguments as Map<String, dynamic>;
         return MaterialPageRoute(builder: (_) => OrganizationScreen(
@@ -56,8 +69,7 @@ class AppRouter {
             style: TextStyle(
               color: Colors.redAccent,
             ),
-            )
-          ),
+          )),
         ));
     }
   }

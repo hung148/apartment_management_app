@@ -1,6 +1,7 @@
 import 'package:apartment_management_project_2/models/membership_model.dart';
 import 'package:apartment_management_project_2/models/organization_model.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:uuid/uuid.dart';
 class OrganizationService {
   // Create instance of Firestore to interact with the database
@@ -292,6 +293,8 @@ class OrganizationService {
   // READ - Get user's membership in an organization
   // ========================================
   Future<Membership?> getUserMembership(String ownerId, String orgId) async {
+    if (FirebaseAuth.instance.currentUser == null) return null;
+
     try {
       final membershipId = '${ownerId}_${orgId}';
       final doc = await _firestore.collection('memberships').doc(membershipId).get();
@@ -302,6 +305,10 @@ class OrganizationService {
       
       return Membership.fromMap(doc.id, doc.data()!);
     } catch (e) {
+      if (e is FirebaseException && e.code == 'permission-denied') {
+        print('⚠️ getUserMembership: permission-denied (likely logout race), suppressing');
+        return null;
+      }
       print('❌ Error getting membership: $e');
       return null;
     }
@@ -400,6 +407,9 @@ class OrganizationService {
   // READ - Get all organizations the current user is a member of
   // ========================================
   Future<List<Organization>> getUserOrganizations(String ownerId) async {
+    // Bail early if the user has already logged out
+    if (FirebaseAuth.instance.currentUser == null) return [];
+
     try {
       // Find all active memberships for this user
       final membershipsSnap = await _firestore
@@ -429,6 +439,7 @@ class OrganizationService {
           .map((doc) => Organization.fromMap(doc.id, doc.data()))
           .toList();
     } catch (e) {
+      if (e is FirebaseException && e.code == 'permission-denied') return [];
       print('❌ Error fetching user organizations for $ownerId: $e');
       return [];
     }
