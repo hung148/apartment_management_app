@@ -7,6 +7,8 @@ if (e is FirebaseException && e.code == 'permission-denied') return null;
 The caching fixes in dashboard_screen.dart prevent new queries from being created after logout, but any query that was already in-flight when logout started will still complete — and hit permission-denied if auth cleared before it resolved. The guard in the service layer is what catches those.
 
 style dashboard_screen
+add backround image
+make appbar completely transparent
 
 add app icon
 
