@@ -1062,63 +1062,97 @@ class _OrganizationScreenState extends State<OrganizationScreen> with WidgetsBin
     );
   }
 
-Widget _buildPaymentsList(List<Payment> allPayments, String searchText, bool isAdmin) {
-  final searchTerm = searchText.toLowerCase();
-  
-  // Filter payments based on search term
-  final filteredPayments = allPayments.where((payment) {
-    if (searchTerm.isEmpty) return true;
+  Widget _buildPaymentsList(List<Payment> allPayments, String searchText, bool isAdmin) {
+    final searchTerm = searchText.toLowerCase();
     
-    return (payment.tenantName?.toLowerCase() ?? '').contains(searchTerm) ||
-           payment.totalAmount.toString().contains(searchTerm) ||
-           payment.getTypeDisplayName().toLowerCase().contains(searchTerm);
-  }).toList();
+    final filteredPayments = allPayments.where((payment) {
+      if (searchTerm.isEmpty) return true;
 
-  if (filteredPayments.isEmpty) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+      if ((payment.tenantName?.toLowerCase() ?? '').contains(searchTerm)) return true;
+      if (payment.totalAmount.toString().contains(searchTerm)) return true;
+      if (payment.getTypeDisplayName().toLowerCase().contains(searchTerm)) return true;
+
+      // Search through all line item labels in multi-item payments
+      final description = payment.description;
+      if (description != null && description.contains('\n')) {
+        if (description.toLowerCase().contains(searchTerm)) return true;
+      }
+
+      return false;
+    }).toList();
+
+    if (filteredPayments.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              searchTerm.isEmpty ? Icons.receipt_long_outlined : Icons.search_off,
+              size: 64,
+              color: Colors.grey,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              searchTerm.isEmpty ? 'Chưa có hóa đơn nào' : 'Không tìm thấy hóa đơn',
+              style: TextStyle(color: Colors.grey[600], fontSize: 16),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (searchTerm.isNotEmpty) {
+      return Column(
         children: [
-          Icon(
-            searchTerm.isEmpty ? Icons.receipt_long_outlined : Icons.search_off,
-            size: 64,
-            color: Colors.grey,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
+            child: Row(
+              children: [
+                Icon(Icons.info_outline, size: 16, color: Colors.grey.shade600),
+                const SizedBox(width: 8),
+                Text(
+                  'Tìm thấy ${filteredPayments.length} hóa đơn',
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 16),
-          Text(
-            searchTerm.isEmpty ? 'Chưa có hóa đơn nào' : 'Không tìm thấy hóa đơn',
-            style: TextStyle(color: Colors.grey[600], fontSize: 16),
+          Expanded(
+            child: _buildPaymentsListView(filteredPayments, isAdmin),
           ),
         ],
-      ),
-    );
+      );
+    }
+
+    return _buildPaymentsListView(filteredPayments, isAdmin);
   }
 
-  if (searchTerm.isNotEmpty) {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
-          child: Row(
-            children: [
-              Icon(Icons.info_outline, size: 16, color: Colors.grey.shade600),
-              const SizedBox(width: 8),
-              Text(
-                'Tìm thấy ${filteredPayments.length} hóa đơn',
-                style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
-              ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: _buildPaymentsListView(filteredPayments, isAdmin),
-        ),
-      ],
-    );
-  }
+  String _getPaymentTitle(Payment payment) {
+    const labels = {
+      'rent': 'Tiền thuê',
+      'electricity': 'Tiền điện',
+      'water': 'Tiền nước',
+      'internet': 'Tiền internet',
+      'parking': 'Tiền gửi xe',
+      'maintenance': 'Phí bảo trì',
+      'deposit': 'Tiền cọc',
+      'penalty': 'Tiền phạt',
+      'other': 'Khác',
+    };
 
-  return _buildPaymentsListView(filteredPayments, isAdmin);
-}
+    final description = payment.description;
+    if (description != null && description.contains('\n')) {
+      final lines = description.split('\n').where((l) => l.trim().isNotEmpty).toList();
+      final firstMatch = RegExp(r'^([^:]+):').firstMatch(lines.first.trim());
+      final firstLabel = firstMatch?.group(1)?.trim();
+
+      if (firstLabel != null && lines.length > 1) {
+        return '$firstLabel...';
+      }
+    }
+
+    return labels[payment.type.name] ?? payment.getTypeDisplayName();
+  }
 
   Widget _buildPaymentsListView(List<Payment> payments, bool isAdmin) {
     return ListView.builder(
@@ -1141,7 +1175,7 @@ Widget _buildPaymentsList(List<Payment> allPayments, String searchText, bool isA
               ),
             ),
             title: Text(
-              payment.getTypeDisplayName(),
+              _getPaymentTitle(payment),
               style: const TextStyle(
                 fontWeight: FontWeight.bold,
                 fontSize: 16,

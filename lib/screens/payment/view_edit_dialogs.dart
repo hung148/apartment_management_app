@@ -5,6 +5,7 @@ import 'package:apartment_management_project_2/models/organization_model.dart';
 import 'package:apartment_management_project_2/models/payment_model.dart';
 import 'package:apartment_management_project_2/models/rooms_model.dart';
 import 'package:apartment_management_project_2/models/tenants_model.dart';
+import 'package:apartment_management_project_2/screens/payment/payment_excel_export.dart';
 import 'package:apartment_management_project_2/screens/payment/payment_pdf_export.dart';
 import 'package:apartment_management_project_2/services/building_service.dart';
 import 'package:apartment_management_project_2/services/payments_service.dart';
@@ -227,6 +228,17 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog> wit
         _dismissAllOverlays();
       }
     });
+  }
+
+  Future<void> _exportToExcel() async {
+    await PaymentExcelExporter.exportPayment(
+      context: context,
+      payment: widget.payment,
+      organization: widget.organization,
+      roomNumber: _room?.roomNumber,
+      buildingName: _building?.name,
+      tenantEmail: _tenant?.email ?? '',
+    );
   }
 
   Future<void> _dismissAllOverlays() async {
@@ -794,28 +806,6 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog> wit
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          icon: const Icon(Icons.close),
-                          label: const Text('Đóng'),
-                          onPressed: () => Navigator.pop(context),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          icon: const Icon(Icons.delete),
-                          label: const Text('Xóa'),
-                          style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                          onPressed: () => _showDeleteConfirmation(context),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
                       if (widget.isAdmin && widget.onEdit != null)
                         Expanded(
                           child: ElevatedButton.icon(
@@ -832,6 +822,20 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog> wit
                         const SizedBox(width: 8),
                       Expanded(
                         child: ElevatedButton.icon(
+                          icon: const Icon(Icons.delete),
+                          label: const Text('Xóa'),
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                          onPressed: () => _showDeleteConfirmation(context),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
                           icon: _isLoadingRoomData
                               ? const SizedBox(
                                   width: 16,
@@ -842,6 +846,18 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog> wit
                           label: const Text('Xuất PDF'),
                           style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
                           onPressed: _isLoadingRoomData ? null : _exportToPDF,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          icon: _isLoadingRoomData
+                              ? const SizedBox(width: 16, height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2))
+                              : const Icon(Icons.table_chart),
+                          label: const Text('Xuất Excel'),
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                          onPressed: _isLoadingRoomData ? null : _exportToExcel,
                         ),
                       ),
                     ],

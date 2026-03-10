@@ -10,9 +10,14 @@ style dashboard_screen
 add backround image
 make appbar completely transparent
 
+add ability to choose which one to display and counted
+for payment pdf export
+
 add app icon
 
 add language support
+
+ability to import file and it will read information create everything neccessary
 
 add vehicle management tab where it only dislay tenant vehicle with currently renting status
 

@@ -41,7 +41,7 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyDNy7w9iE871ewgzZOhBAuCmPCrXMLidPk',
+    apiKey: 'AIzaSyB9LyMiD1EP4PCrG26DzzvphhyFtVDAtiY',
     appId: '1:595994118808:web:4cbc3b57688c6ef7271eed',
     messagingSenderId: '595994118808',
     projectId: 'apartment-management-app-776b9',
@@ -51,7 +51,7 @@ class DefaultFirebaseOptions {
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyA6q4ZVW3A5azPVqQSt1GE0WTPcaS_sKkQ',
+    apiKey: 'AIzaSyBlkBPA_LEkfg9Qqd-R6LTdGT__1K3x4X4',
     appId: '1:595994118808:android:f099dea390668bee271eed',
     messagingSenderId: '595994118808',
     projectId: 'apartment-management-app-776b9',
@@ -59,7 +59,7 @@ class DefaultFirebaseOptions {
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyAm2Jy9QMVwnattBsxoxfhTGdi44LgceSc',
+    apiKey: 'AIzaSyDc9DUl3lM7KSSpxGXMWOmH-fHjujIhYRs',
     appId: '1:595994118808:ios:bf9f0ea4d4a26a69271eed',
     messagingSenderId: '595994118808',
     projectId: 'apartment-management-app-776b9',
@@ -68,7 +68,7 @@ class DefaultFirebaseOptions {
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyAm2Jy9QMVwnattBsxoxfhTGdi44LgceSc',
+    apiKey: 'AIzaSyDc9DUl3lM7KSSpxGXMWOmH-fHjujIhYRs',
     appId: '1:595994118808:ios:bf9f0ea4d4a26a69271eed',
     messagingSenderId: '595994118808',
     projectId: 'apartment-management-app-776b9',
@@ -77,7 +77,7 @@ class DefaultFirebaseOptions {
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyDNy7w9iE871ewgzZOhBAuCmPCrXMLidPk',
+    apiKey: 'AIzaSyBfQZfoKw1O6Eteoj_jSeouEpe7m3aRyAo',
     appId: '1:595994118808:web:5af7c088a203ac12271eed',
     messagingSenderId: '595994118808',
     projectId: 'apartment-management-app-776b9',
