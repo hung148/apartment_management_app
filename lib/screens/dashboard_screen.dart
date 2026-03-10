@@ -69,9 +69,9 @@ class _DS {
 
   static List<BoxShadow> get heroShadow => [
     BoxShadow(
-      color: const Color(0xFF1A56DB).withValues(alpha: 0.30),
+      color: const Color(0x00000000).withValues(alpha: 0.15),
       blurRadius: 32,
-      offset: const Offset(0, 12),
+      offset: const Offset(0, 6),
     ),
   ];
 }
@@ -1505,94 +1505,113 @@ class _DashboardScreenState extends State<DashboardScreen>
                 slivers: [
                   // ── Hero ──────────────────────────────
                   SliverToBoxAdapter(
-                    child: ClipPath(
-                      clipper: _WaveClipper(),
-                      child: Container(
-                        decoration: const BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [_DS.primary, _DS.primaryDeep],
+                    child: Container(
+                      decoration: BoxDecoration(
+                        boxShadow: _DS.heroShadow, // shadow goes on the OUTER container
+                      ),
+                      child: ClipPath(
+                        clipper: _WaveClipper(),
+                        child: Container(
+                          height: isSmall ? 280.0 : MediaQuery.of(context).size.height * 0.45,
+                          decoration: const BoxDecoration(
+                            image: DecorationImage(
+                              image: AssetImage('assets/image/background_image3.jpg'),
+                              fit: BoxFit.cover,
+                              alignment: Alignment.center,
+                            ),
                           ),
-                        ),
-                        child: Padding(
-                          padding: EdgeInsets.fromLTRB(
-                            isSmall ? 20 : 28,
-                            kToolbarHeight + 44,
-                            isSmall ? 20 : 28,
-                            52, // extra bottom for the wave clip
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(children: [
-                                // Avatar with ring
-                                Container(
-                                  padding: const EdgeInsets.all(3),
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                        color: Colors.white.withValues(alpha: 0.6),
-                                        width: 2),
-                                  ),
-                                  child: CircleAvatar(
-                                    radius: isSmall ? 26 : 32,
-                                    backgroundColor:
-                                        Colors.white.withValues(alpha: 0.2),
-                                    child: Text(
-                                      owner.name[0].toUpperCase(),
-                                      style: TextStyle(
-                                        fontSize: isSmall ? 22 : 28,
-                                        fontWeight: FontWeight.w800,
-                                        color: Colors.white,
+                          child: Padding(
+                            padding: EdgeInsets.fromLTRB(
+                              isSmall ? 20 : 28,
+                              kToolbarHeight + 44,
+                              isSmall ? 20 : 28,
+                              52, // extra bottom for the wave clip
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(children: [
+                                  // Avatar with ring
+                                  Container(
+                                    padding: const EdgeInsets.all(3),
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                          color: Colors.white.withValues(alpha: 0.6),
+                                          width: 2),
+                                    ),
+                                    child: CircleAvatar(
+                                      radius: isSmall ? 26 : 32,
+                                      backgroundColor:
+                                          Colors.white.withValues(alpha: 0.2),
+                                      child: Text(
+                                        owner.name[0].toUpperCase(),
+                                        style: TextStyle(
+                                          fontSize: isSmall ? 22 : 28,
+                                          fontWeight: FontWeight.w800,
+                                          color: Colors.white,
+                                        ),
                                       ),
                                     ),
                                   ),
-                                ),
-                                SizedBox(width: isSmall ? 14 : 18),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        AppTranslations.of(context).text('hello'),
-                                        style: TextStyle(
-                                          color: Colors.white.withValues(alpha: 0.75),
-                                          fontSize: isSmall ? 12 : 13,
-                                          letterSpacing: 0.3,
+                                  SizedBox(width: isSmall ? 14 : 18),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          AppTranslations.of(context).text('hello'),
+                                          style: TextStyle(
+                                            color: Colors.white.withValues(alpha: 0.75),
+                                            fontSize: isSmall ? 12 : 13,
+                                            letterSpacing: 0.3,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 3),
+                                        Text(
+                                          owner.name,
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: isSmall ? 20 : 26,
+                                            fontWeight: FontWeight.w800,
+                                            letterSpacing: -0.5,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ]),
+                                const SizedBox(height: 18),
+                                // Info chips
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: [
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(20),
+                                      child: BackdropFilter(
+                                        filter: ImageFilter.blur(sigmaX: 2, sigmaY: 2),
+                                        child: _buildHeroChip(
+                                            Icons.email_outlined, owner.email
                                         ),
                                       ),
-                                      const SizedBox(height: 3),
-                                      Text(
-                                        owner.name,
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: isSmall ? 20 : 26,
-                                          fontWeight: FontWeight.w800,
-                                          letterSpacing: -0.5,
+                                    ),
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(20),
+                                      child: BackdropFilter(
+                                        filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+                                        child: _buildHeroChip(
+                                          Icons.calendar_today_outlined,
+                                          '${AppTranslations.of(context).text('joined_at')}: ${_formatDate(owner.createdAt, context)}',
                                         ),
-                                        overflow: TextOverflow.ellipsis,
                                       ),
-                                    ],
-                                  ),
+                                    ),
+                                  ],
                                 ),
-                              ]),
-                              const SizedBox(height: 18),
-                              // Info chips
-                              Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: [
-                                  _buildHeroChip(
-                                      Icons.email_outlined, owner.email),
-                                  _buildHeroChip(
-                                    Icons.calendar_today_outlined,
-                                    '${AppTranslations.of(context).text('joined_at')}: ${_formatDate(owner.createdAt, context)}',
-                                  ),
-                                ],
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                       ),
@@ -1704,22 +1723,25 @@ class _DashboardScreenState extends State<DashboardScreen>
     return AppBar(
       backgroundColor: Colors.transparent,
       elevation: 0,
+      scrolledUnderElevation: 0,
       centerTitle: false,
-      flexibleSpace: ClipRect(
+      title: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+          filter: ImageFilter.blur(sigmaX: 2, sigmaY: 2),
           child: Container(
-            color: _DS.primary.withValues(alpha: 0.15),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            color: Colors.transparent,
+            child: Text(
+              AppTranslations.of(context).text('dashboard'),
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w800,
+                fontSize: 22,
+                letterSpacing: -0.5,
+              ),
+            ),
           ),
-        ),
-      ),
-      title: Text(
-        AppTranslations.of(context).text('dashboard'),
-        style: const TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.w800,
-          fontSize: 22,
-          letterSpacing: -0.5,
         ),
       ),
       actions: [
@@ -1742,7 +1764,7 @@ class _DashboardScreenState extends State<DashboardScreen>
             icon: Icons.logout_rounded,
             onTap: _handleLogout,
             tooltip: AppTranslations.of(context).text('logout'),
-            bgColor: const Color(0xFF3D1A1A),
+            bgColor: Colors.red.withValues(alpha: 0.25),
             borderColor: Colors.red.withValues(alpha: 0.35),
             iconColor: const Color(0xFFEF9A9A)),
         const SizedBox(width: 10),
@@ -1763,15 +1785,22 @@ class _DashboardScreenState extends State<DashboardScreen>
       width: 40,
       height: 40,
       decoration: BoxDecoration(
-        color: bgColor,
         shape: BoxShape.circle,
         border: Border.all(color: borderColor, width: 1.5),
       ),
-      child: IconButton(
-        onPressed: onTap,
-        tooltip: tooltip,
-        padding: EdgeInsets.zero,
-        icon: Icon(icon, color: iconColor, size: 19),
+      child: ClipOval(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 2, sigmaY: 2),
+          child: Container(
+            color: bgColor,
+            child: IconButton(
+              onPressed: onTap,
+              tooltip: tooltip,
+              padding: EdgeInsets.zero,
+              icon: Icon(icon, color: iconColor, size: 19),
+            ),
+          ),
+        ),
       ),
     );
   }

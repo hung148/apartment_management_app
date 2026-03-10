@@ -90,6 +90,7 @@ flutter:
     - assets/fonts/NotoSans-Regular.ttf
     - assets/fonts/AndikaNewBasic-B.ttf
     - assets/image/background_image.jpg
+    - assets/image/background_image3.jpg
   #   - images/a_dot_burr.jpeg
   #   - images/a_dot_ham.jpeg
 

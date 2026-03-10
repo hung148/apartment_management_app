@@ -11,11 +11,12 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
 
   late AnimationController _animController;
   late Animation<double> _fadeAnim;
   late Animation<Offset> _slideAnim;
+  late AnimationController _progressController; 
 
   @override
   void initState() {
@@ -25,6 +26,12 @@ class _SplashScreenState extends State<SplashScreen>
       vsync: this,
       duration: const Duration(milliseconds: 900),
     );
+
+    _progressController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 3),
+    );
+    _progressController.forward();
 
     _fadeAnim = CurvedAnimation(
       parent: _animController,
@@ -46,6 +53,7 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   void dispose() {
     _animController.dispose();
+    _progressController.dispose();
     super.dispose();
   }
 
@@ -108,7 +116,19 @@ class _SplashScreenState extends State<SplashScreen>
                             textAlign: TextAlign.center,
                           ),
                           const SizedBox(height: 48),
-                          Loading(size: 40, color: Colors.white),
+                          SizedBox(
+                            width: 160,
+                            child: AnimatedBuilder(
+                              animation: _progressController,
+                              builder: (context, _) => LinearProgressIndicator(
+                                value: _progressController.value, // 0.0 → 1.0 over 3 seconds
+                                backgroundColor: Colors.white24,
+                                valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                                minHeight: 3,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                     ),
