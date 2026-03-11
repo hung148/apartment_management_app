@@ -20,58 +20,61 @@ import 'dart:async';
 // ─────────────────────────────────────────────────────────────
 class _DS {
   // Brand blues
-  static const primary      = Color(0xFF1A56DB); // vivid blue
-  static const primaryDeep  = Color(0xFF1239A6); // deeper blue for gradient end
-  static const primaryLight = Color(0xFFE8F0FE); // very light blue tint
+  static const primary      = Color(0xFF1A56DB);
+  static const primaryDeep  = Color(0xFF0E3A9F);
+  static const primaryMid   = Color(0xFF2563EB);
+  static const primaryLight = Color(0xFFEFF6FF);
 
   // Surface
-  static const surface      = Color(0xFFF5F7FA); // cool off-white background
+  static const surface      = Color(0xFFF4F6FB);
   static const card         = Colors.white;
 
   // Text
-  static const textPrimary  = Color(0xFF0D1B3E);
-  static const textSecondary= Color(0xFF6B7A99);
+  static const textPrimary  = Color(0xFF0C1C3E);
+  static const textSecondary= Color(0xFF64748B);
 
   // Status
   static const adminGold    = Color(0xFFF59E0B);
   static const adminGoldBg  = Color(0xFFFFFBEB);
-  static const memberBlue   = Color(0xFF3B82F6);
+  static const memberBlue   = Color(0xFF1A56DB);
   static const memberBlueBg = Color(0xFFEFF6FF);
 
   // Org palette — seeded by id hash
   static const orgColors = [
-    Color(0xFF1A56DB), // blue
-    Color(0xFF0891B2), // cyan
-    Color(0xFF7C3AED), // violet
-    Color(0xFF059669), // emerald
-    Color(0xFFD97706), // amber
-    Color(0xFFDC2626), // red
-    Color(0xFF0284C7), // sky
-    Color(0xFF7C3AED), // purple
+    [Color(0xFF1A56DB), Color(0xFF0E3A9F)], // blue
+    [Color(0xFF0891B2), Color(0xFF0E7490)], // cyan
+    [Color(0xFF7C3AED), Color(0xFF5B21B6)], // violet
+    [Color(0xFF059669), Color(0xFF047857)], // emerald
+    [Color(0xFFD97706), Color(0xFFB45309)], // amber
+    [Color(0xFFDC2626), Color(0xFFB91C1C)], // red
+    [Color(0xFF0284C7), Color(0xFF0369A1)], // sky
+    [Color(0xFF9333EA), Color(0xFF7E22CE)], // purple
   ];
 
-  static Color orgColor(String id) =>
+  static List<Color> orgGradient(String id) =>
       orgColors[id.hashCode.abs() % orgColors.length];
+
+  static Color orgColor(String id) => orgGradient(id)[0];
 
   // Shadows
   static List<BoxShadow> get cardShadow => [
     BoxShadow(
-      color: const Color(0xFF1A56DB).withValues(alpha: 0.06),
-      blurRadius: 16,
+      color: const Color(0xFF1A56DB).withValues(alpha: 0.07),
+      blurRadius: 20,
       offset: const Offset(0, 4),
     ),
     BoxShadow(
-      color: Colors.black.withValues(alpha: 0.04),
+      color: Colors.black.withValues(alpha: 0.05),
       blurRadius: 6,
       offset: const Offset(0, 1),
     ),
   ];
 
-  static List<BoxShadow> get heroShadow => [
+  static List<BoxShadow> avatarGlow(String id) => [
     BoxShadow(
-      color: const Color(0x00000000).withValues(alpha: 0.15),
-      blurRadius: 32,
-      offset: const Offset(0, 6),
+      color: orgColor(id).withValues(alpha: 0.35),
+      blurRadius: 14,
+      offset: const Offset(0, 4),
     ),
   ];
 }
@@ -83,10 +86,10 @@ class _WaveClipper extends CustomClipper<Path> {
   @override
   Path getClip(Size size) {
     final path = Path();
-    path.lineTo(0, size.height - 36);
+    path.lineTo(0, size.height - 40);
     path.quadraticBezierTo(
-      size.width * 0.5, size.height + 24,
-      size.width, size.height - 36,
+      size.width * 0.5, size.height + 28,
+      size.width, size.height - 40,
     );
     path.lineTo(size.width, 0);
     path.close();
@@ -108,7 +111,7 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, TickerProviderStateMixin {
   final AuthService _authService = getIt<AuthService>();
   final OrganizationService _organizationService =
       getIt<OrganizationService>();
@@ -117,6 +120,9 @@ class _DashboardScreenState extends State<DashboardScreen>
   Future<Owner?>? _ownerFuture;
   Future<List<Organization>>? _orgsFuture;
   final Map<String, Future<Membership?>> _membershipFutures = {};
+
+  // Card entrance animation
+  late final AnimationController _listAnimCtrl;
 
   final AsyncLock _createOrgLock  = AsyncLock();
   final AsyncLock _joinOrgLock    = AsyncLock();
@@ -132,11 +138,20 @@ class _DashboardScreenState extends State<DashboardScreen>
   Timer? _resizeDebounceTimer;
   bool  _isDismissing   = false;
 
+  // AppBar scroll state
+  final ScrollController _scrollCtrl = ScrollController();
+  bool _isScrolled = false;
+
   // ── lifecycle ──────────────────────────────────────────────
 
   @override
   void initState() {
     super.initState();
+    _listAnimCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+
     _ownerFuture = _authService.getCurrentOwner();
     _ownerFuture?.then((owner) {
       if (owner != null && mounted) {
@@ -144,9 +159,18 @@ class _DashboardScreenState extends State<DashboardScreen>
           _orgsFuture =
               _organizationService.getUserOrganizations(owner.id);
         });
+        _orgsFuture?.then((_) {
+          if (mounted) _listAnimCtrl.forward();
+        });
       }
     });
     WidgetsBinding.instance.addObserver(this);
+    _scrollCtrl.addListener(() {
+      final scrolled = _scrollCtrl.offset > 60;
+      if (scrolled != _isScrolled) {
+        setState(() => _isScrolled = scrolled);
+      }
+    });
     _updateCheckTimer =
         Timer(const Duration(milliseconds: 800), () {
       if (mounted && !_isDisposed) _backgroundUpdateCheck();
@@ -155,6 +179,8 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   @override
   void dispose() {
+    _listAnimCtrl.dispose();
+    _scrollCtrl.dispose();
     WidgetsBinding.instance.removeObserver(this);
     _resizeDebounceTimer?.cancel();
     _updateCheckTimer?.cancel();
@@ -183,6 +209,10 @@ class _DashboardScreenState extends State<DashboardScreen>
       _membershipFutures.clear();
       _orgsFuture =
           _organizationService.getUserOrganizations(ownerId);
+    });
+    _listAnimCtrl.reset();
+    _orgsFuture?.then((_) {
+      if (mounted) _listAnimCtrl.forward();
     });
   }
 
@@ -494,7 +524,6 @@ class _DashboardScreenState extends State<DashboardScreen>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // ── title bar ──
               Container(
                 padding: const EdgeInsets.fromLTRB(20, 16, 12, 16),
                 decoration: BoxDecoration(
@@ -525,7 +554,6 @@ class _DashboardScreenState extends State<DashboardScreen>
                 ]),
               ),
               const Divider(height: 1),
-              // ── fields ──
               Flexible(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.all(20),
@@ -596,7 +624,6 @@ class _DashboardScreenState extends State<DashboardScreen>
                 ),
               ),
               const Divider(height: 1),
-              // ── actions ──
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
                 child: Row(
@@ -607,30 +634,70 @@ class _DashboardScreenState extends State<DashboardScreen>
                       child: Text(AppTranslations.of(context).text('cancel')),
                     ),
                     const SizedBox(width: 8),
-                    FilledButton.icon(
-                      onPressed: () {
-                        _createOrgLock.run(() async {
-                          if (!formKey.currentState!.validate()) return;
-                          final owner = await _authService.getCurrentOwner();
-                          if (owner == null) return;
-                          await _organizationService.createOrganization(
-                            name: nameCtrl.text.trim(),
-                            ownerId: owner.id,
-                            address: addressCtrl.text.trim().isEmpty ? null : addressCtrl.text.trim(),
-                            phone: phoneCtrl.text.trim().isEmpty ? null : phoneCtrl.text.trim(),
-                            email: emailCtrl.text.trim().isEmpty ? null : emailCtrl.text.trim(),
-                            taxCode: taxCtrl.text.trim().isEmpty ? null : taxCtrl.text.trim(),
-                          );
-                          if (mounted) {
-                            Navigator.pop(context);
-                            _showSuccessSnack(AppTranslations.of(context).text('org_created_success'));
-                            _refreshOrgs(owner.id);
-                          }
-                        });
+                    StatefulBuilder(
+                      builder: (context, setButtonState) {
+                        bool isSubmitting = false;
+                        return FilledButton.icon(
+                          onPressed: isSubmitting ? null : () async {
+                            if (_createOrgLock.isLocked) return;
+                            if (!formKey.currentState!.validate()) return;
+                            setButtonState(() => isSubmitting = true);
+                            await _createOrgLock.run(() async {
+                              _showTrackedDialog(
+                                context: context,
+                                barrierDismissible: false,
+                                builder: (ctx) => _buildLoadingDialog(
+                                  AppTranslations.of(context).text('create_action'),
+                                ),
+                              );
+                              try {
+                                final owner = await _authService.getCurrentOwner();
+                                if (owner == null) {
+                                  if (mounted) Navigator.pop(context);
+                                  return;
+                                }
+                                await _organizationService.createOrganization(
+                                  name: nameCtrl.text.trim(),
+                                  ownerId: owner.id,
+                                  address: addressCtrl.text.trim().isEmpty ? null : addressCtrl.text.trim(),
+                                  phone: phoneCtrl.text.trim().isEmpty ? null : phoneCtrl.text.trim(),
+                                  email: emailCtrl.text.trim().isEmpty ? null : emailCtrl.text.trim(),
+                                  taxCode: taxCtrl.text.trim().isEmpty ? null : taxCtrl.text.trim(),
+                                );
+                                if (!mounted) return;
+                                Navigator.pop(context); // pop loader
+                                Navigator.pop(context); // pop create dialog
+                                WidgetsBinding.instance.addPostFrameCallback((_) {
+                                  if (mounted) {
+                                    _showSuccessSnack(AppTranslations.of(context).text('org_created_success'));
+                                    _refreshOrgs(owner.id);
+                                  }
+                                });
+                              } catch (e) {
+                                if (mounted) {
+                                  Navigator.pop(context); // pop loader
+                                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                                    content: Text(e.toString()),
+                                    backgroundColor: Colors.red,
+                                  ));
+                                }
+                              }
+                            });
+                            if (mounted) setButtonState(() => isSubmitting = false);
+                          },
+                          icon: isSubmitting
+                              ? const SizedBox(
+                                  width: 16, height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Icon(Icons.check, size: 18),
+                          label: Text(AppTranslations.of(context).text('create_action')),
+                          style: FilledButton.styleFrom(backgroundColor: _DS.primary),
+                        );
                       },
-                      icon: const Icon(Icons.check, size: 18),
-                      label: Text(AppTranslations.of(context).text('create_action')),
-                      style: FilledButton.styleFrom(backgroundColor: _DS.primary),
                     ),
                   ],
                 ),
@@ -1133,8 +1200,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 ],
                 if (status != null) ...[
                   const SizedBox(height: 8),
-                  Text(status!,
-                      style: const TextStyle(fontSize: 13)),
+                  Text(status!, style: const TextStyle(fontSize: 13)),
                 ],
                 if (loading) ...[
                   const SizedBox(height: 16),
@@ -1240,31 +1306,34 @@ class _DashboardScreenState extends State<DashboardScreen>
       Organization org, String ownerId, bool isAdmin) {
     final screenWidth = MediaQuery.sizeOf(context).width;
     final isLarge = screenWidth >= 600;
-
-    final orgColor = _DS.orgColor(org.id);
+    final gradient = _DS.orgGradient(org.id);
 
     Widget sheetHeader = Column(
       children: [
         const SizedBox(height: 12),
         Container(
-          width: 36,
-          height: 4,
+          width: 36, height: 4,
           decoration: BoxDecoration(
               color: Colors.grey[300],
               borderRadius: BorderRadius.circular(2)),
         ),
         const SizedBox(height: 16),
-        // Org icon
         Container(
-          width: 56,
-          height: 56,
+          width: 60, height: 60,
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [orgColor, orgColor.withValues(alpha: 0.7)],
+              colors: gradient,
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: [
+              BoxShadow(
+                color: gradient[0].withValues(alpha: 0.35),
+                blurRadius: 14,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
           child: Center(
             child: Text(
@@ -1281,8 +1350,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Text(
             org.name,
-            style: const TextStyle(
-                fontSize: 17, fontWeight: FontWeight.w700),
+            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
             textAlign: TextAlign.center,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
@@ -1367,10 +1435,8 @@ class _DashboardScreenState extends State<DashboardScreen>
       _showTrackedDialog(
         context: context,
         builder: (context) => Dialog(
-          insetPadding: const EdgeInsets.symmetric(
-              horizontal: 40, vertical: 24),
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20)),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           child: SizedBox(
             width: 420,
             child: SafeArea(
@@ -1390,8 +1456,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                   Flexible(
                     child: SingleChildScrollView(
                       child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: menuItems),
+                          mainAxisSize: MainAxisSize.min, children: menuItems),
                     ),
                   ),
                 ],
@@ -1502,120 +1567,11 @@ class _DashboardScreenState extends State<DashboardScreen>
                 await _checkForUpdate();
               },
               child: CustomScrollView(
+                controller: _scrollCtrl,
                 slivers: [
                   // ── Hero ──────────────────────────────
                   SliverToBoxAdapter(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        boxShadow: _DS.heroShadow, // shadow goes on the OUTER container
-                      ),
-                      child: ClipPath(
-                        clipper: _WaveClipper(),
-                        child: Container(
-                          height: isSmall ? 280.0 : MediaQuery.of(context).size.height * 0.45,
-                          decoration: const BoxDecoration(
-                            image: DecorationImage(
-                              image: AssetImage('assets/image/background_image3.jpg'),
-                              fit: BoxFit.cover,
-                              alignment: Alignment.center,
-                            ),
-                          ),
-                          child: Padding(
-                            padding: EdgeInsets.fromLTRB(
-                              isSmall ? 20 : 28,
-                              kToolbarHeight + 44,
-                              isSmall ? 20 : 28,
-                              52, // extra bottom for the wave clip
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(children: [
-                                  // Avatar with ring
-                                  Container(
-                                    padding: const EdgeInsets.all(3),
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                          color: Colors.white.withValues(alpha: 0.6),
-                                          width: 2),
-                                    ),
-                                    child: CircleAvatar(
-                                      radius: isSmall ? 26 : 32,
-                                      backgroundColor:
-                                          Colors.white.withValues(alpha: 0.2),
-                                      child: Text(
-                                        owner.name[0].toUpperCase(),
-                                        style: TextStyle(
-                                          fontSize: isSmall ? 22 : 28,
-                                          fontWeight: FontWeight.w800,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  SizedBox(width: isSmall ? 14 : 18),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          AppTranslations.of(context).text('hello'),
-                                          style: TextStyle(
-                                            color: Colors.white.withValues(alpha: 0.75),
-                                            fontSize: isSmall ? 12 : 13,
-                                            letterSpacing: 0.3,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 3),
-                                        Text(
-                                          owner.name,
-                                          style: TextStyle(
-                                            color: Colors.white,
-                                            fontSize: isSmall ? 20 : 26,
-                                            fontWeight: FontWeight.w800,
-                                            letterSpacing: -0.5,
-                                          ),
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ]),
-                                const SizedBox(height: 18),
-                                // Info chips
-                                Wrap(
-                                  spacing: 8,
-                                  runSpacing: 8,
-                                  children: [
-                                    ClipRRect(
-                                      borderRadius: BorderRadius.circular(20),
-                                      child: BackdropFilter(
-                                        filter: ImageFilter.blur(sigmaX: 2, sigmaY: 2),
-                                        child: _buildHeroChip(
-                                            Icons.email_outlined, owner.email
-                                        ),
-                                      ),
-                                    ),
-                                    ClipRRect(
-                                      borderRadius: BorderRadius.circular(20),
-                                      child: BackdropFilter(
-                                        filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
-                                        child: _buildHeroChip(
-                                          Icons.calendar_today_outlined,
-                                          '${AppTranslations.of(context).text('joined_at')}: ${_formatDate(owner.createdAt, context)}',
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
+                    child: _buildHero(context, owner, isSmall),
                   ),
 
                   // ── Section header ────────────────────
@@ -1623,17 +1579,17 @@ class _DashboardScreenState extends State<DashboardScreen>
                     child: Padding(
                       padding: EdgeInsets.fromLTRB(
                         isSmall ? 16 : 20,
-                        isSmall ? 12 : 20,
+                        isSmall ? 16 : 24,
                         isSmall ? 16 : 20,
-                        10,
+                        12,
                       ),
                       child: Row(
                         children: [
                           Container(
-                            padding: const EdgeInsets.all(7),
+                            padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
                               color: _DS.primaryLight,
-                              borderRadius: BorderRadius.circular(8),
+                              borderRadius: BorderRadius.circular(10),
                             ),
                             child: const Icon(Icons.business_rounded,
                                 color: _DS.primary, size: 18),
@@ -1650,22 +1606,18 @@ class _DashboardScreenState extends State<DashboardScreen>
                               ),
                             ),
                           ),
-                          // Join button
                           _buildHeaderButton(
                             label: AppTranslations.of(context).text('join'),
                             icon: Icons.group_add_rounded,
                             outlined: true,
-                            onTap: () => _dialogLock
-                                .run(_showJoinOrganizationDialog),
+                            onTap: () => _dialogLock.run(_showJoinOrganizationDialog),
                           ),
                           const SizedBox(width: 8),
-                          // Create button
                           _buildHeaderButton(
                             label: AppTranslations.of(context).text('create'),
                             icon: Icons.add_rounded,
                             outlined: false,
-                            onTap: () => _dialogLock
-                                .run(_showCreateOrganizationDialog),
+                            onTap: () => _dialogLock.run(_showCreateOrganizationDialog),
                           ),
                         ],
                       ),
@@ -1676,12 +1628,10 @@ class _DashboardScreenState extends State<DashboardScreen>
                   FutureBuilder<List<Organization>>(
                     future: _orgsFuture,
                     builder: (context, snapshot) {
-                      if (snapshot.connectionState ==
-                          ConnectionState.waiting) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
                         return const SliverFillRemaining(
                           child: Center(
-                            child: CircularProgressIndicator(
-                                color: _DS.primary),
+                            child: CircularProgressIndicator(color: _DS.primary),
                           ),
                         );
                       }
@@ -1697,7 +1647,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                         sliver: SliverList(
                           delegate: SliverChildBuilderDelegate(
                             (context, index) => _buildOrgCard(
-                                context, orgs[index], owner, isSmall),
+                                context, orgs[index], owner, isSmall, index),
                             childCount: orgs.length,
                           ),
                         ),
@@ -1705,7 +1655,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                     },
                   ),
 
-                  const SliverToBoxAdapter(child: SizedBox(height: 32)),
+                  const SliverToBoxAdapter(child: SizedBox(height: 40)),
                 ],
               ),
             );
@@ -1716,33 +1666,186 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   // ─────────────────────────────────────────────────────────
+  // HERO
+  // ─────────────────────────────────────────────────────────
+
+  Widget _buildHero(BuildContext context, Owner owner, bool isSmall) {
+    final heroHeight = isSmall
+        ? 290.0
+        : MediaQuery.of(context).size.height * 0.44;
+
+    return Container(
+      decoration: BoxDecoration(
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF1A56DB).withValues(alpha: 0.12),
+            blurRadius: 32,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: ClipPath(
+        clipper: _WaveClipper(),
+        child: Container(
+          height: heroHeight,
+          decoration: const BoxDecoration(
+            image: DecorationImage(
+              image: AssetImage('assets/image/background_image3.jpg'),
+              fit: BoxFit.cover,
+              alignment: Alignment.center,
+            ),
+          ),
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.black.withValues(alpha: 0.30),
+                  Colors.black.withValues(alpha: 0.08),
+                ],
+              ),
+            ),
+            padding: EdgeInsets.fromLTRB(
+              isSmall ? 20 : 28,
+              kToolbarHeight + 44,
+              isSmall ? 20 : 28,
+              58,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    // Avatar with glowing ring
+                    Container(
+                      padding: const EdgeInsets.all(3),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.5),
+                            width: 2),
+                        boxShadow: [
+                          BoxShadow(
+                            color: _DS.primaryMid.withValues(alpha: 0.5),
+                            blurRadius: 16,
+                            spreadRadius: 2,
+                          ),
+                        ],
+                      ),
+                      child: CircleAvatar(
+                        radius: isSmall ? 28 : 34,
+                        backgroundColor: _DS.primaryMid.withValues(alpha: 0.3),
+                        child: Text(
+                          owner.name[0].toUpperCase(),
+                          style: TextStyle(
+                            fontSize: isSmall ? 24 : 30,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: isSmall ? 14 : 18),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            AppTranslations.of(context).text('hello').toUpperCase(),
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.65),
+                              fontSize: 11,
+                              letterSpacing: 1.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            owner.name,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: isSmall ? 22 : 28,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.5,
+                              height: 1.1,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: isSmall ? 16 : 20),
+                // Info chips
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(20),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+                        child: _buildHeroChip(Icons.email_outlined, owner.email),
+                      ),
+                    ),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(20),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+                        child: _buildHeroChip(
+                          Icons.calendar_today_outlined,
+                          '${AppTranslations.of(context).text('joined_at')}: ${_formatDate(owner.createdAt, context)}',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────
   // APPBAR
   // ─────────────────────────────────────────────────────────
 
   PreferredSizeWidget _buildAppBar(BuildContext context) {
+    // When scrolled past the hero, switch to a solid surface AppBar
+    final onHero = !_isScrolled;
+    final titleColor    = onHero ? Colors.white : _DS.textPrimary;
+    final langBg        = onHero ? Colors.white.withValues(alpha: 0.12) : _DS.surface;
+    final langBorder    = onHero ? Colors.white.withValues(alpha: 0.2)  : Colors.grey.withValues(alpha: 0.25);
+    final langIcon      = onHero ? Colors.white : _DS.textSecondary;
+    final logoutBg      = onHero ? Colors.red.withValues(alpha: 0.25) : Colors.red.withValues(alpha: 0.08);
+    final logoutBorder  = onHero ? Colors.red.withValues(alpha: 0.35) : Colors.red.withValues(alpha: 0.25);
+    final logoutIcon    = onHero ? const Color(0xFFEF9A9A) : Colors.red[400]!;
+
     return AppBar(
-      backgroundColor: Colors.transparent,
-      elevation: 0,
+      backgroundColor: onHero ? Colors.transparent : _DS.card,
+      elevation: onHero ? 0 : 0,
       scrolledUnderElevation: 0,
+      surfaceTintColor: Colors.transparent,
+      shadowColor: onHero ? Colors.transparent : Colors.black.withValues(alpha: 0.08),
       centerTitle: false,
-      title: ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 2, sigmaY: 2),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            color: Colors.transparent,
-            child: Text(
-              AppTranslations.of(context).text('dashboard'),
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w800,
-                fontSize: 22,
-                letterSpacing: -0.5,
-              ),
-            ),
-          ),
+      title: AnimatedDefaultTextStyle(
+        duration: const Duration(milliseconds: 200),
+        style: TextStyle(
+          color: titleColor,
+          fontWeight: FontWeight.w800,
+          fontSize: 22,
+          letterSpacing: -0.5,
         ),
+        child: Text(AppTranslations.of(context).text('dashboard')),
+      ),
+      bottom: onHero ? null : PreferredSize(
+        preferredSize: const Size.fromHeight(1),
+        child: Divider(height: 1, color: Colors.grey.withValues(alpha: 0.15)),
       ),
       actions: [
         if (_updateAvailable && !_checkingUpdate)
@@ -1757,16 +1860,16 @@ class _DashboardScreenState extends State<DashboardScreen>
             icon: Icons.language_rounded,
             onTap: _showLanguageDialog,
             tooltip: AppTranslations.of(context).text('lang'),
-            bgColor: Colors.white.withValues(alpha: 0.12),
-            borderColor: Colors.white.withValues(alpha: 0.2),
-            iconColor: Colors.white),
+            bgColor: langBg,
+            borderColor: langBorder,
+            iconColor: langIcon),
         _buildAppBarBtn(
             icon: Icons.logout_rounded,
             onTap: _handleLogout,
             tooltip: AppTranslations.of(context).text('logout'),
-            bgColor: Colors.red.withValues(alpha: 0.25),
-            borderColor: Colors.red.withValues(alpha: 0.35),
-            iconColor: const Color(0xFFEF9A9A)),
+            bgColor: logoutBg,
+            borderColor: logoutBorder,
+            iconColor: logoutIcon),
         const SizedBox(width: 10),
       ],
     );
@@ -1790,7 +1893,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       ),
       child: ClipOval(
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 2, sigmaY: 2),
+          filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
           child: Container(
             color: bgColor,
             child: IconButton(
@@ -1806,115 +1909,166 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   // ─────────────────────────────────────────────────────────
-  // ORG CARD
+  // ORG CARD  (improved)
   // ─────────────────────────────────────────────────────────
 
   Widget _buildOrgCard(BuildContext context, Organization org,
-      Owner owner, bool isSmall) {
-    final orgColor = _DS.orgColor(org.id);
+      Owner owner, bool isSmall, int index) {
+    final gradient = _DS.orgGradient(org.id);
+    final orgColor = gradient[0];
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: _DS.card,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: _DS.cardShadow,
-      ),
-      child: FutureBuilder<Membership?>(
-        future: _membershipFutures.putIfAbsent(
-          org.id,
-          () => _organizationService.getUserMembership(owner.id, org.id),
+    // Staggered slide-up + fade entrance
+    final delay = index * 0.12;
+    final animation = CurvedAnimation(
+      parent: _listAnimCtrl,
+      curve: Interval(delay.clamp(0.0, 0.9), (delay + 0.4).clamp(0.0, 1.0),
+          curve: Curves.easeOut),
+    );
+
+    return AnimatedBuilder(
+      animation: animation,
+      builder: (context, child) => FadeTransition(
+        opacity: animation,
+        child: SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0, 0.18),
+            end: Offset.zero,
+          ).animate(animation),
+          child: child,
         ),
-        builder: (context, snapshot) {
-          final role    = snapshot.data?.role ?? 'member';
-          final isAdmin = role == 'admin';
-          final roleText = isAdmin
-              ? AppTranslations.of(context).text('admin')
-              : AppTranslations.of(context).text('member');
+      ),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        decoration: BoxDecoration(
+          color: _DS.card,
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: _DS.cardShadow,
+          border: Border.all(color: const Color(0x0F000000)),
+        ),
+        child: FutureBuilder<Membership?>(
+          future: _membershipFutures.putIfAbsent(
+            org.id,
+            () => _organizationService.getUserMembership(owner.id, org.id),
+          ),
+          builder: (context, snapshot) {
+            final role    = snapshot.data?.role ?? 'member';
+            final isAdmin = role == 'admin';
 
-          return InkWell(
-            borderRadius: BorderRadius.circular(18),
-            onTap: () => Navigator.pushNamed(
-              context,
-              AppRouter.oranizationScreen,
-              arguments: {'organization': org},
-            ),
-            child: Padding(
-              padding: EdgeInsets.all(isSmall ? 14 : 16),
-              child: Row(children: [
-                // ── colored icon ──
-                Container(
-                  width: isSmall ? 50 : 56,
-                  height: isSmall ? 50 : 56,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [orgColor, orgColor.withValues(alpha: 0.72)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Center(
-                    child: Text(
-                      org.name[0].toUpperCase(),
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w800,
-                        fontSize: isSmall ? 20 : 22,
-                      ),
-                    ),
-                  ),
-                ),
-
-                SizedBox(width: isSmall ? 12 : 14),
-
-                // ── text info ──
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+            return InkWell(
+              borderRadius: BorderRadius.circular(18),
+              onTap: () => Navigator.pushNamed(
+                context,
+                AppRouter.oranizationScreen,
+                arguments: {'organization': org},
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(18),
+                child: IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text(
-                        org.name,
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: isSmall ? 14 : 15,
-                          color: _DS.textPrimary,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        _formatDate(org.createdAt, context),
-                        style: TextStyle(
-                          color: _DS.textSecondary,
-                          fontSize: isSmall ? 11 : 12,
+                      // ── Color accent bar ──────────────
+                      Container(
+                        width: 4,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: gradient,
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                          ),
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      _buildRoleBadge(isAdmin),
+
+                      // ── Card content ──────────────────
+                      Expanded(
+                        child: Padding(
+                          padding: EdgeInsets.all(isSmall ? 14 : 16),
+                          child: Row(children: [
+                            // Org avatar with gradient + glow
+                            Container(
+                              width: isSmall ? 50 : 54,
+                              height: isSmall ? 50 : 54,
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: gradient,
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ),
+                                borderRadius: BorderRadius.circular(14),
+                                boxShadow: _DS.avatarGlow(org.id),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  org.name[0].toUpperCase(),
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: isSmall ? 20 : 22,
+                                  ),
+                                ),
+                              ),
+                            ),
+
+                            SizedBox(width: isSmall ? 12 : 14),
+
+                            // Text info
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    org.name,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: isSmall ? 14 : 15,
+                                      color: _DS.textPrimary,
+                                      letterSpacing: -0.2,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    _formatDate(org.createdAt, context),
+                                    style: TextStyle(
+                                      color: _DS.textSecondary,
+                                      fontSize: isSmall ? 11 : 12,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  _buildRoleBadge(isAdmin),
+                                ],
+                              ),
+                            ),
+
+                            // More button — clearer tap target
+                            GestureDetector(
+                              onTap: () => _showOrganizationOptions(
+                                  org, owner.id, isAdmin),
+                              child: Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  color: _DS.surface,
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                      color: const Color(0x10000000)),
+                                ),
+                                child: Icon(Icons.more_horiz_rounded,
+                                    color: _DS.textSecondary, size: 20),
+                              ),
+                            ),
+                          ]),
+                        ),
+                      ),
                     ],
                   ),
                 ),
-
-                // ── more button ──
-                GestureDetector(
-                  onTap: () =>
-                      _showOrganizationOptions(org, owner.id, isAdmin),
-                  child: Container(
-                    padding: const EdgeInsets.all(7),
-                    decoration: BoxDecoration(
-                      color: _DS.surface,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(Icons.more_horiz_rounded,
-                        color: _DS.textSecondary, size: 20),
-                  ),
-                ),
-              ]),
-            ),
-          );
-        },
+              ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -1931,8 +2085,8 @@ class _DashboardScreenState extends State<DashboardScreen>
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: isAdmin
-              ? _DS.adminGold.withValues(alpha: 0.4)
-              : _DS.memberBlue.withValues(alpha: 0.35),
+              ? _DS.adminGold.withValues(alpha: 0.35)
+              : _DS.memberBlue.withValues(alpha: 0.25),
           width: 1,
         ),
       ),
@@ -1959,7 +2113,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   Widget _buildHeroChip(IconData icon, String text) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(20),
@@ -1968,13 +2122,14 @@ class _DashboardScreenState extends State<DashboardScreen>
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(icon, size: 13, color: Colors.white.withValues(alpha: 0.85)),
-        const SizedBox(width: 5),
+        const SizedBox(width: 6),
         Flexible(
           child: Text(
             text,
             style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.9),
-                fontSize: 12),
+                color: Colors.white.withValues(alpha: 0.92),
+                fontSize: 12,
+                fontWeight: FontWeight.w500),
             overflow: TextOverflow.ellipsis,
           ),
         ),
@@ -1996,9 +2151,8 @@ class _DashboardScreenState extends State<DashboardScreen>
             style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
         style: OutlinedButton.styleFrom(
           foregroundColor: _DS.primary,
-          side: BorderSide(color: _DS.primary.withValues(alpha: 0.5)),
-          padding:
-              const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          side: BorderSide(color: _DS.primary.withValues(alpha: 0.45)),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
           shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(20)),
         ),
@@ -2011,10 +2165,10 @@ class _DashboardScreenState extends State<DashboardScreen>
           style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
       style: FilledButton.styleFrom(
         backgroundColor: _DS.primary,
-        padding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20)),
+        elevation: 0,
       ),
     );
   }
@@ -2029,8 +2183,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   }) {
     return ListTile(
       leading: Container(
-        width: 38,
-        height: 38,
+        width: 38, height: 38,
         decoration: BoxDecoration(
           color: iconColor.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(10),
@@ -2081,8 +2234,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         prefixIcon: Icon(icon, size: 20),
         filled: true,
         fillColor: _DS.surface,
-        border:
-            OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.25)),
@@ -2103,8 +2255,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       decoration: BoxDecoration(
         color: _DS.primaryLight,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-            color: _DS.primary.withValues(alpha: 0.2), width: 1),
+        border: Border.all(color: _DS.primary.withValues(alpha: 0.2), width: 1),
       ),
       child: Row(children: [
         Icon(Icons.info_outline_rounded, size: 18, color: _DS.primary),
@@ -2125,8 +2276,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.07),
         borderRadius: BorderRadius.circular(10),
-        border:
-            Border.all(color: color.withValues(alpha: 0.25), width: 1),
+        border: Border.all(color: color.withValues(alpha: 0.25), width: 1),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2153,8 +2303,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         const SizedBox(width: 8),
         Flexible(
             child: Text(text,
-                style: TextStyle(
-                    fontSize: 13, color: Colors.red[700]))),
+                style: TextStyle(fontSize: 13, color: Colors.red[700]))),
       ]),
     );
   }
@@ -2164,23 +2313,21 @@ class _DashboardScreenState extends State<DashboardScreen>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(label,
-            style: TextStyle(
+            style: const TextStyle(
                 fontWeight: FontWeight.w600,
                 fontSize: 11,
                 color: _DS.textSecondary,
                 letterSpacing: 0.3)),
         const SizedBox(height: 3),
         SelectableText(value,
-            style: const TextStyle(
-                fontSize: 14, fontWeight: FontWeight.w500)),
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
       ],
     );
   }
 
   Widget _buildLoadingDialog(String message) {
     return AlertDialog(
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -2261,10 +2408,8 @@ class _DashboardScreenState extends State<DashboardScreen>
               FilledButton.icon(
                 onPressed: _handleLogout,
                 icon: const Icon(Icons.logout),
-                label: Text(
-                    AppTranslations.of(context).text('logout_action')),
-                style:
-                    FilledButton.styleFrom(backgroundColor: Colors.red),
+                label: Text(AppTranslations.of(context).text('logout_action')),
+                style: FilledButton.styleFrom(backgroundColor: Colors.red),
               ),
             ],
           ),
@@ -2280,7 +2425,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         children: [
           Container(
             padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               color: _DS.primaryLight,
               shape: BoxShape.circle,
             ),
@@ -2317,8 +2462,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                     style: const TextStyle(fontWeight: FontWeight.w600)),
                 style: OutlinedButton.styleFrom(
                     foregroundColor: _DS.primary,
-                    side: BorderSide(
-                        color: _DS.primary.withValues(alpha: 0.5)),
+                    side: BorderSide(color: _DS.primary.withValues(alpha: 0.5)),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(20)),
                     padding: const EdgeInsets.symmetric(
@@ -2353,8 +2497,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       ]),
       backgroundColor: Colors.green[700],
       behavior: SnackBarBehavior.floating,
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       duration: const Duration(seconds: 3),
     ));
   }
