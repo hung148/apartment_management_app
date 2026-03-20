@@ -140,7 +140,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   // AppBar scroll state
   final ScrollController _scrollCtrl = ScrollController();
-  bool _isScrolled = false;
+  double _appBarOpacity = 0.0;
 
   // ── lifecycle ──────────────────────────────────────────────
 
@@ -166,9 +166,14 @@ class _DashboardScreenState extends State<DashboardScreen>
     });
     WidgetsBinding.instance.addObserver(this);
     _scrollCtrl.addListener(() {
-      final scrolled = _scrollCtrl.offset > 60;
-      if (scrolled != _isScrolled) {
-        setState(() => _isScrolled = scrolled);
+      // Fade starts at scrollFadeStart, fully solid by scrollFadeEnd
+      const double scrollFadeStart = 160.0;
+      const double scrollFadeEnd   = 280.0;
+      final raw = (_scrollCtrl.offset - scrollFadeStart) /
+          (scrollFadeEnd - scrollFadeStart);
+      final opacity = raw.clamp(0.0, 1.0);
+      if ((opacity - _appBarOpacity).abs() > 0.01) {
+        setState(() => _appBarOpacity = opacity);
       }
     });
     _updateCheckTimer =
@@ -447,57 +452,163 @@ class _DashboardScreenState extends State<DashboardScreen>
     _showTrackedDialog(
       context: context,
       builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title:
-              Text(AppTranslations.of(context).text('select_language')),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              RadioGroup<Locale>(
-                groupValue: tempLocale,
-                onChanged: (v) {
-                  if (v != null) setDialogState(() => tempLocale = v);
-                },
-                child: Column(children: [
-                  RadioListTile<Locale>(
-                    value: const Locale('vi', 'VN'),
-                    title: Text(
-                        AppTranslations.of(context).text('vietnamese')),
-                    secondary: const Text('🇻🇳',
-                        style: TextStyle(fontSize: 24)),
+        builder: (context, setDialogState) => Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          elevation: 0,
+          backgroundColor: Colors.white,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: _getDialogWidth(context)),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // ── Blue header ─────────────────────────
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 28),
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [_DS.primaryMid, _DS.primaryDeep],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
                   ),
-                  RadioListTile<Locale>(
-                    value: const Locale('en', 'US'),
-                    title:
-                        Text(AppTranslations.of(context).text('english')),
-                    secondary: const Text('🇺🇸',
-                        style: TextStyle(fontSize: 24)),
+                  child: Column(children: [
+                    Container(
+                      width: 56, height: 56,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.language_rounded,
+                          color: Colors.white, size: 28),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      AppTranslations.of(context).text('select_language'),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                  ]),
+                ),
+                // ── Options ─────────────────────────────
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                  child: RadioGroup<Locale>(
+                    groupValue: tempLocale,
+                    onChanged: (v) {
+                      if (v != null) setDialogState(() => tempLocale = v);
+                    },
+                    child: Column(children: [
+                      _buildLanguageTile(
+                        locale: const Locale('vi', 'VN'),
+                        flag: '🇻🇳',
+                        label: AppTranslations.of(context).text('vietnamese'),
+                        selected: tempLocale == const Locale('vi', 'VN'),
+                        onTap: () => setDialogState(() => tempLocale = const Locale('vi', 'VN')),
+                      ),
+                      const SizedBox(height: 8),
+                      _buildLanguageTile(
+                        locale: const Locale('en', 'US'),
+                        flag: '🇺🇸',
+                        label: AppTranslations.of(context).text('english'),
+                        selected: tempLocale == const Locale('en', 'US'),
+                        onTap: () => setDialogState(() => tempLocale = const Locale('en', 'US')),
+                      ),
+                    ]),
                   ),
-                ]),
-              ),
-            ],
+                ),
+                // ── Actions ─────────────────────────────
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+                  child: Row(children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(context),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: _DS.textSecondary,
+                          side: BorderSide(color: Colors.grey.withValues(alpha: 0.3)),
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14)),
+                        ),
+                        child: Text(AppTranslations.of(context).text('cancel'),
+                            style: const TextStyle(fontWeight: FontWeight.w600)),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: () {
+                          notifier.setLocale(tempLocale);
+                          Navigator.pop(context);
+                        },
+                        style: FilledButton.styleFrom(
+                          backgroundColor: _DS.primary,
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14)),
+                          elevation: 0,
+                        ),
+                        child: Text(AppTranslations.of(context).text('confirm'),
+                            style: const TextStyle(fontWeight: FontWeight.w600)),
+                      ),
+                    ),
+                  ]),
+                ),
+              ],
+            ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child:
-                  Text(AppTranslations.of(context).text('cancel')),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: _DS.primary,
-                  foregroundColor: Colors.white),
-              onPressed: () {
-                notifier.setLocale(tempLocale);
-                Navigator.pop(context);
-              },
-              child:
-                  Text(AppTranslations.of(context).text('confirm')),
-            ),
-          ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildLanguageTile({
+    required Locale locale,
+    required String flag,
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: selected ? _DS.primaryLight : _DS.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: selected ? _DS.primary.withValues(alpha: 0.4) : Colors.grey.withValues(alpha: 0.15),
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        child: Row(children: [
+          Text(flag, style: const TextStyle(fontSize: 26)),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Text(label,
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 15,
+                  color: selected ? _DS.primary : _DS.textPrimary,
+                )),
+          ),
+          if (selected)
+            Container(
+              width: 22, height: 22,
+              decoration: const BoxDecoration(
+                color: _DS.primary,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.check_rounded, color: Colors.white, size: 14),
+            ),
+        ]),
       ),
     );
   }
@@ -808,37 +919,107 @@ class _DashboardScreenState extends State<DashboardScreen>
       Organization org, String ownerId) async {
     final confirm = await _showTrackedDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20)),
-        title: Row(children: [
-          Icon(Icons.exit_to_app, color: Colors.orange[700]),
-          const SizedBox(width: 8),
-          Flexible(
-              child: Text(AppTranslations.of(context).text('leave_org'))),
-        ]),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(AppTranslations.of(context)
-                .textWithParams('leave_org_confirm', {'name': org.name})),
-            const SizedBox(height: 12),
-            _buildWarningBanner(
-                AppTranslations.of(context).text('lose_access_warning'),
-                Colors.orange),
-          ],
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: Text(AppTranslations.of(context).text('cancel'))),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: FilledButton.styleFrom(backgroundColor: Colors.orange),
-            child: Text(AppTranslations.of(context).text('leave_action')),
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        elevation: 0,
+        backgroundColor: Colors.white,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: _getDialogWidth(context)),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // ── Orange header ──────────────────────
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 28),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.orange[400]!, Colors.orange[700]!],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                ),
+                child: Column(children: [
+                  Container(
+                    width: 56, height: 56,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.exit_to_app_rounded,
+                        color: Colors.white, size: 28),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    AppTranslations.of(context).text('leave_org'),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.3,
+                    ),
+                  ),
+                ]),
+              ),
+              // ── Body ───────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
+                child: Column(
+                  children: [
+                    Text(
+                      AppTranslations.of(context).textWithParams(
+                          'leave_org_confirm', {'name': org.name}),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                          fontSize: 14, color: _DS.textSecondary, height: 1.5),
+                    ),
+                    const SizedBox(height: 12),
+                    _buildWarningBanner(
+                        AppTranslations.of(context).text('lose_access_warning'),
+                        Colors.orange),
+                  ],
+                ),
+              ),
+              // ── Actions ────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+                child: Row(children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: _DS.textSecondary,
+                        side: BorderSide(color: Colors.grey.withValues(alpha: 0.3)),
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14)),
+                      ),
+                      child: Text(AppTranslations.of(context).text('cancel'),
+                          style: const TextStyle(fontWeight: FontWeight.w600)),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: () => Navigator.pop(context, true),
+                      icon: const Icon(Icons.exit_to_app_rounded, size: 16),
+                      label: Text(AppTranslations.of(context).text('leave_action'),
+                          style: const TextStyle(fontWeight: FontWeight.w600)),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: Colors.orange[700],
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14)),
+                        elevation: 0,
+                      ),
+                    ),
+                  ),
+                ]),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
     if (confirm == true) {
@@ -1495,23 +1676,108 @@ class _DashboardScreenState extends State<DashboardScreen>
   Future<void> _handleLogout() async {
     final confirm = await _showTrackedDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20)),
-        title: Text(AppTranslations.of(context).text('confirm_logout'),
-            style: const TextStyle(fontWeight: FontWeight.w700)),
-        content:
-            Text(AppTranslations.of(context).text('confirm_logout_message')),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: Text(AppTranslations.of(context).text('cancel'))),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            child: Text(AppTranslations.of(context).text('logout_action')),
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        elevation: 0,
+        backgroundColor: Colors.white,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: _getDialogWidth(context)),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // ── Red header ──────────────────────────
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 28),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Color(0xFFEF4444), Color(0xFFDC2626)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                ),
+                child: Column(children: [
+                  Container(
+                    width: 56, height: 56,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.logout_rounded,
+                        color: Colors.white, size: 28),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    AppTranslations.of(context).text('confirm_logout'),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.3,
+                    ),
+                  ),
+                ]),
+              ),
+
+              // ── Body ────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
+                child: Text(
+                  AppTranslations.of(context).text('confirm_logout_message'),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: _DS.textSecondary,
+                    height: 1.5,
+                  ),
+                ),
+              ),
+
+              // ── Actions ─────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+                child: Row(children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: _DS.textSecondary,
+                        side: BorderSide(
+                            color: Colors.grey.withValues(alpha: 0.3)),
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14)),
+                      ),
+                      child: Text(
+                        AppTranslations.of(context).text('cancel'),
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: () => Navigator.pop(context, true),
+                      icon: const Icon(Icons.logout_rounded, size: 16),
+                      label: Text(
+                        AppTranslations.of(context).text('logout_action'),
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFFEF4444),
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14)),
+                        elevation: 0,
+                      ),
+                    ),
+                  ),
+                ]),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
     if (confirm == true) {
@@ -1816,36 +2082,74 @@ class _DashboardScreenState extends State<DashboardScreen>
   // ─────────────────────────────────────────────────────────
 
   PreferredSizeWidget _buildAppBar(BuildContext context) {
-    // When scrolled past the hero, switch to a solid surface AppBar
-    final onHero = !_isScrolled;
-    final titleColor    = onHero ? Colors.white : _DS.textPrimary;
-    final langBg        = onHero ? Colors.white.withValues(alpha: 0.12) : _DS.surface;
-    final langBorder    = onHero ? Colors.white.withValues(alpha: 0.2)  : Colors.grey.withValues(alpha: 0.25);
-    final langIcon      = onHero ? Colors.white : _DS.textSecondary;
-    final logoutBg      = onHero ? Colors.red.withValues(alpha: 0.25) : Colors.red.withValues(alpha: 0.08);
-    final logoutBorder  = onHero ? Colors.red.withValues(alpha: 0.35) : Colors.red.withValues(alpha: 0.25);
-    final logoutIcon    = onHero ? const Color(0xFFEF9A9A) : Colors.red[400]!;
+    final t = _appBarOpacity;
+
+    // Background leads: reaches full opacity faster than text changes color.
+    // This ensures white bg is visible before/as text turns dark — never dark text on transparent bg.
+    final bgT    = Curves.easeIn.transform(t.clamp(0.0, 1.0));          // bg: fast start
+    final textT  = Curves.easeOut.transform(((t - 0.3) / 0.7).clamp(0.0, 1.0)); // text: delayed start
+
+    final titleColor = Color.lerp(Colors.white, _DS.textPrimary, textT)!;
+    final bgColor    = Color.lerp(Colors.transparent, _DS.card, bgT)!;
+    final dividerOpacity = bgT;
+
+    final langBg     = Color.lerp(Colors.white.withValues(alpha: 0.12), _DS.surface, bgT)!;
+    final langBorder = Color.lerp(Colors.white.withValues(alpha: 0.2),  Colors.grey.withValues(alpha: 0.25), bgT)!;
+    final langIcon   = Color.lerp(Colors.white, _DS.textSecondary, textT)!;
+
+    final logoutBg     = Color.lerp(Colors.red.withValues(alpha: 0.25), Colors.red.withValues(alpha: 0.08), bgT)!;
+    final logoutBorder = Color.lerp(Colors.red.withValues(alpha: 0.35), Colors.red.withValues(alpha: 0.25), bgT)!;
+    final logoutIcon   = Color.lerp(const Color(0xFFEF9A9A), Colors.red[400]!, textT)!;
 
     return AppBar(
-      backgroundColor: onHero ? Colors.transparent : _DS.card,
-      elevation: onHero ? 0 : 0,
+      backgroundColor: bgColor,
+      elevation: 0,
       scrolledUnderElevation: 0,
       surfaceTintColor: Colors.transparent,
-      shadowColor: onHero ? Colors.transparent : Colors.black.withValues(alpha: 0.08),
+      shadowColor: Colors.transparent,
       centerTitle: false,
-      title: AnimatedDefaultTextStyle(
-        duration: const Duration(milliseconds: 200),
-        style: TextStyle(
-          color: titleColor,
-          fontWeight: FontWeight.w800,
-          fontSize: 22,
-          letterSpacing: -0.5,
-        ),
-        child: Text(AppTranslations.of(context).text('dashboard')),
-      ),
-      bottom: onHero ? null : PreferredSize(
+      title: _appBarOpacity < 1.0
+            ? ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(
+                    sigmaX: 12 * (1 - _appBarOpacity),
+                    sigmaY: 12 * (1 - _appBarOpacity),
+                  ),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 150),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.15 * (1 - _appBarOpacity)),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      AppTranslations.of(context).text('dashboard'),
+                      style: TextStyle(
+                        color: titleColor,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 22,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                  ),
+                ),
+              )
+            : Text(
+                AppTranslations.of(context).text('dashboard'),
+                style: TextStyle(
+                  color: titleColor,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 22,
+                  letterSpacing: -0.5,
+                ),
+              ),
+      bottom: PreferredSize(
         preferredSize: const Size.fromHeight(1),
-        child: Divider(height: 1, color: Colors.grey.withValues(alpha: 0.15)),
+        child: Opacity(
+          opacity: dividerOpacity,
+          child: Divider(height: 1, color: Colors.grey.withValues(alpha: 0.15)),
+        ),
       ),
       actions: [
         if (_updateAvailable && !_checkingUpdate)
@@ -2326,15 +2630,46 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   Widget _buildLoadingDialog(String message) {
-    return AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const CircularProgressIndicator(color: _DS.primary),
-          const SizedBox(height: 16),
-          Text(message),
-        ],
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      elevation: 0,
+      backgroundColor: Colors.white,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 60, height: 60,
+              decoration: BoxDecoration(
+                color: _DS.primaryLight,
+                shape: BoxShape.circle,
+              ),
+              child: const Padding(
+                padding: EdgeInsets.all(14),
+                child: CircularProgressIndicator(
+                  color: _DS.primary,
+                  strokeWidth: 3,
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: _DS.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '...',
+              style: TextStyle(fontSize: 13, color: _DS.textSecondary),
+            ),
+          ],
+        ),
       ),
     );
   }
