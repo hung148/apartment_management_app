@@ -1,7 +1,7 @@
 import 'package:apartment_management_project_2/models/owner_model.dart';
+import 'package:apartment_management_project_2/widgets/app_logger.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:uuid/uuid.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -19,13 +19,14 @@ class AuthService {
   // Login
   Future<User?> signInWithEmailPassword(String email, String password) async {
     try {
-      UserCredential result = await _auth.signInWithEmailAndPassword(
+      final result = await _auth.signInWithEmailAndPassword(
         email: email, 
         password: password
       );
+      logger.i('Login successful');
       return result.user;
     } catch (e) {
-      print('Login failed: ${e.toString()}');
+      logger.e('Login failed', error: e);
       return null;
     }
   }
@@ -33,23 +34,26 @@ class AuthService {
   // Logout
   Future<void> signOut() async {
     await _auth.signOut();
+    logger.i('User signed out');
   }
 
   // Get Owner Data
   Future<Owner?> getOwnerData(String uid) async {
+
     try {
       // Get the owner document from Firestore
       DocumentSnapshot doc = await _firestore.collection('owners').doc(uid).get();
 
       // If document doesn't exist, return null
       if (!doc.exists) {
+        logger.w('Owner document not found');
         return null;
       }
 
       // Convert Firestore data to Owner model
       return Owner.fromMap(doc.id, doc.data() as Map<String, dynamic>);
     } catch (e) {
-      print('Error getting owner data: $e');
+      logger.e('Error getting owner data', error: e);
       return null;
     }
   }
@@ -71,9 +75,10 @@ class AuthService {
     required String name,
     String? inviteCode,
   }) async {
+    UserCredential? result;
     try {
       // Create Firebase Auth user
-      UserCredential result = await _auth.createUserWithEmailAndPassword(
+      result = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
@@ -88,10 +93,17 @@ class AuthService {
       );
 
       await _firestore.collection('owners').doc(newOwner.id).set(newOwner.toMap());
+      logger.i('New Owner registered');
 
       return newOwner;
     } catch (e) {
-      print('Registration failed: ${e.toString()}');
+      // Clean up orphaned Auth account if Firestore write failed
+      // Only delete the Auth account if it was just created (Firestore write failed)
+      if (result != null) {
+        await result.user?.delete();
+        logger.w('Orphaned Auth account deleted');
+      }
+      logger.e('Registration failed', error: e);
       return null;
     }
   }
