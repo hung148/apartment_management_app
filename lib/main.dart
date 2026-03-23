@@ -103,12 +103,6 @@ void main() async {
 
   setup();
 
-  // --- RUN MIGRATION HERE ---
-  // We use getIt to get the service instance and call the script
-  // final orgService = getIt<OrganizationService>();
-  // await orgService.migrateInviteCodesToNewCollection(); 
-  // ---------------------------
-
   runApp(const MyApp());
 }
 

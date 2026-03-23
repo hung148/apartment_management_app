@@ -1,26 +1,22 @@
 import 'package:apartment_management_project_2/models/membership_model.dart';
 import 'package:apartment_management_project_2/models/organization_model.dart';
+import 'package:apartment_management_project_2/widgets/app_logger.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:uuid/uuid.dart';
+
 class OrganizationService {
-  // Create instance of Firestore to interact with the database
   FirebaseFirestore get _firestore => FirebaseFirestore.instance;
 
-  // UUID generator for creating unique invite codes
   final Uuid _uuid = Uuid();
 
-  // Helper to generate the raw string
   String _generateRawCode() {
-    // 36^8 ≈ 2.8 trillion possibilities.
-    // At 1 million orgs, collision chance per call is ~0.000036%.
-    // Just generate and trust the math — no query needed.
     return _uuid.v4().replaceAll('-', '').substring(0, 8).toUpperCase();
   }
 
   Future<void> migrateInviteCodesToNewCollection() async {
     final firestore = FirebaseFirestore.instance;
-    print('🚀 Migrating codes to invite_codes collection...');
+    logger.i('Migrating codes to invite_codes collection...');
 
     final orgs = await firestore.collection('organizations').get();
     final batch = firestore.batch();
@@ -42,7 +38,7 @@ class OrganizationService {
     }
 
     await batch.commit();
-    print('✅ Successfully registered $count codes in the new collection.');
+    logger.i('Successfully registered $count codes in the new collection.');
   }
 
   // ========================================
@@ -62,15 +58,13 @@ class OrganizationService {
     try {
       final orgRef = _firestore.collection("organizations").doc();
       final membershipId = '${ownerId}_${orgRef.id}';
+      final user = FirebaseAuth.instance.currentUser; 
 
       Organization? organization;
 
-      // Retry loop — handles the astronomically rare invite code collision
       while (true) {
         final inviteCode = _generateRawCode();
 
-        // Atomically claim the code using its doc ID as a unique constraint.
-        // If another org already has this code, the write fails with already-exists.
         try {
           await _firestore
               .collection('invite_codes')
@@ -80,13 +74,12 @@ class OrganizationService {
                 'claimedAt': FieldValue.serverTimestamp()});
         } on FirebaseException catch (e) {
           if (e.code == 'already-exists') {
-            print('⚠️ Invite code collision on $inviteCode, retrying...');
-            continue; // generate a new code and try again
+            logger.w('Invite code collision on $inviteCode, retrying...');
+            continue;
           }
           rethrow;
         }
 
-        // Code is now claimed — build and save the organization
         organization = Organization(
           id: orgRef.id,
           name: name,
@@ -102,7 +95,6 @@ class OrganizationService {
           inviteCode: inviteCode,
         );
 
-        // Write org + membership atomically so we never get one without the other
         final batch = _firestore.batch();
 
         batch.set(orgRef, organization.toMap());
@@ -116,17 +108,19 @@ class OrganizationService {
             role: 'admin',
             status: 'active',
             joinedAt: DateTime.now(),
+            displayName: user?.displayName ?? '', 
+            email: user?.email ?? '',             
           ).toMap(),
         );
 
         await batch.commit();
-        break; // success — exit the loop
+        break;
       }
 
-      print('✅ Organization created: ${organization!.name}');
+      logger.i('Organization created: ${organization.name}');
       return organization;
     } catch (e) {
-      print('❌ Error creating organization: $e');
+      logger.e('Error creating organization', error: e);
       return null;
     }
   }
@@ -147,15 +141,13 @@ class OrganizationService {
     String? taxCode,
   }) async {
     try {
-      // Check if user is admin
       final membership = await getUserMembership(ownerId, orgId);
-      
+
       if (membership == null || membership.role != 'admin') {
-        print('❌ User is not admin');
+        logger.w('User is not admin');
         return false;
       }
 
-      // Build update map with only non-null values
       final Map<String, dynamic> updates = {};
       if (name != null) updates['name'] = name;
       if (address != null) updates['address'] = address;
@@ -165,26 +157,23 @@ class OrganizationService {
       if (bankAccountNumber != null) updates['bankAccountNumber'] = bankAccountNumber;
       if (bankAccountName != null) updates['bankAccountName'] = bankAccountName;
       if (taxCode != null) updates['taxCode'] = taxCode;
-      
-      // Always update the updatedAt timestamp
+
       updates['updatedAt'] = Timestamp.fromDate(DateTime.now());
 
-      // If no updates provided, return early
       if (updates.isEmpty || (updates.length == 1 && updates.containsKey('updatedAt'))) {
-        print('⚠️ No updates provided');
+        logger.w('No updates provided');
         return false;
       }
 
-      // Update the organization
       await _firestore
           .collection('organizations')
           .doc(orgId)
           .update(updates);
 
-      print('✅ Organization updated');
+      logger.i('Organization updated');
       return true;
     } catch (e) {
-      print('❌ Error updating organization: $e');
+      logger.e('Error updating organization', error: e);
       return false;
     }
   }
@@ -201,15 +190,13 @@ class OrganizationService {
     String? taxCode,
   }) async {
     try {
-      // Check if user is admin
       final membership = await getUserMembership(ownerId, orgId);
-      
+
       if (membership == null || membership.role != 'admin') {
-        print('❌ User is not admin');
+        logger.w('User is not admin');
         return false;
       }
 
-      // Build update map
       final Map<String, dynamic> updates = {
         'bankName': bankName,
         'bankAccountNumber': bankAccountNumber,
@@ -221,16 +208,15 @@ class OrganizationService {
         updates['taxCode'] = taxCode;
       }
 
-      // Update the organization
       await _firestore
           .collection('organizations')
           .doc(orgId)
           .update(updates);
 
-      print('✅ Bank information updated');
+      logger.i('Bank information updated');
       return true;
     } catch (e) {
-      print('❌ Error updating bank information: $e');
+      logger.e('Error updating bank information', error: e);
       return false;
     }
   }
@@ -243,15 +229,13 @@ class OrganizationService {
     required String orgId,
   }) async {
     try {
-      // Check if user is admin
       final membership = await getUserMembership(ownerId, orgId);
-      
+
       if (membership == null || membership.role != 'admin') {
-        print('❌ User is not admin');
+        logger.w('User is not admin');
         return false;
       }
 
-      // Update the organization - set bank fields to null
       await _firestore
           .collection('organizations')
           .doc(orgId)
@@ -262,10 +246,10 @@ class OrganizationService {
         'updatedAt': Timestamp.fromDate(DateTime.now()),
       });
 
-      print('✅ Bank information cleared');
+      logger.i('Bank information cleared');
       return true;
     } catch (e) {
-      print('❌ Error clearing bank information: $e');
+      logger.e('Error clearing bank information', error: e);
       return false;
     }
   }
@@ -276,15 +260,15 @@ class OrganizationService {
   Future<Organization?> getOrganizationById(String orgId) async {
     try {
       final doc = await _firestore.collection('organizations').doc(orgId).get();
-      
+
       if (!doc.exists) {
-        print('❌ Organization not found: $orgId');
+        logger.w('Organization not found: $orgId');
         return null;
       }
-      
+
       return Organization.fromMap(doc.id, doc.data()!);
     } catch (e) {
-      print('❌ Error getting organization: $e');
+      logger.e('Error getting organization', error: e);
       return null;
     }
   }
@@ -298,18 +282,18 @@ class OrganizationService {
     try {
       final membershipId = '${ownerId}_${orgId}';
       final doc = await _firestore.collection('memberships').doc(membershipId).get();
-      
+
       if (!doc.exists) {
         return null;
       }
-      
+
       return Membership.fromMap(doc.id, doc.data()!);
     } catch (e) {
       if (e is FirebaseException && e.code == 'permission-denied') {
-        print('⚠️ getUserMembership: permission-denied (likely logout race), suppressing');
+        logger.w('getUserMembership: permission-denied (likely logout race), suppressing');
         return null;
       }
-      print('❌ Error getting membership: $e');
+      logger.e('Error getting membership', error: e);
       return null;
     }
   }
@@ -330,7 +314,7 @@ class OrganizationService {
           .map((doc) => Membership.fromMap(doc.id, doc.data()))
           .toList();
     } catch (e) {
-      print('❌ Error getting organization members: $e');
+      logger.e('Error getting organization members', error: e);
       return [];
     }
   }
@@ -343,7 +327,7 @@ class OrganizationService {
       final org = await getOrganizationById(orgId);
       return org?.inviteCode;
     } catch (e) {
-      print('❌ Error getting invite code: $e');
+      logger.e('Error getting invite code', error: e);
       return null;
     }
   }
@@ -353,15 +337,12 @@ class OrganizationService {
       final membership = await getUserMembership(adminId, orgId);
       if (membership?.role != 'admin') return false;
 
-      // Get the current invite code so we can release it after
       final org = await getOrganizationById(orgId);
       final oldCode = org?.inviteCode;
 
-      // Retry loop for the rare collision
       while (true) {
         final newCode = _generateRawCode();
 
-        // Atomically claim the new code
         try {
           await _firestore
               .collection('invite_codes')
@@ -371,13 +352,12 @@ class OrganizationService {
                 'claimedAt': FieldValue.serverTimestamp()});
         } on FirebaseException catch (e) {
           if (e.code == 'already-exists') {
-            print('⚠️ Invite code collision on $newCode, retrying...');
+            logger.w('Invite code collision on $newCode, retrying...');
             continue;
           }
           rethrow;
         }
 
-        // New code is claimed — update the org and release old code atomically
         final batch = _firestore.batch();
 
         batch.update(
@@ -388,17 +368,16 @@ class OrganizationService {
           },
         );
 
-        // Release the old code so it can be reused by others
         if (oldCode != null && oldCode.isNotEmpty) {
           batch.delete(_firestore.collection('invite_codes').doc(oldCode));
         }
 
         await batch.commit();
-        print('✅ Invite code refreshed: $newCode');
+        logger.i('Invite code refreshed: $newCode');
         return true;
       }
     } catch (e) {
-      print('❌ Error refreshing invite code: $e');
+      logger.e('Error refreshing invite code', error: e);
       return false;
     }
   }
@@ -407,11 +386,9 @@ class OrganizationService {
   // READ - Get all organizations the current user is a member of
   // ========================================
   Future<List<Organization>> getUserOrganizations(String ownerId) async {
-    // Bail early if the user has already logged out
     if (FirebaseAuth.instance.currentUser == null) return [];
 
     try {
-      // Find all active memberships for this user
       final membershipsSnap = await _firestore
           .collection('memberships')
           .where('ownerId', isEqualTo: ownerId)
@@ -423,13 +400,11 @@ class OrganizationService {
         return [];
       }
 
-      // Collect all unique organization IDs
       final orgIds = membershipsSnap.docs
           .map((doc) => doc.data()['organizationId'] as String)
           .toSet()
           .toList();
 
-      // Fetch the actual organization documents
       final orgsSnap = await _firestore
           .collection('organizations')
           .where(FieldPath.documentId, whereIn: orgIds)
@@ -440,7 +415,7 @@ class OrganizationService {
           .toList();
     } catch (e) {
       if (e is FirebaseException && e.code == 'permission-denied') return [];
-      print('❌ Error fetching user organizations for $ownerId: $e');
+      logger.e('Error fetching user organizations for $ownerId', error: e);
       return [];
     }
   }
@@ -453,20 +428,18 @@ class OrganizationService {
     required String inviteCode,
   }) async {
     try {
-      // 1. Direct doc lookup in invite_codes — no query needed, no list permission needed
       final codeDoc = await _firestore
           .collection('invite_codes')
           .doc(inviteCode)
           .get();
 
       if (!codeDoc.exists) {
-        print('❌ Invalid invite code');
+        logger.w('Invalid invite code');
         return false;
       }
 
       final orgId = codeDoc.data()!['orgId'] as String;
 
-      // 2. Check if user is already a member
       final membershipId = '${ownerId}_$orgId';
       final alreadyMember = await _firestore
           .collection('memberships')
@@ -474,11 +447,12 @@ class OrganizationService {
           .get();
 
       if (alreadyMember.exists) {
-        print('⚠️ Already a member');
+        logger.w('Already a member');
         return false;
       }
 
-      // 3. Create new membership
+      final user = FirebaseAuth.instance.currentUser; 
+
       final newMembership = Membership(
         id: membershipId,
         organizationId: orgId,
@@ -486,6 +460,8 @@ class OrganizationService {
         role: 'member',
         status: 'active',
         joinedAt: DateTime.now(),
+        displayName: user?.displayName ?? '', 
+        email: user?.email ?? '',             
       );
 
       await _firestore
@@ -493,10 +469,10 @@ class OrganizationService {
           .doc(membershipId)
           .set(newMembership.toMap());
 
-      print('✅ User $ownerId joined organization $orgId');
+      logger.i('User $ownerId joined organization $orgId');
       return true;
     } catch (e) {
-      print('❌ Error joining organization: $e');
+      logger.e('Error joining organization', error: e);
       return false;
     }
   }
@@ -506,38 +482,34 @@ class OrganizationService {
   // ========================================
   Future<bool> leaveOrganization(String ownerId, String orgId) async {
     try {
-      // Create the membership ID
       final membershipId = '${ownerId}_${orgId}';
-      
-      // Get membership to check role
+
       final membership = await getUserMembership(ownerId, orgId);
-      
+
       if (membership == null) {
-        print('❌ User is not a member of this organization');
+        logger.w('User is not a member of this organization');
         return false;
       }
 
-      // Prevent the last admin from leaving
       if (membership.role == 'admin') {
         final members = await getOrganizationMembers(orgId);
         final adminCount = members.where((m) => m.role == 'admin').length;
-        
+
         if (adminCount <= 1) {
-          print('❌ Cannot leave: You are the last admin. Delete the organization instead or promote another member.');
+          logger.w('Cannot leave: User is the last admin. Delete the organization instead or promote another member.');
           return false;
         }
       }
-      
-      // Delete the membership document
+
       await _firestore
           .collection('memberships')
           .doc(membershipId)
           .delete();
-      
-      print('✅ User left organization');
+
+      logger.i('User left organization');
       return true;
     } catch (e) {
-      print('❌ Error leaving organization: $e');
+      logger.e('Error leaving organization', error: e);
       return false;
     }
   }
@@ -551,24 +523,21 @@ class OrganizationService {
     required String orgId,
   }) async {
     try {
-      // Verify that the current user is an admin
       final currentAdminMembership = await getUserMembership(currentAdminId, orgId);
-      
+
       if (currentAdminMembership == null || currentAdminMembership.role != 'admin') {
-        print('❌ Only admins can promote members');
+        logger.w('Only admins can promote members');
         return false;
       }
 
-      // Get the membership of the user to be promoted
       final memberMembershipId = '${memberIdToPromote}_${orgId}';
       final memberDoc = await _firestore
           .collection('memberships')
           .doc(memberMembershipId)
           .get();
 
-      // Check if the membership exists
       if (!memberDoc.exists) {
-        print('❌ Member not found in this organization');
+        logger.w('Member not found in this organization');
         return false;
       }
 
@@ -577,28 +546,25 @@ class OrganizationService {
         memberDoc.data()!,
       );
 
-      // Check if member is already an admin
       if (memberMembership.role == 'admin') {
-        print('⚠️ User is already an admin');
+        logger.w('User is already an admin');
         return false;
       }
 
-      // Check if membership is active
       if (memberMembership.status != 'active') {
-        print('❌ Cannot promote inactive member');
+        logger.w('Cannot promote inactive member');
         return false;
       }
 
-      // Update the role to admin
       await _firestore
           .collection('memberships')
           .doc(memberMembershipId)
           .update({'role': 'admin'});
 
-      print('✅ Member promoted to admin successfully');
+      logger.i('Member promoted to admin successfully');
       return true;
     } catch (e) {
-      print('❌ Error promoting member to admin: $e');
+      logger.e('Error promoting member to admin', error: e);
       return false;
     }
   }
@@ -612,24 +578,21 @@ class OrganizationService {
     required String orgId,
   }) async {
     try {
-      // Verify that the current user is an admin
       final currentAdminMembership = await getUserMembership(currentAdminId, orgId);
-      
+
       if (currentAdminMembership == null || currentAdminMembership.role != 'admin') {
-        print('❌ Only admins can demote other admins');
+        logger.w('Only admins can demote other admins');
         return false;
       }
 
-      // Prevent self-demotion if you're the last admin
       final members = await getOrganizationMembers(orgId);
       final adminCount = members.where((m) => m.role == 'admin').length;
-      
+
       if (adminCount <= 1) {
-        print('❌ Cannot demote: This is the last admin in the organization');
+        logger.w('Cannot demote: This is the last admin in the organization');
         return false;
       }
 
-      // Get the membership of the admin to be demoted
       final adminMembershipId = '${adminIdToDemote}_${orgId}';
       final adminDoc = await _firestore
           .collection('memberships')
@@ -637,7 +600,7 @@ class OrganizationService {
           .get();
 
       if (!adminDoc.exists) {
-        print('❌ Admin not found in this organization');
+        logger.w('Admin not found in this organization');
         return false;
       }
 
@@ -647,20 +610,19 @@ class OrganizationService {
       );
 
       if (adminMembership.role != 'admin') {
-        print('⚠️ User is not an admin');
+        logger.w('User is not an admin');
         return false;
       }
 
-      // Update the role to member
       await _firestore
           .collection('memberships')
           .doc(adminMembershipId)
           .update({'role': 'member'});
 
-      print('✅ Admin demoted to member successfully');
+      logger.i('Admin demoted to member successfully');
       return true;
     } catch (e) {
-      print('❌ Error demoting admin: $e');
+      logger.e('Error demoting admin', error: e);
       return false;
     }
   }
@@ -670,18 +632,16 @@ class OrganizationService {
   // ========================================
   Future<bool> deleteOrganization(String ownerId, String orgId, {Function(double)? onProgress}) async {
     try {
-      // Check if user is admin
       final membership = await getUserMembership(ownerId, orgId);
-      
+
       if (membership == null || membership.role != 'admin') {
-        print('❌ User is not admin');
+        logger.w('User is not admin');
         return false;
       }
 
-      // Fetch all data first in parallel to avoid nested queries
-      print('📊 Fetching organization data...');
-      onProgress?.call(0.1); // 10% - fetching data
-      
+      logger.i('Fetching organization data...');
+      onProgress?.call(0.1);
+
       final results = await Future.wait([
         _firestore
             .collection('memberships')
@@ -695,16 +655,14 @@ class OrganizationService {
 
       final memberships = results[0];
       final buildings = results[1];
-      
-      final buildingIds = buildings.docs.map((doc) => doc.id).toList();
-      
-      print('📊 Found ${buildings.docs.length} buildings');
-      onProgress?.call(0.2); // 20% - fetched main collections
 
-      // Fetch all rooms for all buildings in parallel
+      final buildingIds = buildings.docs.map((doc) => doc.id).toList();
+
+      logger.i('Found ${buildings.docs.length} buildings');
+      onProgress?.call(0.2);
+
       List<QuerySnapshot> roomSnapshots = [];
       if (buildingIds.isNotEmpty) {
-        // Split into chunks of 10 for 'whereIn' limit
         for (int i = 0; i < buildingIds.length; i += 10) {
           final chunk = buildingIds.skip(i).take(10).toList();
           final roomSnap = await _firestore
@@ -712,18 +670,16 @@ class OrganizationService {
               .where('buildingId', whereIn: chunk)
               .get();
           roomSnapshots.add(roomSnap);
-          // Yield to event loop every chunk
           await Future.delayed(Duration.zero);
         }
       }
-      
+
       final allRooms = roomSnapshots.expand((snap) => snap.docs).toList();
       final roomIds = allRooms.map((doc) => doc.id).toList();
-      
-      print('📊 Found ${allRooms.length} rooms');
-      onProgress?.call(0.35); // 35% - fetched rooms
 
-      // Fetch all tenants for all rooms in parallel
+      logger.i('Found ${allRooms.length} rooms');
+      onProgress?.call(0.35);
+
       List<QuerySnapshot> tenantSnapshots = [];
       if (roomIds.isNotEmpty) {
         for (int i = 0; i < roomIds.length; i += 10) {
@@ -733,18 +689,16 @@ class OrganizationService {
               .where('roomId', whereIn: chunk)
               .get();
           tenantSnapshots.add(tenantSnap);
-          // Yield to event loop
           await Future.delayed(Duration.zero);
         }
       }
-      
+
       final allTenants = tenantSnapshots.expand((snap) => snap.docs).toList();
       final tenantIds = allTenants.map((doc) => doc.id).toList();
-      
-      print('📊 Found ${allTenants.length} tenants');
-      onProgress?.call(0.50); // 50% - fetched tenants
 
-      // Fetch all payments for all tenants in parallel
+      logger.i('Found ${allTenants.length} tenants');
+      onProgress?.call(0.50);
+
       List<QuerySnapshot> paymentSnapshots = [];
       if (tenantIds.isNotEmpty) {
         for (int i = 0; i < tenantIds.length; i += 10) {
@@ -754,38 +708,31 @@ class OrganizationService {
               .where('tenantId', whereIn: chunk)
               .get();
           paymentSnapshots.add(paymentSnap);
-          // Yield to event loop
           await Future.delayed(Duration.zero);
         }
       }
-      
-      final allPayments = paymentSnapshots.expand((snap) => snap.docs).toList();
-      
-      print('📊 Found ${allPayments.length} payments');
-      print('🗑️ Starting deletion process...');
-      onProgress?.call(0.65); // 65% - fetched all data, starting deletion
 
-      // Collect all batch commits we need to do
+      final allPayments = paymentSnapshots.expand((snap) => snap.docs).toList();
+
+      logger.i('Found ${allPayments.length} payments');
+      logger.i('Starting deletion process...');
+      onProgress?.call(0.65);
+
       List<Future<void>> batchCommits = [];
       WriteBatch batch = _firestore.batch();
       int operationCount = 0;
       int totalOperations = allPayments.length + allTenants.length + allRooms.length + buildings.docs.length + memberships.docs.length + 1;
 
-      // Helper to add delete operation safely
       void safeDelete(DocumentReference ref) {
         batch.delete(ref);
         operationCount++;
         if (operationCount >= 490) {
-          // Store the current batch commit
           batchCommits.add(batch.commit());
-          // Create a new batch
           batch = _firestore.batch();
           operationCount = 0;
         }
       }
 
-
-      // Helper for yielding and progress
       int deleted = 0;
       int yieldEvery = 20;
       void updateProgress() {
@@ -795,7 +742,6 @@ class OrganizationService {
         }
       }
 
-      // Delete all payments
       for (var doc in allPayments) {
         safeDelete(doc.reference);
         deleted++;
@@ -804,9 +750,8 @@ class OrganizationService {
           await Future.delayed(Duration.zero);
         }
       }
-      print('🗑️ Queued ${allPayments.length} payment deletions');
+      logger.i('Queued ${allPayments.length} payment deletions');
 
-      // Delete all tenants
       for (var doc in allTenants) {
         safeDelete(doc.reference);
         deleted++;
@@ -815,9 +760,8 @@ class OrganizationService {
           await Future.delayed(Duration.zero);
         }
       }
-      print('🗑️ Queued ${allTenants.length} tenant deletions');
+      logger.i('Queued ${allTenants.length} tenant deletions');
 
-      // Delete all rooms
       for (var doc in allRooms) {
         safeDelete(doc.reference);
         deleted++;
@@ -826,9 +770,8 @@ class OrganizationService {
           await Future.delayed(Duration.zero);
         }
       }
-      print('🗑️ Queued ${allRooms.length} room deletions');
+      logger.i('Queued ${allRooms.length} room deletions');
 
-      // Delete all buildings
       for (var doc in buildings.docs) {
         safeDelete(doc.reference);
         deleted++;
@@ -837,9 +780,8 @@ class OrganizationService {
           await Future.delayed(Duration.zero);
         }
       }
-      print('🗑️ Queued ${buildings.docs.length} building deletions');
+      logger.i('Queued ${buildings.docs.length} building deletions');
 
-      // Delete all memberships
       for (var doc in memberships.docs) {
         safeDelete(doc.reference);
         deleted++;
@@ -848,38 +790,32 @@ class OrganizationService {
           await Future.delayed(Duration.zero);
         }
       }
-      print('🗑️ Queued ${memberships.docs.length} membership deletions');
+      logger.i('Queued ${memberships.docs.length} membership deletions');
 
-      // Delete the organization itself
       safeDelete(_firestore.collection('organizations').doc(orgId));
       deleted++;
       updateProgress();
-      print('🗑️ Queued organization deletion');
+      logger.i('Queued organization deletion');
 
-      // Commit remaining operations in the current batch
       if (operationCount > 0) {
         batchCommits.add(batch.commit());
       }
 
-      // Wait for all batches to complete with periodic yields to event loop
-      print('⏳ Committing ${batchCommits.length} batches...');
+      logger.i('Committing ${batchCommits.length} batches...');
       for (var i = 0; i < batchCommits.length; i++) {
         await batchCommits[i];
-        // Update progress: 65% to 95%
         double progress = 0.65 + ((i + 1) / batchCommits.length) * 0.30;
         onProgress?.call(progress);
-        // Yield to event loop after each batch commit
         if (i < batchCommits.length - 1) {
           await Future.delayed(Duration.zero);
         }
       }
 
-      onProgress?.call(1.0); // 100% - completed
-      print('✅ Organization deleted successfully');
+      onProgress?.call(1.0);
+      logger.i('Organization deleted successfully');
       return true;
     } catch (e, stackTrace) {
-      print('❌ Error deleting organization: $e');
-      print('Stack trace: $stackTrace');
+      logger.e('Error deleting organization', error: e, stackTrace: stackTrace);
       return false;
     }
   }
@@ -892,7 +828,7 @@ class OrganizationService {
       final org = await getOrganizationById(orgId);
       return org?.hasBankInfo ?? false;
     } catch (e) {
-      print('❌ Error checking bank info: $e');
+      logger.e('Error checking bank info', error: e);
       return false;
     }
   }
@@ -901,7 +837,6 @@ class OrganizationService {
   // UTILITY - Validate bank account number format
   // ========================================
   bool isValidBankAccountNumber(String accountNumber) {
-    // Basic validation: 6-20 digits
     final regex = RegExp(r'^\d{6,20}$');
     return regex.hasMatch(accountNumber);
   }
@@ -910,7 +845,6 @@ class OrganizationService {
   // UTILITY - Validate tax code format (Vietnam)
   // ========================================
   bool isValidTaxCode(String taxCode) {
-    // Vietnam tax code: 10-14 digits (can include hyphens)
     final regex = RegExp(r'^\d{10}(-\d{3})?$');
     return regex.hasMatch(taxCode.replaceAll('-', ''));
   }
@@ -926,49 +860,46 @@ class OrganizationService {
     Function(String)? onStatusUpdate,
   }) async {
     try {
-      // Verify user is admin in BOTH organizations
       onStatusUpdate?.call('Checking permissions...');
       final sourceMembership = await getUserMembership(ownerId, sourceOrgId);
       final targetMembership = await getUserMembership(ownerId, targetOrgId);
-      
+
       if (sourceMembership == null || sourceMembership.role != 'admin') {
-        print('❌ User is not admin in source organization');
-        return false;
-      }
-      
-      if (targetMembership == null || targetMembership.role != 'admin') {
-        print('❌ User is not admin in target organization');
+        logger.w('User is not admin in source organization');
         return false;
       }
 
-      // Verify both organizations exist
+      if (targetMembership == null || targetMembership.role != 'admin') {
+        logger.w('User is not admin in target organization');
+        return false;
+      }
+
       final sourceOrg = await getOrganizationById(sourceOrgId);
       final targetOrg = await getOrganizationById(targetOrgId);
-      
+
       if (sourceOrg == null || targetOrg == null) {
-        print('❌ One or both organizations not found');
+        logger.w('One or both organizations not found');
         return false;
       }
 
-      print('🔄 Starting migration from "${sourceOrg.name}" to "${targetOrg.name}"');
+      logger.i('Starting migration from "${sourceOrg.name}" to "${targetOrg.name}"');
       onProgress?.call(0.05);
 
       // ============================================
       // STEP 1: Fetch all data from source
       // ============================================
       onStatusUpdate?.call('Fetching source data...');
-      print('📊 Fetching all data from source organization...');
-      
+      logger.i('Fetching all data from source organization...');
+
       final buildingsSnap = await _firestore
           .collection('buildings')
           .where('organizationId', isEqualTo: sourceOrgId)
           .get();
-      
+
       final buildingIds = buildingsSnap.docs.map((doc) => doc.id).toList();
-      print('📊 Found ${buildingsSnap.docs.length} buildings');
+      logger.i('Found ${buildingsSnap.docs.length} buildings');
       onProgress?.call(0.10);
 
-      // Fetch all rooms
       List<QuerySnapshot> roomSnapshots = [];
       if (buildingIds.isNotEmpty) {
         for (int i = 0; i < buildingIds.length; i += 10) {
@@ -981,13 +912,12 @@ class OrganizationService {
           await Future.delayed(Duration.zero);
         }
       }
-      
+
       final allRooms = roomSnapshots.expand((snap) => snap.docs).toList();
       final roomIds = allRooms.map((doc) => doc.id).toList();
-      print('📊 Found ${allRooms.length} rooms');
+      logger.i('Found ${allRooms.length} rooms');
       onProgress?.call(0.20);
 
-      // Fetch all tenants
       List<QuerySnapshot> tenantSnapshots = [];
       if (roomIds.isNotEmpty) {
         for (int i = 0; i < roomIds.length; i += 10) {
@@ -1000,13 +930,12 @@ class OrganizationService {
           await Future.delayed(Duration.zero);
         }
       }
-      
+
       final allTenants = tenantSnapshots.expand((snap) => snap.docs).toList();
       final tenantIds = allTenants.map((doc) => doc.id).toList();
-      print('📊 Found ${allTenants.length} tenants');
+      logger.i('Found ${allTenants.length} tenants');
       onProgress?.call(0.30);
 
-      // Fetch all payments
       List<QuerySnapshot> paymentSnapshots = [];
       if (tenantIds.isNotEmpty) {
         for (int i = 0; i < tenantIds.length; i += 10) {
@@ -1019,49 +948,48 @@ class OrganizationService {
           await Future.delayed(Duration.zero);
         }
       }
-      
+
       final allPayments = paymentSnapshots.expand((snap) => snap.docs).toList();
-      print('📊 Found ${allPayments.length} payments');
+      logger.i('Found ${allPayments.length} payments');
       onProgress?.call(0.40);
 
       // ============================================
       // STEP 2: Create mappings for new IDs
       // ============================================
       onStatusUpdate?.call('Preparing migration mappings...');
-      print('🗺️ Creating ID mappings...');
-      
-      // Map old building IDs to new building IDs
+      logger.i('Creating ID mappings...');
+
       final Map<String, String> buildingIdMap = {};
       final Map<String, String> roomIdMap = {};
       final Map<String, String> tenantIdMap = {};
-      
+
       for (var buildingDoc in buildingsSnap.docs) {
         final newBuildingRef = _firestore.collection('buildings').doc();
         buildingIdMap[buildingDoc.id] = newBuildingRef.id;
       }
-      
+
       for (var roomDoc in allRooms) {
         final newRoomRef = _firestore.collection('rooms').doc();
         roomIdMap[roomDoc.id] = newRoomRef.id;
       }
-      
+
       for (var tenantDoc in allTenants) {
         final newTenantRef = _firestore.collection('tenants').doc();
         tenantIdMap[tenantDoc.id] = newTenantRef.id;
       }
-      
+
       onProgress?.call(0.45);
 
       // ============================================
       // STEP 3: Migrate data with new IDs
       // ============================================
       onStatusUpdate?.call('Migrating data to target organization...');
-      print('🔄 Starting data migration...');
-      
+      logger.i('Starting data migration...');
+
       List<Future<void>> batchCommits = [];
       WriteBatch batch = _firestore.batch();
       int operationCount = 0;
-      int totalOperations = buildingsSnap.docs.length + allRooms.length + 
+      int totalOperations = buildingsSnap.docs.length + allRooms.length +
                           allTenants.length + allPayments.length;
       int migratedCount = 0;
 
@@ -1069,111 +997,97 @@ class OrganizationService {
         batch.set(ref, data);
         operationCount++;
         migratedCount++;
-        
+
         if (operationCount >= 490) {
           batchCommits.add(batch.commit());
           batch = _firestore.batch();
           operationCount = 0;
         }
-        
-        // Update progress periodically
+
         if (migratedCount % 20 == 0) {
           double progress = 0.45 + (migratedCount / totalOperations) * 0.45;
           onProgress?.call(progress.clamp(0.0, 0.90));
         }
       }
 
-      // Migrate buildings
       for (var buildingDoc in buildingsSnap.docs) {
         final oldId = buildingDoc.id;
         final newId = buildingIdMap[oldId]!;
         final buildingData = buildingDoc.data();
-        
-        // Update organization ID
+
         buildingData['organizationId'] = targetOrgId;
-        
+
         final newBuildingRef = _firestore.collection('buildings').doc(newId);
         safeBatchOperation(newBuildingRef, buildingData);
-        
+
         await Future.delayed(Duration.zero);
       }
-      print('✅ Migrated ${buildingsSnap.docs.length} buildings');
+      logger.i('Migrated ${buildingsSnap.docs.length} buildings');
 
-      // Migrate rooms
       for (var roomDoc in allRooms) {
         final oldRoomId = roomDoc.id;
         final newRoomId = roomIdMap[oldRoomId]!;
         final roomData = roomDoc.data() as Map<String, dynamic>;
-        
-        // Update building ID reference
+
         final oldBuildingId = roomData['buildingId'];
         if (oldBuildingId != null && buildingIdMap.containsKey(oldBuildingId)) {
           roomData['buildingId'] = buildingIdMap[oldBuildingId];
         }
-        
+
         final newRoomRef = _firestore.collection('rooms').doc(newRoomId);
         safeBatchOperation(newRoomRef, roomData);
-        
+
         await Future.delayed(Duration.zero);
       }
-      print('✅ Migrated ${allRooms.length} rooms');
+      logger.i('Migrated ${allRooms.length} rooms');
 
-      // Migrate tenants
       for (var tenantDoc in allTenants) {
         final oldTenantId = tenantDoc.id;
         final newTenantId = tenantIdMap[oldTenantId]!;
         final tenantData = tenantDoc.data() as Map<String, dynamic>;
-        
-        // Update room ID reference
+
         final oldRoomId = tenantData['roomId'];
         if (oldRoomId != null && roomIdMap.containsKey(oldRoomId)) {
           tenantData['roomId'] = roomIdMap[oldRoomId];
         }
-        
-        // Update building ID reference (if exists)
+
         final oldBuildingId = tenantData['buildingId'];
         if (oldBuildingId != null && buildingIdMap.containsKey(oldBuildingId)) {
           tenantData['buildingId'] = buildingIdMap[oldBuildingId];
         }
-        
+
         final newTenantRef = _firestore.collection('tenants').doc(newTenantId);
         safeBatchOperation(newTenantRef, tenantData);
-        
+
         await Future.delayed(Duration.zero);
       }
-      print('✅ Migrated ${allTenants.length} tenants');
+      logger.i('Migrated ${allTenants.length} tenants');
 
-      // Migrate payments
       for (var paymentDoc in allPayments) {
         final paymentData = paymentDoc.data() as Map<String, dynamic>;
-        
-        // Update tenant ID reference
+
         final oldTenantId = paymentData['tenantId'];
         if (oldTenantId != null && tenantIdMap.containsKey(oldTenantId)) {
           paymentData['tenantId'] = tenantIdMap[oldTenantId];
         }
-        
-        // Update room ID reference (if exists)
+
         final oldRoomId = paymentData['roomId'];
         if (oldRoomId != null && roomIdMap.containsKey(oldRoomId)) {
           paymentData['roomId'] = roomIdMap[oldRoomId];
         }
-        
-        // Update building ID reference (if exists)
+
         final oldBuildingId = paymentData['buildingId'];
         if (oldBuildingId != null && buildingIdMap.containsKey(oldBuildingId)) {
           paymentData['buildingId'] = buildingIdMap[oldBuildingId];
         }
-        
-        // Generate new payment ID
+
         final newPaymentRef = _firestore.collection('payments').doc();
         safeBatchOperation(newPaymentRef, paymentData);
-        
+
         await Future.delayed(Duration.zero);
       }
-      print('✅ Migrated ${allPayments.length} payments');
+      logger.i('Migrated ${allPayments.length} payments');
 
-      // Commit remaining operations
       if (operationCount > 0) {
         batchCommits.add(batch.commit());
       }
@@ -1182,8 +1096,8 @@ class OrganizationService {
       // STEP 4: Commit all batches
       // ============================================
       onStatusUpdate?.call('Finalizing migration...');
-      print('⏳ Committing ${batchCommits.length} batches...');
-      
+      logger.i('Committing ${batchCommits.length} batches...');
+
       for (var i = 0; i < batchCommits.length; i++) {
         await batchCommits[i];
         double progress = 0.90 + ((i + 1) / batchCommits.length) * 0.09;
@@ -1193,17 +1107,15 @@ class OrganizationService {
 
       onProgress?.call(1.0);
       onStatusUpdate?.call('Migration completed successfully!');
-      print('✅ Migration completed successfully!');
-      print('📊 Summary:');
-      print('   - Buildings: ${buildingsSnap.docs.length}');
-      print('   - Rooms: ${allRooms.length}');
-      print('   - Tenants: ${allTenants.length}');
-      print('   - Payments: ${allPayments.length}');
-      
+      logger.i('Migration completed successfully! '
+          'Buildings: ${buildingsSnap.docs.length}, '
+          'Rooms: ${allRooms.length}, '
+          'Tenants: ${allTenants.length}, '
+          'Payments: ${allPayments.length}');
+
       return true;
     } catch (e, stackTrace) {
-      print('❌ Error during migration: $e');
-      print('Stack trace: $stackTrace');
+      logger.e('Error during migration', error: e, stackTrace: stackTrace);
       onStatusUpdate?.call('Migration failed: $e');
       return false;
     }
@@ -1220,7 +1132,6 @@ class OrganizationService {
     Function(String)? onStatusUpdate,
   }) async {
     try {
-      // Step 1: Migrate data (0% - 80%)
       onStatusUpdate?.call('Starting migration...');
       final migrationSuccess = await migrateOrganization(
         ownerId: ownerId,
@@ -1231,14 +1142,13 @@ class OrganizationService {
       );
 
       if (!migrationSuccess) {
-        print('❌ Migration failed, aborting delete');
+        logger.e('Migration failed, aborting delete');
         return false;
       }
 
-      // Step 2: Delete source organization (80% - 100%)
       onStatusUpdate?.call('Deleting source organization...');
       onProgress?.call(0.80);
-      
+
       final deleteSuccess = await deleteOrganization(
         ownerId,
         sourceOrgId,
@@ -1248,16 +1158,15 @@ class OrganizationService {
       if (deleteSuccess) {
         onProgress?.call(1.0);
         onStatusUpdate?.call('Migration and cleanup completed!');
-        print('✅ Migration and deletion completed successfully');
+        logger.i('Migration and deletion completed successfully');
         return true;
       } else {
-        print('⚠️ Migration succeeded but deletion failed');
+        logger.w('Migration succeeded but deletion failed');
         onStatusUpdate?.call('Migration succeeded but deletion failed. Please delete manually.');
         return false;
       }
     } catch (e, stackTrace) {
-      print('❌ Error during migrate and delete: $e');
-      print('Stack trace: $stackTrace');
+      logger.e('Error during migrate and delete', error: e, stackTrace: stackTrace);
       onStatusUpdate?.call('Operation failed: $e');
       return false;
     }
@@ -1268,16 +1177,15 @@ class OrganizationService {
   // ========================================
   Future<Map<String, int>> getMigrationPreview(String sourceOrgId) async {
     try {
-      print('📊 Generating migration preview for org: $sourceOrgId');
-      
+      logger.i('Generating migration preview for org: $sourceOrgId');
+
       final buildingsSnap = await _firestore
           .collection('buildings')
           .where('organizationId', isEqualTo: sourceOrgId)
           .get();
-      
+
       final buildingIds = buildingsSnap.docs.map((doc) => doc.id).toList();
-      
-      // Count rooms
+
       int roomCount = 0;
       if (buildingIds.isNotEmpty) {
         for (int i = 0; i < buildingIds.length; i += 10) {
@@ -1289,8 +1197,7 @@ class OrganizationService {
           roomCount += roomSnap.docs.length;
         }
       }
-      
-      // Get room IDs for tenant count
+
       List<String> roomIds = [];
       if (buildingIds.isNotEmpty) {
         for (int i = 0; i < buildingIds.length; i += 10) {
@@ -1302,8 +1209,7 @@ class OrganizationService {
           roomIds.addAll(roomSnap.docs.map((doc) => doc.id));
         }
       }
-      
-      // Count tenants
+
       int tenantCount = 0;
       if (roomIds.isNotEmpty) {
         for (int i = 0; i < roomIds.length; i += 10) {
@@ -1315,8 +1221,7 @@ class OrganizationService {
           tenantCount += tenantSnap.docs.length;
         }
       }
-      
-      // Get tenant IDs for payment count
+
       List<String> tenantIds = [];
       if (roomIds.isNotEmpty) {
         for (int i = 0; i < roomIds.length; i += 10) {
@@ -1328,8 +1233,7 @@ class OrganizationService {
           tenantIds.addAll(tenantSnap.docs.map((doc) => doc.id));
         }
       }
-      
-      // Count payments
+
       int paymentCount = 0;
       if (tenantIds.isNotEmpty) {
         for (int i = 0; i < tenantIds.length; i += 10) {
@@ -1341,7 +1245,7 @@ class OrganizationService {
           paymentCount += paymentSnap.docs.length;
         }
       }
-      
+
       return {
         'buildings': buildingsSnap.docs.length,
         'rooms': roomCount,
@@ -1349,7 +1253,7 @@ class OrganizationService {
         'payments': paymentCount,
       };
     } catch (e) {
-      print('❌ Error generating migration preview: $e');
+      logger.e('Error generating migration preview', error: e);
       return {
         'buildings': 0,
         'rooms': 0,

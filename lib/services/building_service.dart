@@ -1,6 +1,8 @@
 import 'package:apartment_management_project_2/models/buildings_model.dart';
 import 'package:apartment_management_project_2/services/tenants_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:apartment_management_project_2/widgets/app_logger.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class BuildingService {
   FirebaseFirestore get _firestore => FirebaseFirestore.instance;
@@ -9,12 +11,15 @@ class BuildingService {
   // CREATE - Add a new building
   // ========================================
   Future<String?> addBuilding(Building building) async {
+
+    if (FirebaseAuth.instance.currentUser == null) return null;
+    
     try {
       final docRef = await _firestore.collection('buildings').add(building.toMap());
-      print('Building added successfully: ${docRef.id}');
+      logger.i('Building added successfully: ${docRef.id}');
       return docRef.id;
     } catch (e) {
-      print('Error adding building: $e');
+      logger.e('Error adding building', error: e);
       return null;
     }
   }
@@ -26,6 +31,9 @@ class BuildingService {
     required String organizationId,
     required Map<String, dynamic> dialogResult,
   }) async {
+
+    if (FirebaseAuth.instance.currentUser == null) return null;
+    
     try {
       final building = Building(
         id: '', 
@@ -49,7 +57,7 @@ class BuildingService {
       final docRef = await _firestore.collection('buildings').add(building.toMap());
       return docRef.id;
     } catch (e) {
-      print('Error adding building: $e');
+      logger.e('Error adding building', error: e);
       return null;
     }
   }
@@ -69,7 +77,7 @@ class BuildingService {
           .map((doc) => Building.fromMap(doc.id, doc.data()))
           .toList();
     } catch (e) {
-      print('Error getting buildings: $e');
+      logger.e('Error getting buildings', error: e);
       return [];
     }
   }
@@ -82,13 +90,13 @@ class BuildingService {
       final doc = await _firestore.collection('buildings').doc(buildingId).get();
       
       if (!doc.exists) {
-        print('Building not found: $buildingId');
+        logger.w('Building not found: $buildingId');
         return null;
       }
       
       return Building.fromMap(doc.id, doc.data()!);
     } catch (e) {
-      print('Error getting building: $e');
+      logger.e('Error getting building', error: e);
       return null;
     }
   }
@@ -111,12 +119,15 @@ class BuildingService {
   // UPDATE - Update building information
   // ========================================
   Future<bool> updateBuilding(String buildingId, Map<String, dynamic> data) async {
+    
+    if (FirebaseAuth.instance.currentUser == null) return false;
+    
     try {
       await _firestore.collection('buildings').doc(buildingId).update(data);
-      print('Building updated successfully: $buildingId');
+      logger.i('Building updated successfully: $buildingId');
       return true;
     } catch (e) {
-      print('Error updating building: $e');
+      logger.e('Error updating building', error: e);
       return false;
     }
   }
@@ -128,6 +139,9 @@ class BuildingService {
     required String buildingId,
     required Map<String, dynamic> dialogResult,
   }) async {
+    
+    if (FirebaseAuth.instance.currentUser == null) return false;
+    
     try {
       final updateData = <String, dynamic>{
         'name': dialogResult['name'],
@@ -157,7 +171,7 @@ class BuildingService {
       await _firestore.collection('buildings').doc(buildingId).update(updateData);
       return true;
     } catch (e) {
-      print('Error updating building: $e');
+      logger.e('Error updating building', error: e);
       return false;
     }
   }
@@ -177,6 +191,9 @@ class BuildingService {
   // DELETE - Delete a building
   // ========================================
   Future<bool> deleteBuilding(String buildingId, String organizationId) async {
+    
+    if (FirebaseAuth.instance.currentUser == null) return false;
+    
     try {
       // Optional: Check if building has rooms before deleting
       final rooms = await _firestore
@@ -187,15 +204,15 @@ class BuildingService {
           .get();
       
       if (rooms.docs.isNotEmpty) {
-        print('Cannot delete building: It contains rooms');
+        logger.w('Cannot delete building: It contains rooms');
         return false;
       }
 
       await _firestore.collection('buildings').doc(buildingId).delete();
-      print('Building deleted successfully: $buildingId');
+      logger.i('Building deleted successfully: $buildingId');
       return true;
     } catch (e) {
-      print('Error deleting building: $e');
+      logger.e('Error deleting building', error: e);
       return false;
     }
   }
@@ -204,6 +221,9 @@ class BuildingService {
   // DELETE - Force delete building and all its rooms
   // ========================================
   Future<bool> deleteBuildingWithRooms(String buildingId, String organizationId) async {
+    
+    if (FirebaseAuth.instance.currentUser == null) return false;
+    
     try {
       // First, delete all rooms in this building
       final roomsSnapshot = await _firestore
@@ -222,10 +242,10 @@ class BuildingService {
       // Then delete the building
       await _firestore.collection('buildings').doc(buildingId).delete();
       
-      print('Building and ${roomsSnapshot.docs.length} rooms deleted successfully');
+      logger.i('Building and ${roomsSnapshot.docs.length} rooms deleted successfully');
       return true;
     } catch (e) {
-      print('Error deleting building with rooms: $e');
+      logger.e('Error deleting building with rooms', error: e);
       return false;
     }
   }
@@ -243,7 +263,7 @@ class BuildingService {
       
       return snapshot.count ?? 0;
     } catch (e) {
-      print('Error counting buildings: $e');
+      logger.e('Error counting buildings', error: e);
       return 0;
     }
   }
@@ -268,7 +288,7 @@ class BuildingService {
               building.name.toLowerCase().contains(searchTerm.toLowerCase()))
           .toList();
     } catch (e) {
-      print('Error searching buildings: $e');
+      logger.e('Error searching buildings', error: e);
       return [];
     }
   }
@@ -277,6 +297,14 @@ class BuildingService {
   // DELETE - Delete building with rooms and mark tenants as moved out
   // ========================================
   Future<Map<String, int>> deleteBuildingWithRoomsAndTenants(String buildingId, String organizationId) async {
+    
+    if (FirebaseAuth.instance.currentUser == null) {
+      return {
+        'rooms': 0,
+        'tenants': 0,
+      };
+    }
+    
     try {
       final tenantService = TenantService();
       
@@ -302,14 +330,14 @@ class BuildingService {
           .doc(buildingId)
           .delete();
       
-      print('✅ Building deleted: ${roomsSnapshot.docs.length} rooms, $tenantsAffected tenants marked as moved out');
+      logger.i('Building deleted: ${roomsSnapshot.docs.length} rooms, $tenantsAffected tenants marked as moved out');
       
       return {
         'rooms': roomsSnapshot.docs.length,
         'tenants': tenantsAffected,
       };
     } catch (e) {
-      print('❌ Error deleting building: $e');
+      logger.e('Error deleting building', error: e);
       return {
         'rooms': 0,
         'tenants': 0,

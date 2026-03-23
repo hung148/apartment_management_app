@@ -7,6 +7,8 @@ class Membership {
   final String role; // "admin" or "member"
   final String status; // "active" or "pending_removal"
   final DateTime joinedAt;
+  final String displayName; 
+  final String email;       
 
   Membership({
     required this.id,
@@ -15,6 +17,8 @@ class Membership {
     required this.role,
     required this.status,
     required this.joinedAt,
+    this.displayName = '', 
+    this.email = '',       
   });
 
   Map<String, dynamic> toMap() {
@@ -24,6 +28,8 @@ class Membership {
       'role': role,
       'status': status,
       'joinedAt': Timestamp.fromDate(joinedAt),
+      'displayName': displayName, 
+      'email': email,             
     };
   }
 
@@ -34,7 +40,9 @@ class Membership {
       ownerId: map['ownerId'] ?? '',
       role: map['role'] ?? 'member',
       status: map['status'] ?? 'active',
-      joinedAt: (map['joinedAt'] as Timestamp).toDate(),
+      joinedAt: (map['joinedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      displayName: map['displayName'] ?? '', 
+      email: map['email'] ?? '',             
     );
   }
 }
