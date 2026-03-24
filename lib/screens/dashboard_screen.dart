@@ -1784,15 +1784,22 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
     if (confirm == true) {
       _logoutLock.run(() async {
+        // 1. Clear state
         if (mounted) {
           setState(() {
             _ownerFuture = null;
             _orgsFuture  = null;
             _membershipFutures.clear();
           });
+        }
+
+        // 2. Sign out FIRST before any navigation
+        await _authService.signOut();
+
+        // 3. Navigate after auth is cleared
+        if (mounted) {
           Navigator.pushReplacementNamed(context, AppRouter.loginScreen);
         }
-        await _authService.signOut();
       });
     }
   }
@@ -2254,7 +2261,13 @@ class _DashboardScreenState extends State<DashboardScreen>
         child: FutureBuilder<Membership?>(
           future: _membershipFutures.putIfAbsent(
             org.id,
-            () => _organizationService.getUserMembership(owner.id, org.id),
+            () {
+              // Don't fire if user is already gone
+              if (FirebaseAuth.instance.currentUser == null) {
+                return Future.value(null);
+              }
+              return _organizationService.getUserMembership(owner.id, org.id);
+            },
           ),
           builder: (context, snapshot) {
             final role    = snapshot.data?.role ?? 'member';

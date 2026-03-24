@@ -3,6 +3,7 @@ import 'package:apartment_management_project_2/models/organization_model.dart';
 import 'package:apartment_management_project_2/widgets/app_logger.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
 
 class OrganizationService {
@@ -283,14 +284,18 @@ class OrganizationService {
       final membershipId = '${ownerId}_${orgId}';
       final doc = await _firestore.collection('memberships').doc(membershipId).get();
 
-      if (!doc.exists) {
-        return null;
-      }
+      if (!doc.exists) return null;
 
       return Membership.fromMap(doc.id, doc.data()!);
     } catch (e) {
+      // FirebaseException path (most cases)
       if (e is FirebaseException && e.code == 'permission-denied') {
-        logger.w('getUserMembership: permission-denied (likely logout race), suppressing');
+        logger.w('getUserMembership: permission-denied (FirebaseException), suppressing');
+        return null;
+      }
+      // PlatformException path (logout race on some SDK versions)
+      if (e is PlatformException && e.code == 'permission-denied') {
+        logger.w('getUserMembership: permission-denied (PlatformException), suppressing');
         return null;
       }
       logger.e('Error getting membership', error: e);
