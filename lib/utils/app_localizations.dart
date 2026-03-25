@@ -10,6 +10,7 @@ class AppTranslations {
 
   static final Map<String, Map<String, String>> _values = {
     'vi': {
+      // ── Existing keys ──────────────────────────────────────────────────────
       'lang': 'ngôn ngữ',
       'select_language': 'Chọn ngôn ngữ',
       'vietnamese': 'Tiếng Việt',
@@ -214,8 +215,397 @@ class AppTranslations {
       'min_window_size': 'Kích thước cửa sổ quá nhỏ',
       'downloading_update': 'Đang tải xuống bản cập nhật',
       'connecting': 'Đang kết nối',
+
+      // ── Organization Screen – Buildings tab ────────────────────────────────
+      'delete_building_rooms_removed': 'phòng đã bị xóa',
+      'delete_building_tenants_moved': 'người thuê đã được đánh dấu "Đã chuyển đi"',
+      'building_deleted_summary': 'Đã xóa toà nhà\n• {{rooms}} phòng đã bị xóa\n• {{tenants}} người thuê đã được đánh dấu "Đã chuyển đi"',
+      'cannot_delete_building': 'Không thể xóa toà nhà',
+      'delete_building_error': 'Lỗi: {{error}}',
+      'loading': 'Đang tải...',
+
+      // ── Organization Screen – Payments tab ─────────────────────────────────
+      'search_payments_hint': 'Tìm kiếm hóa đơn...',
+      'no_payments_found': 'Không tìm thấy hóa đơn',
+      'found_count_payments': 'Tìm thấy {{count}} hóa đơn',
+      'edit_payment': 'Chỉnh Sửa',
+      'delete_payment': 'Xóa',
+      'payment_type_rent': 'Tiền thuê',
+      'payment_type_electricity': 'Tiền điện',
+      'payment_type_water': 'Tiền nước',
+      'payment_type_internet': 'Tiền internet',
+      'payment_type_parking': 'Tiền gửi xe',
+      'payment_type_maintenance': 'Phí bảo trì',
+      'payment_type_deposit': 'Tiền cọc',
+      'payment_type_penalty': 'Tiền phạt',
+      'payment_type_other': 'Khác',
+
+      // ── Organization Screen – Statistics tab ───────────────────────────────
+      'stat_overview_title': 'Tổng quan',
+      'stat_buildings': 'Toà nhà',
+      'stat_tenants': 'Người thuê',
+      'stat_paid': 'Đã thanh toán',
+      'stat_pending': 'Chưa thanh toán',
+      'stat_overdue': 'Quá hạn',
+      'stat_total_payments': 'Tổng hóa đơn',
+      'stat_revenue_title': 'Doanh thu',
+      'stat_collected': 'Đã thu',
+      'stat_uncollected': 'Chưa thu',
+      'stat_monthly_revenue': 'Doanh thu theo tháng',
+      'stat_occupancy_by_building': 'Tỷ lệ lấp đầy theo toà nhà hiện tại',
+      'stat_occupancy_trend': 'Xu hướng lấp đầy theo tháng',
+      'stat_no_revenue_data': 'Chưa có dữ liệu doanh thu',
+      'stat_no_building_data': 'Chưa có dữ liệu toà nhà',
+      'stat_no_building_selected': 'Chưa có dữ liệu cho toà nhà này',
+      'stat_filter_by_building': 'Lọc theo toà nhà:',
+      'stat_all_buildings': 'Tất cả toà nhà',
+      'stat_select_building': 'Chọn tòa nhà',
+      'stat_occupancy_rate': 'Tỷ lệ lấp đầy (%)',
+      'stat_no_data': 'Không có dữ liệu',
+
+      // ── Organization Screen – Members tab ──────────────────────────────────
+      'member_role_admin': 'Quản trị viên',
+      'member_role_member': 'Thành viên',
+      'member_promote_confirm_title': 'Thăng cấp Admin',
+      'member_promote_confirm_body': 'Bạn có chắc muốn thăng cấp {{name}} thành admin?',
+      'member_remove_confirm_title': 'Xác nhận xóa',
+      'member_remove_confirm_body': 'Bạn có chắc muốn xóa {{name}} khỏi tổ chức?',
+      'member_promoted_success': 'Đã thăng cấp thành admin',
+      'member_removed_success': 'Đã xóa thành viên',
+
+      // ── PDF / Excel export ─────────────────────────────────────────────────
+      'export_cancelled': 'Hủy xuất PDF',
+      'export_pdf_saved': 'Đã lưu PDF: {{filename}}',
+      'export_pdf_error': 'Lỗi khi xuất PDF: {{error}}',
+      'export_excel_saved': 'Đã lưu Excel: {{filename}}',
+      'export_excel_success': 'Tệp Excel đã được tạo thành công',
+      'export_excel_error': 'Lỗi khi xuất Excel: {{error}}',
+      // PDF report headings
+      'pdf_report_title': 'BÁO CÁO THỐNG KÊ TỔNG QUAN',
+      'pdf_created_at': 'Ngày tạo: {{date}}',
+      'pdf_section_overview': '1. TỔNG QUAN',
+      'pdf_section_tenant_status': '2. TÌNH TRẠNG NGƯỜI THUÊ',
+      'pdf_section_payment_summary': '3. TỔNG KẾT THANH TOÁN',
+      'pdf_total_buildings': 'Toà nhà',
+      'pdf_total_rooms': 'Tổng phòng',
+      'pdf_active_tenants': 'Đang thuê',
+      'pdf_occupancy_rate': 'Tỷ lệ lấp đầy',
+      'pdf_empty_rooms': 'Phòng trống',
+      'pdf_moved_out': 'Đã chuyển đi',
+      'pdf_tenant_status_active': 'Đang hoạt động',
+      'pdf_tenant_status_inactive': 'Không hoạt động',
+      'pdf_tenant_status_moved': 'Đã chuyển đi',
+      'pdf_tenant_status_suspended': 'Bị đình chỉ',
+      'pdf_tenant_status_total': 'TỔNG',
+      'pdf_tenant_col_status': 'Trạng thái',
+      'pdf_tenant_col_count': 'Số lượng',
+      'pdf_tenant_col_rate': 'Tỷ lệ',
+      'pdf_collected': 'Đã thu',
+      'pdf_uncollected': 'Chưa thu',
+      'pdf_overdue': 'Quá hạn',
+      'pdf_cancelled': 'Đã hủy',
+      'pdf_invoices': '{{count}} hóa đơn',
+      'pdf_auto_generated': 'Báo cáo được tạo tự động',
+      'pdf_page': 'Trang {{n}}',
+      'pdf_building_detail_title': 'CHI TIẾT THEO TÒA NHÀ',
+      'pdf_building_col_name': 'Toà nhà',
+      'pdf_building_col_total': 'Tổng phòng',
+      'pdf_building_col_occupied': 'Đang thuê',
+      'pdf_building_col_empty': 'Trống',
+      'pdf_building_col_rate': 'Tỷ lệ',
+      'pdf_building_col_revenue': 'Doanh thu',
+      'pdf_building_grand_total': 'TỔNG CỘNG',
+      'pdf_no_building_data': 'Không có dữ liệu toà nhà',
+      'pdf_revenue_title': 'PHÂN TÍCH DOANH THU',
+      'pdf_revenue_6months': 'Doanh thu 6 tháng gần nhất',
+      'pdf_revenue_detail': 'Chi tiết doanh thu theo tháng',
+      'pdf_revenue_col_month': 'Tháng',
+      'pdf_revenue_col_amount': 'Doanh thu',
+      'pdf_revenue_col_rate': 'Tỷ lệ',
+      // Excel sheet names & headings
+      'excel_sheet_summary': 'Tổng Quan',
+      'excel_sheet_building': 'Chi Tiết Tòa Nhà',
+      'excel_sheet_payments': 'Thanh Toán Chi Tiết',
+      'excel_summary_title': 'BÁO CÁO THỐNG KÊ TỔNG QUAN',
+      'excel_building_title': 'CHI TIẾT THEO TÒA NHÀ',
+      'excel_payments_title': 'DANH SÁCH THANH TOÁN CHI TIẾT',
+      'excel_col_invoice_id': 'Mã hóa đơn',
+      'excel_col_tenant': 'Người thuê',
+      'excel_col_amount': 'Số tiền',
+      'excel_col_status': 'Trạng thái',
+      'excel_col_paid_date': 'Ngày thanh toán',
+      'excel_col_due_date': 'Hạn thanh toán',
+      'excel_grand_total': 'TỔNG CỘNG',
+      'excel_created_at': 'Ngày tạo: {{date}}',
+      'excel_stat_buildings': 'Toà nhà',
+      'excel_stat_rooms': 'Tổng phòng',
+      'excel_stat_rented': 'Đang thuê',
+      'excel_stat_occupancy': 'Tỷ lệ lấp đầy',
+      'excel_stat_empty': 'Phòng trống',
+      'excel_stat_moved_out': 'Đã chuyển đi',
+
+      // ── Building Dialog ───────────────────────────────────────────────────
+      'building_dialog_title_add': 'Thêm Toà Nhà',
+      'building_dialog_title_edit': 'Sửa Toà Nhà',
+ 
+      // Form fields
+      'building_name_label': 'Tên toà nhà *',
+      'building_name_hint': 'VD: Toà A',
+      'building_address_label': 'Địa chỉ *',
+      'building_address_hint': 'VD: 123 Đường ABC',
+      'building_auto_generate_rooms': 'Tự động tạo phòng',
+      'building_floors_label': 'Số tầng *',
+      'building_room_prefix_label': 'Tiền tố số phòng',
+ 
+      // Toggle buttons
+      'building_uniform': 'Đồng đều',
+      'building_custom': 'Tùy chỉnh',
+ 
+      // Uniform section
+      'building_rooms_per_floor_label': 'Số phòng mỗi tầng',
+      'building_room_type_label': 'Loại phòng',
+      'building_room_type_standard': 'Tiêu chuẩn',
+      'building_area_label': 'Diện tích (m²)',
+ 
+      // Custom / per-floor section
+      'building_floor_config_title': 'Cấu hình tầng',
+      'building_bulk_edit': 'Chỉnh hàng loạt',
+      'building_bulk_close': 'Đóng',
+      'building_bulk_from_floor': 'Từ tầng',
+      'building_bulk_to_floor': 'Đến tầng',
+      'building_bulk_rooms': 'Số phòng',
+      'building_bulk_type': 'Loại',
+      'building_bulk_area': 'm²',
+      'building_bulk_apply': 'Áp dụng hàng loạt',
+ 
+      // Floor row columns
+      'building_col_count': 'SL',
+      'building_col_type': 'Loại',
+      'building_col_area': 'm²',
+ 
+      // Custom room names dialog
+      'building_set_room_names_tooltip': 'Đặt tên phòng',
+      'building_enter_room_count_first': 'Vui lòng nhập số lượng phòng trước',
+      'building_custom_names_title': 'Tên phòng tầng {{floor}}',
+      'building_room_label': 'Phòng {{n}}',
+      'building_room_name_hint': 'VD: Phòng VIP, Studio A...',
+      'building_save': 'Lưu',
+ 
+      // Action buttons
+      'building_action_add': 'Thêm',
+      'building_action_update': 'Cập nhật',
+ 
+      // Validation errors
+      'building_error_name_required': 'Vui lòng nhập tên toà nhà',
+      'building_error_address_required': 'Vui lòng nhập địa chỉ',
+      'building_error_floors_invalid': 'Vui lòng nhập số tầng hợp lệ',
+      'building_error_floors_required': 'Vui lòng nhập số tầng',
+      'building_error_floors_positive': 'Số tầng phải lớn hơn 0',
+      'building_error_rooms_invalid': 'Vui lòng nhập số phòng mỗi tầng hợp lệ',
+      'building_error_rooms_required': 'Vui lòng nhập số phòng',
+      'building_error_rooms_positive': 'Số phòng phải lớn hơn 0',
+    
+      // ── Tenants Tab ───────────────────────────────────────────────────────
+ 
+      // General
+      'tenant_no_data': 'Không có dữ liệu',
+      'tenant_unknown': 'Không xác định',
+ 
+      // Search bar
+      'tenant_search_hint': 'Tìm kiếm theo tên, SĐT, email, nghề nghiệp...',
+      'tenant_no_tenants': 'Chưa có người thuê nào',
+      'tenant_no_results': 'Không tìm thấy kết quả',
+      'tenant_try_other_keyword': 'Thử tìm kiếm với từ khóa khác',
+      'tenant_found_results': 'Tìm thấy {{count}} kết quả',
+ 
+      // Add button
+      'tenant_add_button': 'Thêm người thuê',
+ 
+      // Tenant card
+      'tenant_main_tenant_badge': 'Chủ phòng',
+      'tenant_location_label': 'Vị trí',
+      'tenant_previous_location_label': 'Vị trí trước đây',
+      'tenant_location_value': '{{building}} - Phòng {{room}}',
+      'tenant_status_label': 'Trạng thái:',
+      'tenant_vehicle_count': '{{count}} phương tiện',
+      'tenant_options_tooltip': 'Tùy chọn',
+ 
+      // Detail dialog – section headings
+      'tenant_detail_location': 'Vị trí',
+      'tenant_detail_previous_location': 'Vị trí trước đây',
+      'tenant_detail_building': 'Toà nhà',
+      'tenant_detail_room': 'Phòng',
+      'tenant_detail_contact_section': 'Thông tin liên hệ',
+      'tenant_detail_phone': 'Số điện thoại',
+      'tenant_detail_email': 'Email',
+      'tenant_detail_personal_section': 'Thông tin cá nhân',
+      'tenant_detail_gender': 'Giới tính',
+      'tenant_detail_national_id': 'CMND/CCCD',
+      'tenant_detail_occupation': 'Nghề nghiệp',
+      'tenant_detail_workplace': 'Nơi làm việc',
+      'tenant_detail_rental_section': 'Thông tin thuê',
+      'tenant_detail_move_in_date': 'Ngày vào ở',
+      'tenant_detail_days_living': 'Số ngày ở',
+      'tenant_detail_days_value': '{{days}} ngày',
+      'tenant_detail_monthly_rent': 'Tiền thuê',
+      'tenant_detail_deposit': 'Tiền cọc',
+      'tenant_detail_apartment_type': 'Loại căn hộ',
+      'tenant_detail_area': 'Diện tích',
+      'tenant_detail_area_value': '{{area}} m²',
+      'tenant_detail_moveout_section': 'Thông tin chuyển đi',
+      'tenant_detail_move_out_date': 'Ngày chuyển đi',
+      'tenant_detail_duration': 'Thời gian ở',
+      'tenant_detail_reason': 'Lý do',
+      'tenant_detail_notes': 'Ghi chú',
+      'tenant_detail_contract_section': 'Hợp đồng',
+      'tenant_detail_contract_start': 'Bắt đầu',
+      'tenant_detail_contract_end': 'Kết thúc',
+      'tenant_detail_contract_end_date': 'Ngày kết thúc hợp đồng',
+      'tenant_detail_contract_status': 'Trạng thái hợp đồng',
+      'tenant_detail_early_termination': 'Chấm dứt sớm',
+      'tenant_detail_end_label': 'Kết thúc',
+      'tenant_detail_days_early': '{{days}} ngày trước hạn',
+      'tenant_detail_on_time': 'Đúng thời hạn hợp đồng',
+      'tenant_detail_remaining': 'Còn lại',
+      'tenant_detail_vehicles_section': 'Phương tiện ({{count}})',
+      'tenant_detail_history_section': 'Lịch sử thuê ({{count}})',
+      'tenant_detail_history_dates': 'Từ {{from}} đến {{to}}',
+      'tenant_detail_status': 'Trạng thái',
+ 
+      // Options label (bottom sheet / dialog title)
+      'tenant_options_label': 'Tùy chọn',
+ 
+      // Options menu items
+      'tenant_menu_view_detail': 'Xem chi tiết',
+      'tenant_menu_edit': 'Chỉnh sửa thông tin',
+      'tenant_menu_move_room': 'Chuyển phòng',
+      'tenant_menu_move_out': 'Chuyển đi',
+      'tenant_menu_vehicles': 'Quản lý phương tiện',
+      'tenant_menu_rental_history': 'Lịch sử thuê phòng',
+      'tenant_menu_delete': 'Xóa',
+ 
+      // Vehicle management dialog
+      'tenant_vehicle_manage_title': 'Quản lý phương tiện',
+      'tenant_vehicle_add_tooltip': 'Thêm phương tiện',
+      'tenant_vehicle_empty': 'Chưa có phương tiện nào',
+      'tenant_vehicle_added': 'Đã thêm phương tiện',
+      'tenant_vehicle_add_error': 'Lỗi: Không thể thêm phương tiện',
+      'tenant_vehicle_updated': 'Đã cập nhật',
+      'tenant_vehicle_parking_registered': 'Đã đăng ký bãi đỗ',
+      'tenant_vehicle_parking_unregistered': 'Đã hủy bãi đỗ',
+      'tenant_vehicle_deleted': 'Đã xóa phương tiện',
+      'tenant_vehicle_parking_spot': 'Bãi đỗ: {{spot}}',
+      'tenant_error': 'Lỗi: {{error}}',
+ 
+      // Vehicle popup menu
+      'tenant_vehicle_menu_edit': 'Chỉnh sửa',
+      'tenant_vehicle_menu_register_parking': 'Đăng ký bãi đỗ',
+      'tenant_vehicle_menu_unregister_parking': 'Hủy bãi đỗ',
+      'tenant_vehicle_menu_delete': 'Xóa',
+ 
+      // Vehicle delete confirm dialog
+      'tenant_vehicle_delete_title': 'Xóa phương tiện',
+      'tenant_vehicle_delete_confirm': 'Xóa phương tiện {{plate}}?',
+ 
+      // Add / Edit vehicle dialogs
+      'tenant_vehicle_add_title': 'Thêm phương tiện',
+      'tenant_vehicle_edit_title': 'Chỉnh sửa phương tiện',
+      'tenant_vehicle_plate_label': 'Biển số xe *',
+      'tenant_vehicle_type_label': 'Loại xe *',
+      'tenant_vehicle_brand_label': 'Hãng xe',
+      'tenant_vehicle_model_label': 'Model',
+      'tenant_vehicle_color_label': 'Màu sắc',
+      'tenant_vehicle_color_hint': 'Đen, Trắng, Xanh...',
+      'tenant_vehicle_plate_required': 'Vui lòng nhập biển số xe',
+      'tenant_vehicle_add_action': 'Thêm',
+      'tenant_vehicle_save_action': 'Lưu',
+ 
+      // Vehicle types
+      'tenant_vehicle_motorcycle': 'Xe máy',
+      'tenant_vehicle_car': 'Ô tô',
+      'tenant_vehicle_bicycle': 'Xe đạp',
+      'tenant_vehicle_electric_bike': 'Xe đạp điện',
+      'tenant_vehicle_other': 'Khác',
+ 
+      // Parking spot dialog
+      'tenant_parking_register_title': 'Đăng ký bãi đỗ',
+      'tenant_parking_spot_label': 'Vị trí bãi đỗ',
+      'tenant_parking_spot_required': 'Vui lòng nhập vị trí',
+      'tenant_parking_register_action': 'Đăng ký',
+ 
+      // Rental history dialog
+      'tenant_rental_history_title': 'Lịch sử thuê phòng',
+      'tenant_rental_history_empty': 'Không có lịch sử thuê',
+ 
+      // Edit tenant dialog
+      'tenant_edit_title': 'Chỉnh sửa thông tin',
+      'tenant_edit_save': 'Lưu thay đổi',
+      'tenant_section_invoice_apt': 'Hóa đơn & Căn hộ',
+ 
+      // Shared field labels
+      'tenant_field_name': 'Họ và tên',
+      'tenant_field_name_required': 'Họ và tên *',
+      'tenant_field_phone': 'Số điện thoại',
+      'tenant_field_phone_required': 'Số điện thoại *',
+      'tenant_field_email': 'Email',
+      'tenant_field_national_id': 'CMND/CCCD',
+      'tenant_field_occupation': 'Nghề nghiệp',
+      'tenant_field_workplace': 'Nơi làm việc',
+      'tenant_field_rent': 'Giá thuê',
+      'tenant_field_rent_required': 'Tiền thuê hàng tháng *',
+      'tenant_field_apt_type': 'Loại căn hộ',
+      'tenant_field_area': 'Diện tích',
+      'tenant_field_move_in_date': 'Ngày chuyển vào',
+      'tenant_field_building': 'Toà nhà *',
+      'tenant_field_room': 'Phòng *',
+      'tenant_field_status': 'Trạng thái',
+      'tenant_field_main_tenant': 'Chủ hộ',
+ 
+      // Status dropdown values (for add dialog)
+      'tenant_status_active': 'Đang ở',
+      'tenant_status_inactive': 'Tạm ngưng',
+      'tenant_status_moved_out': 'Đã dọn đi',
+ 
+      // Room dropdown labels
+      'tenant_room_occupied': 'Phòng {{number}} (Đã thuê)',
+      'tenant_room_vacant': 'Phòng {{number}} (Trống)',
+ 
+      // Add tenant dialog
+      'tenant_add_title': 'Thêm Người Thuê',
+      'tenant_add_action': 'Thêm mới',
+ 
+      // Move room dialog
+      'tenant_move_room_title': 'Chuyển phòng mới',
+      'tenant_move_room_building': 'Chọn Toà nhà',
+      'tenant_move_room_room': 'Chọn Phòng',
+      'tenant_move_room_confirm': 'Xác nhận chuyển',
+      'tenant_move_room_success': 'Đã chuyển phòng thành công',
+      'tenant_move_room_error': 'Lỗi: Không thể chuyển phòng',
+ 
+      // Move out dialog
+      'tenant_moveout_title': 'Đánh dấu đã chuyển đi',
+      'tenant_moveout_confirm': 'Đánh dấu {{name}} là đã chuyển đi?',
+      'tenant_moveout_date_label': 'Ngày chuyển đi',
+      'tenant_moveout_reason_label': 'Lý do',
+      'tenant_moveout_reason_1': 'Chuyển đi',
+      'tenant_moveout_reason_2': 'Hết hạn hợp đồng',
+      'tenant_moveout_reason_3': 'Chấm dứt hợp đồng sớm',
+      'tenant_moveout_reason_4': 'Vi phạm hợp đồng',
+      'tenant_moveout_reason_5': 'Khác',
+      'tenant_moveout_early_warning': 'Chấm dứt sớm {{days}} ngày',
+      'tenant_moveout_confirm_action': 'Xác nhận',
+      'tenant_moveout_success': 'Đã đánh dấu chuyển đi',
+      'tenant_moveout_failed': 'Thất bại',
+ 
+      // Delete tenant
+      'tenant_delete_title': 'Xóa người thuê',
+      'tenant_delete_confirm': 'Bạn có chắc muốn xóa {{name}}? Hành động này không thể hoàn tác.',
+      'tenant_delete_success': 'Đã xóa',
+      'tenant_delete_failed': 'Xóa thất bại',
     },
+
     'en': {
+      // ── Existing keys ──────────────────────────────────────────────────────
       'lang': 'language',
       'select_language': 'Select Language',
       'vietnamese': 'Vietnamese',
@@ -420,6 +810,393 @@ class AppTranslations {
       'min_window_size': 'Window size too small',
       'downloading_update': 'Downloading update',
       'connecting': 'Connecting',
+
+      // ── Organization Screen – Buildings tab ────────────────────────────────
+      'delete_building_rooms_removed': 'rooms deleted',
+      'delete_building_tenants_moved': 'tenants marked as "Moved Out"',
+      'building_deleted_summary': 'Building deleted\n• {{rooms}} rooms deleted\n• {{tenants}} tenants marked as "Moved Out"',
+      'cannot_delete_building': 'Cannot delete building',
+      'delete_building_error': 'Error: {{error}}',
+      'loading': 'Loading...',
+
+      // ── Organization Screen – Payments tab ─────────────────────────────────
+      'search_payments_hint': 'Search payments...',
+      'no_payments_found': 'No payments found',
+      'found_count_payments': 'Found {{count}} payments',
+      'edit_payment': 'Edit',
+      'delete_payment': 'Delete',
+      'payment_type_rent': 'Rent',
+      'payment_type_electricity': 'Electricity',
+      'payment_type_water': 'Water',
+      'payment_type_internet': 'Internet',
+      'payment_type_parking': 'Parking',
+      'payment_type_maintenance': 'Maintenance',
+      'payment_type_deposit': 'Deposit',
+      'payment_type_penalty': 'Penalty',
+      'payment_type_other': 'Other',
+
+      // ── Organization Screen – Statistics tab ───────────────────────────────
+      'stat_overview_title': 'Overview',
+      'stat_buildings': 'Buildings',
+      'stat_tenants': 'Tenants',
+      'stat_paid': 'Paid',
+      'stat_pending': 'Pending',
+      'stat_overdue': 'Overdue',
+      'stat_total_payments': 'Total Payments',
+      'stat_revenue_title': 'Revenue',
+      'stat_collected': 'Collected',
+      'stat_uncollected': 'Uncollected',
+      'stat_monthly_revenue': 'Monthly Revenue',
+      'stat_occupancy_by_building': 'Current Occupancy by Building',
+      'stat_occupancy_trend': 'Monthly Occupancy Trend',
+      'stat_no_revenue_data': 'No revenue data yet',
+      'stat_no_building_data': 'No building data yet',
+      'stat_no_building_selected': 'No data for this building yet',
+      'stat_filter_by_building': 'Filter by building:',
+      'stat_all_buildings': 'All buildings',
+      'stat_select_building': 'Select building',
+      'stat_occupancy_rate': 'Occupancy rate (%)',
+      'stat_no_data': 'No data available',
+
+      // ── Organization Screen – Members tab ──────────────────────────────────
+      'member_role_admin': 'Admin',
+      'member_role_member': 'Member',
+      'member_promote_confirm_title': 'Promote to Admin',
+      'member_promote_confirm_body': 'Are you sure you want to promote {{name}} to admin?',
+      'member_remove_confirm_title': 'Confirm removal',
+      'member_remove_confirm_body': 'Are you sure you want to remove {{name}} from the organization?',
+      'member_promoted_success': 'Promoted to admin',
+      'member_removed_success': 'Member removed',
+
+      // ── PDF / Excel export ─────────────────────────────────────────────────
+      'export_cancelled': 'PDF export cancelled',
+      'export_pdf_saved': 'PDF saved: {{filename}}',
+      'export_pdf_error': 'Error exporting PDF: {{error}}',
+      'export_excel_saved': 'Excel saved: {{filename}}',
+      'export_excel_success': 'Excel file created successfully',
+      'export_excel_error': 'Error exporting Excel: {{error}}',
+      // PDF report headings
+      'pdf_report_title': 'STATISTICS REPORT',
+      'pdf_created_at': 'Created: {{date}}',
+      'pdf_section_overview': '1. OVERVIEW',
+      'pdf_section_tenant_status': '2. TENANT STATUS',
+      'pdf_section_payment_summary': '3. PAYMENT SUMMARY',
+      'pdf_total_buildings': 'Buildings',
+      'pdf_total_rooms': 'Total Rooms',
+      'pdf_active_tenants': 'Rented',
+      'pdf_occupancy_rate': 'Occupancy Rate',
+      'pdf_empty_rooms': 'Empty Rooms',
+      'pdf_moved_out': 'Moved Out',
+      'pdf_tenant_status_active': 'Active',
+      'pdf_tenant_status_inactive': 'Inactive',
+      'pdf_tenant_status_moved': 'Moved Out',
+      'pdf_tenant_status_suspended': 'Suspended',
+      'pdf_tenant_status_total': 'TOTAL',
+      'pdf_tenant_col_status': 'Status',
+      'pdf_tenant_col_count': 'Count',
+      'pdf_tenant_col_rate': 'Rate',
+      'pdf_collected': 'Collected',
+      'pdf_uncollected': 'Uncollected',
+      'pdf_overdue': 'Overdue',
+      'pdf_cancelled': 'Cancelled',
+      'pdf_invoices': '{{count}} invoices',
+      'pdf_auto_generated': 'Auto-generated report',
+      'pdf_page': 'Page {{n}}',
+      'pdf_building_detail_title': 'BUILDING DETAILS',
+      'pdf_building_col_name': 'Building',
+      'pdf_building_col_total': 'Total Rooms',
+      'pdf_building_col_occupied': 'Occupied',
+      'pdf_building_col_empty': 'Empty',
+      'pdf_building_col_rate': 'Rate',
+      'pdf_building_col_revenue': 'Revenue',
+      'pdf_building_grand_total': 'GRAND TOTAL',
+      'pdf_no_building_data': 'No building data available',
+      'pdf_revenue_title': 'REVENUE ANALYSIS',
+      'pdf_revenue_6months': 'Revenue – Last 6 Months',
+      'pdf_revenue_detail': 'Monthly Revenue Breakdown',
+      'pdf_revenue_col_month': 'Month',
+      'pdf_revenue_col_amount': 'Revenue',
+      'pdf_revenue_col_rate': 'Rate',
+      // Excel sheet names & headings
+      'excel_sheet_summary': 'Summary',
+      'excel_sheet_building': 'Building Details',
+      'excel_sheet_payments': 'Payment Details',
+      'excel_summary_title': 'STATISTICS REPORT',
+      'excel_building_title': 'BUILDING DETAILS',
+      'excel_payments_title': 'DETAILED PAYMENT LIST',
+      'excel_col_invoice_id': 'Invoice ID',
+      'excel_col_tenant': 'Tenant',
+      'excel_col_amount': 'Amount',
+      'excel_col_status': 'Status',
+      'excel_col_paid_date': 'Paid Date',
+      'excel_col_due_date': 'Due Date',
+      'excel_grand_total': 'GRAND TOTAL',
+      'excel_created_at': 'Created: {{date}}',
+      'excel_stat_buildings': 'Buildings',
+      'excel_stat_rooms': 'Total Rooms',
+      'excel_stat_rented': 'Rented',
+      'excel_stat_occupancy': 'Occupancy Rate',
+      'excel_stat_empty': 'Empty Rooms',
+      'excel_stat_moved_out': 'Moved Out',
+
+      // ── Building Dialog ───────────────────────────────────────────────────
+      'building_dialog_title_add': 'Add Building',
+      'building_dialog_title_edit': 'Edit Building',
+ 
+      // Form fields
+      'building_name_label': 'Building Name *',
+      'building_name_hint': 'E.g.: Block A',
+      'building_address_label': 'Address *',
+      'building_address_hint': 'E.g.: 123 ABC Street',
+      'building_auto_generate_rooms': 'Auto-generate rooms',
+      'building_floors_label': 'Number of floors *',
+      'building_room_prefix_label': 'Room number prefix',
+ 
+      // Toggle buttons
+      'building_uniform': 'Uniform',
+      'building_custom': 'Custom',
+ 
+      // Uniform section
+      'building_rooms_per_floor_label': 'Rooms per floor',
+      'building_room_type_label': 'Room type',
+      'building_room_type_standard': 'Standard',
+      'building_area_label': 'Area (m²)',
+ 
+      // Custom / per-floor section
+      'building_floor_config_title': 'Floor configuration',
+      'building_bulk_edit': 'Bulk edit',
+      'building_bulk_close': 'Close',
+      'building_bulk_from_floor': 'From floor',
+      'building_bulk_to_floor': 'To floor',
+      'building_bulk_rooms': 'Rooms',
+      'building_bulk_type': 'Type',
+      'building_bulk_area': 'm²',
+      'building_bulk_apply': 'Apply to all',
+ 
+      // Floor row columns
+      'building_col_count': 'Qty',
+      'building_col_type': 'Type',
+      'building_col_area': 'm²',
+ 
+      // Custom room names dialog
+      'building_set_room_names_tooltip': 'Set room names',
+      'building_enter_room_count_first': 'Please enter the number of rooms first',
+      'building_custom_names_title': 'Room names – Floor {{floor}}',
+      'building_room_label': 'Room {{n}}',
+      'building_room_name_hint': 'E.g.: VIP Room, Studio A...',
+      'building_save': 'Save',
+ 
+      // Action buttons
+      'building_action_add': 'Add',
+      'building_action_update': 'Update',
+ 
+      // Validation errors
+      'building_error_name_required': 'Please enter the building name',
+      'building_error_address_required': 'Please enter the address',
+      'building_error_floors_invalid': 'Please enter a valid number of floors',
+      'building_error_floors_required': 'Please enter the number of floors',
+      'building_error_floors_positive': 'Number of floors must be greater than 0',
+      'building_error_rooms_invalid': 'Please enter a valid number of rooms per floor',
+      'building_error_rooms_required': 'Please enter the number of rooms',
+      'building_error_rooms_positive': 'Number of rooms must be greater than 0',
+
+      // ── Tenants Tab ───────────────────────────────────────────────────────
+ 
+      // General
+      'tenant_no_data': 'No data available',
+      'tenant_unknown': 'Unknown',
+ 
+      // Search bar
+      'tenant_search_hint': 'Search by name, phone, email, occupation...',
+      'tenant_no_tenants': 'No tenants yet',
+      'tenant_no_results': 'No results found',
+      'tenant_try_other_keyword': 'Try a different keyword',
+      'tenant_found_results': 'Found {{count}} results',
+ 
+      // Add button
+      'tenant_add_button': 'Add tenant',
+ 
+      // Tenant card
+      'tenant_main_tenant_badge': 'Primary tenant',
+      'tenant_location_label': 'Location',
+      'tenant_previous_location_label': 'Previous location',
+      'tenant_location_value': '{{building}} – Room {{room}}',
+      'tenant_status_label': 'Status:',
+      'tenant_vehicle_count': '{{count}} vehicle(s)',
+      'tenant_options_tooltip': 'Options',
+ 
+      // Detail dialog – section headings
+      'tenant_detail_location': 'Location',
+      'tenant_detail_previous_location': 'Previous location',
+      'tenant_detail_building': 'Building',
+      'tenant_detail_room': 'Room',
+      'tenant_detail_contact_section': 'Contact information',
+      'tenant_detail_phone': 'Phone',
+      'tenant_detail_email': 'Email',
+      'tenant_detail_personal_section': 'Personal information',
+      'tenant_detail_gender': 'Gender',
+      'tenant_detail_national_id': 'ID / Passport',
+      'tenant_detail_occupation': 'Occupation',
+      'tenant_detail_workplace': 'Workplace',
+      'tenant_detail_rental_section': 'Rental information',
+      'tenant_detail_move_in_date': 'Move-in date',
+      'tenant_detail_days_living': 'Days living',
+      'tenant_detail_days_value': '{{days}} days',
+      'tenant_detail_monthly_rent': 'Monthly rent',
+      'tenant_detail_deposit': 'Deposit',
+      'tenant_detail_apartment_type': 'Apartment type',
+      'tenant_detail_area': 'Area',
+      'tenant_detail_area_value': '{{area}} m²',
+      'tenant_detail_moveout_section': 'Move-out information',
+      'tenant_detail_move_out_date': 'Move-out date',
+      'tenant_detail_duration': 'Duration',
+      'tenant_detail_reason': 'Reason',
+      'tenant_detail_notes': 'Notes',
+      'tenant_detail_contract_section': 'Contract',
+      'tenant_detail_contract_start': 'Start date',
+      'tenant_detail_contract_end': 'End date',
+      'tenant_detail_contract_end_date': 'Contract end date',
+      'tenant_detail_contract_status': 'Contract status',
+      'tenant_detail_early_termination': 'Early termination',
+      'tenant_detail_end_label': 'End',
+      'tenant_detail_days_early': '{{days}} days early',
+      'tenant_detail_on_time': 'On schedule',
+      'tenant_detail_remaining': 'Remaining',
+      'tenant_detail_vehicles_section': 'Vehicles ({{count}})',
+      'tenant_detail_history_section': 'Rental history ({{count}})',
+      'tenant_detail_history_dates': 'From {{from}} to {{to}}',
+      'tenant_detail_status': 'Status',
+ 
+      // Options label
+      'tenant_options_label': 'Options',
+ 
+      // Options menu items
+      'tenant_menu_view_detail': 'View details',
+      'tenant_menu_edit': 'Edit information',
+      'tenant_menu_move_room': 'Move room',
+      'tenant_menu_move_out': 'Mark as moved out',
+      'tenant_menu_vehicles': 'Manage vehicles',
+      'tenant_menu_rental_history': 'Rental history',
+      'tenant_menu_delete': 'Delete',
+ 
+      // Vehicle management dialog
+      'tenant_vehicle_manage_title': 'Manage vehicles',
+      'tenant_vehicle_add_tooltip': 'Add vehicle',
+      'tenant_vehicle_empty': 'No vehicles registered',
+      'tenant_vehicle_added': 'Vehicle added',
+      'tenant_vehicle_add_error': 'Error: Could not add vehicle',
+      'tenant_vehicle_updated': 'Vehicle updated',
+      'tenant_vehicle_parking_registered': 'Parking spot registered',
+      'tenant_vehicle_parking_unregistered': 'Parking spot removed',
+      'tenant_vehicle_deleted': 'Vehicle deleted',
+      'tenant_vehicle_parking_spot': 'Parking: {{spot}}',
+      'tenant_error': 'Error: {{error}}',
+ 
+      // Vehicle popup menu
+      'tenant_vehicle_menu_edit': 'Edit',
+      'tenant_vehicle_menu_register_parking': 'Register parking spot',
+      'tenant_vehicle_menu_unregister_parking': 'Remove parking spot',
+      'tenant_vehicle_menu_delete': 'Delete',
+ 
+      // Vehicle delete confirm dialog
+      'tenant_vehicle_delete_title': 'Delete vehicle',
+      'tenant_vehicle_delete_confirm': 'Delete vehicle {{plate}}?',
+ 
+      // Add / Edit vehicle dialogs
+      'tenant_vehicle_add_title': 'Add vehicle',
+      'tenant_vehicle_edit_title': 'Edit vehicle',
+      'tenant_vehicle_plate_label': 'License plate *',
+      'tenant_vehicle_type_label': 'Vehicle type *',
+      'tenant_vehicle_brand_label': 'Brand',
+      'tenant_vehicle_model_label': 'Model',
+      'tenant_vehicle_color_label': 'Color',
+      'tenant_vehicle_color_hint': 'Black, White, Blue...',
+      'tenant_vehicle_plate_required': 'Please enter the license plate',
+      'tenant_vehicle_add_action': 'Add',
+      'tenant_vehicle_save_action': 'Save',
+ 
+      // Vehicle types
+      'tenant_vehicle_motorcycle': 'Motorcycle',
+      'tenant_vehicle_car': 'Car',
+      'tenant_vehicle_bicycle': 'Bicycle',
+      'tenant_vehicle_electric_bike': 'Electric bicycle',
+      'tenant_vehicle_other': 'Other',
+ 
+      // Parking spot dialog
+      'tenant_parking_register_title': 'Register parking spot',
+      'tenant_parking_spot_label': 'Parking spot location',
+      'tenant_parking_spot_required': 'Please enter the spot location',
+      'tenant_parking_register_action': 'Register',
+ 
+      // Rental history dialog
+      'tenant_rental_history_title': 'Rental history',
+      'tenant_rental_history_empty': 'No rental history',
+ 
+      // Edit tenant dialog
+      'tenant_edit_title': 'Edit information',
+      'tenant_edit_save': 'Save changes',
+      'tenant_section_invoice_apt': 'Invoice & Apartment',
+ 
+      // Shared field labels
+      'tenant_field_name': 'Full name',
+      'tenant_field_name_required': 'Full name *',
+      'tenant_field_phone': 'Phone number',
+      'tenant_field_phone_required': 'Phone number *',
+      'tenant_field_email': 'Email',
+      'tenant_field_national_id': 'ID / Passport',
+      'tenant_field_occupation': 'Occupation',
+      'tenant_field_workplace': 'Workplace',
+      'tenant_field_rent': 'Rent',
+      'tenant_field_rent_required': 'Monthly rent *',
+      'tenant_field_apt_type': 'Apartment type',
+      'tenant_field_area': 'Area',
+      'tenant_field_move_in_date': 'Move-in date',
+      'tenant_field_building': 'Building *',
+      'tenant_field_room': 'Room *',
+      'tenant_field_status': 'Status',
+      'tenant_field_main_tenant': 'Primary tenant',
+ 
+      // Status dropdown values
+      'tenant_status_active': 'Active',
+      'tenant_status_inactive': 'Suspended',
+      'tenant_status_moved_out': 'Moved out',
+ 
+      // Room dropdown labels
+      'tenant_room_occupied': 'Room {{number}} (Occupied)',
+      'tenant_room_vacant': 'Room {{number}} (Vacant)',
+ 
+      // Add tenant dialog
+      'tenant_add_title': 'Add Tenant',
+      'tenant_add_action': 'Add',
+ 
+      // Move room dialog
+      'tenant_move_room_title': 'Move to new room',
+      'tenant_move_room_building': 'Select building',
+      'tenant_move_room_room': 'Select room',
+      'tenant_move_room_confirm': 'Confirm move',
+      'tenant_move_room_success': 'Room changed successfully',
+      'tenant_move_room_error': 'Error: Could not change room',
+ 
+      // Move out dialog
+      'tenant_moveout_title': 'Mark as moved out',
+      'tenant_moveout_confirm': 'Mark {{name}} as moved out?',
+      'tenant_moveout_date_label': 'Move-out date',
+      'tenant_moveout_reason_label': 'Reason',
+      'tenant_moveout_reason_1': 'Moving out',
+      'tenant_moveout_reason_2': 'Contract expired',
+      'tenant_moveout_reason_3': 'Early contract termination',
+      'tenant_moveout_reason_4': 'Contract violation',
+      'tenant_moveout_reason_5': 'Other',
+      'tenant_moveout_early_warning': 'Early termination by {{days}} days',
+      'tenant_moveout_confirm_action': 'Confirm',
+      'tenant_moveout_success': 'Marked as moved out',
+      'tenant_moveout_failed': 'Failed',
+ 
+      // Delete tenant
+      'tenant_delete_title': 'Delete tenant',
+      'tenant_delete_confirm': 'Are you sure you want to delete {{name}}? This action cannot be undone.',
+      'tenant_delete_success': 'Deleted',
+      'tenant_delete_failed': 'Delete failed',
     },
   };
 
@@ -452,10 +1229,10 @@ class AppTranslationsDelegate extends LocalizationsDelegate<AppTranslations> {
 
 extension DatePickerFormatting on AppTranslations {
   bool get isVietnamese => locale.languageCode == 'vi';
-  
+
   // Returns the appropriate date format pattern
   String get dateFormat => isVietnamese ? 'dd/MM/yyyy' : 'MM/dd/yyyy';
-  
+
   // Format a date in a readable way
   String formatLongDate(DateTime date) {
     if (isVietnamese) {
@@ -470,7 +1247,7 @@ extension DatePickerFormatting on AppTranslations {
       'Chủ nhật', 'Thứ hai', 'Thứ ba', 'Thứ tư',
       'Thứ năm', 'Thứ sáu', 'Thứ bảy',
     ];
-    
+
     final weekday = weekdays[date.weekday % 7];
     return '$weekday, ngày ${date.day} tháng ${date.month} năm ${date.year}';
   }
@@ -480,17 +1257,17 @@ extension DatePickerFormatting on AppTranslations {
       'Sunday', 'Monday', 'Tuesday', 'Wednesday',
       'Thursday', 'Friday', 'Saturday',
     ];
-    
+
     final months = [
       'January', 'February', 'March', 'April', 'May', 'June',
       'July', 'August', 'September', 'October', 'November', 'December'
     ];
-    
+
     final weekday = weekdays[date.weekday % 7];
     final day = date.day;
     final month = months[date.month - 1];
     final year = date.year;
-    
+
     // Add ordinal suffix (st, nd, rd, th)
     String daySuffix;
     if (day >= 11 && day <= 13) {
@@ -503,7 +1280,7 @@ extension DatePickerFormatting on AppTranslations {
         default: daySuffix = 'th';
       }
     }
-    
+
     return '$weekday, $month $day$daySuffix, $year';
   }
 }
@@ -518,42 +1295,6 @@ Text(
   AppTranslations.of(context).textWithParams(
     'leave_org_confirm',
     {'name': org.name}
-  )
-)
-
-Text(
-  AppTranslations.of(context).textWithParams(
-    'delete_org_warning',
-    {'name': org.name}
-  )
-)
-
-Text(
-  AppTranslations.of(context).textWithParams(
-    'preview_stats',
-    {
-      'buildings': preview?['buildings'] ?? 0,
-      'rooms': preview?['rooms'] ?? 0,
-      'tenants': preview?['tenants'] ?? 0,
-      'payments': preview?['payments'] ?? 0,
-    }
-  )
-)
-
-Text(
-  AppTranslations.of(context).textWithParams(
-    'minimum_size',
-    {
-      'width': minWidth.toInt(),
-      'height': minHeight.toInt(),
-    }
-  )
-)
-
-Text(
-  AppTranslations.of(context).textWithParams(
-    'error',
-    {'error': e.toString()}
   )
 )
 */

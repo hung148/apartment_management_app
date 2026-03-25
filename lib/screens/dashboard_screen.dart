@@ -848,88 +848,150 @@ class _DashboardScreenState extends State<DashboardScreen>
     await _showTrackedDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-                color: _DS.primaryLight,
-                borderRadius: BorderRadius.circular(10)),
-            child: Icon(Icons.group_add, color: _DS.primary, size: 20),
-          ),
-          const SizedBox(width: 12),
-          Flexible(
-              child: Text(AppTranslations.of(context).text('tooltip_join'),
-                  style: const TextStyle(
-                      fontSize: 17, fontWeight: FontWeight.w700))),
-        ]),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(AppTranslations.of(context).text('enter_invite_code'),
-                style: TextStyle(fontSize: 14, color: _DS.textSecondary)),
-            const SizedBox(height: 16),
-            TextField(
-              controller: ctrl,
-              textCapitalization: TextCapitalization.characters,
-              maxLength: 8,
-              autofocus: !_isSmallScreen(context),
-              style: const TextStyle(
-                  letterSpacing: 4,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 18),
-              decoration: InputDecoration(
-                counterText: '',
-                labelText: AppTranslations.of(context).text('invite_code'),
-                hintText: AppTranslations.of(context).text('invite_code_example'),
-                prefixIcon: const Icon(Icons.vpn_key),
-                border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12)),
-                filled: true,
-                fillColor: _DS.surface,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: _getDialogWidth(context) * 0.7),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // ── Header ─────────────────────────
+              Container(
+                padding: const EdgeInsets.fromLTRB(20, 16, 12, 16),
+                decoration: BoxDecoration(
+                  color: _DS.primaryLight,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                ),
+                child: Row(children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: _DS.primary, // Solid blue background
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.group_add, color: Colors.white, size: 18),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      AppTranslations.of(context).text('tooltip_join'),
+                      style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          color: _DS.textPrimary),
+                    ),
+                  ),
+                ]),
               ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(AppTranslations.of(context).text('cancel'))),
-          FilledButton.icon(
-            onPressed: () {
-              _joinOrgLock.run(() async {
-                final code = ctrl.text.trim().toUpperCase();
-                if (code.length != 8) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                    content: Text(AppTranslations.of(context).text('invite_code_8_chars')),
-                    backgroundColor: Colors.orange,
-                  ));
-                  return;
-                }
-                final owner = await _authService.getCurrentOwner();
-                if (owner == null) return;
-                final success = await _organizationService.joinOrganization(
-                    ownerId: owner.id, inviteCode: code);
-                if (!mounted) return;
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                  content: Text(success
-                      ? AppTranslations.of(context).text('join_org_success')
-                      : AppTranslations.of(context).text('invite_code_invalid')),
-                  backgroundColor: success ? Colors.green : Colors.red,
-                ));
-                if (success) _refreshOrgs(owner.id);
-              });
-            },
-            icon: const Icon(Icons.login, size: 18),
-            label: Text(AppTranslations.of(context).text('join')),
-            style: FilledButton.styleFrom(backgroundColor: _DS.primary),
+              const Divider(height: 1),
+
+              // ── Body ──────────────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      AppTranslations.of(context).text('enter_invite_code'),
+                      style: TextStyle(fontSize: 14, color: _DS.textSecondary),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: ctrl,
+                      textCapitalization: TextCapitalization.characters,
+                      maxLength: 8,
+                      autofocus: !_isSmallScreen(context),
+                      style: const TextStyle(
+                          letterSpacing: 4,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 18),
+                      decoration: InputDecoration(
+                        counterText: '',
+                        labelText: AppTranslations.of(context).text('invite_code'),
+                        hintText: AppTranslations.of(context).text('invite_code_example'),
+                        prefixIcon: const Icon(Icons.vpn_key),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.25)),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(color: _DS.primary, width: 1.8),
+                        ),
+                        filled: true,
+                        fillColor: _DS.surface,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+
+              // ── Actions ───────────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: Text(AppTranslations.of(context).text('cancel')),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton.icon(
+                      onPressed: () {
+                        _joinOrgLock.run(() async {
+                          final code = ctrl.text.trim().toUpperCase();
+                          if (code.length != 8) {
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                              content: Text(AppTranslations.of(context).text('invite_code_8_chars')),
+                              backgroundColor: Colors.orange,
+                            ));
+                            return;
+                          }
+                          final owner = await _authService.getCurrentOwner();
+                          if (owner == null) return;
+                          
+                          // Optional: Show loading state like in Create
+                          _showTrackedDialog(
+                            context: context,
+                            barrierDismissible: false,
+                            builder: (ctx) => _buildLoadingDialog(
+                              AppTranslations.of(context).text('join_org'),
+                            ),
+                          );
+
+                          final success = await _organizationService.joinOrganization(
+                              ownerId: owner.id, inviteCode: code);
+                          
+                          if (!mounted) return;
+                          Navigator.pop(context); // Pop loader
+                          Navigator.pop(context); // Pop join dialog
+                          
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                            content: Text(success
+                                ? AppTranslations.of(context).text('join_org_success')
+                                : AppTranslations.of(context).text('invite_code_invalid')),
+                            backgroundColor: success ? Colors.green : Colors.red,
+                          ));
+                          if (success) _refreshOrgs(owner.id);
+                        });
+                      },
+                      icon: const Icon(Icons.login, size: 18),
+                      label: Text(AppTranslations.of(context).text('join')),
+                      style: FilledButton.styleFrom(backgroundColor: _DS.primary),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
+    ctrl.dispose();
   }
 
   Future<void> _showLeaveOrganizationDialog(

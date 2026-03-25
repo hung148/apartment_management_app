@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:apartment_management_project_2/utils/app_localizations.dart';
 import 'package:apartment_management_project_2/widgets/date_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -39,14 +40,14 @@ class TenantsTab extends StatefulWidget {
   State<TenantsTab> createState() => _TenantsTabState();
 }
 
-class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
+class _TenantsTabState extends State<TenantsTab>
+    with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
   @override
   bool get wantKeepAlive => true;
 
   final TextEditingController _searchController = TextEditingController();
   late Future<List<dynamic>> _initialFuture;
 
-  // Track how many overlays (dialogs/bottom sheets) are currently open
   int _overlayCount = 0;
 
   List<Tenant> _allTenants = [];
@@ -57,7 +58,7 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
   @override
   void initState() {
     super.initState();
-     WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addObserver(this);
     _initialFuture = Future.wait([
       _getAllTenants(),
       _getBuildings(),
@@ -73,17 +74,12 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
     super.dispose();
   }
 
-  // Debounce timer for resize handling
   Timer? _resizeDebounceTimer;
-
-  // Guard to prevent overlapping dismiss calls
   bool _isDismissing = false;
 
-  // ─── Called whenever screen size / metrics change ───
   @override
   void didChangeMetrics() {
     super.didChangeMetrics();
-    // Cancel any pending debounce before setting a new one
     _resizeDebounceTimer?.cancel();
     _resizeDebounceTimer = Timer(const Duration(milliseconds: 300), () {
       if (!mounted) return;
@@ -95,18 +91,13 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
     });
   }
 
-  // Pops all open dialogs/bottom sheets by popping until only the base route remains.
   Future<void> _dismissAllOverlays() async {
     if (!mounted || _isDismissing) return;
     _isDismissing = true;
-
     try {
       final nav = Navigator.of(context);
       while (nav.canPop()) {
         nav.pop();
-        // Yield to the framework between each pop so it can finish
-        // destroying the previous overlay before we pop the next one.
-        // This prevents back-to-back surface destruction that triggers EGL errors.
         await Future.delayed(const Duration(milliseconds: 50));
         if (!mounted) break;
       }
@@ -114,8 +105,6 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
       _isDismissing = false;
     }
   }
-
-  // ─── Overlay helpers ───
 
   Future<T?> _showTrackedDialog<T>({
     required BuildContext context,
@@ -156,22 +145,26 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
   }
 
   Map<String, List<Tenant>> _getRoomToTenantsMap(List<Tenant> allTenants) {
-  final map = <String, List<Tenant>>{};
-  for (var t in allTenants) {
-    if (t.status == TenantStatus.active) {
-      map.putIfAbsent(t.roomId, () => []).add(t);
+    final map = <String, List<Tenant>>{};
+    for (var t in allTenants) {
+      if (t.status == TenantStatus.active) {
+        map.putIfAbsent(t.roomId, () => []).add(t);
+      }
     }
+    return map;
   }
-  return map;
-}
 
-  Future<List<Tenant>> _getAllTenants() => widget.tenantService.getOrganizationTenants(widget.organization.id);
-  Future<List<Building>> _getBuildings() => widget.buildingService.getOrganizationBuildings(widget.organization.id);
-  Future<List<Room>> _getAllRooms() => widget.roomService.getOrganizationRooms(widget.organization.id);
+  Future<List<Tenant>> _getAllTenants() =>
+      widget.tenantService.getOrganizationTenants(widget.organization.id);
+  Future<List<Building>> _getBuildings() =>
+      widget.buildingService.getOrganizationBuildings(widget.organization.id);
+  Future<List<Room>> _getAllRooms() =>
+      widget.roomService.getOrganizationRooms(widget.organization.id);
   Future<Membership?> _getMyMembership() {
     final userId = widget.authService.currentUser?.uid;
     if (userId == null) return Future.value(null);
-    return widget.organizationService.getUserMembership(userId, widget.organization.id);
+    return widget.organizationService
+        .getUserMembership(userId, widget.organization.id);
   }
 
   Future<void> _refreshAll() async {
@@ -191,7 +184,8 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
   }
 
   String _formatCurrency(double value) {
-    final f = NumberFormat.currency(locale: 'vi_VN', symbol: '₫', decimalDigits: 0);
+    final f = NumberFormat.currency(
+        locale: 'vi_VN', symbol: '₫', decimalDigits: 0);
     return f.format(value);
   }
 
@@ -199,9 +193,28 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
     return DateFormat('dd/MM/yyyy').format(date);
   }
 
+  // ─── Localised vehicle type display name ───────────────────────────────────
+  String _getVehicleTypeDisplayName(VehicleType type) {
+    final t = AppTranslations.of(context);
+    switch (type) {
+      case VehicleType.motorcycle:
+        return t['tenant_vehicle_motorcycle'];
+      case VehicleType.car:
+        return t['tenant_vehicle_car'];
+      case VehicleType.bicycle:
+        return t['tenant_vehicle_bicycle'];
+      case VehicleType.electricBike:
+        return t['tenant_vehicle_electric_bike'];
+      case VehicleType.other:
+        return t['tenant_vehicle_other'];
+    }
+  }
+
+  // ─── Build ─────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    final t = AppTranslations.of(context);
 
     return FutureBuilder<List<dynamic>>(
       future: _initialFuture,
@@ -211,7 +224,7 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
         }
 
         if (!snapshot.hasData) {
-          return const Center(child: Text('Không có dữ liệu'));
+          return Center(child: Text(t['tenant_no_data']));
         }
 
         final allTenants = snapshot.data![0] as List<Tenant>;
@@ -236,7 +249,7 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                   return TextField(
                     controller: _searchController,
                     decoration: InputDecoration(
-                      hintText: 'Tìm kiếm theo tên, SĐT, email, nghề nghiệp...',
+                      hintText: t['tenant_search_hint'],
                       prefixIcon: const Icon(Icons.search),
                       suffixIcon: value.text.isNotEmpty
                           ? IconButton(
@@ -261,7 +274,7 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                   child: ElevatedButton.icon(
                     onPressed: () => _showAddTenantDialog(buildings, rooms),
                     icon: const Icon(Icons.person_add),
-                    label: const Text('Thêm người thuê'),
+                    label: Text(t['tenant_add_button']),
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
@@ -284,19 +297,24 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(
-                            query.isEmpty ? Icons.people_outline : Icons.search_off,
+                            query.isEmpty
+                                ? Icons.people_outline
+                                : Icons.search_off,
                             size: 64,
                             color: Colors.grey,
                           ),
                           const SizedBox(height: 16),
                           Text(
-                            query.isEmpty ? 'Chưa có người thuê nào' : 'Không tìm thấy kết quả',
-                            style: const TextStyle(color: Colors.grey, fontSize: 16),
+                            query.isEmpty
+                                ? t['tenant_no_tenants']
+                                : t['tenant_no_results'],
+                            style: const TextStyle(
+                                color: Colors.grey, fontSize: 16),
                           ),
                           if (query.isNotEmpty) ...[
                             const SizedBox(height: 8),
                             Text(
-                              'Thử tìm kiếm với từ khóa khác',
+                              t['tenant_try_other_keyword'],
                               style: TextStyle(
                                 color: Colors.grey.shade600,
                                 fontSize: 14,
@@ -312,19 +330,22 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                     children: [
                       if (query.isNotEmpty)
                         Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 8),
                           child: Row(
                             children: [
-                              Icon(Icons.info_outline, size: 16, color: Colors.grey.shade600),
+                              Icon(Icons.info_outline,
+                                  size: 16, color: Colors.grey.shade600),
                               const SizedBox(width: 8),
                               Text(
-                                'Tìm thấy ${tenants.length} kết quả',
-                                style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+                                t.textWithParams('tenant_found_results',
+                                    {'count': tenants.length}),
+                                style: TextStyle(
+                                    color: Colors.grey.shade600, fontSize: 14),
                               ),
                             ],
                           ),
                         ),
-
                       Expanded(
                         child: ListView.builder(
                           padding: const EdgeInsets.all(16),
@@ -346,15 +367,20 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
     );
   }
 
+  // ─── Tenant card ───────────────────────────────────────────────────────────
   Widget _buildTenantCard(Tenant tenant, bool isAdmin) {
+    final t = AppTranslations.of(context);
+
     late final Building building;
     late final Room room;
     late final String displayBuildingName;
     late final String displayRoomNumber;
 
     final bool isMovedOut = tenant.status == TenantStatus.moveOut;
-    
-    if (isMovedOut && tenant.lastBuildingName != null && tenant.lastRoomNumber != null) {
+
+    if (isMovedOut &&
+        tenant.lastBuildingName != null &&
+        tenant.lastRoomNumber != null) {
       displayBuildingName = tenant.lastBuildingName!;
       displayRoomNumber = tenant.lastRoomNumber!;
 
@@ -381,7 +407,7 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
         orElse: () => Building(
           id: '',
           organizationId: '',
-          name: 'Không xác định',
+          name: t['tenant_unknown'],
           address: '',
           createdAt: DateTime.now(),
         ),
@@ -421,8 +447,11 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                   },
                 );
               }
-            : () => _showTenantDetailDialog(tenant, displayBuildingName, displayRoomNumber),
-        onLongPress: isAdmin ? () => _showTenantOptionsMenu(tenant, isMovedOut) : null,
+            : () => _showTenantDetailDialog(
+                tenant, displayBuildingName, displayRoomNumber),
+        onLongPress: isAdmin
+            ? () => _showTenantOptionsMenu(tenant, isMovedOut)
+            : null,
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Row(
@@ -430,13 +459,19 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
             children: [
               CircleAvatar(
                 radius: 30,
-                backgroundColor: tenant.isMainTenant ? Colors.blue.shade100 : Colors.grey.shade200,
+                backgroundColor: tenant.isMainTenant
+                    ? Colors.blue.shade100
+                    : Colors.grey.shade200,
                 child: Text(
-                  tenant.fullName.isNotEmpty ? tenant.fullName[0].toUpperCase() : '?',
+                  tenant.fullName.isNotEmpty
+                      ? tenant.fullName[0].toUpperCase()
+                      : '?',
                   style: TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.bold,
-                    color: tenant.isMainTenant ? Colors.blue.shade700 : Colors.grey.shade700,
+                    color: tenant.isMainTenant
+                        ? Colors.blue.shade700
+                        : Colors.grey.shade700,
                   ),
                 ),
               ),
@@ -459,13 +494,14 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                         ),
                         if (tenant.isMainTenant)
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 4),
                             decoration: BoxDecoration(
                               color: Colors.blue.shade100,
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
-                              'Chủ phòng',
+                              t['tenant_main_tenant_badge'],
                               style: TextStyle(
                                 fontSize: 11,
                                 color: Colors.blue.shade700,
@@ -480,15 +516,15 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                     if (tenant.occupation != null) ...[
                       Row(
                         children: [
-                          Icon(Icons.work, size: 16, color: Colors.grey.shade700),
+                          Icon(Icons.work,
+                              size: 16, color: Colors.grey.shade700),
                           const SizedBox(width: 6),
                           Expanded(
                             child: Text(
                               tenant.occupation!,
                               style: TextStyle(
-                                fontSize: 13,
-                                color: Colors.grey.shade700,
-                              ),
+                                  fontSize: 13,
+                                  color: Colors.grey.shade700),
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
@@ -500,7 +536,9 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: canNavigate ? Colors.blue.shade50 : Colors.grey.shade100,
+                        color: canNavigate
+                            ? Colors.blue.shade50
+                            : Colors.grey.shade100,
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Row(
@@ -508,7 +546,9 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                           Icon(
                             Icons.location_on,
                             size: 18,
-                            color: canNavigate ? Colors.blue.shade700 : Colors.grey.shade600,
+                            color: canNavigate
+                                ? Colors.blue.shade700
+                                : Colors.grey.shade600,
                           ),
                           const SizedBox(width: 8),
                           Expanded(
@@ -516,7 +556,9 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  canNavigate ? 'Vị trí' : 'Vị trí trước đây',
+                                  canNavigate
+                                      ? t['tenant_location_label']
+                                      : t['tenant_previous_location_label'],
                                   style: TextStyle(
                                     fontSize: 11,
                                     color: Colors.grey.shade600,
@@ -525,17 +567,25 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
-                                  '$displayBuildingName - Phòng $displayRoomNumber',
+                                  t.textWithParams(
+                                      'tenant_location_value', {
+                                    'building': displayBuildingName,
+                                    'room': displayRoomNumber,
+                                  }),
                                   style: TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w600,
-                                    color: canNavigate ? Colors.blue.shade900 : Colors.grey.shade700,
+                                    color: canNavigate
+                                        ? Colors.blue.shade900
+                                        : Colors.grey.shade700,
                                   ),
                                 ),
                               ],
                             ),
                           ),
-                          if (canNavigate) Icon(Icons.arrow_forward_ios, size: 14, color: Colors.blue.shade700),
+                          if (canNavigate)
+                            Icon(Icons.arrow_forward_ios,
+                                size: 14, color: Colors.blue.shade700),
                         ],
                       ),
                     ),
@@ -543,14 +593,13 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
 
                     Row(
                       children: [
-                        Icon(Icons.phone, size: 16, color: Colors.grey.shade700),
+                        Icon(Icons.phone,
+                            size: 16, color: Colors.grey.shade700),
                         const SizedBox(width: 6),
                         Text(
                           tenant.phoneNumber,
                           style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                          ),
+                              fontSize: 14, fontWeight: FontWeight.w500),
                         ),
                       ],
                     ),
@@ -572,17 +621,17 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                     Row(
                       children: [
                         Text(
-                          'Trạng thái:',
+                          t['tenant_status_label'],
                           style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.grey.shade600,
-                          ),
+                              fontSize: 11, color: Colors.grey.shade600),
                         ),
                         const SizedBox(width: 8),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
-                            color: _getTenantStatusColor(tenant.status).withOpacity(0.1),
+                            color: _getTenantStatusColor(tenant.status)
+                                .withOpacity(0.1),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
@@ -595,9 +644,11 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                           ),
                         ),
                         const Spacer(),
-                        if (tenant.previousRentals != null && tenant.previousRentals!.isNotEmpty)
+                        if (tenant.previousRentals != null &&
+                            tenant.previousRentals!.isNotEmpty)
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
                               color: Colors.orange.shade100,
                               borderRadius: BorderRadius.circular(8),
@@ -605,7 +656,9 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.history, size: 12, color: Colors.orange.shade700),
+                                Icon(Icons.history,
+                                    size: 12,
+                                    color: Colors.orange.shade700),
                                 const SizedBox(width: 4),
                                 Text(
                                   '${tenant.previousRentals!.length}',
@@ -620,12 +673,13 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                           ),
                       ],
                     ),
-                    
-                    // Vehicle indicator
-                    if (tenant.vehicles != null && tenant.vehicles!.isNotEmpty) ...[
+
+                    if (tenant.vehicles != null &&
+                        tenant.vehicles!.isNotEmpty) ...[
                       const SizedBox(height: 8),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
                           color: Colors.purple.shade50,
                           borderRadius: BorderRadius.circular(8),
@@ -633,10 +687,12 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.directions_car, size: 14, color: Colors.purple.shade700),
+                            Icon(Icons.directions_car,
+                                size: 14, color: Colors.purple.shade700),
                             const SizedBox(width: 4),
                             Text(
-                              '${tenant.vehicles!.length} phương tiện',
+                              t.textWithParams('tenant_vehicle_count',
+                                  {'count': tenant.vehicles!.length}),
                               style: TextStyle(
                                 fontSize: 11,
                                 color: Colors.purple.shade700,
@@ -654,8 +710,9 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
               if (isAdmin)
                 IconButton(
                   icon: Icon(Icons.more_vert, color: Colors.grey.shade600),
-                  onPressed: () => _showTenantOptionsMenu(tenant, isMovedOut),
-                  tooltip: 'Tùy chọn',
+                  onPressed: () =>
+                      _showTenantOptionsMenu(tenant, isMovedOut),
+                  tooltip: t['tenant_options_tooltip'],
                 ),
             ],
           ),
@@ -666,15 +723,18 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
 
   List<Tenant> _filterTenants(List<Tenant> tenants, String query) {
     if (query.isEmpty) return tenants;
-
     final searchLower = query.toLowerCase().trim();
     return tenants.where((tenant) {
       if (tenant.fullName.toLowerCase().contains(searchLower)) return true;
       if (tenant.phoneNumber.contains(searchLower)) return true;
-      if (tenant.email != null && tenant.email!.toLowerCase().contains(searchLower)) return true;
-      if (tenant.nationalId != null && tenant.nationalId!.contains(searchLower)) return true;
-      if (tenant.occupation != null && tenant.occupation!.toLowerCase().contains(searchLower)) return true;
-      if (tenant.workplace != null && tenant.workplace!.toLowerCase().contains(searchLower)) return true;
+      if (tenant.email != null &&
+          tenant.email!.toLowerCase().contains(searchLower)) return true;
+      if (tenant.nationalId != null &&
+          tenant.nationalId!.contains(searchLower)) return true;
+      if (tenant.occupation != null &&
+          tenant.occupation!.toLowerCase().contains(searchLower)) return true;
+      if (tenant.workplace != null &&
+          tenant.workplace!.toLowerCase().contains(searchLower)) return true;
       return false;
     }).toList();
   }
@@ -682,296 +742,382 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
   // =========================
   // TENANT DETAIL DIALOG
   // =========================
-  void _showTenantDetailDialog(Tenant tenant, String buildingName, String roomNumber) {
+  void _showTenantDetailDialog(
+      Tenant tenant, String buildingName, String roomNumber) {
+    final t = AppTranslations.of(context);
     final isPhone = MediaQuery.of(context).size.width < 600;
     final bool isMovedOut = tenant.status == TenantStatus.moveOut;
-    
+
     _showTrackedDialog(
       context: context,
-      builder: (context) => Dialog(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: isPhone ? MediaQuery.of(context).size.width * 0.95 : MediaQuery.of(context).size.width * 0.7,
-            maxHeight: MediaQuery.of(context).size.height * 0.9,
-          ),
-          child: AlertDialog(
-            title: Row(
-              children: [
-                CircleAvatar(
-                  backgroundColor: tenant.isMainTenant 
-                      ? Colors.blue.shade100 
-                      : Colors.grey.shade200,
-                  child: Text(
-                    tenant.fullName[0].toUpperCase(),
-                    style: TextStyle(
-                      color: tenant.isMainTenant 
-                          ? Colors.blue.shade700 
-                          : Colors.grey.shade700,
-                      fontWeight: FontWeight.bold,
+      builder: (context) {
+        final t = AppTranslations.of(context);
+        return Dialog(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: isPhone
+                  ? MediaQuery.of(context).size.width * 0.95
+                  : MediaQuery.of(context).size.width * 0.7,
+              maxHeight: MediaQuery.of(context).size.height * 0.9,
+            ),
+            child: AlertDialog(
+              title: Row(
+                children: [
+                  CircleAvatar(
+                    backgroundColor: tenant.isMainTenant
+                        ? Colors.blue.shade100
+                        : Colors.grey.shade200,
+                    child: Text(
+                      tenant.fullName[0].toUpperCase(),
+                      style: TextStyle(
+                        color: tenant.isMainTenant
+                            ? Colors.blue.shade700
+                            : Colors.grey.shade700,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        tenant.fullName,
-                        style: const TextStyle(fontSize: 18),
-                      ),
-                      if (tenant.isMainTenant)
-                        Text(
-                          'Chủ phòng',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.blue.shade700,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(tenant.fullName,
+                            style: const TextStyle(fontSize: 18)),
+                        if (tenant.isMainTenant)
+                          Text(
+                            t['tenant_main_tenant_badge'],
+                            style: TextStyle(
+                                fontSize: 12, color: Colors.blue.shade700),
                           ),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
-            content: SizedBox(
-              width: double.maxFinite,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // ========================================
-                    // LOCATION SECTION
-                    // ========================================
-                    _buildDetailSection(
-                      isMovedOut ? 'Vị trí trước đây' : 'Vị trí',
-                      [
-                        _buildDetailRow('Toà nhà', buildingName),
-                        _buildDetailRow('Phòng', roomNumber),
                       ],
                     ),
-                    const Divider(),
-                    
-                    // ========================================
-                    // CONTACT INFORMATION
-                    // ========================================
-                    _buildDetailSection('Thông tin liên hệ', [
-                      _buildDetailRow('Số điện thoại', tenant.phoneNumber),
-                      if (tenant.email != null) _buildDetailRow('Email', tenant.email!),
-                    ]),
-                    const Divider(),
-                    
-                    // ========================================
-                    // PERSONAL INFORMATION
-                    // ========================================
-                    _buildDetailSection('Thông tin cá nhân', [
-                      if (tenant.gender != null) 
-                        _buildDetailRow('Giới tính', tenant.getGenderDisplayName()!),
-                      if (tenant.nationalId != null)
-                        _buildDetailRow('CMND/CCCD', tenant.nationalId!),
-                      if (tenant.occupation != null)
-                        _buildDetailRow('Nghề nghiệp', tenant.occupation!),
-                      if (tenant.workplace != null)
-                        _buildDetailRow('Nơi làm việc', tenant.workplace!),
-                    ]),
-                    
-                    // ========================================
-                    // RENTAL INFORMATION - Only show if NOT moved out
-                    // ========================================
-                    if (!isMovedOut) ...[
-                      const Divider(),
-                      _buildDetailSection('Thông tin thuê', [
-                        _buildDetailRow('Ngày vào ở', _formatDate(tenant.moveInDate)),
-                        _buildDetailRow('Số ngày ở', '${tenant.daysLiving} ngày'),
-                        if (tenant.monthlyRent != null)
-                          _buildDetailRow('Tiền thuê', _formatCurrency(tenant.monthlyRent!)),
-                        if (tenant.deposit != null)
-                          _buildDetailRow('Tiền cọc', _formatCurrency(tenant.deposit!)),
-                        // ✅ NEW: Show apartment type and area if available
-                        if (tenant.apartmentType != null && tenant.apartmentType!.isNotEmpty)
-                          _buildDetailRow('Loại căn hộ', tenant.apartmentType!),
-                        if (tenant.apartmentArea != null && tenant.apartmentArea! > 0)
-                          _buildDetailRow('Diện tích', '${tenant.apartmentArea} m²'),
-                      ]),
-                    ],
-                    
-                    // ========================================
-                    // MOVED OUT INFORMATION - Only show if moved out
-                    // ========================================
-                    if (isMovedOut && tenant.moveOutDate != null) ...[
-                      const Divider(),
-                      _buildDetailSection('Thông tin chuyển đi', [
-                        _buildDetailRow('Ngày chuyển đi', _formatDate(tenant.moveOutDate!)),
-                        _buildDetailRow(
-                          'Thời gian ở',
-                          '${tenant.moveOutDate!.difference(tenant.moveInDate).inDays} ngày',
-                        ),
-                        if (tenant.contractTerminationReason != null)
-                          _buildDetailRow('Lý do', tenant.contractTerminationReason!),
-                        if (tenant.notes != null && tenant.notes!.isNotEmpty)
-                          _buildDetailRow('Ghi chú', tenant.notes!),
-                      ]),
-                    ],
-                    
-                    // ========================================
-                    // CONTRACT INFORMATION
-                    // ========================================
-                    if (tenant.contractStartDate != null || tenant.contractEndDate != null) ...[
-                      const Divider(),
-                      _buildDetailSection('Hợp đồng', [
-                        if (tenant.contractStartDate != null)
-                          _buildDetailRow('Bắt đầu', _formatDate(tenant.contractStartDate!)),
-                        if (tenant.contractEndDate != null)
+                  ),
+                ],
+              ),
+              contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Location
+                      _buildDetailSection(
+                        isMovedOut
+                            ? t['tenant_detail_previous_location']
+                            : t['tenant_detail_location'],
+                        [
                           _buildDetailRow(
-                            isMovedOut ? 'Ngày kết thúc hợp đồng' : 'Kết thúc', 
-                            _formatDate(tenant.contractEndDate!)
-                          ),
-                        
-                        if (isMovedOut) ...[
-                          _buildDetailRow('Trạng thái hợp đồng', tenant.getContractStatusDisplayName()),
-                          if (tenant.moveOutDate != null && tenant.contractEndDate != null)
-                            _buildDetailRow(
-                              tenant.moveOutDate!.isBefore(tenant.contractEndDate!) 
-                                ? 'Chấm dứt sớm' 
-                                : 'Kết thúc',
-                              tenant.moveOutDate!.isBefore(tenant.contractEndDate!)
-                                ? '${tenant.contractEndDate!.difference(tenant.moveOutDate!).inDays} ngày trước hạn'
-                                : 'Đúng thời hạn hợp đồng',
-                            ),
-                        ] else ...[
-                          if (tenant.daysUntilContractEnd != null)
-                            _buildDetailRow(
-                              'Còn lại',
-                              '${tenant.daysUntilContractEnd} ngày',
-                            ),
+                              t['tenant_detail_building'], buildingName),
+                          _buildDetailRow(
+                              t['tenant_detail_room'], roomNumber),
                         ],
-                      ]),
-                    ],
-                    
-                    // ========================================
-                    // VEHICLES SECTION
-                    // ========================================
-                    if (tenant.vehicles != null && tenant.vehicles!.isNotEmpty) ...[
+                      ),
                       const Divider(),
-                      _buildDetailSection('Phương tiện (${tenant.vehicles!.length})', [
-                        ...tenant.vehicles!.map((vehicle) => Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Colors.purple.shade50,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Icon(_getVehicleIcon(vehicle.type), 
-                                        size: 16, 
-                                        color: Colors.purple.shade700),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      vehicle.licensePlate,
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.purple.shade900,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                if (vehicle.brand != null || vehicle.model != null)
-                                  Text(
-                                    '${vehicle.brand ?? ''} ${vehicle.model ?? ''}'.trim(),
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.grey.shade700,
-                                    ),
-                                  ),
-                                if (vehicle.isParkingRegistered && vehicle.parkingSpot != null)
-                                  Text(
-                                    'Bãi đỗ: ${vehicle.parkingSpot}',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.green.shade700,
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                        )),
+
+                      // Contact
+                      _buildDetailSection(
+                          t['tenant_detail_contact_section'], [
+                        _buildDetailRow(
+                            t['tenant_detail_phone'], tenant.phoneNumber),
+                        if (tenant.email != null)
+                          _buildDetailRow(
+                              t['tenant_detail_email'], tenant.email!),
                       ]),
-                    ],
-                    
-                    // ========================================
-                    // RENTAL HISTORY SECTION
-                    // ========================================
-                    if (tenant.previousRentals != null && tenant.previousRentals!.isNotEmpty) ...[
                       const Divider(),
-                      _buildDetailSection('Lịch sử thuê (${tenant.previousRentals!.length})', [
-                        ...tenant.previousRentals!.map((rental) => Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Colors.orange.shade50,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '${rental.buildingName} - Phòng ${rental.roomNumber}',
-                                  style: const TextStyle(fontWeight: FontWeight.bold),
-                                ),
-                                Text(
-                                  'Từ ${_formatDate(rental.moveInDate)} đến ${_formatDate(rental.moveOutDate)}',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey.shade700,
-                                  ),
-                                ),
-                                Text(
-                                  '${rental.duration} ngày',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey.shade700,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        )),
+
+                      // Personal
+                      _buildDetailSection(
+                          t['tenant_detail_personal_section'], [
+                        if (tenant.gender != null)
+                          _buildDetailRow(t['tenant_detail_gender'],
+                              tenant.getGenderDisplayName()!),
+                        if (tenant.nationalId != null)
+                          _buildDetailRow(
+                              t['tenant_detail_national_id'],
+                              tenant.nationalId!),
+                        if (tenant.occupation != null)
+                          _buildDetailRow(t['tenant_detail_occupation'],
+                              tenant.occupation!),
+                        if (tenant.workplace != null)
+                          _buildDetailRow(t['tenant_detail_workplace'],
+                              tenant.workplace!),
                       ]),
+
+                      // Rental info (not moved out)
+                      if (!isMovedOut) ...[
+                        const Divider(),
+                        _buildDetailSection(
+                            t['tenant_detail_rental_section'], [
+                          _buildDetailRow(t['tenant_detail_move_in_date'],
+                              _formatDate(tenant.moveInDate)),
+                          _buildDetailRow(
+                              t['tenant_detail_days_living'],
+                              t.textWithParams('tenant_detail_days_value',
+                                  {'days': tenant.daysLiving})),
+                          if (tenant.monthlyRent != null)
+                            _buildDetailRow(t['tenant_detail_monthly_rent'],
+                                _formatCurrency(tenant.monthlyRent!)),
+                          if (tenant.deposit != null)
+                            _buildDetailRow(t['tenant_detail_deposit'],
+                                _formatCurrency(tenant.deposit!)),
+                          if (tenant.apartmentType != null &&
+                              tenant.apartmentType!.isNotEmpty)
+                            _buildDetailRow(
+                                t['tenant_detail_apartment_type'],
+                                tenant.apartmentType!),
+                          if (tenant.apartmentArea != null &&
+                              tenant.apartmentArea! > 0)
+                            _buildDetailRow(
+                                t['tenant_detail_area'],
+                                t.textWithParams(
+                                    'tenant_detail_area_value',
+                                    {'area': tenant.apartmentArea})),
+                        ]),
+                      ],
+
+                      // Move-out info
+                      if (isMovedOut && tenant.moveOutDate != null) ...[
+                        const Divider(),
+                        _buildDetailSection(
+                            t['tenant_detail_moveout_section'], [
+                          _buildDetailRow(
+                              t['tenant_detail_move_out_date'],
+                              _formatDate(tenant.moveOutDate!)),
+                          _buildDetailRow(
+                              t['tenant_detail_duration'],
+                              t.textWithParams('tenant_detail_days_value', {
+                                'days': tenant.moveOutDate!
+                                    .difference(tenant.moveInDate)
+                                    .inDays
+                              })),
+                          if (tenant.contractTerminationReason != null)
+                            _buildDetailRow(
+                                t['tenant_detail_reason'],
+                                tenant.contractTerminationReason!),
+                          if (tenant.notes != null &&
+                              tenant.notes!.isNotEmpty)
+                            _buildDetailRow(
+                                t['tenant_detail_notes'], tenant.notes!),
+                        ]),
+                      ],
+
+                      // Contract
+                      if (tenant.contractStartDate != null ||
+                          tenant.contractEndDate != null) ...[
+                        const Divider(),
+                        _buildDetailSection(
+                            t['tenant_detail_contract_section'], [
+                          if (tenant.contractStartDate != null)
+                            _buildDetailRow(
+                                t['tenant_detail_contract_start'],
+                                _formatDate(tenant.contractStartDate!)),
+                          if (tenant.contractEndDate != null)
+                            _buildDetailRow(
+                              isMovedOut
+                                  ? t['tenant_detail_contract_end_date']
+                                  : t['tenant_detail_contract_end'],
+                              _formatDate(tenant.contractEndDate!),
+                            ),
+                          if (isMovedOut) ...[
+                            _buildDetailRow(
+                                t['tenant_detail_contract_status'],
+                                tenant.getContractStatusDisplayName()),
+                            if (tenant.moveOutDate != null &&
+                                tenant.contractEndDate != null)
+                              _buildDetailRow(
+                                tenant.moveOutDate!.isBefore(
+                                        tenant.contractEndDate!)
+                                    ? t['tenant_detail_early_termination']
+                                    : t['tenant_detail_end_label'],
+                                tenant.moveOutDate!.isBefore(
+                                        tenant.contractEndDate!)
+                                    ? t.textWithParams(
+                                        'tenant_detail_days_early', {
+                                        'days': tenant.contractEndDate!
+                                            .difference(tenant.moveOutDate!)
+                                            .inDays
+                                      })
+                                    : t['tenant_detail_on_time'],
+                              ),
+                          ] else ...[
+                            if (tenant.daysUntilContractEnd != null)
+                              _buildDetailRow(
+                                  t['tenant_detail_remaining'],
+                                  t.textWithParams(
+                                      'tenant_detail_days_value', {
+                                    'days': tenant.daysUntilContractEnd
+                                  })),
+                          ],
+                        ]),
+                      ],
+
+                      // Vehicles
+                      if (tenant.vehicles != null &&
+                          tenant.vehicles!.isNotEmpty) ...[
+                        const Divider(),
+                        _buildDetailSection(
+                          t.textWithParams('tenant_detail_vehicles_section',
+                              {'count': tenant.vehicles!.length}),
+                          [
+                            ...tenant.vehicles!.map((vehicle) => Padding(
+                                  padding:
+                                      const EdgeInsets.only(bottom: 8),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: Colors.purple.shade50,
+                                      borderRadius:
+                                          BorderRadius.circular(8),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Icon(
+                                                _getVehicleIcon(
+                                                    vehicle.type),
+                                                size: 16,
+                                                color: Colors
+                                                    .purple.shade700),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              vehicle.licensePlate,
+                                              style: TextStyle(
+                                                fontWeight:
+                                                    FontWeight.bold,
+                                                color: Colors
+                                                    .purple.shade900,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        if (vehicle.brand != null ||
+                                            vehicle.model != null)
+                                          Text(
+                                            '${vehicle.brand ?? ''} ${vehicle.model ?? ''}'
+                                                .trim(),
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color:
+                                                  Colors.grey.shade700,
+                                            ),
+                                          ),
+                                        if (vehicle.isParkingRegistered &&
+                                            vehicle.parkingSpot != null)
+                                          Text(
+                                            t.textWithParams(
+                                                'tenant_vehicle_parking_spot',
+                                                {'spot': vehicle.parkingSpot!}),
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color:
+                                                  Colors.green.shade700,
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                )),
+                          ],
+                        ),
+                      ],
+
+                      // Rental history
+                      if (tenant.previousRentals != null &&
+                          tenant.previousRentals!.isNotEmpty) ...[
+                        const Divider(),
+                        _buildDetailSection(
+                          t.textWithParams(
+                              'tenant_detail_history_section',
+                              {'count': tenant.previousRentals!.length}),
+                          [
+                            ...tenant.previousRentals!.map((rental) =>
+                                Padding(
+                                  padding:
+                                      const EdgeInsets.only(bottom: 8),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: Colors.orange.shade50,
+                                      borderRadius:
+                                          BorderRadius.circular(8),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          t.textWithParams(
+                                              'tenant_location_value', {
+                                            'building': rental.buildingName,
+                                            'room': rental.roomNumber,
+                                          }),
+                                          style: const TextStyle(
+                                              fontWeight:
+                                                  FontWeight.bold),
+                                        ),
+                                        Text(
+                                          t.textWithParams(
+                                              'tenant_detail_history_dates',
+                                              {
+                                                'from': _formatDate(
+                                                    rental.moveInDate),
+                                                'to': _formatDate(
+                                                    rental.moveOutDate),
+                                              }),
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.grey.shade700,
+                                          ),
+                                        ),
+                                        Text(
+                                          t.textWithParams(
+                                              'tenant_detail_days_value',
+                                              {'days': rental.duration}),
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.grey.shade700,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                )),
+                          ],
+                        ),
+                      ],
+
+                      // Status
+                      const Divider(),
+                      _buildDetailRow(t['tenant_detail_status'],
+                          tenant.getStatusDisplayName()),
                     ],
-                    
-                    // ========================================
-                    // STATUS
-                    // ========================================
-                    const Divider(),
-                    _buildDetailRow('Trạng thái', tenant.getStatusDisplayName()),
-                  ],
+                  ),
                 ),
               ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Đóng'),
-              ),
-              if (_membership != null && _membership!.role == 'admin')
+              actions: [
                 TextButton(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    _showTenantOptionsMenu(tenant, isMovedOut);
-                  },
-                  child: const Text('Tùy chọn'),
+                  onPressed: () => Navigator.pop(context),
+                  child: Text(t['close']),
                 ),
-            ],
+                if (_membership != null && _membership!.role == 'admin')
+                  TextButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _showTenantOptionsMenu(tenant, isMovedOut);
+                    },
+                    child: Text(t['tenant_options_label']),
+                  ),
+              ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -982,10 +1128,7 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
         Text(
           title,
           style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 14,
-            color: Colors.grey,
-          ),
+              fontWeight: FontWeight.bold, fontSize: 14, color: Colors.grey),
         ),
         const SizedBox(height: 8),
         ...children,
@@ -1014,14 +1157,19 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
     );
   }
 
-  Future<void> _showTenantOptionsMenu(Tenant tenant, bool isMovedOut) async {
+  // =========================
+  // TENANT OPTIONS MENU
+  // =========================
+  Future<void> _showTenantOptionsMenu(
+      Tenant tenant, bool isMovedOut) async {
+    final t = AppTranslations.of(context);
     final screenWidth = MediaQuery.sizeOf(context).width;
     final isLargeScreen = screenWidth >= 600;
 
     List<Widget> menuItems = [
       ListTile(
         leading: const Icon(Icons.info_outline),
-        title: const Text('Xem chi tiết'),
+        title: Text(t['tenant_menu_view_detail']),
         onTap: () {
           Navigator.pop(context);
           final building = _buildings.firstWhere(
@@ -1029,7 +1177,7 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
             orElse: () => Building(
               id: '',
               organizationId: '',
-              name: tenant.lastBuildingName ?? 'Không xác định',
+              name: tenant.lastBuildingName ?? t['tenant_unknown'],
               address: '',
               createdAt: DateTime.now(),
             ),
@@ -1051,7 +1199,7 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
       ),
       ListTile(
         leading: const Icon(Icons.edit),
-        title: const Text('Chỉnh sửa thông tin'),
+        title: Text(t['tenant_menu_edit']),
         onTap: () {
           Navigator.pop(context);
           _showEditTenantDialog(tenant);
@@ -1059,7 +1207,7 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
       ),
       ListTile(
         leading: const Icon(Icons.move_up),
-        title: const Text('Chuyển phòng'),
+        title: Text(t['tenant_menu_move_room']),
         onTap: () {
           Navigator.pop(context);
           _showMoveRoomDialog(tenant);
@@ -1068,7 +1216,7 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
       if (!isMovedOut)
         ListTile(
           leading: const Icon(Icons.logout),
-          title: const Text('Chuyển đi'),
+          title: Text(t['tenant_menu_move_out']),
           onTap: () {
             Navigator.pop(context);
             _showMoveOutDialog(tenant);
@@ -1076,9 +1224,10 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
         ),
       ListTile(
         leading: const Icon(Icons.directions_car),
-        title: const Text('Quản lý phương tiện'),
+        title: Text(t['tenant_menu_vehicles']),
         subtitle: tenant.vehicles != null && tenant.vehicles!.isNotEmpty
-            ? Text('${tenant.vehicles!.length} phương tiện')
+            ? Text(t.textWithParams('tenant_vehicle_count',
+                {'count': tenant.vehicles!.length}))
             : null,
         onTap: () {
           Navigator.pop(context);
@@ -1087,7 +1236,7 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
       ),
       ListTile(
         leading: const Icon(Icons.history),
-        title: const Text('Lịch sử thuê phòng'),
+        title: Text(t['tenant_menu_rental_history']),
         onTap: () {
           Navigator.pop(context);
           _showRentalHistoryDialog(tenant);
@@ -1095,7 +1244,8 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
       ),
       ListTile(
         leading: Icon(Icons.delete, color: Colors.red.shade700),
-        title: Text('Xóa', style: TextStyle(color: Colors.red.shade700)),
+        title: Text(t['tenant_menu_delete'],
+            style: TextStyle(color: Colors.red.shade700)),
         onTap: () {
           Navigator.pop(context);
           _confirmDeleteTenant(tenant);
@@ -1106,32 +1256,38 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
     if (isLargeScreen) {
       await _showTrackedDialog(
         context: context,
-        builder: (context) => Dialog(
-          insetPadding: const EdgeInsets.symmetric(horizontal: 40.0, vertical: 24.0),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          child: SizedBox(
-            width: 360,
-            child: SafeArea(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ListTile(
-                    title: Text(
-                      'Tùy chọn',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                    ),
-                    trailing: IconButton(
+        builder: (context) {
+          final t = AppTranslations.of(context);
+          return Dialog(
+            insetPadding: const EdgeInsets.symmetric(
+                horizontal: 40.0, vertical: 24.0),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16)),
+            child: SizedBox(
+              width: 360,
+              child: SafeArea(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ListTile(
+                      title: Text(
+                        t['tenant_options_label'],
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                      trailing: IconButton(
                         icon: const Icon(Icons.close),
                         onPressed: () => Navigator.pop(context),
+                      ),
                     ),
-                  ),
-                  const Divider(height: 0),
-                  ...menuItems,
-                ],
+                    const Divider(height: 0),
+                    ...menuItems,
+                  ],
+                ),
               ),
             ),
-          ),
-        ),
+          );
+        },
       );
     } else {
       await _showTrackedBottomSheet(
@@ -1152,20 +1308,26 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
     }
   }
 
-  // Vehicle Management Dialog
+  // =========================
+  // VEHICLE MANAGEMENT
+  // =========================
   Future<void> _showVehicleManagementDialog(Tenant tenant) async {
+    final t = AppTranslations.of(context);
     final isPhone = MediaQuery.of(context).size.width < 600;
-    
+
     await _showTrackedDialog(
       context: context,
       builder: (context) => Dialog(
         child: ConstrainedBox(
           constraints: BoxConstraints(
-            maxWidth: isPhone ? MediaQuery.of(context).size.width * 0.95 : MediaQuery.of(context).size.width * 0.7,
+            maxWidth: isPhone
+                ? MediaQuery.of(context).size.width * 0.95
+                : MediaQuery.of(context).size.width * 0.7,
             maxHeight: MediaQuery.of(context).size.height * 0.85,
           ),
           child: StatefulBuilder(
             builder: (context, setDialogState) {
+              final t = AppTranslations.of(context);
               return Column(
                 children: [
                   Padding(
@@ -1178,74 +1340,73 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
-                                'Quản lý phương tiện',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                              Text(
+                                t['tenant_vehicle_manage_title'],
+                                style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold),
                               ),
                               Text(
                                 tenant.fullName,
                                 style: TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.grey.shade600,
-                                ),
+                                    fontSize: 14,
+                                    color: Colors.grey.shade600),
                               ),
                             ],
                           ),
                         ),
                         IconButton(
                           icon: const Icon(Icons.add),
+                          tooltip: t['tenant_vehicle_add_tooltip'],
                           onPressed: () async {
                             try {
-                              final result = await _showAddVehicleDialog();
+                              final result =
+                                  await _showAddVehicleDialog();
                               if (result != null) {
-                                print('Vehicle dialog result: ${result.licensePlate}');
-                                final success = await widget.tenantService.addVehicle(
+                                final success =
+                                    await widget.tenantService.addVehicle(
                                   tenant.id,
                                   result,
                                 );
-                                print('addVehicle success: $success');
                                 if (success) {
                                   await _refreshAll();
-                                  final updatedTenant = await widget.tenantService.getTenantById(tenant.id);
+                                  final updatedTenant =
+                                      await widget.tenantService
+                                          .getTenantById(tenant.id);
                                   if (updatedTenant != null) {
                                     setDialogState(() {
                                       tenant = updatedTenant;
                                     });
                                   }
-                                  
                                   if (mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('Đã thêm phương tiện')),
-                                    );
+                                    ScaffoldMessenger.of(context)
+                                        .showSnackBar(SnackBar(
+                                      content: Text(
+                                          t['tenant_vehicle_added']),
+                                    ));
                                   }
                                 } else {
                                   if (mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('Lỗi: Không thể thêm phương tiện'),
-                                        backgroundColor: Colors.red,
-                                      ),
-                                    );
+                                    ScaffoldMessenger.of(context)
+                                        .showSnackBar(SnackBar(
+                                      content: Text(
+                                          t['tenant_vehicle_add_error']),
+                                      backgroundColor: Colors.red,
+                                    ));
                                   }
                                 }
                               }
                             } catch (e) {
-                              print('Error in addVehicle UI: $e');
-                              print('Stack trace: $e');
                               if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('Lỗi: $e'),
-                                    backgroundColor: Colors.red,
-                                  ),
-                                );
+                                ScaffoldMessenger.of(context)
+                                    .showSnackBar(SnackBar(
+                                  content: Text(t.textWithParams(
+                                      'tenant_error', {'error': e})),
+                                  backgroundColor: Colors.red,
+                                ));
                               }
                             }
                           },
-                          tooltip: 'Thêm phương tiện',
                         ),
                         IconButton(
                           icon: const Icon(Icons.close),
@@ -1256,30 +1417,41 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                   ),
                   const Divider(height: 1),
                   Expanded(
-                    child: tenant.vehicles == null || tenant.vehicles!.isEmpty
-                        ? const Center(
+                    child: tenant.vehicles == null ||
+                            tenant.vehicles!.isEmpty
+                        ? Center(
                             child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisAlignment:
+                                  MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.directions_car_outlined, size: 48, color: Colors.grey),
-                                SizedBox(height: 12),
-                                Text('Chưa có phương tiện nào'),
+                                const Icon(
+                                    Icons.directions_car_outlined,
+                                    size: 48,
+                                    color: Colors.grey),
+                                const SizedBox(height: 12),
+                                Text(t['tenant_vehicle_empty']),
                               ],
                             ),
                           )
                         : FutureBuilder<Tenant?>(
-                            future: widget.tenantService.getTenantById(tenant.id),
+                            future: widget.tenantService
+                                .getTenantById(tenant.id),
                             builder: (context, snapshot) {
-                              final currentTenant = snapshot.data ?? tenant;
+                              final currentTenant =
+                                  snapshot.data ?? tenant;
                               return ListView.separated(
                                 padding: const EdgeInsets.all(16),
-                                itemCount: currentTenant.vehicles?.length ?? 0,
-                                separatorBuilder: (_, __) => const Divider(),
+                                itemCount:
+                                    currentTenant.vehicles?.length ?? 0,
+                                separatorBuilder: (_, __) =>
+                                    const Divider(),
                                 itemBuilder: (context, index) {
-                                  final vehicle = currentTenant.vehicles![index];
+                                  final vehicle =
+                                      currentTenant.vehicles![index];
                                   return ListTile(
                                     leading: CircleAvatar(
-                                      backgroundColor: Colors.purple.shade100,
+                                      backgroundColor:
+                                          Colors.purple.shade100,
                                       child: Icon(
                                         _getVehicleIcon(vehicle.type),
                                         color: Colors.purple.shade700,
@@ -1287,149 +1459,198 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                                     ),
                                     title: Text(
                                       vehicle.licensePlate,
-                                      style: const TextStyle(fontWeight: FontWeight.bold),
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.bold),
                                     ),
                                     subtitle: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
-                                        Text('${vehicle.getTypeDisplayName()}${vehicle.brand != null ? ' • ${vehicle.brand}' : ''}'),
-                                        if (vehicle.isParkingRegistered && vehicle.parkingSpot != null)
+                                        Text(
+                                            '${vehicle.getTypeDisplayName()}${vehicle.brand != null ? ' • ${vehicle.brand}' : ''}'),
+                                        if (vehicle.isParkingRegistered &&
+                                            vehicle.parkingSpot != null)
                                           Text(
-                                            'Bãi đỗ: ${vehicle.parkingSpot}',
+                                            t.textWithParams(
+                                                'tenant_vehicle_parking_spot',
+                                                {'spot': vehicle.parkingSpot!}),
                                             style: TextStyle(
-                                              color: Colors.green.shade700,
+                                              color:
+                                                  Colors.green.shade700,
                                               fontSize: 12,
                                             ),
                                           ),
                                       ],
                                     ),
                                     trailing: PopupMenuButton(
-                                      itemBuilder: (context) => [
-                                        const PopupMenuItem(
-                                          value: 'edit',
-                                          child: Row(
-                                            children: [
-                                              Icon(Icons.edit, size: 20),
-                                              SizedBox(width: 8),
-                                              Text('Chỉnh sửa'),
-                                            ],
+                                      itemBuilder: (context) {
+                                        final t =
+                                            AppTranslations.of(context);
+                                        return [
+                                          PopupMenuItem(
+                                            value: 'edit',
+                                            child: Row(children: [
+                                              const Icon(Icons.edit,
+                                                  size: 20),
+                                              const SizedBox(width: 8),
+                                              Text(t['tenant_vehicle_menu_edit']),
+                                            ]),
                                           ),
-                                        ),
-                                        if (!vehicle.isParkingRegistered)
-                                          const PopupMenuItem(
-                                            value: 'parking',
-                                            child: Row(
-                                              children: [
-                                                Icon(Icons.local_parking, size: 20),
-                                                SizedBox(width: 8),
-                                                Text('Đăng ký bãi đỗ'),
-                                              ],
+                                          if (!vehicle.isParkingRegistered)
+                                            PopupMenuItem(
+                                              value: 'parking',
+                                              child: Row(children: [
+                                                const Icon(
+                                                    Icons.local_parking,
+                                                    size: 20),
+                                                const SizedBox(width: 8),
+                                                Text(t['tenant_vehicle_menu_register_parking']),
+                                              ]),
+                                            )
+                                          else
+                                            PopupMenuItem(
+                                              value: 'unparking',
+                                              child: Row(children: [
+                                                const Icon(Icons.cancel,
+                                                    size: 20),
+                                                const SizedBox(width: 8),
+                                                Text(t['tenant_vehicle_menu_unregister_parking']),
+                                              ]),
                                             ),
-                                          )
-                                        else
-                                          const PopupMenuItem(
-                                            value: 'unparking',
-                                            child: Row(
-                                              children: [
-                                                Icon(Icons.cancel, size: 20),
-                                                SizedBox(width: 8),
-                                                Text('Hủy bãi đỗ'),
-                                              ],
-                                            ),
+                                          PopupMenuItem(
+                                            value: 'delete',
+                                            child: Row(children: [
+                                              Icon(Icons.delete,
+                                                  size: 20,
+                                                  color: Colors.red
+                                                      .shade700),
+                                              const SizedBox(width: 8),
+                                              Text(
+                                                  t['tenant_vehicle_menu_delete'],
+                                                  style: TextStyle(
+                                                      color: Colors.red
+                                                          .shade700)),
+                                            ]),
                                           ),
-                                        const PopupMenuItem(
-                                          value: 'delete',
-                                          child: Row(
-                                            children: [
-                                              Icon(Icons.delete, size: 20, color: Colors.red),
-                                              SizedBox(width: 8),
-                                              Text('Xóa', style: TextStyle(color: Colors.red)),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
+                                        ];
+                                      },
                                       onSelected: (value) async {
+                                        final t =
+                                            AppTranslations.of(context);
                                         if (value == 'edit') {
-                                          final result = await _showEditVehicleDialog(vehicle);
+                                          final result =
+                                              await _showEditVehicleDialog(
+                                                  vehicle);
                                           if (result != null) {
-                                            final success = await widget.tenantService.updateVehicle(
-                                              tenant.id,
-                                              index,
-                                              result,
-                                            );
+                                            final success = await widget
+                                                .tenantService
+                                                .updateVehicle(
+                                                    tenant.id,
+                                                    index,
+                                                    result);
                                             if (success) {
                                               await _refreshAll();
                                               setDialogState(() {});
                                               if (mounted) {
-                                                ScaffoldMessenger.of(context).showSnackBar(
-                                                  const SnackBar(content: Text('Đã cập nhật')),
-                                                );
+                                                ScaffoldMessenger.of(
+                                                        context)
+                                                    .showSnackBar(SnackBar(
+                                                  content: Text(t[
+                                                      'tenant_vehicle_updated']),
+                                                ));
                                               }
                                             }
                                           }
                                         } else if (value == 'parking') {
-                                          final spot = await _showParkingSpotDialog();
+                                          final spot =
+                                              await _showParkingSpotDialog();
                                           if (spot != null) {
-                                            final success = await widget.tenantService.registerParkingSpot(
-                                              tenant.id,
-                                              index,
-                                              spot,
-                                            );
+                                            final success = await widget
+                                                .tenantService
+                                                .registerParkingSpot(
+                                                    tenant.id, index, spot);
                                             if (success) {
                                               await _refreshAll();
                                               setDialogState(() {});
                                               if (mounted) {
-                                                ScaffoldMessenger.of(context).showSnackBar(
-                                                  const SnackBar(content: Text('Đã đăng ký bãi đỗ')),
-                                                );
+                                                ScaffoldMessenger.of(
+                                                        context)
+                                                    .showSnackBar(SnackBar(
+                                                  content: Text(t[
+                                                      'tenant_vehicle_parking_registered']),
+                                                ));
                                               }
                                             }
                                           }
                                         } else if (value == 'unparking') {
-                                          final success = await widget.tenantService.unregisterParkingSpot(
-                                            tenant.id,
-                                            index,
-                                          );
+                                          final success = await widget
+                                              .tenantService
+                                              .unregisterParkingSpot(
+                                                  tenant.id, index);
                                           if (success) {
                                             await _refreshAll();
                                             setDialogState(() {});
                                             if (mounted) {
-                                              ScaffoldMessenger.of(context).showSnackBar(
-                                                const SnackBar(content: Text('Đã hủy bãi đỗ')),
-                                              );
+                                              ScaffoldMessenger.of(context)
+                                                  .showSnackBar(SnackBar(
+                                                content: Text(t[
+                                                    'tenant_vehicle_parking_unregistered']),
+                                              ));
                                             }
                                           }
                                         } else if (value == 'delete') {
-                                          final ok = await _showTrackedDialog<bool>(
+                                          final ok =
+                                              await _showTrackedDialog<
+                                                  bool>(
                                             context: context,
-                                            builder: (context) => AlertDialog(
-                                              title: const Text('Xóa phương tiện'),
-                                              content: Text('Xóa phương tiện ${vehicle.licensePlate}?'),
-                                              actions: [
-                                                TextButton(
-                                                  onPressed: () => Navigator.pop(context, false),
-                                                  child: const Text('Hủy'),
-                                                ),
-                                                ElevatedButton(
-                                                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                                                  onPressed: () => Navigator.pop(context, true),
-                                                  child: const Text('Xóa'),
-                                                ),
-                                              ],
-                                            ),
+                                            builder: (context) {
+                                              final t = AppTranslations
+                                                  .of(context);
+                                              return AlertDialog(
+                                                title: Text(t[
+                                                    'tenant_vehicle_delete_title']),
+                                                content: Text(t.textWithParams(
+                                                    'tenant_vehicle_delete_confirm',
+                                                    {'plate': vehicle.licensePlate})),
+                                                actions: [
+                                                  TextButton(
+                                                    onPressed: () =>
+                                                        Navigator.pop(
+                                                            context,
+                                                            false),
+                                                    child:
+                                                        Text(t['cancel']),
+                                                  ),
+                                                  ElevatedButton(
+                                                    style: ElevatedButton
+                                                        .styleFrom(
+                                                            backgroundColor:
+                                                                Colors.red),
+                                                    onPressed: () =>
+                                                        Navigator.pop(
+                                                            context, true),
+                                                    child: Text(
+                                                        t['delete']),
+                                                  ),
+                                                ],
+                                              );
+                                            },
                                           );
                                           if (ok == true) {
-                                            final success = await widget.tenantService.removeVehicle(
-                                              tenant.id,
-                                              index,
-                                            );
+                                            final success = await widget
+                                                .tenantService
+                                                .removeVehicle(
+                                                    tenant.id, index);
                                             if (success) {
                                               await _refreshAll();
                                               setDialogState(() {});
                                               if (mounted) {
-                                                ScaffoldMessenger.of(context).showSnackBar(
-                                                  const SnackBar(content: Text('Đã xóa phương tiện')),
-                                                );
+                                                ScaffoldMessenger.of(
+                                                        context)
+                                                    .showSnackBar(SnackBar(
+                                                  content: Text(t[
+                                                      'tenant_vehicle_deleted']),
+                                                ));
                                               }
                                             }
                                           }
@@ -1464,8 +1685,9 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
         context: context,
         builder: (context) => StatefulBuilder(
           builder: (context, setDialogState) {
+            final t = AppTranslations.of(context);
             return AlertDialog(
-              title: const Text('Thêm phương tiện'),
+              title: Text(t['tenant_vehicle_add_title']),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -1473,9 +1695,9 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                     TextField(
                       controller: licensePlateController,
                       maxLength: 11,
-                      decoration: const InputDecoration(
-                        counterText: "",
-                        labelText: 'Biển số xe *',
+                      decoration: InputDecoration(
+                        counterText: '',
+                        labelText: t['tenant_vehicle_plate_label'],
                         hintText: '29A-12345',
                       ),
                       textCapitalization: TextCapitalization.characters,
@@ -1483,7 +1705,8 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                     const SizedBox(height: 16),
                     DropdownButtonFormField<VehicleType>(
                       initialValue: selectedType,
-                      decoration: const InputDecoration(labelText: 'Loại xe *'),
+                      decoration: InputDecoration(
+                          labelText: t['tenant_vehicle_type_label']),
                       items: VehicleType.values.map((type) {
                         return DropdownMenuItem(
                           value: type,
@@ -1492,9 +1715,7 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                       }).toList(),
                       onChanged: (value) {
                         if (value != null) {
-                          setDialogState(() {
-                            selectedType = value;
-                          });
+                          setDialogState(() => selectedType = value);
                         }
                       },
                     ),
@@ -1502,9 +1723,9 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                     TextField(
                       controller: brandController,
                       maxLength: 30,
-                      decoration: const InputDecoration(
-                        counterText: "",
-                        labelText: 'Hãng xe',
+                      decoration: InputDecoration(
+                        counterText: '',
+                        labelText: t['tenant_vehicle_brand_label'],
                         hintText: 'Honda, Yamaha, Toyota...',
                       ),
                     ),
@@ -1512,9 +1733,9 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                     TextField(
                       controller: modelController,
                       maxLength: 50,
-                      decoration: const InputDecoration(
-                        counterText: "",
-                        labelText: 'Model',
+                      decoration: InputDecoration(
+                        counterText: '',
+                        labelText: t['tenant_vehicle_model_label'],
                         hintText: 'Wave, Vision, Vios...',
                       ),
                     ),
@@ -1523,10 +1744,10 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                       controller: colorController,
                       maxLength: 30,
                       textCapitalization: TextCapitalization.sentences,
-                      decoration: const InputDecoration(
-                        counterText: "",
-                        labelText: 'Màu sắc',
-                        hintText: 'Đen, Trắng, Xanh...',
+                      decoration: InputDecoration(
+                        counterText: '',
+                        labelText: t['tenant_vehicle_color_label'],
+                        hintText: t['tenant_vehicle_color_hint'],
                       ),
                     ),
                   ],
@@ -1534,29 +1755,36 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
               ),
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Hủy'),
-                ),
+                    onPressed: () => Navigator.pop(context),
+                    child: Text(t['cancel'])),
                 ElevatedButton(
                   onPressed: () {
                     if (licensePlateController.text.trim().isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Vui lòng nhập biển số xe')),
-                      );
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content: Text(t['tenant_vehicle_plate_required']),
+                      ));
                       return;
                     }
-
-                    final vehicle = VehicleInfo(
-                      licensePlate: licensePlateController.text.trim().toUpperCase(),
-                      type: selectedType,
-                      brand: brandController.text.trim().isEmpty ? null : brandController.text.trim(),
-                      model: modelController.text.trim().isEmpty ? null : modelController.text.trim(),
-                      color: colorController.text.trim().isEmpty ? null : colorController.text.trim(),
+                    Navigator.pop(
+                      context,
+                      VehicleInfo(
+                        licensePlate: licensePlateController.text
+                            .trim()
+                            .toUpperCase(),
+                        type: selectedType,
+                        brand: brandController.text.trim().isEmpty
+                            ? null
+                            : brandController.text.trim(),
+                        model: modelController.text.trim().isEmpty
+                            ? null
+                            : modelController.text.trim(),
+                        color: colorController.text.trim().isEmpty
+                            ? null
+                            : colorController.text.trim(),
+                      ),
                     );
-
-                    Navigator.pop(context, vehicle);
                   },
-                  child: const Text('Thêm'),
+                  child: Text(t['tenant_vehicle_add_action']),
                 ),
               ],
             );
@@ -1572,7 +1800,8 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
   }
 
   Future<VehicleInfo?> _showEditVehicleDialog(VehicleInfo vehicle) async {
-    final licensePlateController = TextEditingController(text: vehicle.licensePlate);
+    final licensePlateController =
+        TextEditingController(text: vehicle.licensePlate);
     final brandController = TextEditingController(text: vehicle.brand);
     final modelController = TextEditingController(text: vehicle.model);
     final colorController = TextEditingController(text: vehicle.color);
@@ -1583,25 +1812,31 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
         context: context,
         builder: (context) => StatefulBuilder(
           builder: (context, setDialogState) {
+            final t = AppTranslations.of(context);
             return AlertDialog(
-              title: const Text('Chỉnh sửa phương tiện'),
+              title: Text(t['tenant_vehicle_edit_title']),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     TextField(
                       controller: licensePlateController,
-                      maxLength: 12, 
-                      decoration: const InputDecoration(counterText: "", labelText: 'Biển số xe *'),
+                      maxLength: 12,
+                      decoration: InputDecoration(
+                        counterText: '',
+                        labelText: t['tenant_vehicle_plate_label'],
+                      ),
                       textCapitalization: TextCapitalization.characters,
                       inputFormatters: [
-                        FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9\-\.]')), 
+                        FilteringTextInputFormatter.allow(
+                            RegExp(r'[a-zA-Z0-9\-\.]')),
                       ],
                     ),
                     const SizedBox(height: 16),
                     DropdownButtonFormField<VehicleType>(
                       initialValue: selectedType,
-                      decoration: const InputDecoration(labelText: 'Loại xe *'),
+                      decoration: InputDecoration(
+                          labelText: t['tenant_vehicle_type_label']),
                       items: VehicleType.values.map((type) {
                         return DropdownMenuItem(
                           value: type,
@@ -1610,9 +1845,7 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                       }).toList(),
                       onChanged: (value) {
                         if (value != null) {
-                          setDialogState(() {
-                            selectedType = value;
-                          });
+                          setDialogState(() => selectedType = value);
                         }
                       },
                     ),
@@ -1620,50 +1853,64 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
                     TextField(
                       controller: brandController,
                       maxLength: 30,
-                      decoration: const InputDecoration(counterText: "", labelText: 'Hãng xe'),
+                      decoration: InputDecoration(
+                          counterText: '',
+                          labelText: t['tenant_vehicle_brand_label']),
                     ),
                     const SizedBox(height: 16),
                     TextField(
                       controller: modelController,
                       maxLength: 50,
-                      decoration: const InputDecoration(counterText: "", labelText: 'Model'),
+                      decoration: InputDecoration(
+                          counterText: '',
+                          labelText: t['tenant_vehicle_model_label']),
                     ),
                     const SizedBox(height: 16),
                     TextField(
                       controller: colorController,
                       maxLength: 30,
-                      decoration: const InputDecoration(counterText: "", labelText: 'Màu sắc'),
+                      decoration: InputDecoration(
+                          counterText: '',
+                          labelText: t['tenant_vehicle_color_label']),
                     ),
                   ],
                 ),
               ),
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Hủy'),
-                ),
+                    onPressed: () => Navigator.pop(context),
+                    child: Text(t['cancel'])),
                 ElevatedButton(
                   onPressed: () {
                     if (licensePlateController.text.trim().isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Vui lòng nhập biển số xe')),
-                      );
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content:
+                            Text(t['tenant_vehicle_plate_required']),
+                      ));
                       return;
                     }
-
-                    final updatedVehicle = VehicleInfo(
-                      licensePlate: licensePlateController.text.trim().toUpperCase(),
-                      type: selectedType,
-                      brand: brandController.text.trim().isEmpty ? null : brandController.text.trim(),
-                      model: modelController.text.trim().isEmpty ? null : modelController.text.trim(),
-                      color: colorController.text.trim().isEmpty ? null : colorController.text.trim(),
-                      isParkingRegistered: vehicle.isParkingRegistered,
-                      parkingSpot: vehicle.parkingSpot,
+                    Navigator.pop(
+                      context,
+                      VehicleInfo(
+                        licensePlate: licensePlateController.text
+                            .trim()
+                            .toUpperCase(),
+                        type: selectedType,
+                        brand: brandController.text.trim().isEmpty
+                            ? null
+                            : brandController.text.trim(),
+                        model: modelController.text.trim().isEmpty
+                            ? null
+                            : modelController.text.trim(),
+                        color: colorController.text.trim().isEmpty
+                            ? null
+                            : colorController.text.trim(),
+                        isParkingRegistered: vehicle.isParkingRegistered,
+                        parkingSpot: vehicle.parkingSpot,
+                      ),
                     );
-
-                    Navigator.pop(context, updatedVehicle);
                   },
-                  child: const Text('Lưu'),
+                  child: Text(t['tenant_vehicle_save_action']),
                 ),
               ],
             );
@@ -1683,37 +1930,40 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
     try {
       return await _showTrackedDialog<String>(
         context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Đăng ký bãi đỗ'),
-          content: TextField(
-            controller: controller,
-            maxLength: 10,
-            decoration: const InputDecoration(
-              counterText: '',
-              labelText: 'Vị trí bãi đỗ',
-              hintText: 'A1, B2, C3...',
+        builder: (context) {
+          final t = AppTranslations.of(context);
+          return AlertDialog(
+            title: Text(t['tenant_parking_register_title']),
+            content: TextField(
+              controller: controller,
+              maxLength: 10,
+              decoration: InputDecoration(
+                counterText: '',
+                labelText: t['tenant_parking_spot_label'],
+                hintText: 'A1, B2, C3...',
+              ),
+              textCapitalization: TextCapitalization.characters,
             ),
-            textCapitalization: TextCapitalization.characters,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Hủy'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                if (controller.text.trim().isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Vui lòng nhập vị trí')),
-                  );
-                  return;
-                }
-                Navigator.pop(context, controller.text.trim().toUpperCase());
-              },
-              child: const Text('Đăng ký'),
-            ),
-          ],
-        ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: Text(t['cancel'])),
+              ElevatedButton(
+                onPressed: () {
+                  if (controller.text.trim().isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: Text(t['tenant_parking_spot_required']),
+                    ));
+                    return;
+                  }
+                  Navigator.pop(
+                      context, controller.text.trim().toUpperCase());
+                },
+                child: Text(t['tenant_parking_register_action']),
+              ),
+            ],
+          );
+        },
       );
     } finally {
       controller.dispose();
@@ -1735,125 +1985,144 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
     }
   }
 
-  String _getVehicleTypeDisplayName(VehicleType type) {
-    switch (type) {
-      case VehicleType.motorcycle:
-        return 'Xe máy';
-      case VehicleType.car:
-        return 'Ô tô';
-      case VehicleType.bicycle:
-        return 'Xe đạp';
-      case VehicleType.electricBike:
-        return 'Xe đạp điện';
-      case VehicleType.other:
-        return 'Khác';
-    }
-  }
-
+  // =========================
+  // RENTAL HISTORY DIALOG
+  // =========================
   Future<void> _showRentalHistoryDialog(Tenant tenant) async {
     final isPhone = MediaQuery.of(context).size.width < 600;
-    
+
     await _showTrackedDialog(
       context: context,
-      builder: (context) => Dialog(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: isPhone ? MediaQuery.of(context).size.width * 0.95 : MediaQuery.of(context).size.width * 0.7,
-            maxHeight: MediaQuery.of(context).size.height * 0.8,
-          ),
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    const Icon(Icons.history),
-                    const SizedBox(width: 8),
-                    const Expanded(
-                      child: Text(
-                        'Lịch sử thuê phòng',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
+      builder: (context) {
+        final t = AppTranslations.of(context);
+        return Dialog(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: isPhone
+                  ? MediaQuery.of(context).size.width * 0.95
+                  : MediaQuery.of(context).size.width * 0.7,
+              maxHeight: MediaQuery.of(context).size.height * 0.8,
+            ),
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.history),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          t['tenant_rental_history_title'],
+                          style: const TextStyle(
+                              fontSize: 18, fontWeight: FontWeight.bold),
                         ),
                       ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                  ],
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const Divider(height: 1),
-              Expanded(
-                child: tenant.previousRentals == null || tenant.previousRentals!.isEmpty
-                    ? const Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.history, size: 48, color: Colors.grey),
-                            SizedBox(height: 12),
-                            Text('Không có lịch sử thuê'),
-                          ],
-                        ),
-                      )
-                    : ListView.separated(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: tenant.previousRentals!.length,
-                        separatorBuilder: (_, __) => const Divider(),
-                        itemBuilder: (context, i) {
-                          final r = tenant.previousRentals![i];
-                          final durationDays = r.duration;
-                          return ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor: Colors.orange.shade100,
-                              child: Icon(Icons.home, color: Colors.orange.shade700),
-                            ),
-                            title: Text('${r.buildingName} - Phòng ${r.roomNumber}'),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Từ ${DateFormat.yMd().format(r.moveInDate)} đến ${DateFormat.yMd().format(r.moveOutDate)}',
-                                  style: const TextStyle(fontSize: 13),
-                                ),
-                                Text(
-                                  '$durationDays ngày',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey.shade600,
+                const Divider(height: 1),
+                Expanded(
+                  child: tenant.previousRentals == null ||
+                          tenant.previousRentals!.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.history,
+                                  size: 48, color: Colors.grey),
+                              const SizedBox(height: 12),
+                              Text(t['tenant_rental_history_empty']),
+                            ],
+                          ),
+                        )
+                      : ListView.separated(
+                          padding: const EdgeInsets.all(16),
+                          itemCount: tenant.previousRentals!.length,
+                          separatorBuilder: (_, __) => const Divider(),
+                          itemBuilder: (context, i) {
+                            final r = tenant.previousRentals![i];
+                            return ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: Colors.orange.shade100,
+                                child: Icon(Icons.home,
+                                    color: Colors.orange.shade700),
+                              ),
+                              title: Text(t.textWithParams(
+                                  'tenant_location_value', {
+                                'building': r.buildingName,
+                                'room': r.roomNumber,
+                              })),
+                              subtitle: Column(
+                                crossAxisAlignment:
+                                    CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    t.textWithParams(
+                                        'tenant_detail_history_dates', {
+                                      'from': DateFormat.yMd()
+                                          .format(r.moveInDate),
+                                      'to': DateFormat.yMd()
+                                          .format(r.moveOutDate),
+                                    }),
+                                    style:
+                                        const TextStyle(fontSize: 13),
                                   ),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-              ),
-              const SizedBox(height: 12),
-            ],
+                                  Text(
+                                    t.textWithParams(
+                                        'tenant_detail_days_value',
+                                        {'days': r.duration}),
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey.shade600),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                ),
+                const SizedBox(height: 12),
+              ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
+  // =========================
+  // EDIT TENANT DIALOG
+  // =========================
   Future<void> _showEditTenantDialog(Tenant tenant) async {
     final buildings = await _getBuildings();
     final allRooms = await _getAllRooms();
     if (!mounted) return;
+    final t = AppTranslations.of(context);
     final isPhone = MediaQuery.of(context).size.width < 600;
 
-    final nameController = TextEditingController(text: tenant.fullName);
-    final phoneController = TextEditingController(text: tenant.phoneNumber);
-    final emailController = TextEditingController(text: tenant.email);
-    final nationalIdController = TextEditingController(text: tenant.nationalId);
-    final occupationController = TextEditingController(text: tenant.occupation);
-    final workplaceController = TextEditingController(text: tenant.workplace);
-    final monthlyRentController = TextEditingController(text: tenant.monthlyRent?.toString() ?? '');
-    final areaController = TextEditingController(text: tenant.apartmentArea?.toString() ?? '');
-    final typeController = TextEditingController(text: tenant.apartmentType ?? '');
+    final nameController =
+        TextEditingController(text: tenant.fullName);
+    final phoneController =
+        TextEditingController(text: tenant.phoneNumber);
+    final emailController =
+        TextEditingController(text: tenant.email);
+    final nationalIdController =
+        TextEditingController(text: tenant.nationalId);
+    final occupationController =
+        TextEditingController(text: tenant.occupation);
+    final workplaceController =
+        TextEditingController(text: tenant.workplace);
+    final monthlyRentController =
+        TextEditingController(text: tenant.monthlyRent?.toString() ?? '');
+    final areaController =
+        TextEditingController(text: tenant.apartmentArea?.toString() ?? '');
+    final typeController =
+        TextEditingController(text: tenant.apartmentType ?? '');
 
     DateTime editedMoveInDate = tenant.moveInDate;
 
@@ -1861,71 +2130,126 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
+          final t = AppTranslations.of(context);
           return AlertDialog(
-            title: const Text('Chỉnh sửa thông tin'),
+            title: Text(t['tenant_edit_title']),
             content: SizedBox(
               width: isPhone ? double.maxFinite : 500,
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    _buildInputField(nameController, 'Họ và tên', Icons.person, maxLength: 100),
-                    _buildInputField(phoneController, 'Số điện thoại', Icons.phone, keyboardType: TextInputType.phone, maxLength: 15),
-                    _buildInputField(monthlyRentController, 'Giá thuê', Icons.money, suffix: '₫', keyboardType: TextInputType.number, maxLength: 12),
+                    _buildInputField(nameController,
+                        t['tenant_field_name'], Icons.person,
+                        maxLength: 100),
+                    _buildInputField(
+                        phoneController,
+                        t['tenant_field_phone'],
+                        Icons.phone,
+                        keyboardType: TextInputType.phone,
+                        maxLength: 15),
+                    _buildInputField(
+                        monthlyRentController,
+                        t['tenant_field_rent'],
+                        Icons.money,
+                        suffix: '₫',
+                        keyboardType: TextInputType.number,
+                        maxLength: 12),
                     const Divider(height: 32),
                     LocalizedDatePicker(
-                      labelText: 'Ngày chuyển vào',
+                      labelText: t['tenant_field_move_in_date'],
                       initialDate: editedMoveInDate,
                       required: true,
                       prefixIcon: Icons.calendar_today,
                       onDateChanged: (date) {
                         if (date != null) {
-                          setDialogState(() {
-                            editedMoveInDate = date;
-                          });
+                          setDialogState(
+                              () => editedMoveInDate = date);
                         }
                       },
                     ),
                     const SizedBox(height: 16),
-          
-                    const Text('Hóa đơn & Căn hộ', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+                    Text(t['tenant_section_invoice_apt'],
+                        style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey)),
                     const SizedBox(height: 12),
                     Row(
                       children: [
-                        Expanded(child: _buildInputField(typeController, 'Loại căn hộ', Icons.category, maxLength: 50)),
+                        Expanded(
+                            child: _buildInputField(
+                                typeController,
+                                t['tenant_field_apt_type'],
+                                Icons.category,
+                                maxLength: 50)),
                         const SizedBox(width: 12),
-                        Expanded(child: _buildInputField(areaController, 'Diện tích', Icons.square_foot, suffix: 'm²', keyboardType: TextInputType.number, maxLength: 6)),
+                        Expanded(
+                            child: _buildInputField(
+                                areaController,
+                                t['tenant_field_area'],
+                                Icons.square_foot,
+                                suffix: 'm²',
+                                keyboardType: TextInputType.number,
+                                maxLength: 6)),
                       ],
                     ),
-                    _buildInputField(emailController, 'Email', Icons.email, maxLength: 100),
-                    _buildInputField(nationalIdController, 'CMND/CCCD', Icons.badge, maxLength: 12),
-                    _buildInputField(occupationController, 'Nghề nghiệp', Icons.work, maxLength: 100),
-                    _buildInputField(workplaceController, 'Nơi làm việc', Icons.location_city, maxLength: 150),
+                    _buildInputField(emailController,
+                        t['tenant_field_email'], Icons.email,
+                        maxLength: 100),
+                    _buildInputField(
+                        nationalIdController,
+                        t['tenant_field_national_id'],
+                        Icons.badge,
+                        maxLength: 12),
+                    _buildInputField(occupationController,
+                        t['tenant_field_occupation'], Icons.work,
+                        maxLength: 100),
+                    _buildInputField(
+                        workplaceController,
+                        t['tenant_field_workplace'],
+                        Icons.location_city,
+                        maxLength: 150),
                   ],
                 ),
               ),
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Hủy')),
+              TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: Text(t['cancel'])),
               ElevatedButton(
                 onPressed: () {
                   Navigator.pop(context, {
                     'fullName': nameController.text.trim(),
                     'phoneNumber': phoneController.text.trim(),
-                    'email': emailController.text.trim().isEmpty ? null : emailController.text.trim(),
-                    'nationalId': nationalIdController.text.trim().isEmpty ? null : nationalIdController.text.trim(),
-                    'occupation': occupationController.text.trim().isEmpty ? null : occupationController.text.trim(),
-                    'workplace': workplaceController.text.trim().isEmpty ? null : workplaceController.text.trim(),
-                    'monthlyRent': double.tryParse(monthlyRentController.text.trim()),
-                    'apartmentArea': double.tryParse(areaController.text.trim()),
+                    'email': emailController.text.trim().isEmpty
+                        ? null
+                        : emailController.text.trim(),
+                    'nationalId':
+                        nationalIdController.text.trim().isEmpty
+                            ? null
+                            : nationalIdController.text.trim(),
+                    'occupation':
+                        occupationController.text.trim().isEmpty
+                            ? null
+                            : occupationController.text.trim(),
+                    'workplace':
+                        workplaceController.text.trim().isEmpty
+                            ? null
+                            : workplaceController.text.trim(),
+                    'monthlyRent': double.tryParse(
+                        monthlyRentController.text.trim()),
+                    'apartmentArea':
+                        double.tryParse(areaController.text.trim()),
                     'apartmentType': typeController.text.trim(),
                   });
                 },
-                child: const Text('Lưu thay đổi'),
+                child: Text(t['tenant_edit_save']),
               ),
             ],
           );
-        }
+        },
       ),
     );
 
@@ -1938,13 +2262,13 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
   }
 
   Widget _buildInputField(
-    TextEditingController controller, 
-    String label, 
+    TextEditingController controller,
+    String label,
     IconData icon, {
-      String? suffix, 
-      TextInputType? keyboardType,
-      int? maxLength,
-    }) {
+    String? suffix,
+    TextInputType? keyboardType,
+    int? maxLength,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: TextField(
@@ -1963,96 +2287,132 @@ class _TenantsTabState extends State<TenantsTab> with AutomaticKeepAliveClientMi
     );
   }
 
-Future<void> _showMoveRoomDialog(Tenant tenant) async {
-  String? selectedBuildingId = tenant.buildingId.isNotEmpty ? tenant.buildingId : null;
-  String? selectedRoomId = tenant.roomId.isNotEmpty ? tenant.roomId : null;
+  // =========================
+  // MOVE ROOM DIALOG
+  // =========================
+  Future<void> _showMoveRoomDialog(Tenant tenant) async {
+    String? selectedBuildingId =
+        tenant.buildingId.isNotEmpty ? tenant.buildingId : null;
+    String? selectedRoomId =
+        tenant.roomId.isNotEmpty ? tenant.roomId : null;
 
-  final result = await _showTrackedDialog<bool>(
-    context: context,
-    builder: (context) => StatefulBuilder(
-      builder: (context, setDialogState) {
-        final availableRooms = _rooms.where((r) => r.buildingId == selectedBuildingId).toList();
+    final result = await _showTrackedDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final t = AppTranslations.of(context);
+          final availableRooms = _rooms
+              .where((r) => r.buildingId == selectedBuildingId)
+              .toList();
 
-        return AlertDialog(
-          title: const Text('Chuyển phòng mới'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              DropdownButtonFormField<String>(
-                value: selectedBuildingId,
-                decoration: const InputDecoration(labelText: 'Chọn Toà nhà', border: OutlineInputBorder()),
-                items: _buildings.map((b) => DropdownMenuItem(value: b.id, child: Text(b.name))).toList(),
-                onChanged: (val) {
-                  setDialogState(() {
-                    selectedBuildingId = val;
-                    selectedRoomId = null;
-                  });
-                },
-              ),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                initialValue: selectedRoomId,
-                decoration: const InputDecoration(labelText: 'Chọn Phòng', border: OutlineInputBorder()),
-                items: availableRooms.map((r) => DropdownMenuItem(value: r.id, child: Text('${r.roomNumber} (${r.roomType})'))).toList(),
-                onChanged: (val) => setDialogState(() => selectedRoomId = val),
+          return AlertDialog(
+            title: Text(t['tenant_move_room_title']),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                  value: selectedBuildingId,
+                  decoration: InputDecoration(
+                      labelText: t['tenant_move_room_building'],
+                      border: const OutlineInputBorder()),
+                  items: _buildings
+                      .map((b) => DropdownMenuItem(
+                          value: b.id, child: Text(b.name)))
+                      .toList(),
+                  onChanged: (val) {
+                    setDialogState(() {
+                      selectedBuildingId = val;
+                      selectedRoomId = null;
+                    });
+                  },
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  initialValue: selectedRoomId,
+                  decoration: InputDecoration(
+                      labelText: t['tenant_move_room_room'],
+                      border: const OutlineInputBorder()),
+                  items: availableRooms
+                      .map((r) => DropdownMenuItem(
+                          value: r.id,
+                          child: Text('${r.roomNumber} (${r.roomType})')))
+                      .toList(),
+                  onChanged: (val) =>
+                      setDialogState(() => selectedRoomId = val),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: Text(t['cancel'])),
+              ElevatedButton(
+                onPressed: (selectedBuildingId == null ||
+                        selectedRoomId == null)
+                    ? null
+                    : () => Navigator.pop(context, true),
+                child: Text(t['tenant_move_room_confirm']),
               ),
             ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Hủy')),
-            ElevatedButton(
-              onPressed: (selectedBuildingId == null || selectedRoomId == null) 
-                ? null 
-                : () => Navigator.pop(context, true),
-              child: const Text('Xác nhận chuyển'),
-            ),
-          ],
-        );
-      },
-    ),
-  );
+          );
+        },
+      ),
+    );
 
-  if (result == true && selectedBuildingId != null && selectedRoomId != null) {
-    if (selectedRoomId == tenant.roomId) return;
-
-    final success = await widget.tenantService.moveTenantToRoom(tenant.id, selectedBuildingId!, selectedRoomId!);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(success ? 'Đã chuyển phòng thành công' : 'Lỗi: Không thể chuyển phòng'),
-        backgroundColor: success ? Colors.green : Colors.red),
-      );
-      _refreshAll();
-      widget.onChanged?.call();
+    if (result == true &&
+        selectedBuildingId != null &&
+        selectedRoomId != null) {
+      if (selectedRoomId == tenant.roomId) return;
+      final t = AppTranslations.of(context);
+      final success = await widget.tenantService.moveTenantToRoom(
+          tenant.id, selectedBuildingId!, selectedRoomId!);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(success
+              ? t['tenant_move_room_success']
+              : t['tenant_move_room_error']),
+          backgroundColor: success ? Colors.green : Colors.red,
+        ));
+        _refreshAll();
+        widget.onChanged?.call();
+      }
     }
   }
-}
 
+  // =========================
+  // MOVE OUT DIALOG
+  // =========================
   Future<void> _showMoveOutDialog(Tenant tenant) async {
     DateTime selectedDate = DateTime.now();
-    String? selectedReason = 'Chuyển đi';
-    final reasonOptions = [
-      'Chuyển đi',
-      'Hết hạn hợp đồng',
-      'Chấm dứt hợp đồng sớm',
-      'Vi phạm hợp đồng',
-      'Khác',
-    ];
-    
+    String? selectedReason;
+
     final result = await _showTrackedDialog<Map<String, dynamic>>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
+          final t = AppTranslations.of(context);
+
+          // Build reason list inside builder so it's localised
+          final reasonOptions = [
+            t['tenant_moveout_reason_1'],
+            t['tenant_moveout_reason_2'],
+            t['tenant_moveout_reason_3'],
+            t['tenant_moveout_reason_4'],
+            t['tenant_moveout_reason_5'],
+          ];
+          selectedReason ??= reasonOptions.first;
+
           return AlertDialog(
-            title: const Text('Đánh dấu đã chuyển đi'),
+            title: Text(t['tenant_moveout_title']),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text('Đánh dấu ${tenant.fullName} là đã chuyển đi?'),
+                Text(t.textWithParams('tenant_moveout_confirm',
+                    {'name': tenant.fullName})),
                 const SizedBox(height: 16),
-                
                 LocalizedDatePicker(
-                  labelText: 'Ngày chuyển đi',
+                  labelText: t['tenant_moveout_date_label'],
                   initialDate: selectedDate,
                   required: true,
                   prefixIcon: Icons.calendar_today,
@@ -2062,47 +2422,48 @@ Future<void> _showMoveRoomDialog(Tenant tenant) async {
                     }
                   },
                 ),
-                
                 const SizedBox(height: 16),
-                
                 DropdownButtonFormField<String>(
                   value: selectedReason,
-                  decoration: const InputDecoration(
-                    labelText: 'Lý do',
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    labelText: t['tenant_moveout_reason_label'],
+                    border: const OutlineInputBorder(),
                   ),
-                  items: reasonOptions.map((reason) {
-                    return DropdownMenuItem(
-                      value: reason,
-                      child: Text(reason),
-                    );
-                  }).toList(),
-                  onChanged: (value) {
-                    setDialogState(() => selectedReason = value);
-                  },
+                  items: reasonOptions
+                      .map((reason) => DropdownMenuItem(
+                          value: reason, child: Text(reason)))
+                      .toList(),
+                  onChanged: (value) =>
+                      setDialogState(() => selectedReason = value),
                 ),
-                
-                if (tenant.contractEndDate != null && 
-                    selectedDate.isBefore(tenant.contractEndDate!)) ...[
+                if (tenant.contractEndDate != null &&
+                    selectedDate
+                        .isBefore(tenant.contractEndDate!)) ...[
                   const SizedBox(height: 16),
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       color: Colors.orange.shade50,
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.orange.shade300),
+                      border:
+                          Border.all(color: Colors.orange.shade300),
                     ),
                     child: Row(
                       children: [
-                        Icon(Icons.warning_amber, color: Colors.orange.shade700),
+                        Icon(Icons.warning_amber,
+                            color: Colors.orange.shade700),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'Chấm dứt sớm ${tenant.contractEndDate!.difference(selectedDate).inDays} ngày',
+                            t.textWithParams(
+                                'tenant_moveout_early_warning', {
+                              'days': tenant.contractEndDate!
+                                  .difference(selectedDate)
+                                  .inDays
+                            }),
                             style: TextStyle(
-                              fontSize: 13,
-                              color: Colors.orange.shade900,
-                            ),
+                                fontSize: 13,
+                                color: Colors.orange.shade900),
                           ),
                         ),
                       ],
@@ -2113,15 +2474,14 @@ Future<void> _showMoveRoomDialog(Tenant tenant) async {
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Hủy'),
-              ),
+                  onPressed: () => Navigator.pop(context),
+                  child: Text(t['cancel'])),
               ElevatedButton(
                 onPressed: () => Navigator.pop(context, {
                   'date': selectedDate,
                   'reason': selectedReason,
                 }),
-                child: const Text('Xác nhận'),
+                child: Text(t['tenant_moveout_confirm_action']),
               ),
             ],
           );
@@ -2130,48 +2490,69 @@ Future<void> _showMoveRoomDialog(Tenant tenant) async {
     );
 
     if (result != null) {
+      final t = AppTranslations.of(context);
       final success = await widget.tenantService.markTenantAsMovedOut(
         tenant.id,
         moveOutDate: result['date'],
         moveOutReason: result['reason'],
       );
-      
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(success ? 'Đã đánh dấu chuyển đi' : 'Thất bại')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+            success ? t['tenant_moveout_success'] : t['tenant_moveout_failed']),
+      ));
       await _refreshAll();
     }
   }
 
+  // =========================
+  // DELETE TENANT
+  // =========================
   Future<void> _confirmDeleteTenant(Tenant tenant) async {
     final ok = await _showTrackedDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Xóa người thuê'),
-        content: Text('Bạn có chắc muốn xóa ${tenant.fullName}? Hành động này không thể hoàn tác.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Hủy')),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(context, true), 
-            child: const Text('Xóa'),
-          ),
-        ],
-      ),
+      builder: (context) {
+        final t = AppTranslations.of(context);
+        return AlertDialog(
+          title: Text(t['tenant_delete_title']),
+          content: Text(t.textWithParams(
+              'tenant_delete_confirm', {'name': tenant.fullName})),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: Text(t['cancel'])),
+            ElevatedButton(
+              style:
+                  ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: () => Navigator.pop(context, true),
+              child: Text(t['delete']),
+            ),
+          ],
+        );
+      },
     );
 
     if (ok == true) {
-      final success = await widget.tenantService.deleteTenant(tenant.id);
+      final t = AppTranslations.of(context);
+      final success =
+          await widget.tenantService.deleteTenant(tenant.id);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(success ? 'Đã xóa' : 'Xóa thất bại')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(success
+            ? t['tenant_delete_success']
+            : t['tenant_delete_failed']),
+      ));
       await _refreshAll();
     }
   }
 
-  Future<void> _showAddTenantDialog(List<Building> buildings, List<Room> allRooms) async {
+  // =========================
+  // ADD TENANT DIALOG
+  // =========================
+  Future<void> _showAddTenantDialog(
+      List<Building> buildings, List<Room> allRooms) async {
     final isPhone = MediaQuery.of(context).size.width < 600;
-    
+
     final Set<String> occupiedRoomIds = _allTenants
         .where((t) => t.status == TenantStatus.active && t.isMainTenant)
         .map((t) => t.roomId)
@@ -2187,28 +2568,34 @@ Future<void> _showMoveRoomDialog(Tenant tenant) async {
     final areaController = TextEditingController();
     final typeController = TextEditingController();
 
-    String? selectedBuildingId = buildings.isNotEmpty ? buildings.first.id : null;
+    String? selectedBuildingId =
+        buildings.isNotEmpty ? buildings.first.id : null;
     String? selectedRoomId;
     TenantStatus selectedStatus = TenantStatus.active;
     bool isMainTenant = true;
     DateTime moveInDate = DateTime.now();
-    DateTime? contractEndDate;
 
     final result = await _showTrackedDialog<Map<String, dynamic>>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
-          final availableRooms = allRooms.where((r) => r.buildingId == selectedBuildingId).toList();
+          final t = AppTranslations.of(context);
+          final availableRooms = allRooms
+              .where((r) => r.buildingId == selectedBuildingId)
+              .toList();
 
           return Dialog(
             child: ConstrainedBox(
               constraints: BoxConstraints(
-                maxWidth: isPhone ? MediaQuery.of(context).size.width * 0.95 : MediaQuery.of(context).size.width * 0.7,
+                maxWidth: isPhone
+                    ? MediaQuery.of(context).size.width * 0.95
+                    : MediaQuery.of(context).size.width * 0.7,
                 maxHeight: MediaQuery.of(context).size.height * 0.85,
               ),
               child: AlertDialog(
-                title: const Text('Thêm Người Thuê'),
-                contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+                title: Text(t['tenant_add_title']),
+                contentPadding:
+                    const EdgeInsets.fromLTRB(24, 20, 24, 0),
                 content: SizedBox(
                   width: double.maxFinite,
                   child: SingleChildScrollView(
@@ -2216,15 +2603,27 @@ Future<void> _showMoveRoomDialog(Tenant tenant) async {
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        _buildInputField(nameController, 'Họ và tên *', Icons.person, maxLength: 100),
-                        _buildInputField(phoneController, 'Số điện thoại *', Icons.phone, keyboardType: TextInputType.phone, maxLength: 15),
-                        
+                        _buildInputField(nameController,
+                            t['tenant_field_name_required'], Icons.person,
+                            maxLength: 100),
+                        _buildInputField(
+                            phoneController,
+                            t['tenant_field_phone_required'],
+                            Icons.phone,
+                            keyboardType: TextInputType.phone,
+                            maxLength: 15),
                         const SizedBox(height: 16),
                         DropdownButtonFormField<String>(
                           initialValue: selectedBuildingId,
-                          decoration: const InputDecoration(labelText: 'Toà nhà *', border: OutlineInputBorder()),
-                          items: buildings.map((b) => DropdownMenuItem(value: b.id, child: Text(b.name))).toList(),
-                          onChanged: (val) => setDialogState(() {
+                          decoration: InputDecoration(
+                              labelText: t['tenant_field_building'],
+                              border: const OutlineInputBorder()),
+                          items: buildings
+                              .map((b) => DropdownMenuItem(
+                                  value: b.id, child: Text(b.name)))
+                              .toList(),
+                          onChanged: (val) =>
+                              setDialogState(() {
                             selectedBuildingId = val;
                             selectedRoomId = null;
                           }),
@@ -2232,25 +2631,38 @@ Future<void> _showMoveRoomDialog(Tenant tenant) async {
                         const SizedBox(height: 16),
                         DropdownButtonFormField<String>(
                           initialValue: selectedRoomId,
-                          decoration: const InputDecoration(labelText: 'Phòng *', border: OutlineInputBorder()),
+                          decoration: InputDecoration(
+                              labelText: t['tenant_field_room'],
+                              border: const OutlineInputBorder()),
                           items: availableRooms.map((room) {
-                            final bool isOccupied = occupiedRoomIds.contains(room.id);
+                            final bool isOccupied =
+                                occupiedRoomIds.contains(room.id);
                             return DropdownMenuItem(
                               value: room.id,
                               child: Text(
-                                'Phòng ${room.roomNumber} ${isOccupied ? "(Đã thuê)" : "(Trống)"}',
+                                t.textWithParams(
+                                    isOccupied
+                                        ? 'tenant_room_occupied'
+                                        : 'tenant_room_vacant',
+                                    {'number': room.roomNumber}),
                                 style: TextStyle(
-                                  color: isOccupied ? Colors.red : Colors.green.shade700,
-                                  fontWeight: isOccupied ? FontWeight.normal : FontWeight.bold,
+                                  color: isOccupied
+                                      ? Colors.red
+                                      : Colors.green.shade700,
+                                  fontWeight: isOccupied
+                                      ? FontWeight.normal
+                                      : FontWeight.bold,
                                 ),
                               ),
                             );
                           }).toList(),
                           onChanged: (val) {
-                            final room = allRooms.firstWhere((r) => r.id == val);
+                            final room = allRooms
+                                .firstWhere((r) => r.id == val);
                             setDialogState(() {
                               selectedRoomId = val;
-                              areaController.text = room.area.toString();
+                              areaController.text =
+                                  room.area.toString();
                               typeController.text = room.roomType;
                             });
                           },
@@ -2259,89 +2671,152 @@ Future<void> _showMoveRoomDialog(Tenant tenant) async {
                         Row(
                           children: [
                             Expanded(
-                              child: DropdownButtonFormField<TenantStatus>(
+                              child: DropdownButtonFormField<
+                                  TenantStatus>(
                                 value: selectedStatus,
-                                decoration: const InputDecoration(labelText: 'Trạng thái', border: OutlineInputBorder()),
+                                decoration: InputDecoration(
+                                    labelText:
+                                        t['tenant_field_status'],
+                                    border:
+                                        const OutlineInputBorder()),
                                 items: TenantStatus.values.map((s) {
-                                  String label = "Đang ở";
-                                  if (s == TenantStatus.inactive) label = "Tạm ngưng";
-                                  if (s == TenantStatus.moveOut) label = "Đã dọn đi";
-                                  return DropdownMenuItem(value: s, child: Text(label));
+                                  String label =
+                                      t['tenant_status_active'];
+                                  if (s == TenantStatus.inactive) {
+                                    label =
+                                        t['tenant_status_inactive'];
+                                  }
+                                  if (s == TenantStatus.moveOut) {
+                                    label =
+                                        t['tenant_status_moved_out'];
+                                  }
+                                  return DropdownMenuItem(
+                                      value: s, child: Text(label));
                                 }).toList(),
-                                onChanged: (val) => setDialogState(() => selectedStatus = val!),
+                                onChanged: (val) => setDialogState(
+                                    () => selectedStatus = val!),
                               ),
                             ),
                             const SizedBox(width: 12),
                             Expanded(
                               child: CheckboxListTile(
-                                title: const Text('Chủ hộ', style: TextStyle(fontSize: 14)),
+                                title: Text(
+                                    t['tenant_field_main_tenant'],
+                                    style: const TextStyle(
+                                        fontSize: 14)),
                                 value: isMainTenant,
-                                onChanged: (val) => setDialogState(() => isMainTenant = val ?? true),
+                                onChanged: (val) =>
+                                    setDialogState(() =>
+                                        isMainTenant = val ?? true),
                                 contentPadding: EdgeInsets.zero,
                               ),
                             ),
                           ],
                         ),
                         const SizedBox(height: 16),
-                        _buildInputField(monthlyRentController, 'Tiền thuê hàng tháng *', Icons.money, suffix: '₫', keyboardType: TextInputType.number, maxLength: 12),
-                        
+                        _buildInputField(
+                            monthlyRentController,
+                            t['tenant_field_rent_required'],
+                            Icons.money,
+                            suffix: '₫',
+                            keyboardType: TextInputType.number,
+                            maxLength: 12),
                         const Divider(height: 32),
-                        const Text('Thông tin bổ sung (Dùng cho hóa đơn)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+                        Text(t['tenant_section_invoice_apt'],
+                            style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.grey)),
                         const SizedBox(height: 12),
                         Row(
                           children: [
-                            Expanded(child: _buildInputField(typeController, 'Loại căn hộ', Icons.category, maxLength: 50)),
+                            Expanded(
+                                child: _buildInputField(
+                                    typeController,
+                                    t['tenant_field_apt_type'],
+                                    Icons.category,
+                                    maxLength: 50)),
                             const SizedBox(width: 12),
-                            Expanded(child: _buildInputField(areaController, 'Diện tích', Icons.square_foot, suffix: 'm²', keyboardType: TextInputType.number, maxLength: 6)),
+                            Expanded(
+                                child: _buildInputField(
+                                    areaController,
+                                    t['tenant_field_area'],
+                                    Icons.square_foot,
+                                    suffix: 'm²',
+                                    keyboardType:
+                                        TextInputType.number,
+                                    maxLength: 6)),
                           ],
                         ),
-                        _buildInputField(emailController, 'Email', Icons.email, keyboardType: TextInputType.emailAddress, maxLength: 100),
-                        _buildInputField(nationalIdController, 'CMND/CCCD', Icons.badge, maxLength: 12),
-                        _buildInputField(occupationController, 'Nghề nghiệp', Icons.work, maxLength: 100),
-                        _buildInputField(workplaceController, 'Nơi làm việc', Icons.location_city, maxLength: 150),
-
+                        _buildInputField(emailController,
+                            t['tenant_field_email'], Icons.email,
+                            keyboardType:
+                                TextInputType.emailAddress,
+                            maxLength: 100),
+                        _buildInputField(
+                            nationalIdController,
+                            t['tenant_field_national_id'],
+                            Icons.badge,
+                            maxLength: 12),
+                        _buildInputField(occupationController,
+                            t['tenant_field_occupation'], Icons.work,
+                            maxLength: 100),
+                        _buildInputField(
+                            workplaceController,
+                            t['tenant_field_workplace'],
+                            Icons.location_city,
+                            maxLength: 150),
                         const SizedBox(height: 16),
-
                         LocalizedDatePicker(
-                          labelText: 'Ngày chuyển vào',
+                          labelText: t['tenant_field_move_in_date'],
                           initialDate: moveInDate,
                           required: true,
                           prefixIcon: Icons.calendar_today,
                           onDateChanged: (date) {
                             if (date != null) {
-                              setDialogState(() => moveInDate = date);
+                              setDialogState(
+                                  () => moveInDate = date);
                             }
                           },
                         ),
-
                         const SizedBox(height: 16),
                       ],
                     ),
                   ),
                 ),
                 actions: [
-                  TextButton(onPressed: () => Navigator.pop(context), child: const Text('Hủy')),
+                  TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: Text(t['cancel'])),
                   ElevatedButton(
                     onPressed: () {
-                      if (nameController.text.isEmpty || selectedRoomId == null) return;
+                      if (nameController.text.isEmpty ||
+                          selectedRoomId == null) return;
                       Navigator.pop(context, {
                         'fullName': nameController.text.trim(),
                         'phoneNumber': phoneController.text.trim(),
                         'email': emailController.text.trim(),
-                        'nationalId': nationalIdController.text.trim(),
-                        'occupation': occupationController.text.trim(),
-                        'workplace': workplaceController.text.trim(),
+                        'nationalId':
+                            nationalIdController.text.trim(),
+                        'occupation':
+                            occupationController.text.trim(),
+                        'workplace':
+                            workplaceController.text.trim(),
                         'buildingId': selectedBuildingId,
                         'roomId': selectedRoomId,
-                        'monthlyRent': double.tryParse(monthlyRentController.text) ?? 0,
-                        'apartmentArea': double.tryParse(areaController.text) ?? 0,
+                        'monthlyRent': double.tryParse(
+                                monthlyRentController.text) ??
+                            0,
+                        'apartmentArea': double.tryParse(
+                                areaController.text) ??
+                            0,
                         'apartmentType': typeController.text.trim(),
                         'isMainTenant': isMainTenant,
                         'status': selectedStatus,
                         'moveInDate': moveInDate,
                       });
                     },
-                    child: const Text('Thêm mới'),
+                    child: Text(t['tenant_add_action']),
                   ),
                 ],
               ),
@@ -2373,7 +2848,7 @@ Future<void> _showMoveRoomDialog(Tenant tenant) async {
       );
       await widget.tenantService.addTenant(tenant);
       _refreshAll();
-      widget.onChanged?.call(); 
+      widget.onChanged?.call();
     }
   }
 
