@@ -12,6 +12,7 @@ import 'package:apartment_management_project_2/utils/app_router.dart';
 import 'package:apartment_management_project_2/widgets/loading.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:country_flags/country_flags.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:io' show Platform;
 import 'dart:async';
@@ -508,7 +509,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                     child: Column(children: [
                       _buildLanguageTile(
                         locale: const Locale('vi', 'VN'),
-                        flag: '🇻🇳',
+                        countryCode: 'VN',
                         label: AppTranslations.of(context).text('vietnamese'),
                         selected: tempLocale == const Locale('vi', 'VN'),
                         onTap: () => setDialogState(() => tempLocale = const Locale('vi', 'VN')),
@@ -516,7 +517,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                       const SizedBox(height: 8),
                       _buildLanguageTile(
                         locale: const Locale('en', 'US'),
-                        flag: '🇺🇸',
+                        countryCode: 'US',
                         label: AppTranslations.of(context).text('english'),
                         selected: tempLocale == const Locale('en', 'US'),
                         onTap: () => setDialogState(() => tempLocale = const Locale('en', 'US')),
@@ -572,7 +573,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   Widget _buildLanguageTile({
     required Locale locale,
-    required String flag,
+    required String countryCode,
     required String label,
     required bool selected,
     required VoidCallback onTap,
@@ -590,27 +591,41 @@ class _DashboardScreenState extends State<DashboardScreen>
             width: selected ? 1.5 : 1,
           ),
         ),
-        child: Row(children: [
-          Text(flag, style: const TextStyle(fontSize: 26)),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Text(label,
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: SizedBox(
+                width: 38,
+                height: 26,
+                child: FittedBox(
+                  fit: BoxFit.cover,
+                  child: CountryFlag.fromCountryCode(countryCode),
+                ),
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(
+                label,
                 style: TextStyle(
                   fontWeight: FontWeight.w600,
                   fontSize: 15,
                   color: selected ? _DS.primary : _DS.textPrimary,
-                )),
-          ),
-          if (selected)
-            Container(
-              width: 22, height: 22,
-              decoration: const BoxDecoration(
-                color: _DS.primary,
-                shape: BoxShape.circle,
+                ),
               ),
-              child: const Icon(Icons.check_rounded, color: Colors.white, size: 14),
             ),
-        ]),
+            if (selected)
+              Container(
+                width: 22, height: 22,
+                decoration: const BoxDecoration(
+                  color: _DS.primary,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.check_rounded, color: Colors.white, size: 14),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -1493,56 +1508,82 @@ class _DashboardScreenState extends State<DashboardScreen>
 
     Widget sheetHeader = Column(
       children: [
-        const SizedBox(height: 12),
+        // ── Gradient header ──────────────────────────
         Container(
-          width: 36, height: 4,
-          decoration: BoxDecoration(
-              color: Colors.grey[300],
-              borderRadius: BorderRadius.circular(2)),
-        ),
-        const SizedBox(height: 16),
-        Container(
-          width: 60, height: 60,
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(20, 12, 8, 24),
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: gradient,
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
-            borderRadius: BorderRadius.circular(18),
-            boxShadow: [
-              BoxShadow(
-                color: gradient[0].withValues(alpha: 0.35),
-                blurRadius: 14,
-                offset: const Offset(0, 4),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            children: [
+              // Close button row (large screen only)
+              if (isLarge)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close, color: Colors.white70),
+                    padding: EdgeInsets.zero,
+                  ),
+                ),
+              // Drag handle
+              if (!isLarge) ...[
+                const SizedBox(height: 8),
+                Container(
+                  width: 36, height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.4),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+              // Org avatar
+              Container(
+                width: 64, height: 64,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.35),
+                    width: 2,
+                  ),
+                ),
+                child: Center(
+                  child: Text(
+                    org.name[0].toUpperCase(),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 26,
+                    ),
+                  ),
+                ),
               ),
+              const SizedBox(height: 12),
+              Text(
+                org.name,
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 8),
+              _buildRoleBadgeLight(isAdmin),
             ],
           ),
-          child: Center(
-            child: Text(
-              org.name[0].toUpperCase(),
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 24),
-            ),
-          ),
         ),
-        const SizedBox(height: 10),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Text(
-            org.name,
-            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-            textAlign: TextAlign.center,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-        const SizedBox(height: 6),
-        _buildRoleBadge(isAdmin),
-        const SizedBox(height: 4),
-        const Divider(height: 24),
+        const SizedBox(height: 8),
       ],
     );
 
@@ -1623,27 +1664,21 @@ class _DashboardScreenState extends State<DashboardScreen>
           child: SizedBox(
             width: 420,
             child: SafeArea(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      IconButton(
-                        onPressed: () => Navigator.pop(context),
-                        icon: const Icon(Icons.close),
-                      )
-                    ],
-                  ),
-                  sheetHeader,
-                  Flexible(
-                    child: SingleChildScrollView(
-                      child: Column(
-                          mainAxisSize: MainAxisSize.min, children: menuItems),
+              child: ClipRRect(                       
+                borderRadius: BorderRadius.circular(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    sheetHeader,
+                    Flexible(
+                      child: SingleChildScrollView(
+                        child: Column(
+                            mainAxisSize: MainAxisSize.min, children: menuItems),
+                      ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
+              ), 
             ),
           ),
         ),
@@ -1673,6 +1708,35 @@ class _DashboardScreenState extends State<DashboardScreen>
         ),
       );
     }
+  }
+
+  Widget _buildRoleBadgeLight(bool isAdmin) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.2),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.35)),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(
+          isAdmin ? Icons.star_rounded : Icons.person_rounded,
+          size: 12,
+          color: Colors.white,
+        ),
+        const SizedBox(width: 4),
+        Text(
+          isAdmin
+              ? AppTranslations.of(context).text('admin')
+              : AppTranslations.of(context).text('member'),
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w600,
+            fontSize: 11,
+          ),
+        ),
+      ]),
+    );
   }
 
   Future<void> _handleLogout() async {

@@ -193,7 +193,7 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
   bool _switching = false;
 
   Future<void> _switchTo(Choices newChoice) async {
-    if (_switching || newChoice == _displayedChoice) return;
+    if (_switching || newChoice == _displayedChoice || loading) return;
     _switching = true;
 
     // Fade out
