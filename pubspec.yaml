@@ -63,6 +63,8 @@ dependencies:
   image_picker: ^1.2.1
   logger: ^2.7.0
   country_flags: ^4.1.2
+  google_generative_ai: ^0.4.7
+  flutter_dotenv: ^6.0.0
 
 dev_dependencies:
   flutter_test:
@@ -94,6 +96,7 @@ flutter:
     - assets/fonts/AndikaNewBasic-B.ttf
     - assets/image/background_image.jpg
     - assets/image/background_image3.jpg
+    - .env
   #   - images/a_dot_burr.jpeg
   #   - images/a_dot_ham.jpeg
 

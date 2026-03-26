@@ -1,3 +1,4 @@
+import 'package:apartment_management_project_2/services/ai_agent_service.dart';
 import 'package:apartment_management_project_2/services/auth_service.dart';
 import 'package:apartment_management_project_2/services/building_service.dart';
 import 'package:apartment_management_project_2/services/organization_service.dart';
@@ -14,6 +15,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'firebase_options.dart';
 import 'package:get_it/get_it.dart';
 import 'package:flutter_localizations/flutter_localizations.dart'; 
@@ -34,6 +36,7 @@ final getIt = GetIt.instance;
 
 void setup() {
   getIt.registerLazySingleton(() => AuthService());
+  getIt.registerLazySingleton(() => AIAgentService());
   getIt.registerLazySingleton(() => RoomService());
   getIt.registerLazySingleton(() => TenantService());
   getIt.registerLazySingleton(() => BuildingService());
@@ -103,6 +106,8 @@ void main() async {
 
   setup();
 
+  await dotenv.load(fileName: '.env');
+  
   runApp(const MyApp());
 }
 
