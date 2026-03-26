@@ -1,5 +1,6 @@
 import 'package:apartment_management_project_2/models/payment_model.dart';
 import 'package:apartment_management_project_2/services/payments_service.dart';
+import 'package:apartment_management_project_2/utils/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -9,22 +10,19 @@ class InvoiceLineItem {
   PaymentType type;
   double amount;
   String? description;
-  
-  // Electricity fields
+
   double? electricityStartReading;
   DateTime? electricityStartDate;
   double? electricityEndReading;
   DateTime? electricityEndDate;
   double? electricityPricePerUnit;
-  
-  // Water fields
+
   double? waterStartReading;
   DateTime? waterStartDate;
   double? waterEndReading;
   DateTime? waterEndDate;
   double? waterPricePerUnit;
-  
-  // Billing period
+
   DateTime? billingStartDate;
   DateTime? billingEndDate;
 
@@ -48,10 +46,29 @@ class InvoiceLineItem {
   });
 }
 
-// Parse line items from payment with meter readings support
-List<InvoiceLineItem> _parseLineItemsForDelete(Payment payment) {
-  // For single-type payments with meter readings, create detailed line item
-  if (payment.type == PaymentType.electricity && payment.electricityStartReading != null) {
+// Returns a localized payment type label using translation keys that already
+// exist in AppTranslations (payment_type_*).
+String _typeLabel(PaymentType type, AppTranslations t) {
+  const keyMap = {
+    PaymentType.rent: 'payment_type_rent',
+    PaymentType.electricity: 'payment_type_electricity',
+    PaymentType.water: 'payment_type_water',
+    PaymentType.internet: 'payment_type_internet',
+    PaymentType.parking: 'payment_type_parking',
+    PaymentType.maintenance: 'payment_type_maintenance',
+    PaymentType.deposit: 'payment_type_deposit',
+    PaymentType.penalty: 'payment_type_penalty',
+    PaymentType.other: 'payment_type_other',
+  };
+  final key = keyMap[type];
+  return key != null ? t[key] : type.name;
+}
+
+// Parse line items — identical logic to the original, kept here so this file
+// is self-contained.
+List<InvoiceLineItem> _parseLineItems(Payment payment) {
+  if (payment.type == PaymentType.electricity &&
+      payment.electricityStartReading != null) {
     return [
       InvoiceLineItem(
         id: payment.id,
@@ -66,8 +83,9 @@ List<InvoiceLineItem> _parseLineItemsForDelete(Payment payment) {
       ),
     ];
   }
-  
-  if (payment.type == PaymentType.water && payment.waterStartReading != null) {
+
+  if (payment.type == PaymentType.water &&
+      payment.waterStartReading != null) {
     return [
       InvoiceLineItem(
         id: payment.id,
@@ -82,8 +100,9 @@ List<InvoiceLineItem> _parseLineItemsForDelete(Payment payment) {
       ),
     ];
   }
-  
-  if (payment.type == PaymentType.rent && payment.billingStartDate != null) {
+
+  if (payment.type == PaymentType.rent &&
+      payment.billingStartDate != null) {
     return [
       InvoiceLineItem(
         id: payment.id,
@@ -95,21 +114,21 @@ List<InvoiceLineItem> _parseLineItemsForDelete(Payment payment) {
       ),
     ];
   }
-  
-  // Try to parse multi-line format from description
+
   final description = payment.description;
   if (description != null && description.contains('\n')) {
     final lines = description.split('\n');
     final items = <InvoiceLineItem>[];
-    
     for (var line in lines) {
-      final match = RegExp(r'^([^:]+):\s*([\d,]+)\s*VND(?:\s*\((.+)\))?$').firstMatch(line.trim());
+      final match =
+          RegExp(r'^([^:]+):\s*([\d,]+)\s*VND(?:\s*\((.+)\))?$')
+              .firstMatch(line.trim());
       if (match != null) {
         final typeLabel = match.group(1)?.trim() ?? '';
         final amountStr = match.group(2)?.replaceAll(',', '') ?? '0';
         final desc = match.group(3);
-        
-        PaymentType type = PaymentType.other;
+
+        // Reverse-map Vietnamese label → PaymentType for legacy descriptions.
         const labelToType = {
           'Tiền thuê': PaymentType.rent,
           'Tiền điện': PaymentType.electricity,
@@ -121,22 +140,19 @@ List<InvoiceLineItem> _parseLineItemsForDelete(Payment payment) {
           'Tiền phạt': PaymentType.penalty,
           'Khác': PaymentType.other,
         };
-        
-        type = labelToType[typeLabel] ?? PaymentType.other;
-        
+
         items.add(InvoiceLineItem(
-          id: DateTime.now().millisecondsSinceEpoch.toString() + items.length.toString(),
-          type: type,
+          id: DateTime.now().millisecondsSinceEpoch.toString() +
+              items.length.toString(),
+          type: labelToType[typeLabel] ?? PaymentType.other,
           amount: double.tryParse(amountStr) ?? 0,
           description: desc,
         ));
       }
     }
-    
     if (items.isNotEmpty) return items;
   }
-  
-  // Default: single line item
+
   return [
     InvoiceLineItem(
       id: payment.id,
@@ -150,7 +166,7 @@ List<InvoiceLineItem> _parseLineItemsForDelete(Payment payment) {
 }
 
 // ========================================
-// IMPROVED DELETE PAYMENT DIALOG
+// DELETE PAYMENT DIALOG
 // ========================================
 class DeletePaymentDialog extends StatelessWidget {
   final Payment payment;
@@ -164,84 +180,50 @@ class DeletePaymentDialog extends StatelessWidget {
     this.onDeleted,
   });
 
-  Future<void> _deletePayment(BuildContext context) async {
+  Future<void> _deletePayment(BuildContext context, AppTranslations t) async {
     try {
-      // Show loading
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => const Center(
-          child: CircularProgressIndicator(),
-        ),
+        builder: (_) => const Center(child: CircularProgressIndicator()),
       );
 
-      // Delete the payment
       final success = await paymentService.deletePayment(payment.id);
 
-      // Close loading dialog
-      if (context.mounted) {
-        Navigator.pop(context);
-      }
+      if (context.mounted) Navigator.pop(context);
 
       if (success) {
-        // Close confirmation dialog
         if (context.mounted) {
           Navigator.pop(context, true);
-          
-          // Show success message
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Đã xóa hóa đơn thành công'),
-              backgroundColor: Colors.green,
-            ),
-          );
-
-          // Call callback if provided
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(t['del_payment_success']),
+            backgroundColor: Colors.green,
+          ));
           onDeleted?.call();
         }
       } else {
-        // Show error message
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Lỗi khi xóa hóa đơn'),
-              backgroundColor: Colors.red,
-            ),
-          );
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(t['del_payment_error']),
+            backgroundColor: Colors.red,
+          ));
         }
       }
     } catch (e) {
-      // Close loading dialog if still open
+      if (context.mounted) Navigator.pop(context);
       if (context.mounted) {
-        Navigator.pop(context);
-      }
-
-      // Show error message
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Lỗi: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(t.textWithParams('del_payment_error_detail', {'error': e})),
+          backgroundColor: Colors.red,
+        ));
       }
     }
   }
 
-  Widget _buildLineItemCard(InvoiceLineItem item, int index) {
-    const labels = {
-      'rent': 'Tiền thuê',
-      'electricity': 'Tiền điện',
-      'water': 'Tiền nước',
-      'internet': 'Tiền internet',
-      'parking': 'Tiền gửi xe',
-      'maintenance': 'Phí bảo trì',
-      'deposit': 'Tiền cọc',
-      'penalty': 'Tiền phạt',
-      'other': 'Khác',
-    };
-    final typeLabel = labels[item.type.name] ?? item.type.name;
-    
+  Widget _buildLineItemCard(InvoiceLineItem item, int index, AppTranslations t) {
+    final dateFormat = DateFormat('dd/MM/yyyy');
+    final label = _typeLabel(item.type, t);
+
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(10),
@@ -253,28 +235,24 @@ class DeletePaymentDialog extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ── Header row ──────────────────────────────────────────────────
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                '${index + 1}. $typeLabel',
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                ),
+                '${index + 1}. $label',
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
               ),
               Text(
-                NumberFormat('#,###').format(item.amount) + ' đ',
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                ),
+                '${NumberFormat('#,###').format(item.amount)} đ',
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
               ),
             ],
           ),
-          
-          // Electricity meter readings
-          if (item.type == PaymentType.electricity && item.electricityStartReading != null) ...[
+
+          // ── Electricity meter readings ──────────────────────────────────
+          if (item.type == PaymentType.electricity &&
+              item.electricityStartReading != null) ...[
             const SizedBox(height: 6),
             const Divider(height: 1),
             const SizedBox(height: 6),
@@ -284,19 +262,13 @@ class DeletePaymentDialog extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'Chỉ số đầu',
-                        style: TextStyle(fontSize: 10, color: Colors.grey[600]),
-                      ),
-                      Text(
-                        '${item.electricityStartReading} kWh',
-                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
-                      ),
+                      Text(t['meter_start_reading'],
+                          style: TextStyle(fontSize: 10, color: Colors.grey[600])),
+                      Text('${item.electricityStartReading} kWh',
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500)),
                       if (item.electricityStartDate != null)
-                        Text(
-                          DateFormat('dd/MM/yyyy').format(item.electricityStartDate!),
-                          style: TextStyle(fontSize: 9, color: Colors.grey[500]),
-                        ),
+                        Text(dateFormat.format(item.electricityStartDate!),
+                            style: TextStyle(fontSize: 9, color: Colors.grey[500])),
                     ],
                   ),
                 ),
@@ -304,19 +276,13 @@ class DeletePaymentDialog extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'Chỉ số cuối',
-                        style: TextStyle(fontSize: 10, color: Colors.grey[600]),
-                      ),
-                      Text(
-                        '${item.electricityEndReading} kWh',
-                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
-                      ),
+                      Text(t['meter_end_reading'],
+                          style: TextStyle(fontSize: 10, color: Colors.grey[600])),
+                      Text('${item.electricityEndReading} kWh',
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500)),
                       if (item.electricityEndDate != null)
-                        Text(
-                          DateFormat('dd/MM/yyyy').format(item.electricityEndDate!),
-                          style: TextStyle(fontSize: 9, color: Colors.grey[500]),
-                        ),
+                        Text(dateFormat.format(item.electricityEndDate!),
+                            style: TextStyle(fontSize: 9, color: Colors.grey[500])),
                     ],
                   ),
                 ),
@@ -324,13 +290,18 @@ class DeletePaymentDialog extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              'Tiêu thụ: ${((item.electricityEndReading ?? 0) - (item.electricityStartReading ?? 0)).toStringAsFixed(1)} kWh',
+              t.textWithParams('meter_consumption_kwh', {
+                'value': ((item.electricityEndReading ?? 0) -
+                        (item.electricityStartReading ?? 0))
+                    .toStringAsFixed(1),
+              }),
               style: TextStyle(fontSize: 10, color: Colors.grey[600]),
             ),
           ],
-          
-          // Water meter readings
-          if (item.type == PaymentType.water && item.waterStartReading != null) ...[
+
+          // ── Water meter readings ────────────────────────────────────────
+          if (item.type == PaymentType.water &&
+              item.waterStartReading != null) ...[
             const SizedBox(height: 6),
             const Divider(height: 1),
             const SizedBox(height: 6),
@@ -340,19 +311,13 @@ class DeletePaymentDialog extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'Chỉ số đầu',
-                        style: TextStyle(fontSize: 10, color: Colors.grey[600]),
-                      ),
-                      Text(
-                        '${item.waterStartReading} m³',
-                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
-                      ),
+                      Text(t['meter_start_reading'],
+                          style: TextStyle(fontSize: 10, color: Colors.grey[600])),
+                      Text('${item.waterStartReading} m³',
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500)),
                       if (item.waterStartDate != null)
-                        Text(
-                          DateFormat('dd/MM/yyyy').format(item.waterStartDate!),
-                          style: TextStyle(fontSize: 9, color: Colors.grey[500]),
-                        ),
+                        Text(dateFormat.format(item.waterStartDate!),
+                            style: TextStyle(fontSize: 9, color: Colors.grey[500])),
                     ],
                   ),
                 ),
@@ -360,19 +325,13 @@ class DeletePaymentDialog extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'Chỉ số cuối',
-                        style: TextStyle(fontSize: 10, color: Colors.grey[600]),
-                      ),
-                      Text(
-                        '${item.waterEndReading} m³',
-                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
-                      ),
+                      Text(t['meter_end_reading'],
+                          style: TextStyle(fontSize: 10, color: Colors.grey[600])),
+                      Text('${item.waterEndReading} m³',
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500)),
                       if (item.waterEndDate != null)
-                        Text(
-                          DateFormat('dd/MM/yyyy').format(item.waterEndDate!),
-                          style: TextStyle(fontSize: 9, color: Colors.grey[500]),
-                        ),
+                        Text(dateFormat.format(item.waterEndDate!),
+                            style: TextStyle(fontSize: 9, color: Colors.grey[500])),
                     ],
                   ),
                 ),
@@ -380,26 +339,36 @@ class DeletePaymentDialog extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              'Tiêu thụ: ${((item.waterEndReading ?? 0) - (item.waterStartReading ?? 0)).toStringAsFixed(1)} m³',
+              t.textWithParams('meter_consumption_m3', {
+                'value': ((item.waterEndReading ?? 0) -
+                        (item.waterStartReading ?? 0))
+                    .toStringAsFixed(1),
+              }),
               style: TextStyle(fontSize: 10, color: Colors.grey[600]),
             ),
           ],
-          
-          // Billing period
+
+          // ── Billing period ──────────────────────────────────────────────
           if (item.billingStartDate != null && item.billingEndDate != null) ...[
             const SizedBox(height: 6),
             Text(
-              'Kỳ: ${DateFormat('dd/MM/yyyy').format(item.billingStartDate!)} - ${DateFormat('dd/MM/yyyy').format(item.billingEndDate!)}',
+              t.textWithParams('billing_period', {
+                'start': dateFormat.format(item.billingStartDate!),
+                'end': dateFormat.format(item.billingEndDate!),
+              }),
               style: TextStyle(fontSize: 10, color: Colors.grey[600]),
             ),
           ],
-          
-          // Description
+
+          // ── Description ─────────────────────────────────────────────────
           if (item.description != null && item.description!.isNotEmpty) ...[
             const SizedBox(height: 4),
             Text(
               item.description!,
-              style: TextStyle(fontSize: 10, color: Colors.grey[600], fontStyle: FontStyle.italic),
+              style: TextStyle(
+                  fontSize: 10,
+                  color: Colors.grey[600],
+                  fontStyle: FontStyle.italic),
             ),
           ],
         ],
@@ -407,17 +376,36 @@ class DeletePaymentDialog extends StatelessWidget {
     );
   }
 
+  Widget _buildDetailRow(String label, String value) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 120,
+          child: Text(label,
+              style: TextStyle(color: Colors.grey[700], fontSize: 14)),
+        ),
+        Expanded(
+          child: Text(value,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final lineItems = _parseLineItemsForDelete(payment);
+    final t = AppTranslations.of(context);
+    final lineItems = _parseLineItems(payment);
     final isMultiLine = lineItems.length > 1;
+    final dateFormat = DateFormat('dd/MM/yyyy');
 
     return AlertDialog(
       title: Row(
         children: [
           Icon(Icons.warning, color: Colors.red[700]),
           const SizedBox(width: 12),
-          const Text('Xóa Hóa Đơn'),
+          Text(t['del_payment_title']),
         ],
       ),
       content: SingleChildScrollView(
@@ -425,16 +413,14 @@ class DeletePaymentDialog extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Bạn có chắc chắn muốn xóa hóa đơn này?',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
+            // ── Confirmation question ──────────────────────────────────────
+            Text(
+              t['del_payment_confirm_question'],
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
-            
-            // Payment details
+
+            // ── Payment summary card ───────────────────────────────────────
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -445,82 +431,73 @@ class DeletePaymentDialog extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildDetailRow('Người thuê:', payment.tenantName ?? 'Chưa xác định'),
+                  _buildDetailRow(
+                    t['del_payment_tenant'],
+                    payment.tenantName ?? t['del_payment_unknown_tenant'],
+                  ),
                   const SizedBox(height: 8),
-                  _buildDetailRow('Hạn thanh toán:', DateFormat('dd/MM/yyyy').format(payment.dueDate)),
+                  _buildDetailRow(
+                    t['del_payment_due_date'],
+                    dateFormat.format(payment.dueDate),
+                  ),
                   const SizedBox(height: 8),
-                  _buildDetailRow('Trạng thái:', payment.getStatusDisplayName()),
-                  const SizedBox(height: 12),
-                  
-                  if (isMultiLine) ...[
+                  _buildDetailRow(
+                    t['del_payment_status'],
+                    payment.getStatusDisplayName(),
+                  ),
+
+                  // ── Line items ───────────────────────────────────────────
+                  if (isMultiLine || lineItems.isNotEmpty) ...[
+                    const SizedBox(height: 12),
                     const Divider(),
                     const SizedBox(height: 8),
-                    const Text(
-                      'Các khoản:',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
+                    if (isMultiLine)
+                      Text(
+                        t['del_payment_items_label'],
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 14),
                       ),
-                    ),
-                    const SizedBox(height: 8),
+                    if (isMultiLine) const SizedBox(height: 8),
                     ...List.generate(
                       lineItems.length,
-                      (index) => _buildLineItemCard(lineItems[index], index),
+                      (i) => _buildLineItemCard(lineItems[i], i, t),
                     ),
                     const SizedBox(height: 8),
-                  ] else if (lineItems.isNotEmpty) ...[
-                    // Show single item details
                     const Divider(),
-                    const SizedBox(height: 8),
-                    _buildLineItemCard(lineItems.first, 0),
-                    const SizedBox(height: 8),
                   ],
-                  
-                  if (isMultiLine || lineItems.isNotEmpty)
-                    const Divider(),
-                  
+
+                  // ── Totals ───────────────────────────────────────────────
                   const SizedBox(height: 8),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
-                        'Tổng tiền:',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 15,
-                        ),
-                      ),
+                      Text(t['del_payment_total'],
+                          style: const TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 15)),
                       Text(
-                        NumberFormat('#,###').format(payment.amount) + ' VND',
+                        '${NumberFormat('#,###').format(payment.amount)} VND',
                         style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                          color: Colors.red[700],
-                        ),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            color: Colors.red[700]),
                       ),
                     ],
                   ),
-                  
-                  // Show late fee if present
+
                   if (payment.lateFee != null && payment.lateFee! > 0) ...[
                     const SizedBox(height: 4),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
-                          'Phí trễ hạn:',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.red,
-                          ),
-                        ),
+                        Text(t['del_payment_late_fee'],
+                            style: const TextStyle(
+                                fontSize: 13, color: Colors.red)),
                         Text(
                           '+ ${NumberFormat('#,###').format(payment.lateFee!)} VND',
                           style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.red,
-                          ),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.red),
                         ),
                       ],
                     ),
@@ -530,20 +507,15 @@ class DeletePaymentDialog extends StatelessWidget {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
-                          'TỔNG THANH TOÁN:',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 15,
-                          ),
-                        ),
+                        Text(t['del_payment_grand_total'],
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 15)),
                         Text(
-                          NumberFormat('#,###').format(payment.totalAmount) + ' VND',
+                          '${NumberFormat('#,###').format(payment.totalAmount)} VND',
                           style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                            color: Colors.red[700],
-                          ),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                              color: Colors.red[700]),
                         ),
                       ],
                     ),
@@ -551,8 +523,10 @@ class DeletePaymentDialog extends StatelessWidget {
                 ],
               ),
             ),
-            
+
             const SizedBox(height: 16),
+
+            // ── Cannot-undo warning ────────────────────────────────────────
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -564,13 +538,11 @@ class DeletePaymentDialog extends StatelessWidget {
                 children: [
                   Icon(Icons.info_outline, color: Colors.red[700], size: 20),
                   const SizedBox(width: 8),
-                  const Expanded(
+                  Expanded(
                     child: Text(
-                      'Hành động này không thể hoàn tác!',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
+                      t['del_payment_cannot_undo'],
+                      style: const TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w600),
                     ),
                   ),
                 ],
@@ -582,42 +554,15 @@ class DeletePaymentDialog extends StatelessWidget {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context, false),
-          child: const Text('Hủy'),
+          child: Text(t['cancel']),
         ),
         ElevatedButton(
-          onPressed: () => _deletePayment(context),
+          onPressed: () => _deletePayment(context, t),
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.red,
             foregroundColor: Colors.white,
           ),
-          child: const Text('Xóa Hóa Đơn'),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildDetailRow(String label, String value) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 120,
-          child: Text(
-            label,
-            style: TextStyle(
-              color: Colors.grey[700],
-              fontSize: 14,
-            ),
-          ),
-        ),
-        Expanded(
-          child: Text(
-            value,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
+          child: Text(t['del_payment_action']),
         ),
       ],
     );

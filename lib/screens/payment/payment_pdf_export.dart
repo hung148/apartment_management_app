@@ -14,7 +14,56 @@ import 'package:file_selector/file_selector.dart';
 import 'package:path/path.dart' as p;
 import 'dart:typed_data';
 
+enum ExportLanguage { vi, en, bilingual }
+
 class PaymentPDFExporter {
+
+  // ========================================
+  // LOCALIZATION HELPERS
+  // ========================================
+  static String _l(String key, ExportLanguage? lang) {
+    
+    final langCode = lang?.name ?? 'bilingual';
+
+    const labels = {
+      'receipt_title': {
+        'vi': 'THU PHÍ CHỦ CĂN HỘ',
+        'en': 'APARTMENT OWNER FEE RECEIPT',
+        'bilingual': 'THU PHÍ CHỦ CĂN HỘ / APARTMENT OWNER FEE RECEIPT'
+      },
+      'currency_unit': {'vi': 'Đơn vị tính: VND', 'en': 'Currency: VND', 'bilingual': 'Đơn vị tính / Currency: VND'},
+      'apt_code': {'vi': 'MÃ CĂN', 'en': 'APT CODE', 'bilingual': 'MÃ CĂN / APARTMENT CODE'},
+      'apt_type': {'vi': 'LOẠI CĂN HỘ', 'en': 'APT TYPE', 'bilingual': 'LOẠI CĂN HỘ / APARTMENT TYPE'},
+      'full_name': {'vi': 'HỌ VÀ TÊN', 'en': 'FULL NAME', 'bilingual': 'HỌ VÀ TÊN / FULL NAME'},
+      'handover_date': {'vi': 'NGÀY BÀN GIAO', 'en': 'HANDOVER DATE', 'bilingual': 'NGÀY BÀN GIAO / HANDOVER DATE'},
+      'until_date': {'vi': 'ĐẾN NGÀY', 'en': 'UNTIL DATE', 'bilingual': 'ĐẾN NGÀY / UNTIL DATE'},
+      'days_used': {'vi': 'SỐ NGÀY SỬ DỤNG', 'en': 'DAYS USED', 'bilingual': 'SỐ NGÀY SỬ DỤNG / DAYS USED'},
+      'months_used': {'vi': 'SỐ THÁNG', 'en': 'MONTHS USED', 'bilingual': 'SỐ THÁNG / MONTHS USED'},
+      'management_fee': {'vi': 'PHÍ QUẢN LÝ', 'en': 'MANAGEMENT FEE', 'bilingual': 'PHÍ QUẢN LÝ / MANAGEMENT FEE'},
+      'area': {'vi': 'DIỆN TÍCH', 'en': 'AREA', 'bilingual': 'DIỆN TÍCH / AREA'},
+      'unit_price': {'vi': 'ĐƠN GIÁ', 'en': 'UNIT PRICE', 'bilingual': 'ĐƠN GIÁ / UNIT PRICE'},
+      'electricity': {'vi': 'PHÍ ĐIỆN', 'en': 'ELECTRICITY', 'bilingual': 'PHÍ ĐIỆN / ELECTRICITY'},
+      'water': {'vi': 'PHÍ NƯỚC', 'en': 'WATER', 'bilingual': 'PHÍ NƯỚC / WATER'},
+      'usage': {'vi': 'Số sử dụng', 'en': 'Usage', 'bilingual': 'Số sử dụng / Usage'},
+      'internet': {'vi': 'PHÍ INTERNET', 'en': 'INTERNET FEE', 'bilingual': 'PHÍ INTERNET / INTERNET FEE'},
+      'cable_tv': {'vi': 'PHÍ TRUYỀN HÌNH CÁP', 'en': 'CABLE TV FEE', 'bilingual': 'PHÍ TRUYỀN HÌNH CÁP / CABLE TV FEE'},
+      'hot_water': {'vi': 'PHÍ NƯỚC NÓNG', 'en': 'HOT WATER FEE', 'bilingual': 'PHÍ NƯỚC NÓNG / HOT WATER FEE'},
+      'subtotal': {'vi': 'TỔNG CHƯA THUẾ', 'en': 'SUBTOTAL', 'bilingual': 'TỔNG CHƯA THUẾ / SUBTOTAL'},
+      'tax': {'vi': 'THUẾ (10%)', 'en': 'VAT (10%)', 'bilingual': 'THUẾ (10%) / VAT'},
+      'total': {'vi': 'TỔNG THANH TOÁN', 'en': 'TOTAL PAYMENT', 'bilingual': 'TỔNG THANH TOÁN / TOTAL PAYMENT'},
+      'transfer_info': {'vi': 'THÔNG TIN CHUYỂN KHOẢN', 'en': 'TRANSFER INFO', 'bilingual': 'THÔNG TIN CHUYỂN KHOẢN / TRANSFER INFO'},
+      'remark': {'vi': 'GHI CHÚ', 'en': 'REMARK', 'bilingual': 'GHI CHÚ / REMARK'},
+      'days': {'vi': 'ngày', 'en': 'days', 'bilingual': 'ngày/days'},
+      'bank_acc_owner': {'vi': 'Chủ TK: ', 'en': 'Owner: ', 'bilingual': 'Chủ TK/Owner: '},
+      'bank_acc_num': {'vi': 'Số TK: ', 'en': 'Acc No: ', 'bilingual': 'Số TK/Acc No: '},
+      'bank_name': {'vi': 'Ngân hàng: ', 'en': 'Bank: ', 'bilingual': 'Ngân hàng/Bank: '},
+    };
+    
+    final entry = labels[key];
+    if (entry == null) return key;
+    return entry[langCode] ?? entry['bilingual'] ?? key;
+  }
+
   // ========================================
   // FONT LOADING
   // ========================================
@@ -52,6 +101,7 @@ class PaymentPDFExporter {
   // ========================================
   
   static Future<pw.Document> generateOwnerFeeReceipt({
+    required ExportLanguage language,
     required Payment payment,
     required Organization organization,
     Tenant? tenant, 
@@ -166,7 +216,7 @@ class PaymentPDFExporter {
                         if (organization.taxCode?.isNotEmpty ?? false)
                           pw.Padding(
                             padding: const pw.EdgeInsets.only(top: 4),
-                            child: pw.Text('Mã số thuế / Tax Code: ${organization.taxCode}',
+                            child: pw.Text('${language == ExportLanguage.en ? "Tax Code" : "MST"}: ${organization.taxCode}',
                               style: pw.TextStyle(fontSize: 9, font: regularFont, color: PdfColors.grey800)),
                           ),
                       ],
@@ -178,10 +228,10 @@ class PaymentPDFExporter {
                 // TITLE
                 pw.Center(
                   child: pw.Column(children: [
-                    pw.Text('THU PHÍ CHỦ CĂN HỘ / APARTMENT OWNER FEE RECEIPT ${roomNumber ?? room?.roomNumber ?? ""}',
+                    pw.Text('${_l('receipt_title', language)} ${roomNumber ?? room?.roomNumber ?? ""}',
                       style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, font: boldFont)),
                     pw.Text('($billingPeriodStr)', style: pw.TextStyle(fontSize: 9, font: regularFont, fontStyle: pw.FontStyle.italic)),
-                    pw.Text('Đơn vị tính/Currency: VND', style: pw.TextStyle(fontSize: 8, font: regularFont)),
+                    pw.Text(_l('currency_unit', language), style: pw.TextStyle(fontSize: 8, font: regularFont)),
                   ]),
                 ),
                 pw.SizedBox(height: 20),
@@ -190,16 +240,16 @@ class PaymentPDFExporter {
                 pw.Table(
                   border: pw.TableBorder.all(color: PdfColors.grey600, width: 0.5),
                   children: [
-                    _buildInfoRow('MÃ CĂN / APARTMENT CODE', roomNumber ?? room?.roomNumber ?? 'N/A', regularFont, boldFont),
-                    _buildInfoRow('LOẠI CĂN HỘ / APARTMENT TYPE', apartmentType, regularFont, boldFont),
-                    _buildInfoRow('HỌ VÀ TÊN / FULL NAME', tenantName, regularFont, boldFont),
-                    _buildInfoRow('NGÀY BÀN GIAO / HANDOVER DATE', formatDate(handoverDate), regularFont, boldFont),
-                    _buildInfoRow('ĐẾN NGÀY / UNTIL DATE', formatDate(billingEnd), regularFont, boldFont),
-                    _buildInfoRow('SỐ NGÀY SỬ DỤNG / DAYS USED', '$daysUsed ngày', regularFont, boldFont),
-                    _buildInfoRow('SỐ THÁNG / MONTHS USED', monthsUsed.toString(), regularFont, boldFont),
-                    _buildInfoRow('PHÍ QUẢN LÝ / MANAGEMENT FEE', formatCurrency(managementFee), regularFont, boldFont),
-                    _buildInfoRow('DIỆN TÍCH / AREA', '${area.toStringAsFixed(2)} m²', regularFont, boldFont),
-                    _buildInfoRow('ĐƠN GIÁ / UNIT PRICE', (area > 0 && monthsUsed > 0) ? formatCurrency(managementFee / area / monthsUsed) : '0', regularFont, boldFont),
+                    _buildInfoRow(_l('apt_code', language), roomNumber ?? room?.roomNumber ?? 'N/A', regularFont, boldFont),
+                    _buildInfoRow(_l('apt_type', language), apartmentType, regularFont, boldFont),
+                    _buildInfoRow(_l('full_name', language), tenantName, regularFont, boldFont),
+                    _buildInfoRow(_l('handover_date', language), formatDate(handoverDate), regularFont, boldFont),
+                    _buildInfoRow(_l('until_date', language), formatDate(billingEnd), regularFont, boldFont),
+                    _buildInfoRow(_l('days_used', language), '$daysUsed ${_l('days', language)}', regularFont, boldFont),
+                    _buildInfoRow(_l('months_used', language), monthsUsed.toString(), regularFont, boldFont),
+                    _buildInfoRow(_l('management_fee', language), formatCurrency(managementFee), regularFont, boldFont),
+                    _buildInfoRow(_l('area', language), '${area.toStringAsFixed(2)} m²', regularFont, boldFont),
+                    _buildInfoRow(_l('unit_price', language), (area > 0 && monthsUsed > 0) ? formatCurrency(managementFee / area / monthsUsed) : '0', regularFont, boldFont),
                   ],
                 ),
                 
@@ -208,46 +258,46 @@ class PaymentPDFExporter {
                 pw.Table(
                   border: pw.TableBorder.all(color: PdfColors.grey600, width: 0.5),
                   children: [
-                    _buildInfoRow('PHÍ ĐIỆN / ELECTRICITY', formatCurrency(electricityFee), regularFont, boldFont),
-                    _buildInfoRow('Số sử dụng / Usage', '${payment.electricityUsage?.toStringAsFixed(1) ?? "0"} kWh', regularFont, boldFont),
-                    _buildInfoRow('PHÍ NƯỚC / WATER', formatCurrency(waterFee), regularFont, boldFont),
-                    _buildInfoRow('Số sử dụng / Usage', '${payment.waterUsage?.toStringAsFixed(1) ?? "0"} m³', regularFont, boldFont),
+                    _buildInfoRow(_l('electricity', language), formatCurrency(electricityFee), regularFont, boldFont),
+                    _buildInfoRow(_l('usage', language), '${payment.electricityUsage?.toStringAsFixed(1) ?? "0"} kWh', regularFont, boldFont),
+                    _buildInfoRow(_l('water', language), formatCurrency(waterFee), regularFont, boldFont),
+                    _buildInfoRow(_l('usage', language), '${payment.waterUsage?.toStringAsFixed(1) ?? "0"} m³', regularFont, boldFont),
                   ],
                 ),
 
                 pw.SizedBox(height: 10),
 
+                // EXTRA FEES
                 pw.Table(
                   border: pw.TableBorder.all(color: PdfColors.grey600, width: 0.5),
-                  columnWidths: { 0: const pw.FlexColumnWidth(2), 1: const pw.FlexColumnWidth(1) },
                   children: [
-                    _buildInfoRow('PHÍ INTERNET / INTERNET FEE', formatCurrency(actualInternetFee), regularFont, boldFont),
-                    _buildInfoRow('PHÍ TRUYỀN HÌNH CÁP / CABLE TV FEE', formatCurrency(actualCableTVFee), regularFont, boldFont),
-                    _buildInfoRow('PHÍ NƯỚC NÓNG (${actualHotWaterPercent.toStringAsFixed(0)}%) / HOT WATER FEE', formatCurrency(actualHotWaterFee), regularFont, boldFont),
+                    _buildInfoRow(_l('internet', language), formatCurrency(actualInternetFee), regularFont, boldFont),
+                    _buildInfoRow(_l('cable_tv', language), formatCurrency(actualCableTVFee), regularFont, boldFont),
+                    _buildInfoRow('${_l('hot_water', language)} (${actualHotWaterPercent.toStringAsFixed(0)}%)', formatCurrency(actualHotWaterFee), regularFont, boldFont),
                   ],
                 ),
 
                 pw.SizedBox(height: 10),
                 
+                // TOTALS
                 pw.Table(
                   border: pw.TableBorder.all(color: PdfColors.grey600, width: 0.5),
                   children: [
-                    _buildTotalRow('TỔNG CHƯA THUẾ / SUBTOTAL', formatCurrency(subtotal), regularFont, boldFont, false),
-                    _buildTotalRow('THUẾ (10%) / VAT', formatCurrency(taxAmount), regularFont, boldFont, false),
-                    _buildTotalRow('TỔNG THANH TOÁN / TOTAL PAYMENT', formatCurrency(grandTotal), regularFont, boldFont, true),
+                    _buildTotalRow(_l('subtotal', language), formatCurrency(subtotal), regularFont, boldFont, false),
+                    _buildTotalRow(_l('tax', language), formatCurrency(taxAmount), regularFont, boldFont, false),
+                    _buildTotalRow(_l('total', language), formatCurrency(grandTotal), regularFont, boldFont, true),
                   ],
                 ),
                 
                 pw.SizedBox(height: 10),
 
-                // THIS IS THE SECTION THAT WAS FREEZING
+                // CONTACT & REMARK
                 pw.Table(
                   border: pw.TableBorder.all(color: PdfColors.grey600, width: 0.5),
-                  columnWidths: { 0: const pw.FlexColumnWidth(2), 1: const pw.FlexColumnWidth(1) },
                   children: [
-                    _buildInfoRow('EMAIL KHÁCH THUÊ / TENANT EMAIL', tenantEmail, regularFont, boldFont, isLink: tenantEmail.isNotEmpty),
-                    _buildInfoRow('EMAIL CÔNG TY / ORGANIZATION EMAIL', organizationEmail, regularFont, boldFont, isLink: organizationEmail.isNotEmpty),
-                    _buildInfoRow('GHI CHÚ / REMARK', remark ?? payment.notes ?? '', regularFont, boldFont),
+                    _buildInfoRow('TENANT EMAIL', tenantEmail, regularFont, boldFont, isLink: tenantEmail.isNotEmpty),
+                    _buildInfoRow('OFFICE EMAIL', organizationEmail, regularFont, boldFont, isLink: organizationEmail.isNotEmpty),
+                    _buildInfoRow(_l('remark', language), remark ?? payment.notes ?? '', regularFont, boldFont),
                   ],
                 ),
 
@@ -261,11 +311,11 @@ class PaymentPDFExporter {
                     child: pw.Column(
                       crossAxisAlignment: pw.CrossAxisAlignment.start,
                       children: [
-                        pw.Text('THÔNG TIN CHUYỂN KHOẢN / TRANSFER INFO', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, font: boldFont)),
+                        pw.Text(_l('transfer_info', language), style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, font: boldFont)),
                         pw.SizedBox(height: 4),
-                        _buildBankInfoRow('Chủ TK: ', organization.bankAccountName ?? '', regularFont, boldFont),
-                        _buildBankInfoRow('Số TK: ', organization.bankAccountNumber ?? '', regularFont, boldFont),
-                        _buildBankInfoRow('Ngân hàng: ', organization.bankName ?? '', regularFont, boldFont),
+                        _buildBankInfoRow(_l('bank_acc_owner', language), organization.bankAccountName ?? '', regularFont, boldFont),
+                        _buildBankInfoRow(_l('bank_acc_num', language), organization.bankAccountNumber ?? '', regularFont, boldFont),
+                        _buildBankInfoRow(_l('bank_name', language), organization.bankName ?? '', regularFont, boldFont),
                       ],
                     ),
                   ),
@@ -276,7 +326,7 @@ class PaymentPDFExporter {
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [
                     pw.Text('Generated: ${formatDateTime(DateTime.now())}', style: pw.TextStyle(fontSize: 7, font: regularFont)),
-                    pw.Text('Receipt ID: ${payment.id.substring(0, min(8, payment.id.length)).toUpperCase()}', style: pw.TextStyle(fontSize: 7, font: regularFont)),
+                    pw.Text('ID: ${payment.id.toUpperCase()}', style: pw.TextStyle(fontSize: 7, font: regularFont)),
                   ],
                 ),
             ];
@@ -318,6 +368,39 @@ class PaymentPDFExporter {
   // ========================================
   // WRAPPERS (PREVIEW & EXPORT)
   // ========================================
+
+  static Future<ExportLanguage?> _showLanguageDialog(BuildContext context) async {
+    return await showDialog<ExportLanguage>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Ngôn ngữ xuất file / Export Language'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.language),
+              title: const Text('Tiếng Việt'),
+              onTap: () => Navigator.pop(ctx, ExportLanguage.vi),
+            ),
+            ListTile(
+              leading: const Icon(Icons.language),
+              title: const Text('English'),
+              onTap: () => Navigator.pop(ctx, ExportLanguage.en),
+            ),
+            ListTile(
+              leading: const Icon(Icons.language),
+              title: const Text('Bilingual (Việt - Anh)'),
+              onTap: () => Navigator.pop(ctx, ExportLanguage.bilingual),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ========================================
+  // WRAPPERS (PREVIEW & EXPORT)
+  // ========================================
   static Future<void> showPDFPreview({
     required BuildContext context,
     required Payment payment,
@@ -331,8 +414,16 @@ class PaymentPDFExporter {
     String? email,
     String? remark,
   }) async {
+
+    // 1. Ask for language first
+    final lang = await _showLanguageDialog(context);
+    
+    // 2. Check if user cancelled or if the widget is no longer in the tree
+    if (lang == null || !context.mounted) return;
+
     try {
       // Show loading indicator
+
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -340,6 +431,7 @@ class PaymentPDFExporter {
       );
 
       final pdf = await generateOwnerFeeReceipt(
+        language: lang,
         payment: payment,
         organization: organization,
         tenant: tenant,
@@ -386,8 +478,13 @@ class PaymentPDFExporter {
     String? remark,
     String? email,
   }) async {
+    // 1. Prompt for language (since generateOwnerFeeReceipt requires it)
+    final lang = await _showLanguageDialog(context);
+    if (lang == null || !context.mounted) return;
+
     try {
       final pdf = await generateOwnerFeeReceipt(
+        language: lang,
         payment: payment,
         organization: organization,
         tenant: tenant,
