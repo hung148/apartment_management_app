@@ -1409,8 +1409,77 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // ── Overview KPIs ──────────────────────────────────────
-                    _statsSectionLabel(t['stat_overview_title']),
+                    // ── Overview KPIs with export buttons ─────────────────────────
+                    Padding(
+                      padding: const EdgeInsets.only(top: 28, bottom: 12),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 3,
+                            height: 14,
+                            decoration: BoxDecoration(
+                              color: Colors.blue.shade400,
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Text(
+                            t['stat_overview_title'].toUpperCase(),
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 1.2,
+                              color: Colors.grey.shade500,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Tooltip(
+                            message: t['export_excel'],
+                            child: Material(
+                              color: const Color(0xFF1D6F42),
+                              borderRadius: BorderRadius.circular(6),
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(6),
+                                onTap: () => _exportStatisticsToExcel(
+                                  buildings: buildings,
+                                  tenants: tenants,
+                                  rooms: rooms,
+                                  payments: payments,
+                                  organizationName: widget.organization.name,
+                                ),
+                                child: const Padding(
+                                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                                  child: Icon(Icons.table_chart_outlined, size: 16, color: Colors.white),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Tooltip(
+                            message: t['export_pdf'],
+                            child: Material(
+                              color: const Color(0xFFB71C1C),
+                              borderRadius: BorderRadius.circular(6),
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(6),
+                                onTap: () => _exportStatisticsToPdf(
+                                  buildings: buildings,
+                                  tenants: tenants,
+                                  rooms: rooms,
+                                  payments: payments,
+                                  organizationName: widget.organization.name,
+                                ),
+                                child: const Padding(
+                                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                                  child: Icon(Icons.picture_as_pdf_outlined, size: 16, color: Colors.white),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                     _buildKpiGrid(
                       t: t,
                       buildings: buildings,
@@ -1482,38 +1551,6 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                     // ── Occupancy trend ────────────────────────────────────
                     _statsSectionLabel(t['stat_occupancy_trend']),
                     _buildMonthlyOccupancyTrendChart(buildings, rooms, tenants),
-
-                    // ── Export buttons ─────────────────────────────────────
-                    const SizedBox(height: 8),
-                    Row(children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          icon: const Icon(Icons.table_chart_outlined, size: 18),
-                          label: Text(t['export_excel']),
-                          onPressed: () => _exportStatisticsToExcel(
-                            buildings: buildings,
-                            tenants: tenants,
-                            rooms: rooms,
-                            payments: payments,
-                            organizationName: widget.organization.name,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
-                          label: Text(t['export_pdf']),
-                          onPressed: () => _exportStatisticsToPdf(
-                            buildings: buildings,
-                            tenants: tenants,
-                            rooms: rooms,
-                            payments: payments,
-                            organizationName: widget.organization.name,
-                          ),
-                        ),
-                      ),
-                    ]),
                   ],
                 ),
               ),
