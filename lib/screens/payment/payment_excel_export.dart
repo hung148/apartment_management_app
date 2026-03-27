@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:apartment_management_project_2/models/organization_model.dart';
 import 'package:apartment_management_project_2/models/payment_model.dart';
+import 'package:apartment_management_project_2/utils/app_localizations.dart';
+import 'package:country_flags/country_flags.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -106,19 +108,212 @@ class PaymentExcelExporter {
   }
 
    static Future<ExportLanguage?> _showLanguageDialog(BuildContext context) async {
+    ExportLanguage? selected = ExportLanguage.vi;
+    final t = AppTranslations.of(context);
+
     return await showDialog<ExportLanguage>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Ngôn ngữ xuất file / Export Language'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(title: const Text('Tiếng Việt'), onTap: () => Navigator.pop(ctx, ExportLanguage.vi)),
-            ListTile(title: const Text('English'), onTap: () => Navigator.pop(ctx, ExportLanguage.en)),
-            ListTile(title: const Text('Bilingual (Việt - Anh)'), onTap: () => Navigator.pop(ctx, ExportLanguage.bilingual)),
-          ],
-        ),
-      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setState) {
+            Widget buildOption({
+              required ExportLanguage value,
+              required Widget flag,
+              required String title,
+              required String subtitle,
+            }) {
+              final isSelected = selected == value;
+              return GestureDetector(
+                onTap: () => setState(() => selected = value),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: isSelected
+                          ? Theme.of(ctx).colorScheme.primary
+                          : Colors.grey.shade300,
+                      width: isSelected ? 2.0 : 0.5,
+                    ),
+                    color: isSelected
+                        ? Theme.of(ctx).colorScheme.primary.withOpacity(0.07)
+                        : Colors.transparent,
+                  ),
+                  child: Row(
+                    children: [
+                      flag,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(title,
+                                style: const TextStyle(
+                                    fontSize: 14, fontWeight: FontWeight.w500)),
+                            Text(subtitle,
+                                style: TextStyle(
+                                    fontSize: 12, color: Colors.grey.shade600)),
+                          ],
+                        ),
+                      ),
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 150),
+                        width: 20,
+                        height: 20,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: isSelected
+                              ? Theme.of(ctx).colorScheme.primary
+                              : Colors.transparent,
+                          border: Border.all(
+                            color: isSelected
+                                ? Theme.of(ctx).colorScheme.primary
+                                : Colors.grey.shade400,
+                            width: 1.5,
+                          ),
+                        ),
+                        child: isSelected
+                            ? const Icon(Icons.check, size: 12, color: Colors.white)
+                            : null,
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
+
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 4),
+              contentPadding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+              actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              title: Row(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: Theme.of(ctx).colorScheme.primary.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      Icons.translate_rounded,
+                      color: Theme.of(ctx).colorScheme.primary,
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          t['export_lang_dialog_subtitle'],
+                          style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey.shade500,
+                              fontWeight: FontWeight.w400),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          t['export_lang_dialog_title'],
+                          style: const TextStyle(
+                              fontSize: 18, fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              content: SizedBox(
+                width: 320,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    buildOption(
+                      value: ExportLanguage.vi,
+                      flag: CountryFlag.fromCountryCode(
+                        'VN',
+                        theme: const ImageTheme(
+                          width: 48,
+                          height: 32,
+                          shape: RoundedRectangle(6),
+                        ),
+                      ),
+                      title: t['export_lang_vi_title'],
+                      subtitle: t['export_lang_vi_subtitle'],
+                    ),
+                    const SizedBox(height: 8),
+                    buildOption(
+                      value: ExportLanguage.en,
+                      flag: CountryFlag.fromCountryCode(
+                        'US',
+                        theme: const ImageTheme(
+                          width: 48,
+                          height: 32,
+                          shape: RoundedRectangle(6),
+                        ),
+                      ),
+                      title: t['export_lang_en_title'],
+                      subtitle: t['export_lang_en_subtitle'],
+                    ),
+                    const SizedBox(height: 8),
+                    buildOption(
+                      value: ExportLanguage.bilingual,
+                      flag: SizedBox(
+                        width: 48,
+                        height: 36,
+                        child: Stack(
+                          children: [
+                            Positioned(
+                              top: 0,
+                              left: 0,
+                              child: CountryFlag.fromCountryCode(
+                                'VN',
+                                theme: const ImageTheme(
+                                  width: 36,
+                                  height: 24,
+                                  shape: RoundedRectangle(4),
+                                ),
+                              ),
+                            ),
+                            Positioned(
+                              bottom: 0,
+                              right: 0,
+                              child: CountryFlag.fromCountryCode(
+                                'US',
+                                theme: const ImageTheme(
+                                  width: 36,
+                                  height: 24,
+                                  shape: RoundedRectangle(4),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      title: t['export_lang_bi_title'],
+                      subtitle: t['export_lang_bi_subtitle'],
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: Text(t['cancel']),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, selected),
+                  child: Text(t['export_lang_btn_export']),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 

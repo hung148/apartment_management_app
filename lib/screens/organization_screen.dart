@@ -22,14 +22,18 @@ import 'package:apartment_management_project_2/services/payments_notifier.dart';
 import 'package:apartment_management_project_2/services/room_service.dart';
 import 'package:apartment_management_project_2/utils/app_localizations.dart';
 import 'package:apartment_management_project_2/widgets/shared.dart';
+import 'package:intl/intl.dart' hide TextDirection;
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:path/path.dart' as p;
 import 'package:syncfusion_flutter_xlsio/xlsio.dart' as xlsio;
+
+final Color kPrimaryColor = const Color(0xFF4F46E5); // Modern Indigo
+final Color kBgColor = const Color(0xFFF8FAFC);      // Soft Slate background
+final Color kSurfaceColor = Colors.white;
 
 // Helper class for invoice line items
 class InvoiceLineItem {
@@ -663,6 +667,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
         return DefaultTabController(
           length: 5,
           child: Scaffold(
+            backgroundColor: kBgColor,
             appBar: AppBar(
               title: Text(widget.organization.name),
               bottom: PreferredSize(
@@ -1037,17 +1042,17 @@ class _OrganizationScreenState extends State<OrganizationScreen>
     final filteredPayments = allPayments.where((payment) {
       if (searchTerm.isEmpty) return true;
       if ((payment.tenantName?.toLowerCase() ?? '')
-          .contains(searchTerm)) return true;
+          .contains(searchTerm)) {return true;}
       if (payment.totalAmount.toString().contains(searchTerm))
-        return true;
+        {return true;}
       if (payment
           .getTypeDisplayName()
           .toLowerCase()
-          .contains(searchTerm)) return true;
+          .contains(searchTerm)) {return true;}
       final description = payment.description;
       if (description != null && description.contains('\n')) {
         if (description.toLowerCase().contains(searchTerm))
-          return true;
+          {return true;}
       }
       return false;
     }).toList();
@@ -1356,7 +1361,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
               return const Center(child: CircularProgressIndicator());
             }
             if (!snapshot.hasData) {
-              return Center(child: Text(t['stat_no_data']));
+              return _buildStatsEmptyState(t);
             }
 
             final tenants = snapshot.data![0] as List<Tenant>;
@@ -1364,247 +1369,739 @@ class _OrganizationScreenState extends State<OrganizationScreen>
             final buildings = snapshot.data![2] as List<Building>;
             final rooms = snapshot.data![3] as List<Room>;
 
-            final activeTenants = tenants
-                .where((tn) => tn.status == TenantStatus.active)
-                .length;
-            final totalPayments = payments.length;
-            final paidPayments = payments
-                .where((p) => p.status == PaymentStatus.paid)
-                .length;
-            final pendingPayments = payments
-                .where((p) => p.status == PaymentStatus.pending)
-                .length;
-            final overduePayments =
-                payments.where((p) => p.isOverdue).length;
+            final activeTenants =
+                tenants.where((tn) => tn.status == TenantStatus.active).length;
+            final inactiveTenants =
+                tenants.where((tn) => tn.status == TenantStatus.inactive).length;
+            final movedOutTenants =
+                tenants.where((tn) => tn.status == TenantStatus.moveOut).length;
+            final suspendedTenants =
+                tenants.where((tn) => tn.status == TenantStatus.suspended).length;
 
-            final totalRevenue =
-                payments.fold<double>(0, (sum, p) {
-              if (p.status == PaymentStatus.paid &&
-                  p.paidAmount == 0) {
+            final paidPayments =
+                payments.where((p) => p.status == PaymentStatus.paid).length;
+            final pendingPayments =
+                payments.where((p) => p.status == PaymentStatus.pending).length;
+            final overduePayments = payments.where((p) => p.isOverdue).length;
+            final totalPayments = payments.length;
+
+            final totalRevenue = payments.fold<double>(0, (sum, p) {
+              if (p.status == PaymentStatus.paid && p.paidAmount == 0) {
                 return sum + p.totalWithAllFees;
               }
               return sum + p.paidAmount;
             });
-
-            final pendingRevenue =
-                payments.fold<double>(0, (sum, p) {
+            final pendingRevenue = payments.fold<double>(0, (sum, p) {
               if (p.status == PaymentStatus.paid ||
-                  p.status == PaymentStatus.cancelled) {
-                return sum;
-              }
+                  p.status == PaymentStatus.cancelled) return sum;
               return sum + p.remainingAmount;
             });
 
-            final monthlyRevenue =
-                _calculateMonthlyRevenue(payments);
+            final monthlyRevenue = _calculateMonthlyRevenue(payments);
             final buildingOccupancy =
-                _calculateBuildingOccupancy(
-                    buildings, rooms, tenants);
+                _calculateBuildingOccupancy(buildings, rooms, tenants);
 
-            return SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    t['stat_overview_title'],
-                    style: const TextStyle(
-                        fontSize: 20, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                          child: _buildStatCard(
-                              t['stat_buildings'],
-                              buildings.length.toString(),
-                              Icons.apartment,
-                              Colors.blue)),
-                      const SizedBox(width: 12),
-                      Expanded(
-                          child: _buildStatCard(
-                              t['stat_tenants'],
-                              '$activeTenants',
-                              Icons.people,
-                              Colors.green)),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                          child: _buildStatCard(
-                              t['stat_paid'],
-                              paidPayments.toString(),
-                              Icons.check_circle,
-                              Colors.green)),
-                      const SizedBox(width: 12),
-                      Expanded(
-                          child: _buildStatCard(
-                              t['stat_pending'],
-                              pendingPayments.toString(),
-                              Icons.pending,
-                              Colors.orange)),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                          child: _buildStatCard(
-                              t['stat_overdue'],
-                              overduePayments.toString(),
-                              Icons.warning,
-                              Colors.red)),
-                      const SizedBox(width: 12),
-                      Expanded(
-                          child: _buildStatCard(
-                              t['stat_total_payments'],
-                              totalPayments.toString(),
-                              Icons.receipt_long,
-                              Colors.purple)),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    t['stat_revenue_title'],
-                    style: const TextStyle(
-                        fontSize: 20, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 16),
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: Column(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
-                        children: [
-                          Row(children: [
-                            Icon(Icons.attach_money,
-                                color: Colors.green.shade700),
-                            const SizedBox(width: 8),
-                            Text(t['stat_collected'],
-                                style: const TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.grey)),
-                          ]),
-                          const SizedBox(height: 8),
-                          Text(
-                            _formatCurrency(totalRevenue),
-                            style: TextStyle(
-                              fontSize: 28,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.green.shade700,
-                            ),
-                          ),
-                        ],
-                      ),
+            return RefreshIndicator(
+              onRefresh: () async => _refreshStats(),
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // ── Overview KPIs ──────────────────────────────────────
+                    _statsSectionLabel(t['stat_overview_title']),
+                    _buildKpiGrid(
+                      t: t,
+                      buildings: buildings,
+                      activeTenants: activeTenants,
+                      rooms: rooms,
+                      paidPayments: paidPayments,
+                      pendingPayments: pendingPayments,
+                      overduePayments: overduePayments,
+                      totalPayments: totalPayments,
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: Column(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
-                        children: [
-                          Row(children: [
-                            Icon(Icons.schedule,
-                                color: Colors.orange.shade700),
-                            const SizedBox(width: 8),
-                            Text(t['stat_uncollected'],
-                                style: const TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.grey)),
-                          ]),
-                          const SizedBox(height: 8),
-                          Text(
-                            _formatCurrency(pendingRevenue),
-                            style: TextStyle(
-                              fontSize: 28,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.orange.shade700,
-                            ),
-                          ),
-                        ],
+
+                    // ── Revenue cards ──────────────────────────────────────
+                    _statsSectionLabel(t['stat_revenue_title']),
+                    Row(children: [
+                      Expanded(
+                        child: _buildRevenueCard(
+                          t: t,
+                          label: t['stat_collected'],
+                          amount: totalRevenue,
+                          count: paidPayments,
+                          color: const Color(0xFF3B6D11),
+                          bgColor: const Color(0xFFEAF3DE),
+                          icon: Icons.check_circle_outline_rounded,
+                        ),
                       ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _buildRevenueCard(
+                          t: t,
+                          label: t['stat_uncollected'],
+                          amount: pendingRevenue,
+                          count: pendingPayments + overduePayments,
+                          color: const Color(0xFF854F0B),
+                          bgColor: const Color(0xFFFAEEDA),
+                          icon: Icons.schedule_rounded,
+                        ),
+                      ),
+                    ]),
+
+                    // ── Monthly revenue bar chart ──────────────────────────
+                    _statsSectionLabel(t['stat_monthly_revenue']),
+                    _buildMonthlyRevenueChart(monthlyRevenue),
+
+                    // ── Payment breakdown donut ────────────────────────────
+                    _statsSectionLabel(t['stat_payment_breakdown']),
+                    _buildPaymentBreakdownCard(
+                      paid: paidPayments,
+                      pending: pendingPayments,
+                      overdue: overduePayments,
+                      total: totalPayments,
+                      t: t,
                     ),
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    t['stat_monthly_revenue'],
-                    style: const TextStyle(
-                        fontSize: 20, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 16),
-                  _buildMonthlyRevenueChart(monthlyRevenue),
-                  const SizedBox(height: 24),
-                  Text(
-                    t['stat_occupancy_by_building'],
-                    style: const TextStyle(
-                        fontSize: 20, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 16),
-                  _buildBuildingOccupancyChart(
-                      buildingOccupancy, buildings),
-                  const SizedBox(height: 24),
-                  Text(
-                    t['stat_occupancy_trend'],
-                    style: const TextStyle(
-                        fontSize: 20, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 16),
-                  _buildMonthlyOccupancyTrendChart(
-                      buildings, rooms, tenants),
-                  const SizedBox(height: 32),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
+
+                    // ── Occupancy by building ──────────────────────────────
+                    _statsSectionLabel(t['stat_occupancy_by_building']),
+                    _buildBuildingOccupancyChart(buildingOccupancy, buildings),
+
+                    // ── Tenant status breakdown ────────────────────────────
+                    _statsSectionLabel(t['stat_tenant_status']),
+                    _buildTenantStatusCard(
+                      active: activeTenants,
+                      inactive: inactiveTenants,
+                      movedOut: movedOutTenants,
+                      suspended: suspendedTenants,
+                      total: tenants.length,
+                      t: t,
+                    ),
+
+                    // ── Occupancy trend ────────────────────────────────────
+                    _statsSectionLabel(t['stat_occupancy_trend']),
+                    _buildMonthlyOccupancyTrendChart(buildings, rooms, tenants),
+
+                    // ── Export buttons ─────────────────────────────────────
+                    const SizedBox(height: 8),
+                    Row(children: [
                       Expanded(
                         child: OutlinedButton.icon(
-                          icon: const Icon(
-                              Icons.table_chart_outlined,
-                              size: 20),
+                          icon: const Icon(Icons.table_chart_outlined, size: 18),
                           label: Text(t['export_excel']),
-                          onPressed: () =>
-                              _exportStatisticsToExcel(
+                          onPressed: () => _exportStatisticsToExcel(
                             buildings: buildings,
                             tenants: tenants,
                             rooms: rooms,
                             payments: payments,
-                            organizationName:
-                                widget.organization.name,
+                            organizationName: widget.organization.name,
                           ),
                         ),
                       ),
-                      const SizedBox(width: 16),
+                      const SizedBox(width: 12),
                       Expanded(
                         child: OutlinedButton.icon(
-                          icon: const Icon(
-                              Icons.picture_as_pdf_outlined,
-                              size: 20),
+                          icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
                           label: Text(t['export_pdf']),
-                          onPressed: () =>
-                              _exportStatisticsToPdf(
+                          onPressed: () => _exportStatisticsToPdf(
                             buildings: buildings,
                             tenants: tenants,
                             rooms: rooms,
                             payments: payments,
-                            organizationName:
-                                widget.organization.name,
+                            organizationName: widget.organization.name,
                           ),
                         ),
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                ],
+                    ]),
+                  ],
+                ),
               ),
             );
           },
         );
       },
+    );
+  }
+
+  // ── Section label ────────────────────────────────────────────────────────────
+  Widget _statsSectionLabel(String label) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 28, bottom: 12),
+      child: Row(children: [
+        Container(
+          width: 3,
+          height: 14,
+          decoration: BoxDecoration(
+            color: Colors.blue.shade400,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          label.toUpperCase(),
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 1.2,
+            color: Colors.grey.shade500,
+          ),
+        ),
+      ]),
+    );
+  }
+
+  // ── Empty state ──────────────────────────────────────────────────────────────
+  Widget _buildStatsEmptyState(AppTranslations t) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              color: Colors.blue.shade50,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.blue.withValues(alpha: 0.15),
+                  blurRadius: 20,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: Icon(Icons.bar_chart_rounded,
+                size: 36, color: Colors.blue.shade400),
+          ),
+          const SizedBox(height: 18),
+          Text(t['stat_no_data'],
+              style: const TextStyle(
+                  fontSize: 16, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 6),
+          Text(t['stat_empty_hint'],
+              style:
+                  TextStyle(fontSize: 13, color: Colors.grey.shade500)),
+        ],
+      ),
+    );
+  }
+
+  // ── KPI grid ─────────────────────────────────────────────────────────────────
+  Widget _buildKpiGrid({
+    required AppTranslations t,
+    required List<Building> buildings,
+    required int activeTenants,
+    required List<Room> rooms,
+    required int paidPayments,
+    required int pendingPayments,
+    required int overduePayments,
+    required int totalPayments,
+  }) {
+    final occupancyPct = rooms.isNotEmpty
+        ? (activeTenants / rooms.length * 100).toStringAsFixed(0)
+        : '0';
+
+    return Column(children: [
+      Row(children: [
+        Expanded(child: _kpiCard(
+          icon: Icons.apartment_rounded,
+          iconColor: const Color(0xFF185FA5),
+          iconBg: const Color(0xFFE6F1FB),
+          value: buildings.length.toString(),
+          label: t['stat_buildings'],
+        )),
+        const SizedBox(width: 10),
+        Expanded(child: _kpiCard(
+          icon: Icons.people_alt_rounded,
+          iconColor: const Color(0xFF3B6D11),
+          iconBg: const Color(0xFFEAF3DE),
+          value: activeTenants.toString(),
+          label: t['stat_tenants'],
+        )),
+        const SizedBox(width: 10),
+        Expanded(child: _kpiCard(
+          icon: Icons.meeting_room_rounded,
+          iconColor: const Color(0xFF0F6E56),
+          iconBg: const Color(0xFFE1F5EE),
+          value: rooms.length.toString(),
+          label: t['stat_rooms'],
+        )),
+      ]),
+      const SizedBox(height: 10),
+      Row(children: [
+        Expanded(child: _kpiCard(
+          icon: Icons.check_circle_rounded,
+          iconColor: const Color(0xFF3B6D11),
+          iconBg: const Color(0xFFEAF3DE),
+          value: paidPayments.toString(),
+          label: t['stat_paid'],
+          valueColor: const Color(0xFF3B6D11),
+        )),
+        const SizedBox(width: 10),
+        Expanded(child: _kpiCard(
+          icon: Icons.pending_rounded,
+          iconColor: const Color(0xFF854F0B),
+          iconBg: const Color(0xFFFAEEDA),
+          value: pendingPayments.toString(),
+          label: t['stat_pending'],
+          valueColor: const Color(0xFF854F0B),
+        )),
+        const SizedBox(width: 10),
+        Expanded(child: _kpiCard(
+          icon: Icons.warning_rounded,
+          iconColor: const Color(0xFFA32D2D),
+          iconBg: const Color(0xFFFCEBEB),
+          value: overduePayments.toString(),
+          label: t['stat_overdue'],
+          valueColor: const Color(0xFFA32D2D),
+        )),
+      ]),
+      const SizedBox(height: 10),
+      Row(children: [
+        Expanded(child: _kpiCard(
+          icon: Icons.receipt_long_rounded,
+          iconColor: const Color(0xFF534AB7),
+          iconBg: const Color(0xFFEEEDFE),
+          value: totalPayments.toString(),
+          label: t['stat_total_payments'],
+        )),
+        const SizedBox(width: 10),
+        Expanded(child: _kpiCard(
+          icon: Icons.pie_chart_rounded,
+          iconColor: const Color(0xFF185FA5),
+          iconBg: const Color(0xFFE6F1FB),
+          value: '$occupancyPct%',
+          label: t['stat_occupancy'],
+        )),
+      ]),
+    ]);
+  }
+
+  Widget _kpiCard({
+    required IconData icon,
+    required Color iconColor,
+    required Color iconBg,
+    required String value,
+    required String label,
+    Color? valueColor,
+  }) {
+    final effectiveColor = valueColor ?? iconColor;
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: effectiveColor.withValues(alpha: 0.12),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 4,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Colored top accent bar
+            Container(height: 3, color: effectiveColor),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 14),
+              child: Row(children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: iconBg,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(icon, size: 19, color: iconColor),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        value,
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800,
+                          color: effectiveColor,
+                          height: 1,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        label,
+                        style: TextStyle(
+                            fontSize: 11, color: Colors.grey.shade500),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+              ]),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Revenue cards ─────────────────────────────────────────────────────────────
+  Widget _buildRevenueCard({
+    required AppTranslations t,
+    required String label,
+    required double amount,
+    required int count,
+    required Color color,
+    required Color bgColor,
+    required IconData icon,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: bgColor.withValues(alpha:0.45),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withValues(alpha:0.18), width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha:0.10),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha:0.15),
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Icon(icon, size: 17, color: color),
+          ),
+          const SizedBox(width: 9),
+          Text(label,
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: color.withValues(alpha:0.8))),
+        ]),
+        const SizedBox(height: 14),
+        Text(
+          _formatCurrency(amount),
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+            color: color,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          t.textWithParams('invoices', {'count': count}),
+          style: TextStyle(fontSize: 11, color: color.withValues(alpha:0.6)),
+        ),
+      ]),
+    );
+  }
+
+  // ── Monthly revenue bar chart ─────────────────────────────────────────────────
+  Widget _buildMonthlyRevenueChart(Map<String, double> monthlyRevenue) {
+    final t = AppTranslations.of(context);
+    if (monthlyRevenue.isEmpty ||
+        monthlyRevenue.values.every((v) => v == 0)) {
+      return _buildChartEmptyState(
+          Icons.bar_chart_rounded, t['stat_no_revenue_data']);
+    }
+  
+    final maxVal = monthlyRevenue.values.reduce((a, b) => a > b ? a : b);
+  
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+      decoration: _cardDecoration(),
+      child: SizedBox(
+        height: 175,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: monthlyRevenue.entries.map((entry) {
+            final isHighest = entry.value == maxVal && maxVal > 0;
+            final ratio = maxVal > 0 ? (entry.value / maxVal) : 0.0;
+            final barH = (ratio * 115).clamp(3.0, 115.0);
+  
+            return Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Text(
+                      _formatCurrencyShort(entry.value),
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                        color: isHighest
+                            ? const Color(0xFF1A6FBF)
+                            : Colors.grey.shade400,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Container(
+                      height: barH,
+                      decoration: BoxDecoration(
+                        gradient: isHighest
+                            ? const LinearGradient(
+                                colors: [Color(0xFF378ADD), Color(0xFF1A6FBF)],
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                              )
+                            : null,
+                        color: isHighest
+                            ? null
+                            : const Color(0xFF378ADD).withOpacity(0.25),
+                        borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(5)),
+                      ),
+                    ),
+                    const SizedBox(height: 7),
+                    Text(
+                      entry.key.split('/')[0],
+                      style: TextStyle(
+                        fontSize: 9,
+                        color: isHighest
+                            ? const Color(0xFF1A6FBF)
+                            : Colors.grey.shade500,
+                        fontWeight:
+                            isHighest ? FontWeight.w700 : FontWeight.w400,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
+  // ── Payment breakdown donut ───────────────────────────────────────────────────
+  Widget _buildPaymentBreakdownCard({
+    required int paid,
+    required int pending,
+    required int overdue,
+    required int total,
+    required AppTranslations t,
+  }) {
+    if (total == 0) {
+      return _buildChartEmptyState(
+          Icons.donut_large_rounded, 'No payment data yet');
+    }
+  
+    final paidPct = (paid / total * 100).toStringAsFixed(0);
+    final pendingPct = (pending / total * 100).toStringAsFixed(0);
+    final overduePct = (overdue / total * 100).toStringAsFixed(0);
+  
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: _cardDecoration(),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 90,
+            height: 90,
+            child: CustomPaint(
+              painter: _DonutPainter(
+                sections: [
+                  _DonutSection(paid.toDouble(), const Color(0xFF639922)),
+                  _DonutSection(pending.toDouble(), const Color(0xFFEF9F27)),
+                  _DonutSection(overdue.toDouble(), const Color(0xFFE24B4A)),
+                ],
+                centerText: total.toString(),
+              ),
+            ),
+          ),
+          const SizedBox(width: 24),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _legendRow(const Color(0xFF639922), t['stat_paid'],
+                    '$paid ($paidPct%)'),
+                const SizedBox(height: 14),
+                _legendRow(const Color(0xFFEF9F27), t['stat_pending'],
+                    '$pending ($pendingPct%)'),
+                const SizedBox(height: 14),
+                _legendRow(const Color(0xFFE24B4A), t['stat_overdue'],
+                    '$overdue ($overduePct%)'),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _legendRow(Color color, String label, String value) {
+    return Row(children: [
+      Container(
+        width: 10,
+        height: 10,
+        decoration:
+            BoxDecoration(color: color, borderRadius: BorderRadius.circular(3)),
+      ),
+      const SizedBox(width: 8),
+      Expanded(
+        child: Text(label,
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+      ),
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha:0.1),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          value,
+          style: TextStyle(
+              fontSize: 11, fontWeight: FontWeight.w700, color: color),
+        ),
+      ),
+    ]);
+  }
+
+  // ── Tenant status breakdown ───────────────────────────────────────────────────
+  Widget _buildTenantStatusCard({
+    required int active,
+    required int inactive,
+    required int movedOut,
+    required int suspended,
+    required int total,
+    required AppTranslations t,
+  }) {
+    if (total == 0) {
+      return _buildChartEmptyState(
+          Icons.people_outline, 'No tenant data yet');
+    }
+  
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: _cardDecoration(),
+      child: Column(children: [
+        _tenantStatusRow(
+            label: t['tenant_status_active'],
+            count: active,
+            total: total,
+            color: const Color(0xFF639922)),
+        const SizedBox(height: 18),
+        _tenantStatusRow(
+            label: t['tenant_status_inactive'],
+            count: inactive,
+            total: total,
+            color: const Color(0xFFEF9F27)),
+        const SizedBox(height: 18),
+        _tenantStatusRow(
+            label: t['tenant_status_moved_out'],
+            count: movedOut,
+            total: total,
+            color: Colors.grey.shade400),
+        if (suspended > 0) ...[
+          const SizedBox(height: 18),
+          _tenantStatusRow(
+              label: 'Suspended',
+              count: suspended,
+              total: total,
+              color: const Color(0xFFE24B4A)),
+        ],
+      ]),
+    );
+  }
+
+  Widget _tenantStatusRow({
+    required String label,
+    required int count,
+    required int total,
+    required Color color,
+  }) {
+    final pct = total > 0 ? count / total : 0.0;
+    return Column(children: [
+      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+        Text(label,
+            style: const TextStyle(
+                fontSize: 13, fontWeight: FontWeight.w500)),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Text(
+            '$count  ·  ${(pct * 100).toStringAsFixed(0)}%',
+            style: TextStyle(
+                fontSize: 12, fontWeight: FontWeight.w700, color: color),
+          ),
+        ),
+      ]),
+      const SizedBox(height: 8),
+      ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child: LinearProgressIndicator(
+          value: pct,
+          backgroundColor: color.withValues(alpha:0.1),
+          color: color,
+          minHeight: 8,
+        ),
+      ),
+    ]);
+  }
+
+  // ── Chart empty state ─────────────────────────────────────────────────────────
+  Widget _buildChartEmptyState(IconData icon, String message) {
+    return Container(
+      height: 100,
+      decoration: _cardDecoration(),
+      child: Center(
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Icon(icon, size: 28, color: Colors.grey.shade300),
+          const SizedBox(height: 8),
+          Text(message,
+              style:
+                  TextStyle(fontSize: 12, color: Colors.grey.shade400)),
+        ]),
+      ),
+    );
+  }
+
+  BoxDecoration _cardDecoration() {
+    return BoxDecoration(
+      color: Theme.of(context).colorScheme.surface,
+      borderRadius: BorderRadius.circular(16),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.07),
+          blurRadius: 16,
+          offset: const Offset(0, 4),
+        ),
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.03),
+          blurRadius: 4,
+          offset: const Offset(0, 1),
+        ),
+      ],
     );
   }
 
@@ -3021,205 +3518,133 @@ class _OrganizationScreenState extends State<OrganizationScreen>
     return monthlyOccupancy;
   }
 
-  Widget _buildMonthlyRevenueChart(
-      Map<String, double> monthlyRevenue) {
-    final t = AppTranslations.of(context);
-    if (monthlyRevenue.isEmpty) {
-      return Card(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Center(
-            child: Text(t['stat_no_revenue_data'],
-                style: TextStyle(color: Colors.grey[600])),
-          ),
-        ),
-      );
-    }
-    final maxRevenue =
-        monthlyRevenue.values.reduce((a, b) => a > b ? a : b);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: SizedBox(
-          height: 200,
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: monthlyRevenue.entries.map((entry) {
-              final barHeight = maxRevenue > 0
-                  ? (entry.value / maxRevenue * 150)
-                      .clamp(5.0, 150.0)
-                  : 5.0;
-              return Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 4),
-                  child: Column(
-                    mainAxisAlignment:
-                        MainAxisAlignment.end,
-                    children: [
-                      Text(
-                        _formatCurrencyShort(entry.value),
-                        style: const TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 4),
-                      Container(
-                        height: barHeight,
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.bottomCenter,
-                            end: Alignment.topCenter,
-                            colors: [
-                              Colors.green.shade700,
-                              Colors.green.shade300,
-                            ],
-                          ),
-                          borderRadius:
-                              const BorderRadius.vertical(
-                                  top: Radius.circular(4)),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        entry.key,
-                        style: const TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w500),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildBuildingOccupancyChart(
     Map<String, Map<String, dynamic>> occupancy,
     List<Building> buildings,
   ) {
     final t = AppTranslations.of(context);
     if (occupancy.isEmpty) {
-      return Card(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Center(child: Text(t['stat_no_building_data'])),
-        ),
-      );
+      return _buildChartEmptyState(
+          Icons.apartment_outlined, t['stat_no_building_data']);
     }
-
+  
     Map<String, Map<String, dynamic>> displayOccupancy;
     if (_selectedOccupancyBuildingId == null) {
       displayOccupancy = occupancy;
     } else {
-      if (occupancy.containsKey(_selectedOccupancyBuildingId)) {
-        displayOccupancy = {
-          _selectedOccupancyBuildingId!:
-              occupancy[_selectedOccupancyBuildingId]!
-        };
-      } else {
-        displayOccupancy = {};
-      }
+      displayOccupancy =
+          occupancy.containsKey(_selectedOccupancyBuildingId)
+              ? {
+                  _selectedOccupancyBuildingId!:
+                      occupancy[_selectedOccupancyBuildingId]!
+                }
+              : {};
     }
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Text(t['stat_filter_by_building'],
-                    style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600)),
-                const SizedBox(width: 12),
-                Expanded(
+  
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: _cardDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Text(t['stat_filter_by_building'],
+                style: const TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w600)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  border: Border.all(color: Colors.grey.shade200),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: DropdownButtonHideUnderline(
                   child: DropdownButton<String?>(
                     isExpanded: true,
                     value: _selectedOccupancyBuildingId,
-                    hint: Text(t['stat_all_buildings']),
+                    hint: Text(t['stat_all_buildings'],
+                        style: const TextStyle(fontSize: 13)),
+                    style: TextStyle(
+                        fontSize: 13,
+                        color: Theme.of(context).colorScheme.onSurface),
                     items: [
                       DropdownMenuItem<String?>(
                         value: null,
-                        child:
-                            Text(t['stat_all_buildings']),
+                        child: Text(t['stat_all_buildings']),
                       ),
-                      ...buildings.map((building) {
-                        return DropdownMenuItem<String?>(
-                          value: building.id,
-                          child: Text(building.name),
-                        );
-                      }),
+                      ...buildings.map((b) => DropdownMenuItem<String?>(
+                            value: b.id,
+                            child: Text(b.name),
+                          )),
                     ],
-                    onChanged: (value) => setState(() =>
-                        _selectedOccupancyBuildingId = value),
+                    onChanged: (value) => setState(
+                        () => _selectedOccupancyBuildingId = value),
                   ),
                 ),
-              ],
+              ),
             ),
-            const SizedBox(height: 16),
-            ...displayOccupancy.entries.map((entry) {
-              final data = entry.value;
-              final String buildingName =
-                  data['name'] ?? '';
-              final percentage =
-                  (data['percentage'] as num).toDouble();
-              final occupied = data['occupied'] as int;
-              final total = data['total'] as int;
-              Color barColor = percentage >= 80
-                  ? Colors.green
-                  : (percentage >= 50
-                      ? Colors.orange
-                      : Colors.red);
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment:
-                          MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            buildingName,
+          ]),
+          const SizedBox(height: 20),
+          ...displayOccupancy.entries.map((entry) {
+            final data = entry.value;
+            final String buildingName = data['name'] ?? '';
+            final pct = (data['percentage'] as num).toDouble();
+            final occupied = data['occupied'] as int;
+            final total = data['total'] as int;
+            final Color barColor = pct >= 80
+                ? const Color(0xFF639922)
+                : pct >= 50
+                    ? const Color(0xFFEF9F27)
+                    : const Color(0xFFE24B4A);
+  
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(buildingName,
                             style: const TextStyle(
                                 fontWeight: FontWeight.w600,
-                                fontSize: 14),
-                          ),
+                                fontSize: 13)),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 9, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: barColor.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(20),
                         ),
-                        Text(
-                          '$occupied/$total (${percentage.toStringAsFixed(0)}%)',
+                        child: Text(
+                          '$occupied/$total  ·  ${pct.toStringAsFixed(0)}%',
                           style: TextStyle(
-                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
                               color: barColor),
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    ClipRRect(
-                      borderRadius:
-                          BorderRadius.circular(8),
-                      child: LinearProgressIndicator(
-                        value: percentage / 100,
-                        backgroundColor: Colors.grey[200],
-                        color: barColor,
-                        minHeight: 12,
                       ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: LinearProgressIndicator(
+                      value: pct / 100,
+                      backgroundColor: barColor.withOpacity(0.1),
+                      color: barColor,
+                      minHeight: 10,
                     ),
-                  ],
-                ),
-              );
-            }),
-          ],
-        ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
       ),
     );
   }
@@ -3231,162 +3656,167 @@ class _OrganizationScreenState extends State<OrganizationScreen>
   ) {
     final t = AppTranslations.of(context);
     if (buildings.isEmpty) {
-      return Card(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Center(
-            child: Text(t['stat_no_building_data'],
-                style: TextStyle(color: Colors.grey[600])),
-          ),
-        ),
-      );
+      return _buildChartEmptyState(
+          Icons.trending_up_rounded, t['stat_no_building_data']);
     }
-
-    if (_selectedBuildingId == null ||
-        !buildings.any((b) => b.id == _selectedBuildingId)) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          setState(() =>
-              _selectedBuildingId = buildings.first.id);
-        }
-      });
-      _selectedBuildingId = buildings.first.id;
-    }
-
+  
+    // Safe — no setState inside build
+    final effectiveBuildingId =
+        (_selectedBuildingId != null &&
+                buildings.any((b) => b.id == _selectedBuildingId))
+            ? _selectedBuildingId!
+            : buildings.first.id;
+  
     final selectedBuilding = buildings.firstWhere(
-      (b) => b.id == _selectedBuildingId,
+      (b) => b.id == effectiveBuildingId,
       orElse: () => buildings.first,
     );
-
+  
     final monthlyOccupancy = _calculateMonthlyOccupancyTrend(
         selectedBuilding.id, rooms, tenants);
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Text(t['stat_select_building'],
-                    style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600)),
-                const SizedBox(width: 12),
-                Expanded(
+  
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: _cardDecoration(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Text(t['stat_select_building'],
+                style: const TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w600)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  border: Border.all(color: Colors.grey.shade200),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: DropdownButtonHideUnderline(
                   child: DropdownButton<String>(
                     isExpanded: true,
-                    hint: Text(t['stat_select_building']),
-                    value: buildings.any(
-                            (b) => b.id == _selectedBuildingId)
-                        ? _selectedBuildingId
-                        : null,
-                    items: buildings.map((building) {
-                      return DropdownMenuItem<String>(
-                        value: building.id,
-                        child: Text(building.name),
-                      );
-                    }).toList(),
-                    onChanged: (value) => setState(
-                        () => _selectedBuildingId = value),
+                    value: effectiveBuildingId,
+                    style: TextStyle(
+                        fontSize: 13,
+                        color: Theme.of(context).colorScheme.onSurface),
+                    items: buildings
+                        .map((b) => DropdownMenuItem<String>(
+                              value: b.id,
+                              child: Text(b.name),
+                            ))
+                        .toList(),
+                    onChanged: (value) =>
+                        setState(() => _selectedBuildingId = value),
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            if (monthlyOccupancy.isEmpty)
-              Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(40),
-                  child: Text(t['stat_no_building_selected'],
-                      style:
-                          TextStyle(color: Colors.grey[600])),
-                ),
-              )
-            else
-              SizedBox(
-                height: 220,
-                child: Column(
-                  children: [
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        t['stat_occupancy_rate'],
-                        style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.grey),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Expanded(
-                      child: Row(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.end,
-                        children: monthlyOccupancy.entries
-                            .map((entry) {
-                          final occupancyRate = entry.value;
-                          final barHeight =
-                              (occupancyRate / 100 * 150)
-                                  .clamp(5.0, 150.0);
-                          Color barColor;
-                          if (occupancyRate >= 80) {
-                            barColor = Colors.green;
-                          } else if (occupancyRate >= 50) {
-                            barColor = Colors.orange;
-                          } else {
-                            barColor = Colors.red;
-                          }
-                          return Expanded(
-                            child: Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(
-                                      horizontal: 2),
-                              child: Column(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.end,
-                                children: [
-                                  Text(
-                                    '${occupancyRate.toStringAsFixed(0)}%',
-                                    style: const TextStyle(
-                                        fontSize: 9,
-                                        fontWeight:
-                                            FontWeight.bold),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Container(
-                                    height: barHeight,
-                                    decoration: BoxDecoration(
-                                      color: barColor,
-                                      borderRadius:
-                                          const BorderRadius
-                                              .vertical(
-                                              top: Radius
-                                                  .circular(
-                                                      4)),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    entry.key.split('/')[0],
-                                    style: const TextStyle(
-                                        fontSize: 9,
-                                        fontWeight:
-                                            FontWeight.w500),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ),
-                  ],
-                ),
               ),
-          ],
-        ),
+            ),
+          ]),
+          const SizedBox(height: 24),
+          if (monthlyOccupancy.isEmpty)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 32),
+                child: Text(t['stat_no_building_selected'],
+                    style: TextStyle(
+                        color: Colors.grey.shade400, fontSize: 13)),
+              ),
+            )
+          else
+            SizedBox(
+              height: 210,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    t['stat_occupancy_rate'],
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.grey.shade400,
+                        letterSpacing: 0.5),
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: monthlyOccupancy.entries.map((entry) {
+                        final rate = entry.value;
+                        final barH =
+                            (rate / 100 * 145).clamp(3.0, 145.0);
+                        final Color barColor = rate >= 80
+                            ? const Color(0xFF639922)
+                            : rate >= 50
+                                ? const Color(0xFFEF9F27)
+                                : const Color(0xFFE24B4A);
+                        final bool hasData = rate > 0;
+  
+                        return Expanded(
+                          child: Padding(
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 2),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                if (hasData)
+                                  Text(
+                                    '${rate.toStringAsFixed(0)}%',
+                                    style: TextStyle(
+                                      fontSize: 8,
+                                      fontWeight: FontWeight.w700,
+                                      color: barColor,
+                                    ),
+                                  )
+                                else
+                                  const SizedBox(height: 11),
+                                const SizedBox(height: 3),
+                                Container(
+                                  height: barH,
+                                  decoration: BoxDecoration(
+                                    gradient: hasData
+                                        ? LinearGradient(
+                                            colors: [
+                                              barColor.withOpacity(0.7),
+                                              barColor,
+                                            ],
+                                            begin: Alignment.topCenter,
+                                            end: Alignment.bottomCenter,
+                                          )
+                                        : null,
+                                    color: hasData
+                                        ? null
+                                        : Colors.grey.shade200,
+                                    borderRadius:
+                                        const BorderRadius.vertical(
+                                            top: Radius.circular(4)),
+                                  ),
+                                ),
+                                const SizedBox(height: 7),
+                                Text(
+                                  entry.key.split('/')[0],
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    color: hasData
+                                        ? Colors.grey.shade600
+                                        : Colors.grey.shade400,
+                                    fontWeight: hasData
+                                        ? FontWeight.w600
+                                        : FontWeight.w400,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -3400,35 +3830,6 @@ class _OrganizationScreenState extends State<OrganizationScreen>
       return '${(amount / 1000).toStringAsFixed(0)}K';
     }
     return amount.toStringAsFixed(0);
-  }
-
-  Widget _buildStatCard(
-      String label, String value, IconData icon, Color color) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Icon(icon, size: 32, color: color),
-            const SizedBox(height: 8),
-            Text(
-              value,
-              style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: color),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                  fontSize: 12, color: Colors.grey),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   // ========================================
@@ -3867,4 +4268,63 @@ class _BuildingStats {
     required this.occupiedRooms,
     required this.revenue,
   });
+}
+
+// ── Donut chart painter ───────────────────────────────────────────────────────
+class _DonutSection {
+  final double value;
+  final Color color;
+  const _DonutSection(this.value, this.color);
+}
+
+class _DonutPainter extends CustomPainter {
+  final List<_DonutSection> sections;
+  final String centerText;
+  const _DonutPainter({required this.sections, required this.centerText});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final total = sections.fold(0.0, (s, e) => s + e.value);
+    if (total == 0) return;
+
+    final rect = Rect.fromLTWH(0, 0, size.width, size.height);
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 14
+      ..strokeCap = StrokeCap.butt;
+
+    double startAngle = -1.5708; // -90 degrees in radians
+    for (final section in sections) {
+      final sweep = (section.value / total) * 2 * 3.14159;
+      paint.color = section.color;
+      canvas.drawArc(
+        rect.deflate(7),
+        startAngle,
+        sweep,
+        false,
+        paint,
+      );
+      startAngle += sweep;
+    }
+
+    // Center text
+    final tp = TextPainter(
+      text: TextSpan(
+        text: centerText,
+        style: const TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          color: Colors.black87,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    tp.paint(
+      canvas,
+      Offset(size.width / 2 - tp.width / 2, size.height / 2 - tp.height / 2),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_DonutPainter old) => true;
 }

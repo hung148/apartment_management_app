@@ -623,7 +623,24 @@ class AppTranslations {
       "status_overdue": "Quá hạn",
       "status_cancelled": "Đã hủy",
       "status_refunded": "Đã hoàn tiền",
-      "status_partial": "Thanh toán 1 phần"
+      "status_partial": "Thanh toán 1 phần",
+
+      'export_lang_dialog_subtitle': 'Ngôn ngữ xuất file',
+      'export_lang_dialog_title': 'Chọn ngôn ngữ',
+      'export_lang_vi_title': 'Tiếng Việt',
+      'export_lang_vi_subtitle': 'Chỉ tiếng Việt',
+      'export_lang_en_title': 'Tiếng Anh',
+      'export_lang_en_subtitle': 'Chỉ tiếng Anh',
+      'export_lang_bi_title': 'Song ngữ',
+      'export_lang_bi_subtitle': 'Tiếng Việt + Tiếng Anh',
+      'export_lang_btn_export': 'Xuất file',
+
+      'stat_rooms': 'Phòng',
+      'stat_occupancy': 'Tỷ lệ lấp đầy',
+      'stat_empty_hint': 'Thêm toà nhà và hóa đơn để xem thống kê',
+      'stat_payment_breakdown': 'Phân tích thanh toán',
+      'stat_tenant_status': 'Trạng thái người thuê',
+      'invoices': '{{count}} hoá đơn',
     },
 
     'en': {
@@ -1240,7 +1257,24 @@ class AppTranslations {
       "status_overdue": "Overdue",
       "status_cancelled": "Cancelled",
       "status_refunded": "Refunded",
-      "status_partial": "Partial payment"
+      "status_partial": "Partial payment",
+
+      'export_lang_dialog_subtitle': 'Export language',
+      'export_lang_dialog_title': 'Choose language',
+      'export_lang_vi_title': 'Vietnamese',
+      'export_lang_vi_subtitle': 'Vietnamese only',
+      'export_lang_en_title': 'English',
+      'export_lang_en_subtitle': 'English only',
+      'export_lang_bi_title': 'Bilingual',
+      'export_lang_bi_subtitle': 'Vietnamese + English',
+      'export_lang_btn_export': 'Export',
+
+      'stat_rooms': 'Rooms',
+      'stat_occupancy': 'Occupancy',
+      'stat_empty_hint': 'Add buildings and payments to see statistics',
+      'stat_payment_breakdown': 'Payment breakdown',
+      'stat_tenant_status': 'Tenant status',
+      'invoices': '{{count}} invoices',
     },
   };
 
