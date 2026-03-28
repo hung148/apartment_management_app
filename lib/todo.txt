@@ -1,0 +1,85 @@
+
+[ERROR:flutter/shell/gpu/gpu_surface_gl_skia.cc(220)] Could not make the context current to acquire the frame.
+2
+[ERROR:flutter/shell/platform/windows/egl/egl.cc(57)] EGL Error: Context Lost (12302) in ../../../flutter/shell/platform/windows/egl/surface.cc:28
+2
+[ERROR:flutter/shell/platform/windows/egl/egl.cc(57)] EGL Error: Context Lost (12302) in ../../../flutter/shell/platform/windows/egl/context.cc:33
+Happen sometimes when I resize 
+
+dien tich in add tenant dialog should be automatically update when a room is choose
+
+You should apply this same pattern to every Firestore method in your service classes, since any of them could be in-flight during logout:
+dart// Add this at the top of every Firestore method
+if (FirebaseAuth.instance.currentUser == null) return null; // or [] or false etc.
+
+style dashboard_screen
+animation when log out and log in
+
+add ability to choose which one to display and counted
+for payment pdf export
+
+add app icon
+
+add language support
+
+ability to import file and it will read information create everything neccessary
+
+add vehicle management tab where it only dislay tenant vehicle with currently renting status
+
+ma so thue
+Show example format in the hint text or helper text
+If supporting multiple countries, add country-specific tax code validation
+
+
+
+Application-level security
+
+Firestore rules only protect the database. Your app code might still leak data if you return sensitive fields accidentally.
+
+Privilege escalation in app logic
+
+consider changing to cloud function in future
+
+If you are talking about protecting your logic and preventing hackers from messing with your data when you release your app, there are three layers you need to handle:
+1. Hide the Logic (Code Obfuscation)
+When you build your Flutter app for the App Store or Play Store, hackers can "decompile" your app to see your code. To prevent them from reading your logic (like how you generate invite codes), you should use obfuscation.
+When you build your app, use this command:
+code
+Bash
+flutter build apk --obfuscate --split-debug-info=/<directory>
+# or
+flutter build ios --obfuscate --split-debug-info=/<directory>
+What this does: It renames all your classes and variables to nonsense like a, b, c. Even if someone "opens" your code, they won't understand what OrganizationService or refreshInviteCode is.
+2. Protect the Keys (Firebase Config)
+You might worry about the Firebase configuration (API Keys, Project ID) in your firebase_options.dart.
+The Truth: These keys are not secret. Every single Flutter/Firebase app has these strings embedded in the binary.
+The Solution: You don't protect the keys; you protect the database. Even if a hacker has your API Key, they cannot read any data unless they have a valid login and pass your Security Rules.
+3. Protect the Data (The "Security Rules" Wall)
+This is the most important part. Once your app is in the hands of users, you must assume someone will try to call your Firestore directly without using your Flutter app.
+Because we used the Composite ID (uid_orgId) and the Registry Pattern (invite_codes), your data is safe even if the attacker knows your "predictable" logic:
+Predictable Path logic: If a hacker sees in your code that memberships are stored at memberships/uid_orgId, they might try to read memberships/HACKER-UID_YOUR-ORG-ID.
+Why they fail: Your Security Rule resource.data.ownerId == request.auth.uid or exists(...) checks the Server's authentication, not the user's input. The server says: "I don't care if you know the path; you aren't the person who belongs in this path. Access Denied."
+4. Checklist for a Production Release
+Firebase App Check: (Highly Recommended) Enable Firebase App Check. This ensures that only your specific app can talk to your Firebase backend. If a hacker tries to use a script or a fake app with your keys, Firebase will block them entirely.
+Remove Print Statements: Make sure you aren't printing sensitive info to the console.
+code
+Dart
+if (kDebugMode) {
+  print('✅ Organization created');
+}
+Security Rules "Lockdown": Ensure you have no "True" rules left.
+❌ allow read, write: if true; (NEVER use this in release)
+✅ allow read: if request.auth != null && exists(...);
+IP/Domain Whitelisting: If you release for Web, go to the Google Cloud Console and restrict your API Keys so they only work on your specific domain (e.g., yourapp.com).
+Summary
+If you use Obfuscation and Strict Security Rules, it doesn't matter if people can "open" your code. They will see a mess of garbled letters, and even if they find your database URL, the Security Rules will act as a 24/7 guard that blocks them from seeing anyone else's data.
+Do you feel confident in the Security Rules we wrote, or do you want to double-check any specific part before you go live?
+
+flutter build apk --release --obfuscate --split-debug-info=symbols/android
+flutter build windows --release --obfuscate --split-debug-info=symbols/windows
+
+Use kReleaseMode: Use this constant to disable all print() logs in your release app so users don't see your debug data in the Windows Event Viewer.
+
+Silent/Quiet Installation
+Detached Execution
+Dynamic Versioning

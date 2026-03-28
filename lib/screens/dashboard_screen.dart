@@ -390,11 +390,11 @@ class _DashboardScreenState extends State<DashboardScreen>
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   LinearProgressIndicator(
-                      value: progress <= 0 ? null : progress),
-                  const SizedBox(height: 8),
-                  Text(progress <= 0
-                      ? '${AppTranslations.of(context).text("connecting")}...'
-                      : '${(progress * 100).toStringAsFixed(0)}%'),
+                    value: progress <= 0 || progress >= 1.0 ? null : progress,
+                  ),
+                  Text(progress >= 1.0
+                      ? '${AppTranslations.of(context).text("installing")}...'
+                      : '${AppTranslations.of(context).text("connecting")}...'),
                 ],
               ),
             ),

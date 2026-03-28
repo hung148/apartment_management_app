@@ -2657,12 +2657,11 @@ class _TenantsTabState extends State<TenantsTab>
                             );
                           }).toList(),
                           onChanged: (val) {
-                            final room = allRooms
-                                .firstWhere((r) => r.id == val);
+                            final room = allRooms.firstWhere((r) => r.id == val);
+                            print('Selected room: ${room.roomNumber}, area: ${room.area}, type: ${room.roomType}');
                             setDialogState(() {
                               selectedRoomId = val;
-                              areaController.text =
-                                  room.area.toString();
+                              areaController.text = room.area.toString();
                               typeController.text = room.roomType;
                             });
                           },

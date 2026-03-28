@@ -16,6 +16,13 @@ class PaymentsNotifier extends ChangeNotifier {
   List<Payment> get roomPayments => _roomPayments;
   bool get isLoading => _isLoading;
 
+  // Safe notifyListeners — won't crash if called during a build
+  void _safeNotify() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (hasListeners) notifyListeners();
+    });
+  }
+
   // Set full organization payments list
   void setPayments(List<Payment> payments) {
     _payments = payments;
@@ -205,7 +212,7 @@ class PaymentsNotifier extends ChangeNotifier {
       print('PaymentsNotifier: Refreshing payments for org: $organizationId');
       _payments = await _paymentService.getOrganizationPayments(organizationId);
       print('PaymentsNotifier: Fetched ${_payments.length} payments');
-      notifyListeners();
+      _safeNotify();
     } catch (e) {
       print('Error refreshing payments in notifier: $e');
       rethrow;
@@ -218,7 +225,7 @@ class PaymentsNotifier extends ChangeNotifier {
       print('PaymentsNotifier: Loading payments for org: $organizationId');
       _payments = await _paymentService.getOrganizationPayments(organizationId);
       print('PaymentsNotifier: Loaded ${_payments.length} payments');
-      notifyListeners();
+      _safeNotify();
     } catch (e) {
       print('Error loading payments in notifier: $e');
       rethrow;
@@ -228,7 +235,7 @@ class PaymentsNotifier extends ChangeNotifier {
   // Load payments for a specific room into _roomPayments (does NOT affect _payments)
   Future<void> loadRoomPayments(String roomId, String organizationId) async {
     _isLoading = true;
-    notifyListeners();
+    _safeNotify();
 
     try {
       _roomPayments = await _paymentService.getRoomPayments(roomId, organizationId);
@@ -237,7 +244,7 @@ class PaymentsNotifier extends ChangeNotifier {
       _roomPayments = [];
     } finally {
       _isLoading = false;
-      notifyListeners();
+      _safeNotify();
     }
   }
 

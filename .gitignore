@@ -58,3 +58,5 @@ lib\todo.txt
 # Ignore NSIS installer scripts
 apartment_installer_english.nsi
 apartment_installer.nsi
+
+VC_redist.x64.exe

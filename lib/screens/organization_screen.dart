@@ -94,6 +94,8 @@ class _OrganizationScreenState extends State<OrganizationScreen>
   // Track how many overlays (dialogs/bottom sheets) are currently open
   int _overlayCount = 0;
 
+  int _tenantTabRefreshKey = 0;
+
   bool _isSmallScreen(BuildContext context) =>
       MediaQuery.of(context).size.width < 600;
 
@@ -348,6 +350,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
             _buildingCardFutures.clear();
             setState(() {
                _buildingsFuture = _getBuildings();
+               _tenantTabRefreshKey++;
             });
           }
         } else {
@@ -360,6 +363,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
             _buildingCardFutures.clear();
             setState(() {
                _buildingsFuture = _getBuildings();
+               _tenantTabRefreshKey++;
             });
             _refreshStats();
           }
@@ -430,6 +434,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
             _buildingCardFutures.remove(building.id);
             setState(() {
               _buildingsFuture = _getBuildings();
+              _tenantTabRefreshKey++; 
             });
           }
         } else {
@@ -442,6 +447,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
             _buildingCardFutures.remove(building.id);
             setState(() {
               _buildingsFuture = _getBuildings();
+              _tenantTabRefreshKey++; 
             });
           }
         }
@@ -667,7 +673,9 @@ class _OrganizationScreenState extends State<OrganizationScreen>
           ),
         );
         _buildingCardFutures.remove(building.id);
-        setState(() {});
+        setState(() {
+          _tenantTabRefreshKey++;
+        });
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(t['cannot_delete_building'])),
@@ -715,7 +723,6 @@ class _OrganizationScreenState extends State<OrganizationScreen>
   @override
   Widget build(BuildContext context) {
     final t = AppTranslations.of(context);
-    // ✅ TabController lives here — never recreated on resize
     return DefaultTabController(
       length: 5,
       child: LayoutBuilder(
@@ -729,27 +736,187 @@ class _OrganizationScreenState extends State<OrganizationScreen>
           return Scaffold(
             backgroundColor: kBgColor,
             appBar: AppBar(
-              title: Text(widget.organization.name),
+              backgroundColor: Colors.transparent,
+              elevation: 6,
+              shadowColor: Colors.black.withValues(alpha: 0.4),
+              automaticallyImplyLeading: false,
+              titleSpacing: 0,
+              flexibleSpace: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  // Gradient background (bottom layer)
+                  Container(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Color(0xFF1565C0), Color(0xFF185FA5), Color(0xFF0D47A1)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                    ),
+                  ),
+
+                  // ── Right-side circles ───────────────────────────────────
+                  Positioned(
+                    right: -15,
+                    top: -20,
+                    child: Container(
+                      width: 90,
+                      height: 90,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white.withValues(alpha: 0.14),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    right: 55,
+                    top: -28,
+                    child: Container(
+                      width: 60,
+                      height: 60,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white.withValues(alpha: 0.10),
+                      ),
+                    ),
+                  ),
+
+                  // ── Center circle ────────────────────────────────────────
+                  Positioned(
+                    left: 280,
+                    top: -18,
+                    child: Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white.withValues(alpha: 0.09),
+                      ),
+                    ),
+                  ),
+
+                  // ── Left-side circles ────────────────────────────────────
+                  Positioned(
+                    left: -18,
+                    bottom: -12,
+                    child: Container(
+                      width: 72,
+                      height: 72,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white.withValues(alpha: 0.10),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    left: 42,
+                    top: -12,
+                    child: Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white.withValues(alpha: 0.08),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              title: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Row(
+                    children: [
+                      InkWell(
+                        onTap: () => Navigator.of(context).pop(),
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          margin: const EdgeInsets.only(left: 12),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.18),
+                              width: 1,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.arrow_back_ios_new_rounded, size: 14, color: Colors.white),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Back',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white.withValues(alpha: 0.9),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(9),
+                        ),
+                        child: const Icon(Icons.apartment_rounded, size: 18, color: Colors.white),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              widget.organization.name,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            Text(
+                              'Quản lý chung cư',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.white.withValues(alpha: 0.7),
+                                fontWeight: FontWeight.w400,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
               bottom: PreferredSize(
-                preferredSize: const Size.fromHeight(kToolbarHeight),
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    const estimatedTabWidth = 120.0;
-                    const numberOfTabs = 5;
-                    final totalEstimatedWidth = estimatedTabWidth * numberOfTabs;
-                    final shouldScroll = constraints.maxWidth < totalEstimatedWidth;
-                    return TabBar(
-                      isScrollable: shouldScroll,
-                      labelStyle: const TextStyle(fontSize: 12),
-                      tabs: [
-                        Tab(icon: const Icon(Icons.apartment), text: t['buildings_tab']),
-                        Tab(icon: const Icon(Icons.people), text: t['tenants_tab']),
-                        Tab(icon: const Icon(Icons.receipt_long), text: t['payments_tab']),
-                        Tab(icon: const Icon(Icons.bar_chart), text: t['statistics_tab']),
-                        Tab(icon: const Icon(Icons.group), text: t['members_tab']),
-                      ],
-                    );
-                  },
+                preferredSize: const Size.fromHeight(52),
+                child: TabBar(
+                  isScrollable: false,
+                  labelStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
+                  unselectedLabelStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.w400),
+                  indicatorSize: TabBarIndicatorSize.tab,
+                  indicatorWeight: 3,
+                  labelPadding: EdgeInsets.zero,
+                  labelColor: Colors.white,
+                  unselectedLabelColor: Colors.white.withValues(alpha: 0.55),
+                  indicatorColor: Colors.white,
+                  tabs: [
+                    _CompactTab(icon: Icons.apartment_rounded,   label: t['buildings_tab']),
+                    _CompactTab(icon: Icons.people_alt_rounded,   label: t['tenants_tab']),
+                    _CompactTab(icon: Icons.receipt_long_rounded, label: t['payments_tab']),
+                    _CompactTab(icon: Icons.bar_chart_rounded,    label: t['statistics_tab']),
+                    _CompactTab(icon: Icons.group_rounded,        label: t['members_tab']),
+                  ],
                 ),
               ),
             ),
@@ -760,14 +927,17 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                   builder: (_) => _buildBuildingsTab(),
                 ),
                 TenantsTab(
-                  key: const ValueKey('tenants'),
+                  key: ValueKey('tenants_$_tenantTabRefreshKey'),
                   organization: widget.organization,
                   tenantService: _tenantService,
                   buildingService: _buildingService,
                   roomService: _roomService,
                   organizationService: _orgService,
                   authService: _authService,
-                  onChanged: () => _refreshStats(),
+                  onChanged: () {
+                    _refreshStats();
+                    setState(() => _tenantTabRefreshKey++);
+                  },
                 ),
                 _StableTab(
                   key: const ValueKey('payments'),
@@ -4752,5 +4922,26 @@ class _PaymentBreakdownChartState extends State<_PaymentBreakdownChart> {
         child: Text(value, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color)),
       ),
     ]);
+  }
+}
+
+class _CompactTab extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  const _CompactTab({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Tab(
+      height: 52,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 18),
+          const SizedBox(height: 3),
+          Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+        ],
+      ),
+    );
   }
 }

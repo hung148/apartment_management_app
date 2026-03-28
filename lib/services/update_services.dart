@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:isolate';
 import 'package:in_app_update/in_app_update.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:io';
@@ -64,32 +63,78 @@ class UpdateService {
     void Function(double progress) onProgress,
   ) async {
     try {
+      final savePath = '${Directory.systemTemp.path}\\app_update_installer.exe';
       final url = 'https://github.com/hung148/apartment_management_app_version/releases/latest/download/installer.exe';
-      final savePath = '${Directory.systemTemp.path}/installer.exe';
-
-      final request = http.Request('GET', Uri.parse(url));
-      final response = await request.send();
-      final totalBytes = response.contentLength ?? 0;
-      
-      int receivedBytes = 0;
-      final bytes = <int>[];
-
-      await for (final chunk in response.stream) {
-        bytes.addAll(chunk);
-        receivedBytes += chunk.length;
-        if (totalBytes > 0) {
-          onProgress(receivedBytes / totalBytes);
-        }
-      }
 
       final file = File(savePath);
-      await file.writeAsBytes(bytes);
+      if (await file.exists()) await file.delete();
 
-      await Process.start(savePath, [], runInShell: true);
+      debugPrint('⬇️ Starting curl download...');
+
+      // curl for fast, reliable download
+      final result = await Process.run(
+        'curl.exe',
+        [
+          '-L',
+          '-o', savePath,
+          '--max-time', '300',
+          '--connect-timeout', '30',
+          '--silent',
+          '--show-error',
+          '--fail',
+          url,
+        ],
+        runInShell: false,
+      ).timeout(
+        const Duration(minutes: 6),
+        onTimeout: () => throw TimeoutException('Download timed out'),
+      );
+
+      debugPrint('📦 curl exit code: ${result.exitCode}');
+      if (result.stderr.toString().isNotEmpty) {
+        debugPrint('📦 curl stderr: ${result.stderr}');
+      }
+
+      if (result.exitCode != 0) {
+        debugPrint('❌ curl failed: ${result.stderr}');
+        return false;
+      }
+
+      if (!await file.exists()) {
+        debugPrint('❌ File not found after download');
+        return false;
+      }
+
+      final fileSize = await file.length();
+      debugPrint('✅ Downloaded $fileSize bytes to $savePath');
+
+      if (fileSize < 100 * 1024) {
+        debugPrint('❌ File too small: $fileSize bytes');
+        await file.delete();
+        return false;
+      }
+
+      onProgress(1.0);
+
+      debugPrint('🚀 Launching installer with elevation...');
+
+      // PowerShell only for UAC elevation
+      await Process.run(
+        'powershell',
+        [
+          '-NoProfile',
+          '-NonInteractive',
+          '-Command',
+          'Start-Process -FilePath "$savePath" -ArgumentList "/S" -Verb RunAs',
+        ],
+        runInShell: false,
+      );
+
+      await Future.delayed(const Duration(milliseconds: 800));
       exit(0);
-      
+
     } catch (e) {
-      debugPrint('Error: $e');
+      debugPrint('❌ Update error: $e');
       return false;
     }
   }
@@ -149,25 +194,6 @@ class UpdateService {
       return false;
     } catch (e) {
       debugPrint('Error opening App Store: $e');
-      return false;
-    }
-  }
-
-  // ==================== WINDOWS METHODS ====================
-
-  /// Open Windows download page
-  Future<bool> _openWindowsDownloadPage() async {
-    if (!Platform.isWindows) return false;
-    
-    try {
-      final url = Uri.parse('https://github.com/hung148/apartment_management_app_version/releases/latest');
-      if (await canLaunchUrl(url)) {
-        await launchUrl(url, mode: LaunchMode.externalApplication);
-        return true;
-      }
-      return false;
-    } catch (e) {
-      debugPrint('Error opening download page: $e');
       return false;
     }
   }
