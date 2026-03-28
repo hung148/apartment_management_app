@@ -1,16 +1,23 @@
-# apartment_management_project_2
+# Apartment Management System
 
-A new Flutter project.
+A Flutter app for managing tenants, rooms, and payments.
 
-## Getting Started
+## Features
+- Tenant management
+- Room assignment
+- Payment tracking
+- Firebase authentication
 
-This project is a starting point for a Flutter application.
+## Tech Stack
+- Flutter (Dart)
+- Firebase (Auth, Firestore, Functions)
 
-A few resources to get you started if this is your first Flutter project:
+## How to Run
+1. Clone repo
+2. Run `flutter pub get`
+3. Add Firebase config
+4. Run `flutter run`
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Notes
+- Built as a project with AI-assisted development
+- Prototype version
