@@ -1,4 +1,12 @@
-in building room add tool tip for each button
+
+[ERROR:flutter/shell/gpu/gpu_surface_gl_skia.cc(220)] Could not make the context current to acquire the frame.
+2
+[ERROR:flutter/shell/platform/windows/egl/egl.cc(57)] EGL Error: Context Lost (12302) in ../../../flutter/shell/platform/windows/egl/surface.cc:28
+2
+[ERROR:flutter/shell/platform/windows/egl/egl.cc(57)] EGL Error: Context Lost (12302) in ../../../flutter/shell/platform/windows/egl/context.cc:33
+Happen sometimes when I resize 
+
+dien tich in add tenant dialog should be automatically update when a room is choose
 
 You should apply this same pattern to every Firestore method in your service classes, since any of them could be in-flight during logout:
 dart// Add this at the top of every Firestore method

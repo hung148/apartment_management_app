@@ -2071,10 +2071,6 @@ class _DashboardScreenState extends State<DashboardScreen>
   // ─────────────────────────────────────────────────────────
 
   Widget _buildHero(BuildContext context, Owner owner, bool isSmall) {
-    final heroHeight = isSmall
-        ? 290.0
-        : MediaQuery.of(context).size.height * 0.44;
-
     return Container(
       decoration: BoxDecoration(
         boxShadow: [
@@ -2087,124 +2083,125 @@ class _DashboardScreenState extends State<DashboardScreen>
       ),
       child: ClipPath(
         clipper: _WaveClipper(),
-        child: Container(
-          height: heroHeight,
-          decoration: const BoxDecoration(
-            image: DecorationImage(
-              image: AssetImage('assets/image/background_image3.jpg'),
-              fit: BoxFit.cover,
-              alignment: Alignment.center,
-            ),
-          ),
+        child: IntrinsicHeight(                        // ← sizes to content
           child: Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.black.withValues(alpha: 0.30),
-                  Colors.black.withValues(alpha: 0.08),
-                ],
+            width: double.infinity,
+            decoration: const BoxDecoration(
+              image: DecorationImage(
+                image: AssetImage('assets/image/background_image3.jpg'),
+                fit: BoxFit.cover,
+                alignment: Alignment.center,
               ),
             ),
-            padding: EdgeInsets.fromLTRB(
-              isSmall ? 20 : 28,
-              kToolbarHeight + 44,
-              isSmall ? 20 : 28,
-              58,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    // Avatar with glowing ring
-                    Container(
-                      padding: const EdgeInsets.all(3),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.5),
-                            width: 2),
-                        boxShadow: [
-                          BoxShadow(
-                            color: _DS.primaryMid.withValues(alpha: 0.5),
-                            blurRadius: 16,
-                            spreadRadius: 2,
-                          ),
-                        ],
-                      ),
-                      child: CircleAvatar(
-                        radius: isSmall ? 28 : 34,
-                        backgroundColor: _DS.primaryMid.withValues(alpha: 0.3),
-                        child: Text(
-                          owner.name[0].toUpperCase(),
-                          style: TextStyle(
-                            fontSize: isSmall ? 24 : 30,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ),
-                    SizedBox(width: isSmall ? 14 : 18),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            AppTranslations.of(context).text('hello').toUpperCase(),
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.65),
-                              fontSize: 11,
-                              letterSpacing: 1.5,
-                              fontWeight: FontWeight.w600,
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withValues(alpha: 0.30),
+                    Colors.black.withValues(alpha: 0.08),
+                  ],
+                ),
+              ),
+              padding: EdgeInsets.fromLTRB(
+                isSmall ? 20 : 28,
+                kToolbarHeight + 44,
+                isSmall ? 20 : 28,
+                isSmall ? 80 : 90,   // extra room for the wave curve dip
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,   // ← don't expand, wrap content
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(3),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.5),
+                              width: 2),
+                          boxShadow: [
+                            BoxShadow(
+                              color: _DS.primaryMid.withValues(alpha: 0.5),
+                              blurRadius: 16,
+                              spreadRadius: 2,
                             ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            owner.name,
+                          ],
+                        ),
+                        child: CircleAvatar(
+                          radius: isSmall ? 28 : 34,
+                          backgroundColor: _DS.primaryMid.withValues(alpha: 0.3),
+                          child: Text(
+                            owner.name[0].toUpperCase(),
                             style: TextStyle(
-                              color: Colors.white,
-                              fontSize: isSmall ? 22 : 28,
+                              fontSize: isSmall ? 24 : 30,
                               fontWeight: FontWeight.w800,
-                              letterSpacing: -0.5,
-                              height: 1.1,
+                              color: Colors.white,
                             ),
-                            overflow: TextOverflow.ellipsis,
                           ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: isSmall ? 16 : 20),
-                // Info chips
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(20),
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
-                        child: _buildHeroChip(Icons.email_outlined, owner.email),
-                      ),
-                    ),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(20),
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
-                        child: _buildHeroChip(
-                          Icons.calendar_today_outlined,
-                          '${AppTranslations.of(context).text('joined_at')}: ${_formatDate(owner.createdAt, context)}',
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              ],
+                      SizedBox(width: isSmall ? 14 : 18),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              AppTranslations.of(context).text('hello').toUpperCase(),
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.65),
+                                fontSize: 11,
+                                letterSpacing: 1.5,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              owner.name,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: isSmall ? 22 : 28,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.5,
+                                height: 1.1,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: isSmall ? 16 : 20),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(20),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+                          child: _buildHeroChip(Icons.email_outlined, owner.email),
+                        ),
+                      ),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(20),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+                          child: _buildHeroChip(
+                            Icons.calendar_today_outlined,
+                            '${AppTranslations.of(context).text('joined_at')}: ${_formatDate(owner.createdAt, context)}',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ),

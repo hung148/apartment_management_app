@@ -35,6 +35,14 @@ final Color kPrimaryColor = const Color(0xFF4F46E5); // Modern Indigo
 final Color kBgColor = const Color(0xFFF8FAFC);      // Soft Slate background
 final Color kSurfaceColor = Colors.white;
 
+const List<Color> _buildingColors = [
+  Color(0xFF185FA5), // blue
+  Color(0xFF0F6E56), // teal
+  Color(0xFF854F0B), // amber
+  Color(0xFF534AB7), // purple
+  Color(0xFF993556), // pink
+];
+
 // Helper class for invoice line items
 class InvoiceLineItem {
   String id;
@@ -48,6 +56,25 @@ class InvoiceLineItem {
     required this.amount,
     this.description,
   });
+}
+
+class _StableTab extends StatefulWidget {
+  final Widget Function(BuildContext context) builder;
+  const _StableTab({required this.builder, required super.key});
+  @override
+  State<_StableTab> createState() => _StableTabState();
+}
+
+class _StableTabState extends State<_StableTab>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true; // ← keeps state alive when tab is not visible
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context); // required by AutomaticKeepAliveClientMixin
+    return widget.builder(context);
+  }
 }
 
 class OrganizationScreen extends StatefulWidget {
@@ -137,25 +164,44 @@ class _OrganizationScreenState extends State<OrganizationScreen>
   final TextEditingController _searchController = TextEditingController();
 
   Future<List<dynamic>>? _statsFuture;
+  // Cache per-building futures to avoid recreation on rebuild
+  final Map<String, Future<List<dynamic>>> _buildingCardFutures = {};
+  Future<List<dynamic>>? _summaryBarFuture;
+  Future<List<Building>>? _buildingsFuture;
+  Future<Membership?>? _membershipFuture;
+  Future<List<Membership>>? _membersFuture;
+  Future<List<dynamic>>? _membersTabFuture;
 
-  void _refreshStats() {
+  void _refreshAll() {
     if (!mounted) return;
     setState(() {
+      _buildingsFuture = _getBuildings();
+      _membershipFuture = _getMyMembership();
+      _membersFuture = _getMembers();
+      _summaryBarFuture = Future.wait([_getAllRooms(), _getAllTenants()]);
+      _buildingCardFutures.clear();
       _statsFuture = Future.wait([
         _getAllTenants(),
         _getAllPayments(),
         _getBuildings(),
         _getAllRooms(),
       ]);
+      _membersTabFuture = Future.wait([
+        _getMembers(),
+        _getMyMembership(),
+      ]);
     });
   }
+
+  // Replace _refreshStats calls with _refreshAll
+  void _refreshStats() => _refreshAll();
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _paymentsNotifier.loadPayments(widget.organization.id);
-    _refreshStats();
+    _refreshAll();
   }
 
   @override
@@ -299,7 +345,10 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                   'add_building_rooms_success', {'count': totalRooms})),
               backgroundColor: Colors.green,
             ));
-            setState(() {});
+            _buildingCardFutures.clear();
+            setState(() {
+               _buildingsFuture = _getBuildings();
+            });
           }
         } else {
           if (mounted) Navigator.of(context).pop();
@@ -308,7 +357,10 @@ class _OrganizationScreenState extends State<OrganizationScreen>
               content: Text(t['add_building_success']),
               backgroundColor: Colors.green,
             ));
-            setState(() {});
+            _buildingCardFutures.clear();
+            setState(() {
+               _buildingsFuture = _getBuildings();
+            });
             _refreshStats();
           }
         }
@@ -375,7 +427,10 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                   'update_building_rooms_success', {'count': totalRooms})),
               backgroundColor: Colors.green,
             ));
-            setState(() {});
+            _buildingCardFutures.remove(building.id);
+            setState(() {
+              _buildingsFuture = _getBuildings();
+            });
           }
         } else {
           if (mounted) Navigator.of(context).pop();
@@ -384,7 +439,10 @@ class _OrganizationScreenState extends State<OrganizationScreen>
               content: Text(t['update_building_success']),
               backgroundColor: Colors.green,
             ));
-            setState(() {});
+            _buildingCardFutures.remove(building.id);
+            setState(() {
+              _buildingsFuture = _getBuildings();
+            });
           }
         }
       } catch (e) {
@@ -403,7 +461,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
       Building building, Organization organization) async {
     final t = AppTranslations.of(context);
     final tenants = await _tenantService.getBuildingTenants(
-        building.id, organization.id);
+        organization.id, building.id);
     final activeTenants = tenants
         .where((tn) =>
             tn.status == TenantStatus.active ||
@@ -608,6 +666,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
             duration: const Duration(seconds: 4),
           ),
         );
+        _buildingCardFutures.remove(building.id);
         setState(() {});
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -656,17 +715,18 @@ class _OrganizationScreenState extends State<OrganizationScreen>
   @override
   Widget build(BuildContext context) {
     final t = AppTranslations.of(context);
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        if (constraints.maxWidth < minWidth ||
-            constraints.maxHeight < minHeight) {
+    // ✅ TabController lives here — never recreated on resize
+    return DefaultTabController(
+      length: 5,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth < minWidth ||
+              constraints.maxHeight < minHeight) {
+            return Scaffold(
+              body: _buildMinimumSizeWarning(context, constraints),
+            );
+          }
           return Scaffold(
-            body: _buildMinimumSizeWarning(context, constraints),
-          );
-        }
-        return DefaultTabController(
-          length: 5,
-          child: Scaffold(
             backgroundColor: kBgColor,
             appBar: AppBar(
               title: Text(widget.organization.name),
@@ -676,30 +736,17 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                   builder: (context, constraints) {
                     const estimatedTabWidth = 120.0;
                     const numberOfTabs = 5;
-                    final totalEstimatedWidth =
-                        estimatedTabWidth * numberOfTabs;
-                    final shouldScroll =
-                        constraints.maxWidth < totalEstimatedWidth;
+                    final totalEstimatedWidth = estimatedTabWidth * numberOfTabs;
+                    final shouldScroll = constraints.maxWidth < totalEstimatedWidth;
                     return TabBar(
                       isScrollable: shouldScroll,
-                      labelStyle:
-                          const TextStyle(fontSize: 12),
+                      labelStyle: const TextStyle(fontSize: 12),
                       tabs: [
-                        Tab(
-                            icon: const Icon(Icons.apartment),
-                            text: t['buildings_tab']),
-                        Tab(
-                            icon: const Icon(Icons.people),
-                            text: t['tenants_tab']),
-                        Tab(
-                            icon: const Icon(Icons.receipt_long),
-                            text: t['payments_tab']),
-                        Tab(
-                            icon: const Icon(Icons.bar_chart),
-                            text: t['statistics_tab']),
-                        Tab(
-                            icon: const Icon(Icons.group),
-                            text: t['members_tab']),
+                        Tab(icon: const Icon(Icons.apartment), text: t['buildings_tab']),
+                        Tab(icon: const Icon(Icons.people), text: t['tenants_tab']),
+                        Tab(icon: const Icon(Icons.receipt_long), text: t['payments_tab']),
+                        Tab(icon: const Icon(Icons.bar_chart), text: t['statistics_tab']),
+                        Tab(icon: const Icon(Icons.group), text: t['members_tab']),
                       ],
                     );
                   },
@@ -708,8 +755,12 @@ class _OrganizationScreenState extends State<OrganizationScreen>
             ),
             body: TabBarView(
               children: [
-                _buildBuildingsTab(),
+                _StableTab(
+                  key: const ValueKey('buildings'),
+                  builder: (_) => _buildBuildingsTab(),
+                ),
                 TenantsTab(
+                  key: const ValueKey('tenants'),
                   organization: widget.organization,
                   tenantService: _tenantService,
                   buildingService: _buildingService,
@@ -718,14 +769,23 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                   authService: _authService,
                   onChanged: () => _refreshStats(),
                 ),
-                _buildPaymentsTab(),
-                _buildStatisticsTab(),
-                _buildMembersTab(),
+                _StableTab(
+                  key: const ValueKey('payments'),
+                  builder: (_) => _buildPaymentsTab(),
+                ),
+                _StableTab(
+                  key: const ValueKey('statistics'),
+                  builder: (_) => _buildStatisticsTab(),
+                ),
+                _StableTab(
+                  key: const ValueKey('members'),
+                  builder: (_) => _buildMembersTab(),
+                ),
               ],
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 
@@ -735,177 +795,563 @@ class _OrganizationScreenState extends State<OrganizationScreen>
   Widget _buildBuildingsTab() {
     final t = AppTranslations.of(context);
     return FutureBuilder<Membership?>(
-      future: _getMyMembership(),
+      future: _membershipFuture,
       builder: (context, membershipSnapshot) {
         final isAdmin = membershipSnapshot.hasData &&
             membershipSnapshot.data!.role == 'admin';
-        return Column(
-          children: [
-            if (isAdmin)
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: _showAddBuildingDialog,
-                    icon: const Icon(Icons.add),
-                    label: Text(t['add_building']),
+        return FutureBuilder<List<Building>>(
+          future: _buildingsFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            final buildings = snapshot.data ?? [];
+
+            return CustomScrollView(
+              slivers: [
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                    child: Column(
+                      children: [
+                        // ── Summary bar ──────────────────────────────
+                        _buildBuildingSummaryBar(t, buildings),
+                        const SizedBox(height: 16),
+
+                        // ── Add button ───────────────────────────────
+                        if (isAdmin)
+                          _buildAddBuildingButton(t),
+
+                        // ── Section header ───────────────────────────
+                        if (buildings.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            child: Row(
+                              children: [
+                                Text(
+                                  t['buildings_tab'].toUpperCase(),
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.8,
+                                    color: Colors.grey.shade500,
+                                  ),
+                                ),
+                                const Spacer(),
+                                Text(
+                                  '${buildings.length} ${t['buildings_tab'].toLowerCase()}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey.shade400,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            Expanded(
-              child: FutureBuilder<List<Building>>(
-                future: _getBuildings(),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState ==
-                      ConnectionState.waiting) {
-                    return const Center(
-                        child: CircularProgressIndicator());
-                  }
-                  if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                    return Center(
+
+                if (buildings.isEmpty)
+                  SliverFillRemaining(
+                    child: Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Icon(Icons.apartment,
-                              size: 64, color: Colors.grey),
+                          Icon(Icons.apartment, size: 64, color: Colors.grey.shade300),
                           const SizedBox(height: 16),
-                          Text(
-                            t['no_buildings'],
-                            style:
-                                const TextStyle(color: Colors.grey),
-                          ),
+                          Text(t['no_buildings'],
+                              style: TextStyle(color: Colors.grey.shade400)),
                         ],
                       ),
-                    );
-                  }
-                  final buildings = snapshot.data!;
-                  return ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: buildings.length,
-                    itemBuilder: (context, index) {
-                      final building = buildings[index];
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        child: ListTile(
-                          leading: const CircleAvatar(
-                            backgroundColor: Colors.blue,
-                            child: Icon(Icons.apartment,
-                                color: Colors.white),
-                          ),
-                          title: Text(
-                            building.name,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16),
-                          ),
-                          subtitle: Column(
-                            crossAxisAlignment:
-                                CrossAxisAlignment.start,
-                            children: [
-                              const SizedBox(height: 4),
-                              Text(building.address),
-                              const SizedBox(height: 4),
-                              Text(
-                                '${t['created_at']} ${_formatDate(building.createdAt)}',
-                                style: const TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey),
-                              ),
-                            ],
-                          ),
-                          trailing: isAdmin
-                              ? Builder(
-                                  builder: (BuildContext ctx) {
-                                    return IconButton(
-                                      icon: const Icon(
-                                          Icons.more_vert),
-                                      onPressed: () {
-                                        _showBuildingMenu(
-                                            ctx, building);
-                                      },
-                                    );
-                                  },
-                                )
-                              : IconButton(
-                                  icon: const Icon(
-                                      Icons.arrow_forward_ios,
-                                      size: 16),
-                                  onPressed: () =>
-                                      _navigateToBuildingRooms(
-                                          building),
-                                ),
-                          onTap: () =>
-                              _navigateToBuildingRooms(building),
-                        ),
-                      );
-                    },
-                  );
-                },
-              ),
-            ),
-          ],
+                    ),
+                  )
+                else
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) {
+                          final building = buildings[index];
+                          final color = _buildingColors[index % _buildingColors.length];
+                          return _buildBuildingCard(
+                            t: t,
+                            building: building,
+                            color: color,
+                            isAdmin: isAdmin,
+                            allRooms: snapshot.data != null ? null : [],
+                          );
+                        },
+                        childCount: buildings.length,
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          },
         );
       },
     );
   }
 
-  void _showBuildingMenu(BuildContext ctx, Building building) {
-    final t = AppTranslations.of(context);
-    final RenderBox button =
-        ctx.findRenderObject() as RenderBox;
-    final RenderBox overlay = Navigator.of(ctx)
-        .overlay!
-        .context
-        .findRenderObject() as RenderBox;
-    final RelativeRect position = RelativeRect.fromRect(
-      Rect.fromPoints(
-        button.localToGlobal(Offset.zero, ancestor: overlay) +
-            const Offset(0, 48),
-        button.localToGlobal(button.size.bottomRight(Offset.zero),
-            ancestor: overlay),
-      ),
-      Offset.zero & overlay.size,
+  Widget _buildBuildingSummaryBar(AppTranslations t, List<Building> buildings) {
+    return FutureBuilder<List<dynamic>>(
+      future: _summaryBarFuture,
+      builder: (context, snap) {
+        final rooms = snap.data?[0] as List<Room>? ?? [];
+        final tenants = snap.data?[1] as List<Tenant>? ?? [];
+        final activeTenants = tenants.where((t) => t.status == TenantStatus.active).length;
+        final occupancyPct = rooms.isNotEmpty
+            ? (activeTenants / rooms.length * 100).round()
+            : 0;
+
+        return Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.grey.shade200),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.04),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              _summaryBarItem(
+                value: buildings.length.toString(),
+                label: t['stat_buildings'], 
+                color: const Color(0xFF185FA5),
+                isFirst: true,
+              ),
+              _summaryBarDivider(),
+              _summaryBarItem(
+                value: rooms.length.toString(),
+                label: t['stat_rooms'],
+                color: const Color(0xFF0F6E56),
+              ),
+              _summaryBarDivider(),
+              _summaryBarItem(
+                value: '$occupancyPct%',
+                label: t['stat_occupancy'],
+                color: occupancyPct >= 80
+                    ? const Color(0xFF3B6D11)
+                    : occupancyPct >= 50
+                        ? const Color(0xFF854F0B)
+                        : const Color(0xFFA32D2D),
+                isLast: true,
+              ),
+            ],
+          ),
+        );
+      },
     );
-    showMenu<String>(
-      context: ctx,
-      position: position,
-      items: [
-        PopupMenuItem(
-          value: 'rooms',
-          child: Row(children: [
-            const Icon(Icons.meeting_room, size: 20),
-            const SizedBox(width: 8),
-            Text(t['manage_rooms']),
-          ]),
+  }
+
+  Widget _summaryBarItem({
+    required String value,
+    required String label,
+    required Color color,
+    bool isFirst = false,
+    bool isLast = false,
+  }) {
+    return Expanded(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        child: Column(
+          children: [
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                color: color,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+            ),
+          ],
         ),
-        PopupMenuItem(
-          value: 'edit',
-          child: Row(children: [
-            const Icon(Icons.edit, size: 20),
-            const SizedBox(width: 8),
-            Text(t['edit']),
-          ]),
+      ),
+    );
+  }
+
+  Widget _summaryBarDivider() => Container(
+        width: 0.5,
+        height: 40,
+        color: Colors.grey.shade200,
+      );
+
+  Widget _buildAddBuildingButton(AppTranslations t) {
+    return Material(
+      color: const Color(0xFFE6F1FB),
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: _showAddBuildingDialog,
+        borderRadius: BorderRadius.circular(14),
+        hoverColor: const Color(0xFFD0E8F8),
+        splashColor: const Color(0xFF378ADD).withValues(alpha: 0.2),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: const Color(0xFF378ADD),
+              width: 1.5,
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.add_rounded, color: Color(0xFF185FA5), size: 20),
+              const SizedBox(width: 6),
+              Text(
+                t['add_building'],
+                style: const TextStyle(
+                  color: Color(0xFF185FA5),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
         ),
-        PopupMenuItem(
-          value: 'delete',
-          child: Row(children: [
-            const Icon(Icons.delete, size: 20, color: Colors.red),
-            const SizedBox(width: 8),
-            Text(t['delete'],
-                style: const TextStyle(color: Colors.red)),
-          ]),
+      ),
+    );
+  }
+
+  Widget _buildBuildingCard({
+    required AppTranslations t,
+    required Building building,
+    required Color color,
+    required bool isAdmin,
+    List<Room>? allRooms,
+  }) {
+    // Cache the future so resize doesn't recreate it
+    final future = _buildingCardFutures.putIfAbsent(
+      building.id,
+      () => Future.wait([
+        _roomService.getBuildingRooms(widget.organization.id, building.id),
+        _tenantService.getBuildingTenants(widget.organization.id, building.id),
+      ]),
+    );
+    return FutureBuilder<List<dynamic>>(
+      future: future,
+      builder: (context, snap) {
+        final rooms = snap.data?[0] as List<Room>? ?? [];
+        final tenants = snap.data?[1] as List<Tenant>? ?? [];
+        final occupied = tenants.where((t) => t.status == TenantStatus.active).length;
+        final vacant = (rooms.length - occupied).clamp(0, rooms.length);
+        final pct = rooms.isNotEmpty ? (occupied / rooms.length) : 0.0;
+
+        Color barColor = pct >= 0.8
+            ? const Color(0xFF1D9E75)
+            : pct >= 0.5
+                ? const Color(0xFFEF9F27)
+                : const Color(0xFFE24B4A);
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 14),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.grey.shade200),
+            boxShadow: [
+              BoxShadow(
+                color: color.withValues(alpha: 0.08),
+                blurRadius: 16,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            children: [
+              // ── Colored top accent ───────────────────────────────
+              Container(height: 5, color: color),
+
+              // ── Card body ────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Header
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: color.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Icon(Icons.apartment_rounded, color: color, size: 22),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                building.name,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                building.address,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        // Status badge
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: pct >= 1.0
+                                ? const Color(0xFFFCEBEB)
+                                : const Color(0xFFEAF3DE),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            pct >= 1.0 ? t['building_status_full'] : t['building_status_active'],
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: pct >= 1.0
+                                  ? const Color(0xFFA32D2D)
+                                  : const Color(0xFF3B6D11),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    // Stats row
+                    Row(
+                      children: [
+                        _buildingStatChip(
+                          value: rooms.length.toString(),
+                          label: t['building_stat_total_rooms'],
+                          color: color,
+                        ),
+                        const SizedBox(width: 8),
+                        _buildingStatChip(
+                          value: occupied.toString(),
+                          label: t['building_stat_rented'],
+                          color: const Color(0xFF3B6D11),
+                        ),
+                        const SizedBox(width: 8),
+                        _buildingStatChip(
+                          value: vacant.toString(),
+                          label: t['building_stat_vacant'],
+                          color: vacant == 0
+                              ? Colors.grey
+                              : const Color(0xFF854F0B),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    // Occupancy bar
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          t['building_occupancy_label'],
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey.shade500,
+                          ),
+                        ),
+                        Text(
+                          '${(pct * 100).round()}%',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: barColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: pct,
+                        backgroundColor: barColor.withValues(alpha: 0.12),
+                        color: barColor,
+                        minHeight: 7,
+                      ),
+                    ),
+
+                    // Created at
+                    const SizedBox(height: 10),
+                    Text(
+                      '${t['created_at']} ${_formatDate(building.createdAt)}',
+                      style: TextStyle(fontSize: 11, color: Colors.grey.shade400),
+                    ),
+                  ],
+                ),
+              ),
+
+              // ── Footer actions ───────────────────────────────────
+              if (isAdmin) ...[
+                Divider(height: 1, color: Colors.grey.shade100),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Row(
+                    children: [
+                      _footerActionBtn(
+                        icon: Icons.meeting_room_rounded,
+                        label: t['manage_rooms'],
+                        color: color,
+                        bgColor: color.withValues(alpha: 0.08),
+                        onTap: () => _navigateToBuildingRooms(building),
+                      ),
+                      const SizedBox(width: 8),
+                      _footerActionBtn(
+                        icon: Icons.edit_rounded,
+                        label: t['edit'],
+                        color: Colors.grey.shade600,
+                        bgColor: Colors.grey.shade100,
+                        onTap: () => _showEditBuildingDialog(building),
+                      ),
+                      const SizedBox(width: 8),
+                      _footerActionBtn(
+                        icon: Icons.delete_outline_rounded,
+                        label: t['delete'],
+                        color: const Color(0xFFA32D2D),
+                        bgColor: const Color(0xFFFCEBEB),
+                        onTap: () => _deleteBuilding(building, widget.organization),
+                      ),
+                    ],
+                  ),
+                ),
+              ] else
+                InkWell(
+                  onTap: () => _navigateToBuildingRooms(building),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.meeting_room_rounded, size: 16, color: color),
+                        const SizedBox(width: 6),
+                        Text(
+                          t['building_action_view_rooms'],
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: color,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(Icons.arrow_forward_ios_rounded,
+                            size: 12, color: color),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildingStatChip({
+    required String value,
+    required String label,
+    required Color color,
+  }) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.07),
+          borderRadius: BorderRadius.circular(10),
         ),
-      ],
-    ).then((value) {
-      if (value == 'edit') {
-        _showEditBuildingDialog(building);
-      } else if (value == 'delete') {
-        _deleteBuilding(building, widget.organization);
-      } else if (value == 'rooms') {
-        _navigateToBuildingRooms(building);
-      }
-    });
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: color,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _footerActionBtn({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required Color bgColor,
+    required VoidCallback onTap,
+  }) {
+    return Expanded(
+      child: Material(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(8),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(8),
+          hoverColor: color.withValues(alpha: 0.15),
+          splashColor: color.withValues(alpha: 0.2),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: 14, color: color),
+                const SizedBox(width: 4),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: color,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   void _navigateToBuildingRooms(Building building) {
@@ -931,7 +1377,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
 
         if (allPayments.isEmpty) {
           return FutureBuilder<Membership?>(
-            future: _getMyMembership(),
+            future: _membershipFuture,
             builder: (context, membershipSnapshot) {
               final isAdmin = membershipSnapshot.hasData &&
                   membershipSnapshot.data!.role == 'admin';
@@ -965,7 +1411,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
           ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
         return FutureBuilder<Membership?>(
-          future: _getMyMembership(),
+          future: _membershipFuture,
           builder: (context, membershipSnapshot) {
             final isAdmin = membershipSnapshot.hasData &&
                 membershipSnapshot.data!.role == 'admin';
@@ -1350,212 +1796,179 @@ class _OrganizationScreenState extends State<OrganizationScreen>
   // ========================================
   Widget _buildStatisticsTab() {
     final t = AppTranslations.of(context);
-    return ListenableBuilder(
-      listenable: _paymentsNotifier,
-      builder: (context, _) {
-        return FutureBuilder<List<dynamic>>(
-          future: _statsFuture,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting &&
-                snapshot.data == null) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            if (!snapshot.hasData) {
-              return _buildStatsEmptyState(t);
-            }
 
-            final tenants = snapshot.data![0] as List<Tenant>;
-            final payments = _paymentsNotifier.payments;
-            final buildings = snapshot.data![2] as List<Building>;
-            final rooms = snapshot.data![3] as List<Room>;
+    // ✅ FutureBuilder resolves tenants/buildings/rooms ONCE
+    return FutureBuilder<List<dynamic>>(
+      future: _statsFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting && snapshot.data == null) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (!snapshot.hasData) return _buildStatsEmptyState(t);
 
-            final activeTenants =
-                tenants.where((tn) => tn.status == TenantStatus.active).length;
-            final inactiveTenants =
-                tenants.where((tn) => tn.status == TenantStatus.inactive).length;
-            final movedOutTenants =
-                tenants.where((tn) => tn.status == TenantStatus.moveOut).length;
-            final suspendedTenants =
-                tenants.where((tn) => tn.status == TenantStatus.suspended).length;
+        final tenants = snapshot.data![0] as List<Tenant>;
+        final buildings = snapshot.data![2] as List<Building>;
+        final rooms = snapshot.data![3] as List<Room>;
 
-            final paidPayments =
-                payments.where((p) => p.status == PaymentStatus.paid).length;
-            final pendingPayments =
-                payments.where((p) => p.status == PaymentStatus.pending).length;
-            final overduePayments = payments.where((p) => p.isOverdue).length;
-            final totalPayments = payments.length;
+        final buildingOccupancy = _calculateBuildingOccupancy(buildings, rooms, tenants);
 
-            final totalRevenue = payments.fold<double>(0, (sum, p) {
-              if (p.status == PaymentStatus.paid && p.paidAmount == 0) {
-                return sum + p.totalWithAllFees;
-              }
-              return sum + p.paidAmount;
-            });
-            final pendingRevenue = payments.fold<double>(0, (sum, p) {
-              if (p.status == PaymentStatus.paid ||
-                  p.status == PaymentStatus.cancelled) return sum;
-              return sum + p.remainingAmount;
-            });
+        // ✅ ListenableBuilder ONLY wraps the payment-derived section
+        // Tenant/building/room charts are completely outside it
+        return RefreshIndicator(
+          onRefresh: () async => _refreshStats(),
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
 
-            final monthlyRevenue = _calculateMonthlyRevenue(payments);
-            final buildingOccupancy =
-                _calculateBuildingOccupancy(buildings, rooms, tenants);
+                // ── Payment-driven section: rebuilds on notifier changes ───────
+                ListenableBuilder(
+                  listenable: _paymentsNotifier,
+                  builder: (context, _) {
+                    final payments = _paymentsNotifier.payments;
 
-            return RefreshIndicator(
-              onRefresh: () async => _refreshStats(),
-              child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // ── Overview KPIs with export buttons ─────────────────────────
-                    Padding(
-                      padding: const EdgeInsets.only(top: 28, bottom: 12),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 3,
-                            height: 14,
-                            decoration: BoxDecoration(
-                              color: Colors.blue.shade400,
-                              borderRadius: BorderRadius.circular(2),
-                            ),
+                    final activeTenants = tenants.where((tn) => tn.status == TenantStatus.active).length;
+                    final paidPayments = payments.where((p) => p.status == PaymentStatus.paid).length;
+                    final pendingPayments = payments.where((p) => p.status == PaymentStatus.pending).length;
+                    final overduePayments = payments.where((p) => p.isOverdue).length;
+                    final totalPayments = payments.length;
+
+                    final totalRevenue = payments.fold<double>(0, (sum, p) {
+                      if (p.status == PaymentStatus.paid && p.paidAmount == 0) return sum + p.totalWithAllFees;
+                      return sum + p.paidAmount;
+                    });
+                    final pendingRevenue = payments.fold<double>(0, (sum, p) {
+                      if (p.status == PaymentStatus.paid || p.status == PaymentStatus.cancelled) return sum;
+                      return sum + p.remainingAmount;
+                    });
+
+                    final monthlyRevenue = _calculateMonthlyRevenue(payments);
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Export buttons + KPI grid
+                        Padding(
+                          padding: const EdgeInsets.only(top: 28, bottom: 12),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(width: 3, height: 14,
+                                  decoration: BoxDecoration(color: Colors.blue.shade400, borderRadius: BorderRadius.circular(2))),
+                              const SizedBox(width: 16),
+                              Text(t['stat_overview_title'].toUpperCase(),
+                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800,
+                                      letterSpacing: 1.2, color: Colors.grey.shade500)),
+                              const SizedBox(width: 10),
+                              Tooltip(
+                                message: t['export_excel'],
+                                child: Material(
+                                  color: const Color(0xFF1D6F42),
+                                  borderRadius: BorderRadius.circular(6),
+                                  child: InkWell(
+                                    borderRadius: BorderRadius.circular(6),
+                                    onTap: () => _exportStatisticsToExcel(
+                                      buildings: buildings, tenants: tenants,
+                                      rooms: rooms, payments: payments,
+                                      organizationName: widget.organization.name,
+                                    ),
+                                    child: const Padding(
+                                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                                      child: Icon(Icons.table_chart_outlined, size: 16, color: Colors.white),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Tooltip(
+                                message: t['export_pdf'],
+                                child: Material(
+                                  color: const Color(0xFFB71C1C),
+                                  borderRadius: BorderRadius.circular(6),
+                                  child: InkWell(
+                                    borderRadius: BorderRadius.circular(6),
+                                    onTap: () => _exportStatisticsToPdf(
+                                      buildings: buildings, tenants: tenants,
+                                      rooms: rooms, payments: payments,
+                                      organizationName: widget.organization.name,
+                                    ),
+                                    child: const Padding(
+                                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                                      child: Icon(Icons.picture_as_pdf_outlined, size: 16, color: Colors.white),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 16),
-                          Text(
-                            t['stat_overview_title'].toUpperCase(),
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 1.2,
-                              color: Colors.grey.shade500,
-                            ),
-                          ),
+                        ),
+
+                        _buildKpiGrid(
+                          t: t,
+                          buildings: buildings,
+                          activeTenants: activeTenants,
+                          rooms: rooms,
+                          paidPayments: paidPayments,
+                          pendingPayments: pendingPayments,
+                          overduePayments: overduePayments,
+                          totalPayments: totalPayments,
+                        ),
+
+                        _statsSectionLabel(t['stat_revenue_title']),
+                        Row(children: [
+                          Expanded(child: _buildRevenueCard(
+                            t: t, label: t['stat_collected'], amount: totalRevenue,
+                            count: paidPayments, color: const Color(0xFF3B6D11),
+                            bgColor: const Color(0xFFEAF3DE), icon: Icons.check_circle_outline_rounded,
+                          )),
                           const SizedBox(width: 10),
-                          Tooltip(
-                            message: t['export_excel'],
-                            child: Material(
-                              color: const Color(0xFF1D6F42),
-                              borderRadius: BorderRadius.circular(6),
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(6),
-                                onTap: () => _exportStatisticsToExcel(
-                                  buildings: buildings,
-                                  tenants: tenants,
-                                  rooms: rooms,
-                                  payments: payments,
-                                  organizationName: widget.organization.name,
-                                ),
-                                child: const Padding(
-                                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                                  child: Icon(Icons.table_chart_outlined, size: 16, color: Colors.white),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Tooltip(
-                            message: t['export_pdf'],
-                            child: Material(
-                              color: const Color(0xFFB71C1C),
-                              borderRadius: BorderRadius.circular(6),
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(6),
-                                onTap: () => _exportStatisticsToPdf(
-                                  buildings: buildings,
-                                  tenants: tenants,
-                                  rooms: rooms,
-                                  payments: payments,
-                                  organizationName: widget.organization.name,
-                                ),
-                                child: const Padding(
-                                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                                  child: Icon(Icons.picture_as_pdf_outlined, size: 16, color: Colors.white),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    _buildKpiGrid(
-                      t: t,
-                      buildings: buildings,
-                      activeTenants: activeTenants,
-                      rooms: rooms,
-                      paidPayments: paidPayments,
-                      pendingPayments: pendingPayments,
-                      overduePayments: overduePayments,
-                      totalPayments: totalPayments,
-                    ),
+                          Expanded(child: _buildRevenueCard(
+                            t: t, label: t['stat_uncollected'], amount: pendingRevenue,
+                            count: pendingPayments + overduePayments, color: const Color(0xFF854F0B),
+                            bgColor: const Color(0xFFFAEEDA), icon: Icons.schedule_rounded,
+                          )),
+                        ]),
 
-                    // ── Revenue cards ──────────────────────────────────────
-                    _statsSectionLabel(t['stat_revenue_title']),
-                    Row(children: [
-                      Expanded(
-                        child: _buildRevenueCard(
-                          t: t,
-                          label: t['stat_collected'],
-                          amount: totalRevenue,
-                          count: paidPayments,
-                          color: const Color(0xFF3B6D11),
-                          bgColor: const Color(0xFFEAF3DE),
-                          icon: Icons.check_circle_outline_rounded,
+                        _statsSectionLabel(t['stat_monthly_revenue']),
+                        // ✅ Chart widget — only rebuilds if monthlyRevenue actually changes
+                        _MonthlyRevenueChart(monthlyRevenue: monthlyRevenue),
+
+                        _statsSectionLabel(t['stat_payment_breakdown']),
+                        // ✅ Chart widget — only rebuilds if these counts change
+                        _PaymentBreakdownChart(
+                          paid: paidPayments,
+                          pending: pendingPayments,
+                          overdue: overduePayments,
+                          total: totalPayments,
                         ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: _buildRevenueCard(
-                          t: t,
-                          label: t['stat_uncollected'],
-                          amount: pendingRevenue,
-                          count: pendingPayments + overduePayments,
-                          color: const Color(0xFF854F0B),
-                          bgColor: const Color(0xFFFAEEDA),
-                          icon: Icons.schedule_rounded,
-                        ),
-                      ),
-                    ]),
-
-                    // ── Monthly revenue bar chart ──────────────────────────
-                    _statsSectionLabel(t['stat_monthly_revenue']),
-                    _buildMonthlyRevenueChart(monthlyRevenue),
-
-                    // ── Payment breakdown donut ────────────────────────────
-                    _statsSectionLabel(t['stat_payment_breakdown']),
-                    _buildPaymentBreakdownCard(
-                      paid: paidPayments,
-                      pending: pendingPayments,
-                      overdue: overduePayments,
-                      total: totalPayments,
-                      t: t,
-                    ),
-
-                    // ── Occupancy by building ──────────────────────────────
-                    _statsSectionLabel(t['stat_occupancy_by_building']),
-                    _buildBuildingOccupancyChart(buildingOccupancy, buildings),
-
-                    // ── Tenant status breakdown ────────────────────────────
-                    _statsSectionLabel(t['stat_tenant_status']),
-                    _buildTenantStatusCard(
-                      active: activeTenants,
-                      inactive: inactiveTenants,
-                      movedOut: movedOutTenants,
-                      suspended: suspendedTenants,
-                      total: tenants.length,
-                      t: t,
-                    ),
-
-                    // ── Occupancy trend ────────────────────────────────────
-                    _statsSectionLabel(t['stat_occupancy_trend']),
-                    _buildMonthlyOccupancyTrendChart(buildings, rooms, tenants),
-                  ],
+                      ],
+                    );
+                  },
                 ),
-              ),
-            );
-          },
+
+                // ── Static section: NEVER rebuilds on payment notifications ────
+                // These only depend on tenants/buildings/rooms from _statsFuture
+
+                _statsSectionLabel(t['stat_occupancy_by_building']),
+                _buildBuildingOccupancyChart(buildingOccupancy, buildings),
+
+                _statsSectionLabel(t['stat_tenant_status']),
+                _buildTenantStatusCard(
+                  active: tenants.where((tn) => tn.status == TenantStatus.active).length,
+                  inactive: tenants.where((tn) => tn.status == TenantStatus.inactive).length,
+                  movedOut: tenants.where((tn) => tn.status == TenantStatus.moveOut).length,
+                  suspended: tenants.where((tn) => tn.status == TenantStatus.suspended).length,
+                  total: tenants.length,
+                  t: t,
+                ),
+
+                _statsSectionLabel(t['stat_occupancy_trend']),
+                _buildMonthlyOccupancyTrendChart(buildings, rooms, tenants),
+              ],
+            ),
+          ),
         );
       },
     );
@@ -1853,172 +2266,6 @@ class _OrganizationScreenState extends State<OrganizationScreen>
         ),
       ]),
     );
-  }
-
-  // ── Monthly revenue bar chart ─────────────────────────────────────────────────
-  Widget _buildMonthlyRevenueChart(Map<String, double> monthlyRevenue) {
-    final t = AppTranslations.of(context);
-    if (monthlyRevenue.isEmpty ||
-        monthlyRevenue.values.every((v) => v == 0)) {
-      return _buildChartEmptyState(
-          Icons.bar_chart_rounded, t['stat_no_revenue_data']);
-    }
-  
-    final maxVal = monthlyRevenue.values.reduce((a, b) => a > b ? a : b);
-  
-    return Container(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
-      decoration: _cardDecoration(),
-      child: SizedBox(
-        height: 175,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: monthlyRevenue.entries.map((entry) {
-            final isHighest = entry.value == maxVal && maxVal > 0;
-            final ratio = maxVal > 0 ? (entry.value / maxVal) : 0.0;
-            final barH = (ratio * 115).clamp(3.0, 115.0);
-  
-            return Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    Text(
-                      _formatCurrencyShort(entry.value),
-                      style: TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w700,
-                        color: isHighest
-                            ? const Color(0xFF1A6FBF)
-                            : Colors.grey.shade400,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Container(
-                      height: barH,
-                      decoration: BoxDecoration(
-                        gradient: isHighest
-                            ? const LinearGradient(
-                                colors: [Color(0xFF378ADD), Color(0xFF1A6FBF)],
-                                begin: Alignment.topCenter,
-                                end: Alignment.bottomCenter,
-                              )
-                            : null,
-                        color: isHighest
-                            ? null
-                            : const Color(0xFF378ADD).withOpacity(0.25),
-                        borderRadius: const BorderRadius.vertical(
-                            top: Radius.circular(5)),
-                      ),
-                    ),
-                    const SizedBox(height: 7),
-                    Text(
-                      entry.key.split('/')[0],
-                      style: TextStyle(
-                        fontSize: 9,
-                        color: isHighest
-                            ? const Color(0xFF1A6FBF)
-                            : Colors.grey.shade500,
-                        fontWeight:
-                            isHighest ? FontWeight.w700 : FontWeight.w400,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          }).toList(),
-        ),
-      ),
-    );
-  }
-
-  // ── Payment breakdown donut ───────────────────────────────────────────────────
-  Widget _buildPaymentBreakdownCard({
-    required int paid,
-    required int pending,
-    required int overdue,
-    required int total,
-    required AppTranslations t,
-  }) {
-    if (total == 0) {
-      return _buildChartEmptyState(
-          Icons.donut_large_rounded, 'No payment data yet');
-    }
-  
-    final paidPct = (paid / total * 100).toStringAsFixed(0);
-    final pendingPct = (pending / total * 100).toStringAsFixed(0);
-    final overduePct = (overdue / total * 100).toStringAsFixed(0);
-  
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: _cardDecoration(),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          SizedBox(
-            width: 90,
-            height: 90,
-            child: CustomPaint(
-              painter: _DonutPainter(
-                sections: [
-                  _DonutSection(paid.toDouble(), const Color(0xFF639922)),
-                  _DonutSection(pending.toDouble(), const Color(0xFFEF9F27)),
-                  _DonutSection(overdue.toDouble(), const Color(0xFFE24B4A)),
-                ],
-                centerText: total.toString(),
-              ),
-            ),
-          ),
-          const SizedBox(width: 24),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _legendRow(const Color(0xFF639922), t['stat_paid'],
-                    '$paid ($paidPct%)'),
-                const SizedBox(height: 14),
-                _legendRow(const Color(0xFFEF9F27), t['stat_pending'],
-                    '$pending ($pendingPct%)'),
-                const SizedBox(height: 14),
-                _legendRow(const Color(0xFFE24B4A), t['stat_overdue'],
-                    '$overdue ($overduePct%)'),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _legendRow(Color color, String label, String value) {
-    return Row(children: [
-      Container(
-        width: 10,
-        height: 10,
-        decoration:
-            BoxDecoration(color: color, borderRadius: BorderRadius.circular(3)),
-      ),
-      const SizedBox(width: 8),
-      Expanded(
-        child: Text(label,
-            style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-      ),
-      Container(
-        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha:0.1),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          value,
-          style: TextStyle(
-              fontSize: 11, fontWeight: FontWeight.w700, color: color),
-        ),
-      ),
-    ]);
   }
 
   // ── Tenant status breakdown ───────────────────────────────────────────────────
@@ -3880,20 +4127,18 @@ class _OrganizationScreenState extends State<OrganizationScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           FutureBuilder<Membership?>(
-            future: _getMyMembership(),
+            future: _membershipFuture,
             builder: (context, snapshot) {
               if (!snapshot.hasData) return const SizedBox();
               final membership = snapshot.data!;
-              if (membership.role != 'admin')
-                return const SizedBox();
+              if (membership.role != 'admin') return const SizedBox();
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
                       ElevatedButton(
-                        onPressed:
-                            loadingInvite ? null : _loadInviteCode,
+                        onPressed: loadingInvite ? null : _loadInviteCode,
                         child: Text(t['get_invite_code']),
                       ),
                       if (inviteCode != null) ...[
@@ -3906,88 +4151,62 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                           onPressed: _refreshingCode
                               ? null
                               : () async {
-                                  final confirm =
-                                      await _showTrackedDialog<
-                                          bool>(
+                                  final confirm = await _showTrackedDialog<bool>(
                                     context: context,
                                     builder: (ctx) => AlertDialog(
-                                      title: Text(t[
-                                          'refresh_invite_code_title']),
-                                      content: Text(t[
-                                          'refresh_invite_code_body']),
+                                      title: Text(t['refresh_invite_code_title']),
+                                      content: Text(t['refresh_invite_code_body']),
                                       actions: [
                                         TextButton(
-                                          onPressed: () =>
-                                              Navigator.pop(
-                                                  ctx, false),
-                                          child: Text(
-                                              t['cancel']),
+                                          onPressed: () => Navigator.pop(ctx, false),
+                                          child: Text(t['cancel']),
                                         ),
                                         ElevatedButton(
-                                          style: ElevatedButton
-                                              .styleFrom(
-                                            backgroundColor:
-                                                Colors.orange,
-                                            foregroundColor:
-                                                Colors.white,
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: Colors.orange,
+                                            foregroundColor: Colors.white,
                                           ),
-                                          onPressed: () =>
-                                              Navigator.pop(
-                                                  ctx, true),
-                                          child: Text(
-                                              t['refresh_action']),
+                                          onPressed: () => Navigator.pop(ctx, true),
+                                          child: Text(t['refresh_action']),
                                         ),
                                       ],
                                     ),
                                   );
 
-                                  if (confirm != true ||
-                                      !mounted) return;
+                                  if (confirm != true || !mounted) return;
 
-                                  setState(() =>
-                                      _refreshingCode = true);
+                                  setState(() => _refreshingCode = true);
                                   try {
-                                    final success = await _orgService
-                                        .refreshInviteCode(
+                                    final success = await _orgService.refreshInviteCode(
                                       membership.ownerId,
                                       widget.organization.id,
                                     );
                                     if (success && mounted) {
                                       await _loadInviteCode();
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(SnackBar(
-                                        content: Text(
-                                            t['code_refreshed']),
-                                        backgroundColor:
-                                            Colors.green,
+                                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                                        content: Text(t['code_refreshed']),
+                                        backgroundColor: Colors.green,
                                       ));
                                     } else if (mounted) {
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(SnackBar(
-                                        content: Text(t[
-                                            'cannot_refresh_code']),
+                                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                                        content: Text(t['cannot_refresh_code']),
                                         backgroundColor: Colors.red,
                                       ));
                                     }
                                   } finally {
-                                    if (mounted) {
-                                      setState(() =>
-                                          _refreshingCode = false);
-                                    }
+                                    if (mounted) setState(() => _refreshingCode = false);
                                   }
                                 },
                           icon: _refreshingCode
                               ? const SizedBox(
                                   width: 16,
                                   height: 16,
-                                  child:
-                                      CircularProgressIndicator(
+                                  child: CircularProgressIndicator(
                                     strokeWidth: 2,
                                     color: Colors.white,
                                   ),
                                 )
-                              : const Icon(Icons.refresh,
-                                  size: 18),
+                              : const Icon(Icons.refresh, size: 18),
                           label: Text(t['refresh_code']),
                         ),
                       ],
@@ -3997,8 +4216,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                     const SizedBox(height: 8),
                     SelectableText(
                       '${t['invite_code_label']}: $inviteCode',
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold),
+                      style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
                   ],
                   const Divider(height: 32),
@@ -4008,137 +4226,105 @@ class _OrganizationScreenState extends State<OrganizationScreen>
           ),
           Text(
             t['members_title'],
-            style: const TextStyle(
-                fontSize: 18, fontWeight: FontWeight.bold),
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
           Expanded(
-            child: FutureBuilder<List<Membership>>(
-              future: _getMembers(),
+            // ✅ Wrap BOTH futures together so membership is resolved once
+            // before the list is built — no per-tile fetching at all
+            child: FutureBuilder<List<dynamic>>(
+              future: _membersTabFuture,
               builder: (context, snapshot) {
-                if (snapshot.connectionState ==
-                    ConnectionState.waiting) {
-                  return const Center(
-                      child: CircularProgressIndicator());
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
                 }
-                if (!snapshot.hasData ||
-                    snapshot.data!.isEmpty) {
+
+                final members = (snapshot.data?[0] as List<Membership>?) ?? [];
+                final myMembership = snapshot.data?[1] as Membership?;
+                final isAdmin = myMembership?.role == 'admin';
+
+                if (members.isEmpty) {
                   return Center(child: Text(t['no_members']));
                 }
-                final members = snapshot.data!;
+
                 return ListView.builder(
                   itemCount: members.length,
                   itemBuilder: (context, index) {
                     final member = members[index];
-                    final ownerName =
-                        member.displayName.isNotEmpty
-                            ? member.displayName
-                            : member.email.isNotEmpty
-                                ? member.email
-                                : member.ownerId;
-                    final roleText = member.role == 'admin'
-                        ? t['member_role_admin']
-                        : t['member_role_member'];
-                    return Card(
-                      margin:
-                          const EdgeInsets.only(bottom: 8),
-                      child: ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor:
-                              member.role == 'admin'
-                                  ? Colors.orange
-                                  : Colors.blue,
-                          child: Icon(
-                            member.role == 'admin'
-                                ? Icons.admin_panel_settings
-                                : Icons.person,
-                            color: Colors.white,
-                          ),
-                        ),
-                        title: Text(ownerName,
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w500)),
-                        subtitle: Column(
-                          crossAxisAlignment:
-                              CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              roleText,
-                              style: TextStyle(
-                                color: member.role == 'admin'
-                                    ? Colors.orange
-                                    : Colors.grey,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
-                              ),
-                            ),
-                            if (member.email.isNotEmpty)
-                              Text(member.email,
-                                  style: const TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.grey)),
-                          ],
-                        ),
-                        trailing:
-                            FutureBuilder<Membership?>(
-                          future: _getMyMembership(),
-                          builder: (context,
-                              myMembershipSnapshot) {
-                            if (!myMembershipSnapshot
-                                .hasData) {
-                              return member.status == 'active'
-                                  ? const Icon(
-                                      Icons.check_circle,
-                                      color: Colors.green,
-                                      size: 20)
-                                  : const Icon(Icons.pending,
-                                      color: Colors.orange,
-                                      size: 20);
-                            }
-                            final myMembership =
-                                myMembershipSnapshot.data!;
-                            if (myMembership.role !=
-                                'admin') {
-                              return member.status == 'active'
-                                  ? const Icon(
-                                      Icons.check_circle,
-                                      color: Colors.green,
-                                      size: 20)
-                                  : const Icon(Icons.pending,
-                                      color: Colors.orange,
-                                      size: 20);
-                            }
-                            if (member.ownerId ==
-                                myMembership.ownerId) {
-                              return const Icon(
-                                  Icons.check_circle,
-                                  color: Colors.green,
-                                  size: 20);
-                            }
-                            return Builder(
-                              builder: (BuildContext ctx) {
-                                return IconButton(
-                                  icon: const Icon(
-                                      Icons.more_vert),
-                                  onPressed: () =>
-                                      _showMemberMenu(
-                                          ctx,
-                                          member,
-                                          myMembership,
-                                          ownerName),
-                                );
-                              },
-                            );
-                          },
-                        ),
-                      ),
-                    );
+                    // ✅ Pass resolved values down — no async work here at all
+                    return _buildMemberTile(member, myMembership, isAdmin);
                   },
                 );
               },
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  // ✅ Pure sync widget — receives membership as plain parameters
+  Widget _buildMemberTile(
+    Membership member,
+    Membership? myMembership,
+    bool isAdmin,
+  ) {
+    final t = AppTranslations.of(context);
+    final ownerName = member.displayName.isNotEmpty
+        ? member.displayName
+        : member.email.isNotEmpty
+            ? member.email
+            : member.ownerId;
+    final roleText = member.role == 'admin'
+        ? t['member_role_admin']
+        : t['member_role_member'];
+
+    // ✅ Resolved synchronously — no FutureBuilder needed
+    final Widget trailing;
+    if (!isAdmin || myMembership == null) {
+      trailing = member.status == 'active'
+          ? const Icon(Icons.check_circle, color: Colors.green, size: 20)
+          : const Icon(Icons.pending, color: Colors.orange, size: 20);
+    } else if (member.ownerId == myMembership.ownerId) {
+      trailing = const Icon(Icons.check_circle, color: Colors.green, size: 20);
+    } else {
+      trailing = Builder(
+        builder: (ctx) => IconButton(
+          icon: const Icon(Icons.more_vert),
+          onPressed: () => _showMemberMenu(ctx, member, myMembership, ownerName),
+        ),
+      );
+    }
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: member.role == 'admin' ? Colors.orange : Colors.blue,
+          child: Icon(
+            member.role == 'admin' ? Icons.admin_panel_settings : Icons.person,
+            color: Colors.white,
+          ),
+        ),
+        title: Text(ownerName,
+            style: const TextStyle(fontWeight: FontWeight.w500)),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              roleText,
+              style: TextStyle(
+                color: member.role == 'admin' ? Colors.orange : Colors.grey,
+                fontWeight: FontWeight.bold,
+                fontSize: 12,
+              ),
+            ),
+            if (member.email.isNotEmpty)
+              Text(member.email,
+                  style: const TextStyle(fontSize: 12, color: Colors.grey)),
+          ],
+        ),
+        trailing: trailing,
       ),
     );
   }
@@ -4364,4 +4550,207 @@ class _DonutPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_DonutPainter old) => true;
+}
+
+// ── Monthly Revenue Chart ─────────────────────────────────────────────────────
+class _MonthlyRevenueChart extends StatefulWidget {
+  final Map<String, double> monthlyRevenue;
+  const _MonthlyRevenueChart({required this.monthlyRevenue});
+
+  @override
+  State<_MonthlyRevenueChart> createState() => _MonthlyRevenueChartState();
+}
+
+class _MonthlyRevenueChartState extends State<_MonthlyRevenueChart> {
+  @override
+  Widget build(BuildContext context) {
+    // move _buildMonthlyRevenueChart body here, replace widget refs
+    final monthlyRevenue = widget.monthlyRevenue;
+    if (monthlyRevenue.isEmpty || monthlyRevenue.values.every((v) => v == 0)) {
+      return _buildChartEmptyState(Icons.bar_chart_rounded, 'No revenue data');
+    }
+    final maxVal = monthlyRevenue.values.reduce((a, b) => a > b ? a : b);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+      decoration: _cardDecoration(context),
+      child: SizedBox(
+        height: 175,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: monthlyRevenue.entries.map((entry) {
+            final isHighest = entry.value == maxVal && maxVal > 0;
+            final ratio = maxVal > 0 ? (entry.value / maxVal) : 0.0;
+            final barH = (ratio * 115).clamp(3.0, 115.0);
+            return Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Text(
+                      _formatCurrencyShort(entry.value),
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                        color: isHighest ? const Color(0xFF1A6FBF) : Colors.grey.shade400,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Container(
+                      height: barH,
+                      decoration: BoxDecoration(
+                        gradient: isHighest
+                            ? const LinearGradient(
+                                colors: [Color(0xFF378ADD), Color(0xFF1A6FBF)],
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                              )
+                            : null,
+                        color: isHighest ? null : const Color(0xFF378ADD).withOpacity(0.25),
+                        borderRadius: const BorderRadius.vertical(top: Radius.circular(5)),
+                      ),
+                    ),
+                    const SizedBox(height: 7),
+                    Text(
+                      entry.key.split('/')[0],
+                      style: TextStyle(
+                        fontSize: 9,
+                        color: isHighest ? const Color(0xFF1A6FBF) : Colors.grey.shade500,
+                        fontWeight: isHighest ? FontWeight.w700 : FontWeight.w400,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
+  // Helpers needed — move these to top-level functions so all chart widgets can share them
+  static String _formatCurrencyShort(double amount) {
+    if (amount >= 1000000000) return '${(amount / 1000000000).toStringAsFixed(1)}B';
+    if (amount >= 1000000) return '${(amount / 1000000).toStringAsFixed(1)}M';
+    if (amount >= 1000) return '${(amount / 1000).toStringAsFixed(0)}K';
+    return amount.toStringAsFixed(0);
+  }
+
+  static BoxDecoration _cardDecoration(BuildContext context) => BoxDecoration(
+    color: Theme.of(context).colorScheme.surface,
+    borderRadius: BorderRadius.circular(16),
+    boxShadow: [
+      BoxShadow(color: Colors.black.withValues(alpha: 0.07), blurRadius: 16, offset: const Offset(0, 4)),
+      BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 4, offset: const Offset(0, 1)),
+    ],
+  );
+
+  static Widget _buildChartEmptyState(IconData icon, String message) => SizedBox(
+    height: 100,
+    child: Center(
+      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Icon(icon, size: 28, color: Colors.grey.shade300),
+        const SizedBox(height: 8),
+        Text(message, style: TextStyle(fontSize: 12, color: Colors.grey.shade400)),
+      ]),
+    ),
+  );
+}
+
+// ── Payment Breakdown Chart ───────────────────────────────────────────────────
+class _PaymentBreakdownChart extends StatefulWidget {
+  final int paid;
+  final int pending;
+  final int overdue;
+  final int total;
+
+  const _PaymentBreakdownChart({
+    required this.paid,
+    required this.pending,
+    required this.overdue,
+    required this.total,
+  });
+
+  @override
+  State<_PaymentBreakdownChart> createState() => _PaymentBreakdownChartState();
+}
+
+class _PaymentBreakdownChartState extends State<_PaymentBreakdownChart> {
+  @override
+  Widget build(BuildContext context) {
+    final t = AppTranslations.of(context);
+    if (widget.total == 0) {
+      return Container(
+        height: 100,
+        decoration: _cardDecoration(),
+        child: Center(child: Text('No payment data yet',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade400))),
+      );
+    }
+    final paidPct = (widget.paid / widget.total * 100).toStringAsFixed(0);
+    final pendingPct = (widget.pending / widget.total * 100).toStringAsFixed(0);
+    final overduePct = (widget.overdue / widget.total * 100).toStringAsFixed(0);
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: _cardDecoration(),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 90,
+            height: 90,
+            child: CustomPaint(
+              painter: _DonutPainter(
+                sections: [
+                  _DonutSection(widget.paid.toDouble(), const Color(0xFF639922)),
+                  _DonutSection(widget.pending.toDouble(), const Color(0xFFEF9F27)),
+                  _DonutSection(widget.overdue.toDouble(), const Color(0xFFE24B4A)),
+                ],
+                centerText: widget.total.toString(),
+              ),
+            ),
+          ),
+          const SizedBox(width: 24),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _legendRow(context, const Color(0xFF639922), t['stat_paid'], '${widget.paid} ($paidPct%)'),
+                const SizedBox(height: 14),
+                _legendRow(context, const Color(0xFFEF9F27), t['stat_pending'], '${widget.pending} ($pendingPct%)'),
+                const SizedBox(height: 14),
+                _legendRow(context, const Color(0xFFE24B4A), t['stat_overdue'], '${widget.overdue} ($overduePct%)'),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  BoxDecoration _cardDecoration() => BoxDecoration(
+    color: Theme.of(context).colorScheme.surface,
+    borderRadius: BorderRadius.circular(16),
+    boxShadow: [
+      BoxShadow(color: Colors.black.withValues(alpha: 0.07), blurRadius: 16, offset: const Offset(0, 4)),
+      BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 4, offset: const Offset(0, 1)),
+    ],
+  );
+
+  Widget _legendRow(BuildContext context, Color color, String label, String value) {
+    return Row(children: [
+      Container(width: 10, height: 10,
+          decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(3))),
+      const SizedBox(width: 8),
+      Expanded(child: Text(label, style: TextStyle(fontSize: 12, color: Colors.grey.shade600))),
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+        decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
+        child: Text(value, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color)),
+      ),
+    ]);
+  }
 }

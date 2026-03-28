@@ -658,6 +658,15 @@ class AppTranslations {
       'stat_payment_breakdown': 'Phân tích thanh toán',
       'stat_tenant_status': 'Trạng thái người thuê',
       'invoices': '{{count}} hoá đơn',
+
+      'building_status_full': 'Đầy',
+      'building_status_active': 'Hoạt động',
+      'building_stat_total_rooms': 'Tổng phòng',
+      'building_stat_rented': 'Đang thuê',
+      'building_stat_vacant': 'Trống',
+      'building_occupancy_label': 'Tỉ lệ lấp đầy',
+      'building_action_view_rooms': 'Xem phòng',
+      'building_count_label': '{{count}} toà nhà',
     },
 
     'en': {
@@ -1309,6 +1318,15 @@ class AppTranslations {
       'stat_payment_breakdown': 'Payment breakdown',
       'stat_tenant_status': 'Tenant status',
       'invoices': '{{count}} invoices',
+
+      'building_status_full': 'Full',
+      'building_status_active': 'Active',
+      'building_stat_total_rooms': 'Total rooms',
+      'building_stat_rented': 'Rented',
+      'building_stat_vacant': 'Vacant',
+      'building_occupancy_label': 'Occupancy',
+      'building_action_view_rooms': 'View rooms',
+      'building_count_label': '{{count}} buildings',
     },
   };
 
