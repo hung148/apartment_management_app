@@ -50,3 +50,11 @@ android/app/google-services.json
 ios/Runner/GoogleService-Info.plist
 
 .env
+
+# Ignore local logs
+lib\log.txt
+lib\todo.txt
+
+# Ignore NSIS installer scripts
+apartment_installer_english.nsi
+apartment_installer.nsi
