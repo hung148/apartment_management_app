@@ -667,6 +667,21 @@ class AppTranslations {
       'building_occupancy_label': 'Tỉ lệ lấp đầy',
       'building_action_view_rooms': 'Xem phòng',
       'building_count_label': '{{count}} toà nhà',
+
+      'edit_org': 'Chỉnh sửa tổ chức',
+      'edit_org_details': 'Cập nhật tên, liên hệ & ngân hàng',
+      'basic_info': 'Thông tin cơ bản',
+      'bank_info': 'Thông tin ngân hàng',
+      'saving': 'Đang lưu...',
+      'save': 'Lưu',
+      'org_updated_success': 'Cập nhật tổ chức thành công!',
+      'invalid_bank_account': 'Số tài khoản phải có 6–20 chữ số',
+
+      'building_section_basic': 'Thông tin cơ bản',
+      'building_section_rooms': 'Cấu hình phòng',
+      'building_header_subtitle_add': 'Điền thông tin để tạo toà nhà mới',
+      'building_header_subtitle_edit': 'Cập nhật thông tin toà nhà',
+      'building_auto_generate_hint': 'Tự động tạo phòng khi lưu',
     },
 
     'en': {
@@ -1327,6 +1342,21 @@ class AppTranslations {
       'building_occupancy_label': 'Occupancy',
       'building_action_view_rooms': 'View rooms',
       'building_count_label': '{{count}} buildings',
+
+      'edit_org': 'Edit Organization',
+      'edit_org_details': 'Update name, contact & bank info',
+      'basic_info': 'Basic Info',
+      'bank_info': 'Bank Information',
+      'saving': 'Saving...',
+      'save': 'Save',
+      'org_updated_success': 'Organization updated successfully!',
+      'invalid_bank_account': 'Account number must be 6–20 digits',
+
+      'building_section_basic': 'Basic Info',
+      'building_section_rooms': 'Room Configuration',
+      'building_header_subtitle_add': 'Fill in details to create a new building',
+      'building_header_subtitle_edit': 'Update building information',
+      'building_auto_generate_hint': 'Automatically create rooms on save',
     },
   };
 

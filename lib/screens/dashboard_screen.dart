@@ -2180,6 +2180,327 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
+  Future<void> _showEditOrganizationDialog(Organization org, String ownerId) async {
+    final nameCtrl    = TextEditingController(text: org.name);
+    final addressCtrl = TextEditingController(text: org.address ?? '');
+    final phoneCtrl   = TextEditingController(text: org.phone ?? '');
+    final emailCtrl   = TextEditingController(text: org.email ?? '');
+    final taxCtrl     = TextEditingController(text: org.taxCode ?? '');
+    final bankNameCtrl        = TextEditingController(text: org.bankName ?? '');
+    final bankAccountCtrl     = TextEditingController(text: org.bankAccountNumber ?? '');
+    final bankAccountNameCtrl = TextEditingController(text: org.bankAccountName ?? '');
+    final formKey = GlobalKey<FormState>();
+    bool isSubmitting = false;
+
+    await _showTrackedDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: _getDialogWidth(context),
+            maxHeight: MediaQuery.of(context).size.height * 0.9,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // ── Header ────────────────────────────────
+              Container(
+                padding: const EdgeInsets.fromLTRB(20, 16, 12, 16),
+                decoration: BoxDecoration(
+                  color: Colors.green.withValues(alpha: 0.08),
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                ),
+                child: Row(children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.green[600],
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.edit_rounded, color: Colors.white, size: 18),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      AppTranslations.of(context).text('edit_org'),
+                      style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          color: _DS.textPrimary),
+                    ),
+                  ),
+                ]),
+              ),
+              const Divider(height: 1),
+
+              // ── Fields ────────────────────────────────
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: Form(
+                    key: formKey,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // ── Basic info section ──────────
+                        _buildSectionLabel(context, Icons.business_rounded,
+                            AppTranslations.of(context).text('basic_info')),
+                        const SizedBox(height: 10),
+                        _buildField(nameCtrl,
+                            AppTranslations.of(context).text('org_name_required'),
+                            hint: AppTranslations.of(context).text('org_name_example'),
+                            icon: Icons.business,
+                            maxLength: 100,
+                            textCapitalization: TextCapitalization.words,
+                            validator: (v) => (v == null || v.trim().isEmpty)
+                                ? AppTranslations.of(context).text('please_enter_org_name')
+                                : null),
+                        const SizedBox(height: 12),
+                        _buildField(addressCtrl,
+                            AppTranslations.of(context).text('address'),
+                            hint: AppTranslations.of(context).text('address_example'),
+                            icon: Icons.location_on,
+                            maxLength: 300,
+                            maxLines: 2,
+                            textCapitalization: TextCapitalization.words,
+                            helper: AppTranslations.of(context).text('optional_on_invoice')),
+                        const SizedBox(height: 12),
+                        _buildField(phoneCtrl,
+                            AppTranslations.of(context).text('phone'),
+                            hint: AppTranslations.of(context).text('phone_example'),
+                            icon: Icons.phone,
+                            maxLength: 20,
+                            keyboardType: TextInputType.phone,
+                            helper: AppTranslations.of(context).text('optional_on_invoice')),
+                        const SizedBox(height: 12),
+                        _buildField(emailCtrl,
+                            AppTranslations.of(context).text('email'),
+                            hint: AppTranslations.of(context).text('email_example'),
+                            icon: Icons.email,
+                            maxLength: 254,
+                            keyboardType: TextInputType.emailAddress,
+                            helper: AppTranslations.of(context).text('optional_on_invoice'),
+                            validator: (v) {
+                              if (v != null && v.isNotEmpty) {
+                                final re = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+                                if (!re.hasMatch(v)) {
+                                  return AppTranslations.of(context).text('email_invalid');
+                                }
+                              }
+                              return null;
+                            }),
+                        const SizedBox(height: 12),
+                        _buildField(taxCtrl,
+                            AppTranslations.of(context).text('tax_code'),
+                            hint: '0123456789 or 0123456789-001',
+                            icon: Icons.receipt_long,
+                            maxLength: 14,
+                            keyboardType: TextInputType.number,
+                            helper: AppTranslations.of(context).text('optional_on_invoice'),
+                            validator: (v) {
+                              if (v != null && v.isNotEmpty &&
+                                  !_organizationService.isValidTaxCode(v)) {
+                                return 'Invalid tax code format';
+                              }
+                              return null;
+                            }),
+
+                        const SizedBox(height: 20),
+
+                        // ── Bank info section ───────────
+                        _buildSectionLabel(context, Icons.account_balance_rounded,
+                            AppTranslations.of(context).text('bank_info')),
+                        const SizedBox(height: 10),
+                        _buildField(bankNameCtrl,
+                            AppTranslations.of(context).text('bank_name'),
+                            hint: 'Vietcombank, Techcombank...',
+                            icon: Icons.account_balance,
+                            maxLength: 100,
+                            helper: AppTranslations.of(context).text('optional_on_invoice')),
+                        const SizedBox(height: 12),
+                        _buildField(bankAccountCtrl,
+                            AppTranslations.of(context).text('account_number'),
+                            hint: '1234567890',
+                            icon: Icons.credit_card,
+                            maxLength: 20,
+                            keyboardType: TextInputType.number,
+                            helper: AppTranslations.of(context).text('optional_on_invoice'),
+                            validator: (v) {
+                              if (v != null && v.isNotEmpty &&
+                                  !_organizationService.isValidBankAccountNumber(v)) {
+                                return AppTranslations.of(context)
+                                    .text('invalid_bank_account');
+                              }
+                              return null;
+                            }),
+                        const SizedBox(height: 12),
+                        _buildField(bankAccountNameCtrl,
+                            AppTranslations.of(context).text('account_holder'),
+                            hint: 'NGUYEN VAN A',
+                            icon: Icons.person,
+                            maxLength: 100,
+                            textCapitalization: TextCapitalization.characters,
+                            helper: AppTranslations.of(context).text('optional_on_invoice')),
+                        const SizedBox(height: 12),
+                        _buildInfoBanner(
+                            AppTranslations.of(context).text('contact_info_on_invoice')),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const Divider(height: 1),
+
+              // ── Actions ───────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: Text(AppTranslations.of(context).text('cancel')),
+                    ),
+                    const SizedBox(width: 8),
+                    StatefulBuilder(
+                      builder: (context, setButtonState) {
+                        return FilledButton.icon(
+                          onPressed: isSubmitting
+                              ? null
+                              : () async {
+                                  if (!formKey.currentState!.validate()) return;
+                                  setButtonState(() => isSubmitting = true);
+                                  _showTrackedDialog(
+                                    context: context,
+                                    barrierDismissible: false,
+                                    builder: (ctx) => _buildLoadingDialog(
+                                      AppTranslations.of(context).text('saving'),
+                                    ),
+                                  );
+                                  try {
+                                    final success = await _organizationService
+                                        .updateOrganization(
+                                      ownerId: ownerId,
+                                      orgId: org.id,
+                                      name: nameCtrl.text.trim(),
+                                      address: addressCtrl.text.trim().isEmpty
+                                          ? null
+                                          : addressCtrl.text.trim(),
+                                      phone: phoneCtrl.text.trim().isEmpty
+                                          ? null
+                                          : phoneCtrl.text.trim(),
+                                      email: emailCtrl.text.trim().isEmpty
+                                          ? null
+                                          : emailCtrl.text.trim(),
+                                      taxCode: taxCtrl.text.trim().isEmpty
+                                          ? null
+                                          : taxCtrl.text.trim(),
+                                      bankName: bankNameCtrl.text.trim().isEmpty
+                                          ? null
+                                          : bankNameCtrl.text.trim(),
+                                      bankAccountNumber:
+                                          bankAccountCtrl.text.trim().isEmpty
+                                              ? null
+                                              : bankAccountCtrl.text.trim(),
+                                      bankAccountName:
+                                          bankAccountNameCtrl.text.trim().isEmpty
+                                              ? null
+                                              : bankAccountNameCtrl.text.trim(),
+                                    );
+                                    if (!mounted) return;
+                                    Navigator.pop(context); // pop loader
+                                    if (success) {
+                                      Navigator.pop(context); // pop edit dialog
+                                      WidgetsBinding.instance
+                                          .addPostFrameCallback((_) {
+                                        if (mounted) {
+                                          _showSuccessSnack(AppTranslations.of(
+                                                  context)
+                                              .text('org_updated_success'));
+                                          _refreshOrgs(ownerId);
+                                        }
+                                      });
+                                    } else {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text(AppTranslations.of(context)
+                                              .text('update_failed')),
+                                          backgroundColor: Colors.red,
+                                        ),
+                                      );
+                                    }
+                                  } catch (e) {
+                                    if (mounted) {
+                                      Navigator.pop(context); // pop loader
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text(e.toString()),
+                                          backgroundColor: Colors.red,
+                                        ),
+                                      );
+                                    }
+                                  }
+                                  if (mounted) {
+                                    setButtonState(() => isSubmitting = false);
+                                  }
+                                },
+                          icon: isSubmitting
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2, color: Colors.white),
+                                )
+                              : const Icon(Icons.save_rounded, size: 18),
+                          label: Text(AppTranslations.of(context).text('save')),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: Colors.green[600],
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    nameCtrl.dispose();
+    addressCtrl.dispose();
+    phoneCtrl.dispose();
+    emailCtrl.dispose();
+    taxCtrl.dispose();
+    bankNameCtrl.dispose();
+    bankAccountCtrl.dispose();
+    bankAccountNameCtrl.dispose();
+  }
+
+  Widget _buildSectionLabel(BuildContext context, IconData icon, String label) {
+    return Row(
+      children: [
+        Icon(icon, size: 15, color: _DS.primary),
+        const SizedBox(width: 6),
+        Text(
+          label.toUpperCase(),
+          style: const TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            color: _DS.primary,
+            letterSpacing: 0.8,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(child: Divider(color: _DS.primary.withValues(alpha: 0.2))),
+      ],
+    );
+  }
+
   void _showOrganizationOptions(
       Organization org, String ownerId, bool isAdmin) {
     final screenWidth = MediaQuery.sizeOf(context).width;
@@ -2289,6 +2610,16 @@ class _DashboardScreenState extends State<DashboardScreen>
         },
       ),
       if (isAdmin) ...[
+        _buildOptionTile(
+          icon: Icons.edit_rounded,
+          iconColor: Colors.green[600]!,
+          title: AppTranslations.of(context).text('edit_org'),
+          subtitle: AppTranslations.of(context).text('edit_org_details'),
+          onTap: () {
+            Navigator.pop(context);
+            _showEditOrganizationDialog(org, ownerId);
+          },
+        ),
         _buildOptionTile(
           icon: Icons.compare_arrows_rounded,
           iconColor: Colors.blue[600]!,
