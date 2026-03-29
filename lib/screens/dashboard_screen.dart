@@ -338,40 +338,106 @@ class _DashboardScreenState extends State<DashboardScreen>
     if (!kIsWeb && Platform.isWindows) {
       final confirm = await _showTrackedDialog<bool>(
         context: context,
-        builder: (context) => AlertDialog(
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16)),
-          title: Row(children: [
-            Icon(Icons.download, color: _DS.primary),
-            const SizedBox(width: 8),
-            Flexible(
-                child: Text(AppTranslations.of(context)
-                    .text('available_update'))),
-          ]),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(AppTranslations.of(context).text('new_update_ready')),
-              const SizedBox(height: 8),
-              Text(
-                  AppTranslations.of(context).text('click_update_button'),
-                  style: const TextStyle(fontSize: 14, color: Colors.grey)),
-            ],
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: Text(AppTranslations.of(context).text('later'))),
-            ElevatedButton.icon(
-              onPressed: () => Navigator.pop(context, true),
-              icon: const Icon(Icons.download),
-              label: Text(AppTranslations.of(context).text('update')),
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white),
+        builder: (context) => Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          elevation: 0,
+          backgroundColor: Colors.white,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: _getDialogWidth(context)),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // ── Green gradient header ──────────────
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 28),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Color(0xFF22C55E), Color(0xFF15803D)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                  ),
+                  child: Column(children: [
+                    Container(
+                      width: 56, height: 56,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.system_update_rounded,
+                          color: Colors.white, size: 28),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      AppTranslations.of(context).text('available_update'),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                  ]),
+                ),
+                // ── Body ──────────────────────────────
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
+                  child: Column(
+                    children: [
+                      Text(
+                        AppTranslations.of(context).text('new_update_ready'),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 14, color: _DS.textSecondary, height: 1.5,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildInfoBanner(
+                          AppTranslations.of(context).text('click_update_button')),
+                    ],
+                  ),
+                ),
+                // ── Actions ───────────────────────────
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+                  child: Row(children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: _DS.textSecondary,
+                          side: BorderSide(color: Colors.grey.withValues(alpha: 0.3)),
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14)),
+                        ),
+                        child: Text(AppTranslations.of(context).text('later'),
+                            style: const TextStyle(fontWeight: FontWeight.w600)),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: () => Navigator.pop(context, true),
+                        icon: const Icon(Icons.download_rounded, size: 16),
+                        label: Text(AppTranslations.of(context).text('update'),
+                            style: const TextStyle(fontWeight: FontWeight.w600)),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFF16A34A),
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14)),
+                          elevation: 0,
+                        ),
+                      ),
+                    ),
+                  ]),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       );
       if (confirm == true) {
@@ -379,23 +445,77 @@ class _DashboardScreenState extends State<DashboardScreen>
         _showTrackedDialog(
           context: context,
           barrierDismissible: false,
-          builder: (context) => AlertDialog(
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16)),
-            title: Text(
-                AppTranslations.of(context).text('downloading_update')),
-            content: ValueListenableBuilder<double>(
-              valueListenable: progressNotifier,
-              builder: (context, progress, _) => Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  LinearProgressIndicator(
-                    value: progress <= 0 || progress >= 1.0 ? null : progress,
-                  ),
-                  Text(progress >= 1.0
-                      ? '${AppTranslations.of(context).text("installing")}...'
-                      : '${AppTranslations.of(context).text("connecting")}...'),
-                ],
+          builder: (context) => Dialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            elevation: 0,
+            backgroundColor: Colors.white,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: _getDialogWidth(context)),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(28, 32, 28, 28),
+                child: ValueListenableBuilder<double>(
+                  valueListenable: progressNotifier,
+                  builder: (context, progress, _) {
+                    final isDone = progress >= 1.0;
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 64, height: 64,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFDCFCE7),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            isDone ? Icons.check_rounded : Icons.download_rounded,
+                            color: const Color(0xFF16A34A),
+                            size: 30,
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        Text(
+                          isDone
+                              ? AppTranslations.of(context).text('installing')
+                              : AppTranslations.of(context).text('downloading_update'),
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: _DS.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          isDone
+                              ? AppTranslations.of(context).text('please_dont_close')
+                              : AppTranslations.of(context).text('connecting'),
+                          style: const TextStyle(fontSize: 13, color: _DS.textSecondary),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 24),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: LinearProgressIndicator(
+                            value: progress <= 0 || progress >= 1.0 ? null : progress,
+                            minHeight: 8,
+                            backgroundColor: const Color(0xFFDCFCE7),
+                            valueColor: const AlwaysStoppedAnimation(Color(0xFF16A34A)),
+                          ),
+                        ),
+                        if (progress > 0 && progress < 1.0) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            '${(progress * 100).toStringAsFixed(0)}%',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF16A34A),
+                            ),
+                          ),
+                        ],
+                      ],
+                    );
+                  },
+                ),
               ),
             ),
           ),
@@ -413,17 +533,84 @@ class _DashboardScreenState extends State<DashboardScreen>
       }
       return;
     }
+    final progressNotifier = ValueNotifier<double>(0.0); 
     _showTrackedDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const CircularProgressIndicator(),
-            const SizedBox(height: 16),
-            Text(AppTranslations.of(context).text('updating')),
-          ],
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        elevation: 0,
+        backgroundColor: Colors.white,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: _getDialogWidth(context)),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(28, 32, 28, 28),
+            child: ValueListenableBuilder<double>(
+              valueListenable: progressNotifier,
+              builder: (context, progress, _) {
+                final isDone = progress >= 1.0;
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Icon circle
+                    Container(
+                      width: 64, height: 64,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFDCFCE7),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        isDone ? Icons.check_rounded : Icons.download_rounded,
+                        color: const Color(0xFF16A34A),
+                        size: 30,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      isDone
+                          ? AppTranslations.of(context).text('installing')
+                          : AppTranslations.of(context).text('downloading_update'),
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: _DS.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      isDone
+                          ? AppTranslations.of(context).text('please_dont_close')
+                          : AppTranslations.of(context).text('connecting'),
+                      style: const TextStyle(fontSize: 13, color: _DS.textSecondary),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 24),
+                    // Progress bar
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: LinearProgressIndicator(
+                        value: progress <= 0 || progress >= 1.0 ? null : progress,
+                        minHeight: 8,
+                        backgroundColor: const Color(0xFFDCFCE7),
+                        valueColor: const AlwaysStoppedAnimation(Color(0xFF16A34A)),
+                      ),
+                    ),
+                    if (progress > 0 && progress < 1.0) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        '${(progress * 100).toStringAsFixed(0)}%',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF16A34A),
+                        ),
+                      ),
+                    ],
+                  ],
+                );
+              },
+            ),
+          ),
         ),
       ),
     );
@@ -638,6 +825,8 @@ class _DashboardScreenState extends State<DashboardScreen>
     final taxCtrl     = TextEditingController();
     final formKey     = GlobalKey<FormState>();
 
+    bool isSubmitting = false;
+
     await _showTrackedDialog(
       context: context,
       barrierDismissible: false,
@@ -764,7 +953,6 @@ class _DashboardScreenState extends State<DashboardScreen>
                     const SizedBox(width: 8),
                     StatefulBuilder(
                       builder: (context, setButtonState) {
-                        bool isSubmitting = false;
                         return FilledButton.icon(
                           onPressed: isSubmitting ? null : () async {
                             if (_createOrgLock.isLocked) return;
@@ -1263,29 +1451,66 @@ class _DashboardScreenState extends State<DashboardScreen>
         _showTrackedDialog(
           context: context,
           barrierDismissible: false,
-          builder: (context) => AlertDialog(
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16)),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const CircularProgressIndicator(),
-                const SizedBox(height: 20),
-                Text(AppTranslations.of(context).text('deleting_org'),
-                    style: const TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 16),
-                ValueListenableBuilder<double>(
+          builder: (context) => Dialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            elevation: 0,
+            backgroundColor: Colors.white,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: _getDialogWidth(context)),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(28, 32, 28, 28),
+                child: ValueListenableBuilder<double>(
                   valueListenable: progressNotifier,
-                  builder: (context, progress, _) => Column(children: [
-                    LinearProgressIndicator(value: progress),
-                    const SizedBox(height: 8),
-                    Text('${(progress * 100).toStringAsFixed(0)}%'),
-                  ]),
+                  builder: (context, progress, _) => Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 64, height: 64,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFFFEBEB),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.delete_forever_rounded,
+                            color: Colors.red, size: 30),
+                      ),
+                      const SizedBox(height: 20),
+                      Text(
+                        AppTranslations.of(context).text('deleting_org'),
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: _DS.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        AppTranslations.of(context).text('please_dont_close'),
+                        style: const TextStyle(fontSize: 13, color: _DS.textSecondary),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 24),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: LinearProgressIndicator(
+                          value: progress,
+                          minHeight: 8,
+                          backgroundColor: const Color(0xFFFFEBEB),
+                          valueColor: const AlwaysStoppedAnimation(Colors.red),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '${(progress * 100).toStringAsFixed(0)}%',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.red,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 12),
-                Text(AppTranslations.of(context).text('please_dont_close'),
-                    style: const TextStyle(fontSize: 12)),
-              ],
+              ),
             ),
           ),
         );
@@ -1318,61 +1543,211 @@ class _DashboardScreenState extends State<DashboardScreen>
   void _showOrganizationInfo(Organization org) {
     _showTrackedDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(AppTranslations.of(context).text('org_info'),
-            style: const TextStyle(fontWeight: FontWeight.w700)),
-        content: SingleChildScrollView(
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        elevation: 0,
+        backgroundColor: Colors.white,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: _getDialogWidth(context),
+            maxHeight: MediaQuery.of(context).size.height * 0.85,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildOrgInfoRow(AppTranslations.of(context).text('org_name_label'), org.name),
-              const SizedBox(height: 12),
-              _buildOrgInfoRow(AppTranslations.of(context).text('id'), org.id),
-              const SizedBox(height: 12),
-              _buildOrgInfoRow(AppTranslations.of(context).text('created_date'), _formatDate(org.createdAt, context)),
-              if (org.updatedAt != null) ...[
-                const SizedBox(height: 12),
-                _buildOrgInfoRow(AppTranslations.of(context).text('last_updated'), _formatDate(org.updatedAt!, context)),
-              ],
-              if (org.address?.isNotEmpty == true) ...[
-                const SizedBox(height: 12),
-                _buildOrgInfoRow(AppTranslations.of(context).text('address_label'), org.address!),
-              ],
-              if (org.phone?.isNotEmpty == true) ...[
-                const SizedBox(height: 12),
-                _buildOrgInfoRow(AppTranslations.of(context).text('phone_label'), org.phone!),
-              ],
-              if (org.email?.isNotEmpty == true) ...[
-                const SizedBox(height: 12),
-                _buildOrgInfoRow(AppTranslations.of(context).text('email_label'), org.email!),
-              ],
-              if (org.bankName?.isNotEmpty == true) ...[
-                const SizedBox(height: 12),
-                _buildOrgInfoRow(AppTranslations.of(context).text('bank_name'), org.bankName!),
-              ],
-              if (org.bankAccountNumber?.isNotEmpty == true) ...[
-                const SizedBox(height: 12),
-                _buildOrgInfoRow(AppTranslations.of(context).text('account_number'), org.bankAccountNumber!),
-              ],
-              if (org.bankAccountName?.isNotEmpty == true) ...[
-                const SizedBox(height: 12),
-                _buildOrgInfoRow(AppTranslations.of(context).text('account_holder'), org.bankAccountName!),
-              ],
-              if (org.taxCode?.isNotEmpty == true) ...[
-                const SizedBox(height: 12),
-                _buildOrgInfoRow(AppTranslations.of(context).text('tax_code'), org.taxCode!),
-              ],
+              // ── Gradient header ──────────────────────
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [_DS.primaryMid, _DS.primaryDeep],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                ),
+                child: Row(children: [
+                  Container(
+                    width: 52, height: 52,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.25),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.4), width: 1.5),
+                    ),
+                    child: Center(
+                      child: Text(
+                        org.name[0].toUpperCase(),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 22,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          AppTranslations.of(context).text('org_info'),
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.7),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 1.2,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          org.name,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.3,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                ]),
+              ),
+
+              // ── Info rows ────────────────────────────
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildInfoTile(Icons.badge_outlined,
+                          AppTranslations.of(context).text('id'), org.id,
+                          monospace: true),
+                      _buildInfoTile(Icons.calendar_today_outlined,
+                          AppTranslations.of(context).text('created_date'),
+                          _formatDate(org.createdAt, context)),
+                      if (org.updatedAt != null)
+                        _buildInfoTile(Icons.update_rounded,
+                            AppTranslations.of(context).text('last_updated'),
+                            _formatDate(org.updatedAt!, context)),
+                      if (org.address?.isNotEmpty == true)
+                        _buildInfoTile(Icons.location_on_outlined,
+                            AppTranslations.of(context).text('address_label'),
+                            org.address!),
+                      if (org.phone?.isNotEmpty == true)
+                        _buildInfoTile(Icons.phone_outlined,
+                            AppTranslations.of(context).text('phone_label'),
+                            org.phone!),
+                      if (org.email?.isNotEmpty == true)
+                        _buildInfoTile(Icons.email_outlined,
+                            AppTranslations.of(context).text('email_label'),
+                            org.email!),
+                      if (org.bankName?.isNotEmpty == true)
+                        _buildInfoTile(Icons.account_balance_outlined,
+                            AppTranslations.of(context).text('bank_name'),
+                            org.bankName!),
+                      if (org.bankAccountNumber?.isNotEmpty == true)
+                        _buildInfoTile(Icons.credit_card_outlined,
+                            AppTranslations.of(context).text('account_number'),
+                            org.bankAccountNumber!),
+                      if (org.bankAccountName?.isNotEmpty == true)
+                        _buildInfoTile(Icons.person_outline_rounded,
+                            AppTranslations.of(context).text('account_holder'),
+                            org.bankAccountName!),
+                      if (org.taxCode?.isNotEmpty == true)
+                        _buildInfoTile(Icons.receipt_long_outlined,
+                            AppTranslations.of(context).text('tax_code'),
+                            org.taxCode!),
+                      const SizedBox(height: 4),
+                    ],
+                  ),
+                ),
+              ),
+
+              // ── Action ───────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+                child: Row(children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: _DS.textSecondary,
+                        side: BorderSide(color: Colors.grey.withValues(alpha: 0.3)),
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14)),
+                      ),
+                      child: Text(
+                        AppTranslations.of(context).text('close'),
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ),
+                ]),
+              ),
             ],
           ),
         ),
-        actions: [
-          FilledButton(
-            onPressed: () => Navigator.pop(context),
-            style: FilledButton.styleFrom(backgroundColor: _DS.primary),
-            child: Text(AppTranslations.of(context).text('close')),
+      ),
+    );
+  }
+
+  Widget _buildInfoTile(IconData icon, String label, String value,
+      {bool monospace = false}) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+      decoration: BoxDecoration(
+        color: _DS.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.withValues(alpha: 0.12)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            margin: const EdgeInsets.only(top: 1),
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: _DS.primaryLight,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 14, color: _DS.primary),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: _DS.textSecondary,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                SelectableText(
+                  value,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: _DS.textPrimary,
+                    fontFamily: monospace ? 'monospace' : null,
+                    letterSpacing: monospace ? 0.5 : 0,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -1380,7 +1755,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   void _showMigrateOrganizationDialog(
-      Organization sourceOrg, String ownerId, bool deleteAfter) async {
+    Organization sourceOrg, String ownerId, bool deleteAfter) async {
     final targetCtrl = TextEditingController();
     Map<String, int>? preview;
     String? status;
@@ -1392,171 +1767,414 @@ class _DashboardScreenState extends State<DashboardScreen>
       context: context,
       barrierDismissible: !started,
       builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20)),
-          title: Text(
-            deleteAfter
-                ? AppTranslations.of(context).text('migrate_and_delete')
-                : AppTranslations.of(context).text('migrate_org_data'),
-            style:
-                const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-          ),
-          content: SingleChildScrollView(
+        builder: (context, setState) => Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          elevation: 0,
+          backgroundColor: Colors.white,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: _getDialogWidth(context),
+              maxHeight: MediaQuery.of(context).size.height * 0.9,
+            ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // ── Gradient header ──────────────────────
                 Container(
-                  padding: const EdgeInsets.all(12),
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 24),
                   decoration: BoxDecoration(
-                      color: _DS.primaryLight,
-                      borderRadius: BorderRadius.circular(10)),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(AppTranslations.of(context).text('source_org_info'),
-                          style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12,
-                              color: _DS.textSecondary)),
-                      const SizedBox(height: 6),
-                      Text(
-                          AppTranslations.of(context).textWithParams(
-                              'name_with_value', {'name': sourceOrg.name}),
-                          style: const TextStyle(fontWeight: FontWeight.w600)),
-                      Text(
-                          AppTranslations.of(context).textWithParams(
-                              'id_with_value', {'id': sourceOrg.id}),
-                          style: TextStyle(
-                              fontSize: 12, color: _DS.textSecondary)),
-                    ],
+                    gradient: LinearGradient(
+                      colors: deleteAfter
+                          ? [const Color(0xFFEF4444), const Color(0xFFB91C1C)]
+                          : [_DS.primaryMid, _DS.primaryDeep],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(24)),
+                  ),
+                  child: Column(children: [
+                    Container(
+                      width: 56, height: 56,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        deleteAfter
+                            ? Icons.delete_sweep_rounded
+                            : Icons.compare_arrows_rounded,
+                        color: Colors.white,
+                        size: 28,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      deleteAfter
+                          ? AppTranslations.of(context).text('migrate_and_delete')
+                          : AppTranslations.of(context).text('migrate_org_data'),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.3,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ]),
+                ),
+
+                // ── Body ────────────────────────────────
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Source org info card
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: _DS.primaryLight,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                                color: _DS.primary.withValues(alpha: 0.2)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                AppTranslations.of(context).text('source_org_info'),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 11,
+                                  color: _DS.primary,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                AppTranslations.of(context).textWithParams(
+                                    'name_with_value', {'name': sourceOrg.name}),
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    color: _DS.textPrimary),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                AppTranslations.of(context).textWithParams(
+                                    'id_with_value', {'id': sourceOrg.id}),
+                                style: const TextStyle(
+                                    fontSize: 12, color: _DS.textSecondary),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Target org ID field
+                        TextField(
+                          controller: targetCtrl,
+                          maxLength: 50,
+                          enabled: !started,
+                          decoration: InputDecoration(
+                            counterText: '',
+                            labelText: AppTranslations.of(context).text('target_org_id'),
+                            hintText: AppTranslations.of(context).text('enter_target_org_id'),
+                            helperText: AppTranslations.of(context).text('target_org_id_placeholder'),
+                            prefixIcon: const Icon(Icons.business_outlined),
+                            filled: true,
+                            fillColor: _DS.surface,
+                            border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12)),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide(
+                                  color: Colors.grey.withValues(alpha: 0.25)),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(
+                                  color: _DS.primary, width: 1.8),
+                            ),
+                          ),
+                        ),
+
+                        // Preview results
+                        if (preview != null) ...[
+                          const SizedBox(height: 14),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF0FDF4),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                  color: const Color(0xFF86EFAC)),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Row(children: [
+                                  Icon(Icons.preview_rounded,
+                                      size: 15, color: Color(0xFF16A34A)),
+                                  SizedBox(width: 6),
+                                  Text(
+                                    'Preview',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 12,
+                                      color: Color(0xFF16A34A),
+                                    ),
+                                  ),
+                                ]),
+                                const SizedBox(height: 8),
+                                Text(
+                                  AppTranslations.of(context).textWithParams(
+                                      'preview_stats', {
+                                    'buildings': preview?['buildings'] ?? 0,
+                                    'rooms': preview?['rooms'] ?? 0,
+                                    'tenants': preview?['tenants'] ?? 0,
+                                    'payments': preview?['payments'] ?? 0,
+                                  }),
+                                  style: const TextStyle(
+                                      fontSize: 13, color: _DS.textPrimary),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+
+                        // Status message
+                        if (status != null) ...[
+                          const SizedBox(height: 12),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 14, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: _DS.surface,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                  color: Colors.grey.withValues(alpha: 0.2)),
+                            ),
+                            child: Text(
+                              status!,
+                              style: const TextStyle(
+                                  fontSize: 13, color: _DS.textSecondary),
+                            ),
+                          ),
+                        ],
+
+                        // Progress bar
+                        if (loading) ...[
+                          const SizedBox(height: 16),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: LinearProgressIndicator(
+                              value: progress,
+                              minHeight: 8,
+                              backgroundColor: deleteAfter
+                                  ? const Color(0xFFFFEBEB)
+                                  : _DS.primaryLight,
+                              valueColor: AlwaysStoppedAnimation(
+                                deleteAfter ? Colors.red : _DS.primary,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            '${(progress * 100).toStringAsFixed(0)}%',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: deleteAfter ? Colors.red : _DS.primary,
+                            ),
+                          ),
+                        ],
+
+                        // Destructive warning
+                        if (deleteAfter && !started) ...[
+                          const SizedBox(height: 14),
+                          _buildWarningBanner(
+                            AppTranslations.of(context).text('warning_cannot_undo'),
+                            Colors.red,
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
                 ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: targetCtrl,
-                  maxLength: 50,
-                  decoration: InputDecoration(
-                    counterText: '',
-                    labelText: AppTranslations.of(context).text('target_org_id'),
-                    hintText: AppTranslations.of(context).text('enter_target_org_id'),
-                    helperText: AppTranslations.of(context).text('target_org_id_placeholder'),
-                    border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10)),
+
+                // ── Actions ──────────────────────────────
+                if (!started) ...[
+                  const Divider(height: 1),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+                    child: Row(children: [
+                      // Cancel
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(context),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: _DS.textSecondary,
+                            side: BorderSide(
+                                color: Colors.grey.withValues(alpha: 0.3)),
+                            padding: const EdgeInsets.symmetric(vertical: 13),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14)),
+                          ),
+                          child: Text(
+                            AppTranslations.of(context).text('cancel'),
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // Preview
+                      OutlinedButton(
+                        onPressed: () async {
+                          setState(() => status = null);
+                          final id = targetCtrl.text.trim();
+                          if (id.isEmpty) {
+                            setState(() => status = AppTranslations.of(context)
+                                .text('please_enter_target_id'));
+                            return;
+                          }
+                          setState(() => status = AppTranslations.of(context)
+                              .text('fetching_preview'));
+                          try {
+                            final result = await _organizationService
+                                .getMigrationPreview(sourceOrg.id);
+                            setState(() {
+                              preview = result;
+                              status = AppTranslations.of(context)
+                                  .text('fetched_preview');
+                            });
+                          } catch (e) {
+                            setState(() => status =
+                                AppTranslations.of(context).textWithParams(
+                                    'preview_error', {'error': e}));
+                          }
+                        },
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: _DS.primary,
+                          side: BorderSide(
+                              color: _DS.primary.withValues(alpha: 0.4)),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 13),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14)),
+                        ),
+                        child: Text(
+                          AppTranslations.of(context).text('preview'),
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // Migrate button
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: () async {
+                            final targetId = targetCtrl.text.trim();
+                            if (targetId.isEmpty) {
+                              setState(() => status = AppTranslations.of(context)
+                                  .text('please_enter_target_id'));
+                              return;
+                            }
+                            setState(() {
+                              loading = true;
+                              started = true;
+                              status = deleteAfter
+                                  ? AppTranslations.of(context)
+                                      .text('migrating_and_deleting')
+                                  : AppTranslations.of(context)
+                                      .text('migrating_data');
+                              progress = 0.0;
+                            });
+                            bool success = false;
+                            try {
+                              if (deleteAfter) {
+                                success = await _organizationService
+                                    .migrateAndDeleteOrganization(
+                                  ownerId: ownerId,
+                                  sourceOrgId: sourceOrg.id,
+                                  targetOrgId: targetId,
+                                  onProgress: (p) =>
+                                      setState(() => progress = p),
+                                  onStatusUpdate: (msg) =>
+                                      setState(() => status = msg),
+                                );
+                              } else {
+                                success = await _organizationService
+                                    .migrateOrganization(
+                                  ownerId: ownerId,
+                                  sourceOrgId: sourceOrg.id,
+                                  targetOrgId: targetId,
+                                  onProgress: (p) =>
+                                      setState(() => progress = p),
+                                  onStatusUpdate: (msg) =>
+                                      setState(() => status = msg),
+                                );
+                              }
+                            } catch (e) {
+                              setState(() => status =
+                                  AppTranslations.of(context).textWithParams(
+                                      'error', {'error': e}));
+                            }
+                            setState(() {
+                              loading = false;
+                              started = false;
+                            });
+                            if (success) {
+                              if (mounted) {
+                                Navigator.pop(context);
+                                _showSuccessSnack(deleteAfter
+                                    ? AppTranslations.of(context)
+                                        .text('migrated_and_deleted_success')
+                                    : AppTranslations.of(context)
+                                        .text('migrated_data_success'));
+                              }
+                              _refreshOrgs(ownerId);
+                            } else {
+                              setState(() => status = AppTranslations.of(context)
+                                  .text('operation_failed'));
+                            }
+                          },
+                          icon: Icon(
+                            deleteAfter
+                                ? Icons.delete_sweep_rounded
+                                : Icons.compare_arrows_rounded,
+                            size: 16,
+                          ),
+                          label: Text(
+                            deleteAfter
+                                ? AppTranslations.of(context)
+                                    .text('migrate_and_delete_action')
+                                : AppTranslations.of(context)
+                                    .text('migrate_action'),
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: deleteAfter
+                                ? Colors.red
+                                : _DS.primary,
+                            padding: const EdgeInsets.symmetric(vertical: 13),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14)),
+                            elevation: 0,
+                          ),
+                        ),
+                      ),
+                    ]),
                   ),
-                ),
-                if (preview != null) ...[
-                  const SizedBox(height: 8),
-                  Text(AppTranslations.of(context).text('preview_data_migrate'),
-                      style:
-                          const TextStyle(fontWeight: FontWeight.bold)),
-                  Text(AppTranslations.of(context).textWithParams('preview_stats', {
-                    'buildings': preview?['buildings'] ?? 0,
-                    'rooms': preview?['rooms'] ?? 0,
-                    'tenants': preview?['tenants'] ?? 0,
-                    'payments': preview?['payments'] ?? 0,
-                  })),
-                ],
-                if (status != null) ...[
-                  const SizedBox(height: 8),
-                  Text(status!, style: const TextStyle(fontSize: 13)),
-                ],
-                if (loading) ...[
-                  const SizedBox(height: 16),
-                  LinearProgressIndicator(value: progress),
-                  const SizedBox(height: 8),
-                  Text('${(progress * 100).toStringAsFixed(0)}%'),
                 ],
               ],
             ),
           ),
-          actions: [
-            if (!started) ...[
-              TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: Text(AppTranslations.of(context).text('cancel'))),
-              TextButton(
-                onPressed: () async {
-                  setState(() => status = null);
-                  final id = targetCtrl.text.trim();
-                  if (id.isEmpty) {
-                    setState(() => status = AppTranslations.of(context).text('please_enter_target_id'));
-                    return;
-                  }
-                  setState(() => status = AppTranslations.of(context).text('fetching_preview'));
-                  try {
-                    final result = await _organizationService.getMigrationPreview(sourceOrg.id);
-                    setState(() {
-                      preview = result;
-                      status = AppTranslations.of(context).text('fetched_preview');
-                    });
-                  } catch (e) {
-                    setState(() => status = AppTranslations.of(context).textWithParams('preview_error', {'error': e}));
-                  }
-                },
-                child: Text(AppTranslations.of(context).text('preview')),
-              ),
-              FilledButton(
-                onPressed: () async {
-                  final targetId = targetCtrl.text.trim();
-                  if (targetId.isEmpty) {
-                    setState(() => status = AppTranslations.of(context).text('please_enter_target_id'));
-                    return;
-                  }
-                  setState(() {
-                    loading = true;
-                    started = true;
-                    status = deleteAfter
-                        ? AppTranslations.of(context).text('migrating_and_deleting')
-                        : AppTranslations.of(context).text('migrating_data');
-                    progress = 0.0;
-                  });
-                  bool success = false;
-                  try {
-                    if (deleteAfter) {
-                      success = await _organizationService.migrateAndDeleteOrganization(
-                        ownerId: ownerId,
-                        sourceOrgId: sourceOrg.id,
-                        targetOrgId: targetId,
-                        onProgress: (p) => setState(() => progress = p),
-                        onStatusUpdate: (msg) => setState(() => status = msg),
-                      );
-                    } else {
-                      success = await _organizationService.migrateOrganization(
-                        ownerId: ownerId,
-                        sourceOrgId: sourceOrg.id,
-                        targetOrgId: targetId,
-                        onProgress: (p) => setState(() => progress = p),
-                        onStatusUpdate: (msg) => setState(() => status = msg),
-                      );
-                    }
-                  } catch (e) {
-                    setState(() => status = AppTranslations.of(context).textWithParams('error', {'error': e}));
-                  }
-                  setState(() {
-                    loading = false;
-                    started = false;
-                  });
-                  if (success) {
-                    if (mounted) {
-                      Navigator.pop(context);
-                      _showSuccessSnack(deleteAfter
-                          ? AppTranslations.of(context).text('migrated_and_deleted_success')
-                          : AppTranslations.of(context).text('migrated_data_success'));
-                    }
-                    _refreshOrgs(ownerId);
-                  } else {
-                    setState(() => status = AppTranslations.of(context).text('operation_failed'));
-                  }
-                },
-                style: FilledButton.styleFrom(backgroundColor: _DS.primary),
-                child: Text(deleteAfter
-                    ? AppTranslations.of(context).text('migrate_and_delete_action')
-                    : AppTranslations.of(context).text('migrate_action')),
-              ),
-            ],
-          ],
         ),
       ),
     );
@@ -2351,7 +2969,6 @@ class _DashboardScreenState extends State<DashboardScreen>
   Widget _buildOrgCard(BuildContext context, Organization org,
       Owner owner, bool isSmall, int index) {
     final gradient = _DS.orgGradient(org.id);
-    final orgColor = gradient[0];
 
     // Staggered slide-up + fade entrance
     final delay = index * 0.12;
@@ -2747,23 +3364,6 @@ class _DashboardScreenState extends State<DashboardScreen>
             child: Text(text,
                 style: TextStyle(fontSize: 13, color: Colors.red[700]))),
       ]),
-    );
-  }
-
-  Widget _buildOrgInfoRow(String label, String value) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label,
-            style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 11,
-                color: _DS.textSecondary,
-                letterSpacing: 0.3)),
-        const SizedBox(height: 3),
-        SelectableText(value,
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-      ],
     );
   }
 
