@@ -1672,14 +1672,14 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
               pinned: true,
               stretch: true,
               backgroundColor: Colors.blue.shade800,
+              automaticallyImplyLeading: false,
               leading: _isSelectionMode
                   ? IconButton(
                       icon: const Icon(Icons.close_rounded, color: Colors.white),
                       onPressed: _clearSelection,
                     )
                   : IconButton(
-                      icon: const Icon(Icons.arrow_back_rounded,
-                          color: Colors.white),
+                      icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
                       onPressed: () => Navigator.of(context).pop(),
                     ),
               title: _isSelectionMode
@@ -1691,12 +1691,11 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                       style: const TextStyle(
                           color: Colors.white, fontWeight: FontWeight.w600),
                     )
-                  : null, // hidden when not selecting — flexibleSpace shows title
+                  : null,
               actions: [
                 if (_isSelectionMode) ...[
                   IconButton(
-                    icon: const Icon(Icons.select_all_rounded,
-                        color: Colors.white),
+                    icon: const Icon(Icons.select_all_rounded, color: Colors.white),
                     onPressed: _selectAll,
                     tooltip: t['room_select_all_tooltip'],
                   ),
@@ -1708,15 +1707,15 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                     ),
                 ] else ...[
                   IconButton(
-                    icon: const Icon(Icons.checklist_rtl_rounded,
-                        color: Colors.white),
+                    icon: const Icon(Icons.checklist_rtl_rounded, color: Colors.white),
                     onPressed: () => setState(() => _isSelectionMode = true),
                     tooltip: t['room_multi_select_tooltip'],
                   ),
                 ],
               ],
               flexibleSpace: FlexibleSpaceBar(
-                collapseMode: CollapseMode.parallax,
+                collapseMode: CollapseMode.pin,
+                // ⚠️ No title here — avoids the bleed-through overlap
                 background: Container(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
@@ -1725,114 +1724,103 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                       end: Alignment.bottomRight,
                     ),
                   ),
-                  child: SafeArea(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 52, 16, 16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          // Building name row
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.2),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: const Icon(Icons.apartment_rounded,
-                                    color: Colors.white, size: 22),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  widget.building.name,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: -0.3,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Building name row
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.2),
+                                    borderRadius: BorderRadius.circular(10),
                                   ),
-                                  overflow: TextOverflow.ellipsis,
+                                  child: const Icon(Icons.apartment_rounded,
+                                      color: Colors.white, size: 22),
                                 ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-                          // Address + room count chips row
-                          Row(
-                            children: [
-                              // Address chip
-                              Expanded(
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.location_on_rounded,
-                                        size: 13,
-                                        color: Colors.white.withOpacity(0.75)),
-                                    const SizedBox(width: 4),
-                                    Flexible(
-                                      child: Text(
-                                        widget.building.address,
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          color: Colors.white.withOpacity(0.85),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    widget.building.name,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: -0.3,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            // Address + room count row
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.location_on_rounded,
+                                          size: 13,
+                                          color: Colors.white.withOpacity(0.75)),
+                                      const SizedBox(width: 4),
+                                      Flexible(
+                                        child: Text(
+                                          widget.building.address,
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            color: Colors.white.withOpacity(0.85),
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
                                         ),
-                                        overflow: TextOverflow.ellipsis,
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(width: 8),
-                              // Room count pill
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 5),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.2),
-                                  borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(
-                                      color: Colors.white.withOpacity(0.3),
-                                      width: 1),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(Icons.meeting_room_rounded,
-                                        size: 13, color: Colors.white),
-                                    const SizedBox(width: 5),
-                                    Text(
-                                      t.textWithParams('room_total_count',
-                                          {'count': _cachedRooms?.length ?? 0}),
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w600,
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 10, vertical: 5),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.2),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(
+                                        color: Colors.white.withOpacity(0.3), width: 1),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.meeting_room_rounded,
+                                          size: 13, color: Colors.white),
+                                      const SizedBox(width: 5),
+                                      Text(
+                                        t.textWithParams('room_total_count',
+                                            {'count': _cachedRooms?.length ?? 0}),
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w600,
+                                        ),
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
-                              ),
-                            ],
-                          ),
-                        ],
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
+                    ],
                   ),
                 ),
-                // Collapsed title (shown when scrolled)
-                title: Text(
-                  widget.building.name,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                titlePadding: const EdgeInsetsDirectional.only(
-                    start: 56, bottom: 14),
               ),
             ),
 
