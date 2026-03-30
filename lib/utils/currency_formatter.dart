@@ -137,13 +137,11 @@ extension IntCurrencyFormat on int {
 
 /// Helper to parse formatted currency back to number
 class CurrencyParser {
-  /// Parse "5,000,000" or "5,000,000 đ" → 5000000.0
   static double parse(String formattedValue) {
-    final cleaned = formattedValue.replaceAll(RegExp(r'[^\d.]'), '');
+    final cleaned = formattedValue.replaceAll(RegExp(r'[^\d]'), '');
     return double.tryParse(cleaned) ?? 0.0;
   }
   
-  /// Parse "5,000,000" → 5000000
   static int parseInt(String formattedValue) {
     final cleaned = formattedValue.replaceAll(RegExp(r'[^\d]'), '');
     return int.tryParse(cleaned) ?? 0;

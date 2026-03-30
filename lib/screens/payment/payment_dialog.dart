@@ -291,6 +291,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
     if ((tenant.monthlyRent ?? 0) > 0 && _lineItems.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
+          duration: const Duration(seconds: 5),
           content: Text(t.textWithParams('payment_rent_suggestion',
               {'amount': NumberFormat('#,###').format(tenant.monthlyRent)})),
           action: SnackBarAction(
@@ -307,87 +308,13 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                   }),
                 ));
               });
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
             },
           ),
+          dismissDirection: DismissDirection.down,
+          showCloseIcon: true,
         ),
       );
-    }
-  }
-
-  Future<void> _loadRooms() async {
-    if (_selectedBuildingId == null) return;
-    final t = AppTranslations.of(context);
-    try {
-      final rooms = await widget.roomService
-          .getBuildingRooms(_selectedBuildingId!, widget.organization.id);
-      setState(() {
-        _rooms = rooms;
-        if (widget.room == null) {
-          _selectedRoomId = null;
-          _selectedTenantId = null;
-          _selectedTenantName = null;
-          _availableTenants = [];
-        }
-      });
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(
-                t.textWithParams('payment_err_load_rooms', {'error': e}))));
-      }
-    }
-  }
-
-  Future<void> _loadTenantsForRoom() async {
-    final t = AppTranslations.of(context);
-
-    if (_selectedRoomId == null) {
-      setState(() {
-        if (widget.room == null) {
-          _availableTenants = [];
-          _selectedTenantId = null;
-          _selectedTenantName = null;
-        }
-      });
-      return;
-    }
-
-    try {
-      final filtered =
-          _allTenants.where((tn) => tn.roomId == _selectedRoomId).toList();
-
-      setState(() {
-        _availableTenants = filtered;
-        if (_availableTenants.length == 1) {
-          _selectedTenantId = _availableTenants.first.id;
-          _selectedTenantName = _availableTenants.first.fullName;
-        } else if (widget.room == null) {
-          _selectedTenantId = null;
-          _selectedTenantName = null;
-        }
-      });
-
-      if (mounted) {
-        if (_availableTenants.isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(t['payment_no_tenants_room']),
-            duration: const Duration(seconds: 2),
-          ));
-        } else if (_availableTenants.length == 1) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(t.textWithParams(
-                'payment_auto_selected',
-                {'name': _availableTenants.first.fullName})),
-            duration: const Duration(seconds: 2),
-          ));
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(
-                t.textWithParams('payment_err_load_tenants', {'error': e}))));
-      }
     }
   }
 
@@ -456,8 +383,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                   double.tryParse(electricityStartReadingController.text) ?? 0;
               final end =
                   double.tryParse(electricityEndReadingController.text) ?? 0;
-              final price =
-                  double.tryParse(electricityPriceController.text) ?? 0;
+              final price = CurrencyParser.parse(electricityPriceController.text);
               final usage = end - start;
               if (usage > 0 && price > 0) {
                 amountController.text = (usage * price).toStringAsFixed(0);
@@ -467,7 +393,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
               final start =
                   double.tryParse(waterStartReadingController.text) ?? 0;
               final end = double.tryParse(waterEndReadingController.text) ?? 0;
-              final price = double.tryParse(waterPriceController.text) ?? 0;
+              final price = CurrencyParser.parse(waterPriceController.text);
               final usage = end - start;
               if (usage > 0 && price > 0) {
                 amountController.text = (usage * price).toStringAsFixed(0);
@@ -978,9 +904,8 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                           onPressed: () {
                             if (selectedType != null &&
                                 amountController.text.isNotEmpty) {
-                              final amount = double.tryParse(
-                                  amountController.text.replaceAll(',', ''));
-                              if (amount != null && amount > 0) {
+                              final amount = CurrencyParser.parse(amountController.text);
+                              if (amount > 0) {
                                 final res = <String, dynamic>{
                                   'type': selectedType!,
                                   'amount': amount,
@@ -1293,7 +1218,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
           type: item.type,
           status: _selectedPaymentStatus ?? PaymentStatus.pending,
           amount: item.amount,
-          paidAmount: double.parse(_paidAmountController.text),
+          paidAmount: CurrencyParser.parse(_paidAmountController.text),
           currency: _currencyController.text,
           paymentMethod: _selectedPaymentMethod,
           transactionId: _transactionIdController.text.isEmpty
@@ -1323,10 +1248,10 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
           metadata: null,
           lateFee: _lateFeeController.text.isEmpty
               ? null
-              : double.parse(_lateFeeController.text),
+              : CurrencyParser.parse(_lateFeeController.text),
           taxAmount: _taxAmountController.text.isEmpty
               ? null
-              : double.parse(_taxAmountController.text),
+              : CurrencyParser.parse(_taxAmountController.text),
           isRecurring: _isRecurring,
           recurringParentId: _recurringParentIdController.text.isEmpty
               ? null
@@ -1356,7 +1281,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
           type: primaryType,
           status: _selectedPaymentStatus ?? PaymentStatus.pending,
           amount: _totalAmount,
-          paidAmount: double.parse(_paidAmountController.text),
+          paidAmount: CurrencyParser.parse(_paidAmountController.text),
           currency: _currencyController.text,
           paymentMethod: _selectedPaymentMethod,
           transactionId: _transactionIdController.text.isEmpty
@@ -1376,10 +1301,10 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
           metadata: null,
           lateFee: _lateFeeController.text.isEmpty
               ? null
-              : double.parse(_lateFeeController.text),
+              : CurrencyParser.parse(_lateFeeController.text),
           taxAmount: _taxAmountController.text.isEmpty
               ? null
-              : double.parse(_taxAmountController.text),
+              : CurrencyParser.parse(_taxAmountController.text),
           isRecurring: _isRecurring,
           recurringParentId: _recurringParentIdController.text.isEmpty
               ? null

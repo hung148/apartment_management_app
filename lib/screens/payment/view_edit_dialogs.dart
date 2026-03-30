@@ -1220,9 +1220,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                 !electricityUseDirectAmount) {
               final s = double.tryParse(elecStartCtrl.text) ?? 0;
               final e = double.tryParse(elecEndCtrl.text) ?? 0;
-              final p = double.tryParse(
-                      elecPriceCtrl.text.replaceAll(',', '')) ??
-                  0;
+              final p = CurrencyParser.parse(elecPriceCtrl.text);
               if (e >= s && p > 0) {
                 amountController.text = ((e - s) * p).toStringAsFixed(0);
               }
@@ -1230,9 +1228,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                 !waterUseDirectAmount) {
               final s = double.tryParse(waterStartCtrl.text) ?? 0;
               final e = double.tryParse(waterEndCtrl.text) ?? 0;
-              final p = double.tryParse(
-                      waterPriceCtrl.text.replaceAll(',', '')) ??
-                  0;
+              final p = CurrencyParser.parse(waterPriceCtrl.text);
               if (e >= s && p > 0) {
                 amountController.text = ((e - s) * p).toStringAsFixed(0);
               }
@@ -1263,7 +1259,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                       padding: const EdgeInsets.symmetric(vertical: 9),
                       decoration: BoxDecoration(
                         color: !useDirectAmount
-                            ? color.withOpacity(0.15)
+                            ? color.withValues(alpha: 0.15)
                             : Colors.transparent,
                         borderRadius: const BorderRadius.horizontal(
                             left: Radius.circular(9)),
@@ -1294,7 +1290,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                 Container(
                     width: 1,
                     height: 28,
-                    color: color.withOpacity(0.18)),
+                    color: color.withValues(alpha: 0.18)),
                 Expanded(
                   child: GestureDetector(
                     onTap: () {
@@ -1306,7 +1302,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                       padding: const EdgeInsets.symmetric(vertical: 9),
                       decoration: BoxDecoration(
                         color: useDirectAmount
-                            ? color.withOpacity(0.15)
+                            ? color.withValues(alpha: 0.15)
                             : Colors.transparent,
                         borderRadius: const BorderRadius.horizontal(
                             right: Radius.circular(9)),
@@ -1662,9 +1658,8 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                             onPressed: () {
                               if (selectedType != null &&
                                   amountController.text.isNotEmpty) {
-                                final amount = double.tryParse(
-                                    amountController.text.replaceAll(',', ''));
-                                if (amount != null && amount > 0) {
+                                final amount = CurrencyParser.parse(amountController.text);
+                                if (amount > 0) {
                                   final r = <String, dynamic>{
                                     'type': selectedType!,
                                     'amount': amount,
@@ -1683,9 +1678,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                                     r['electricityEndReading'] =
                                         double.tryParse(elecEndCtrl.text);
                                     r['electricityEndDate'] = elecEndDate;
-                                    r['electricityPricePerUnit'] =
-                                        double.tryParse(elecPriceCtrl.text
-                                            .replaceAll(',', ''));
+                                    r['electricityPricePerUnit'] = CurrencyParser.parse(elecPriceCtrl.text);
                                   }
                                   if (selectedType == PaymentType.water &&
                                       !waterUseDirectAmount) {
@@ -1695,9 +1688,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                                     r['waterEndReading'] =
                                         double.tryParse(waterEndCtrl.text);
                                     r['waterEndDate'] = waterEndDate;
-                                    r['waterPricePerUnit'] =
-                                        double.tryParse(waterPriceCtrl.text
-                                            .replaceAll(',', ''));
+                                    r['waterPricePerUnit'] = CurrencyParser.parse(waterPriceCtrl.text);
                                   }
                                   if (selectedType == PaymentType.rent ||
                                       selectedType == PaymentType.water) {
@@ -1920,8 +1911,8 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
       }).join('\n');
 
       final double tax = _taxAmountController.text.isEmpty
-          ? 0
-          : double.parse(_taxAmountController.text.replaceAll(',', ''));
+        ? 0
+        : CurrencyParser.parse(_taxAmountController.text);
       final double totalToCollect =
           _totalAmount + tax + (widget.payment.lateFee ?? 0);
 
@@ -1936,7 +1927,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
             _notesController.text.isEmpty ? null : _notesController.text,
         'taxAmount': _taxAmountController.text.isEmpty
             ? null
-            : double.parse(_taxAmountController.text),
+            : CurrencyParser.parse(_taxAmountController.text),
       };
 
       if (_selectedPaymentStatus == PaymentStatus.paid) {
