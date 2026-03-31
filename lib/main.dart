@@ -9,6 +9,7 @@ import 'package:apartment_management_project_2/services/tenants_service.dart';
 import 'package:apartment_management_project_2/services/update_services.dart';
 import 'package:apartment_management_project_2/utils/app_localizations.dart';
 import 'package:apartment_management_project_2/utils/app_router.dart';
+import 'package:apartment_management_project_2/widgets/chat/chat_manager.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -20,6 +21,8 @@ import 'firebase_options.dart';
 import 'package:get_it/get_it.dart';
 import 'package:flutter_localizations/flutter_localizations.dart'; 
 import 'package:window_manager/window_manager.dart';
+
+final navigatorKey = GlobalKey<NavigatorState>();
 
 class LocaleNotifier extends ChangeNotifier {
   Locale _locale = const Locale('vi', 'VN'); // Mặc định tiếng Việt
@@ -123,6 +126,16 @@ class MyApp extends StatelessWidget {
         final localeNotifier = getIt<LocaleNotifier>();
         
         return MaterialApp(
+          navigatorKey: navigatorKey,
+          builder: (context, child) {
+            WidgetsBinding.instance.addPostFrameCallback(
+              (_) {
+                ChatOverlayManager.install();
+              }
+            );
+
+            return child!;
+          },
           locale: localeNotifier.locale, // Lấy locale từ notifier
           localizationsDelegates: const [
             AppTranslationsDelegate(), // Bộ từ điển của bạn
