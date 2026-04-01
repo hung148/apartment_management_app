@@ -191,26 +191,18 @@ Win32Window::MessageHandler(HWND hwnd,
       auto newRectSize = reinterpret_cast<RECT*>(lparam);
       LONG newWidth = newRectSize->right - newRectSize->left;
       LONG newHeight = newRectSize->bottom - newRectSize->top;
-      SetWindowPos(hwnd, nullptr, newRectSize->left, newRectSize->top,
-                  newWidth, newHeight, SWP_NOZORDER | SWP_NOACTIVATE);
+
+      SetWindowPos(hwnd, nullptr, newRectSize->left, newRectSize->top, newWidth,
+                   newHeight, SWP_NOZORDER | SWP_NOACTIVATE);
+
       return 0;
     }
-
     case WM_SIZE: {
-      KillTimer(hwnd, 1);
-      SetTimer(hwnd, 1, 50, nullptr);
-      return 0;
-    }
-
-    case WM_TIMER: {
-      if (wparam == 1) {
-        KillTimer(hwnd, 1);
-        RECT rect = GetClientArea();
-        if (child_content_ != nullptr) {
-          MoveWindow(child_content_, rect.left, rect.top,
-                    rect.right - rect.left,
-                    rect.bottom - rect.top, TRUE);
-        }
+      RECT rect = GetClientArea();
+      if (child_content_ != nullptr) {
+        // Size and position the child window.
+        MoveWindow(child_content_, rect.left, rect.top, rect.right - rect.left,
+                   rect.bottom - rect.top, TRUE);
       }
       return 0;
     }
@@ -224,13 +216,6 @@ Win32Window::MessageHandler(HWND hwnd,
     case WM_DWMCOLORIZATIONCOLORCHANGED:
       UpdateTheme(hwnd);
       return 0;
-
-    case WM_GETMINMAXINFO: {
-      MINMAXINFO* info = reinterpret_cast<MINMAXINFO*>(lparam);
-      info->ptMinTrackSize.x = 480;
-      info->ptMinTrackSize.y = 600;
-      return 0;
-    }
   }
 
   return DefWindowProc(window_handle_, message, wparam, lparam);

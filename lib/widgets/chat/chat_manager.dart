@@ -23,7 +23,7 @@ class ChatOverlayManager {
     navigatorKey.currentState!.overlay!.insert(_entry!);
   }
 
-  static void remove() {
+  static void uninstall() {
     _entry?.remove();
     _entry = null;
   }

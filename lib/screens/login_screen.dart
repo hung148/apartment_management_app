@@ -1,7 +1,6 @@
 import 'dart:ui';
 
 import 'package:apartment_management_project_2/main.dart';
-import 'package:apartment_management_project_2/screens/dashboard_screen.dart';
 import 'package:apartment_management_project_2/services/auth_service.dart';
 import 'package:apartment_management_project_2/utils/app_router.dart';
 import 'package:apartment_management_project_2/utils/responsive.dart';

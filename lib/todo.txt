@@ -79,3 +79,53 @@ flutter build apk --release --obfuscate --split-debug-info=symbols/android
 flutter build windows --release --obfuscate --split-debug-info=symbols/windows
 
 Use kReleaseMode: Use this constant to disable all print() logs in your release app so users don't see your debug data in the Windows Event Viewer.
+
+Option B — Use a route-based approach (cleaner for many screens):
+Add a route observer in main.dart that installs/uninstalls based on which route is active:
+dart// In main.dart, add this global
+final _chatRouteObserver = _ChatRouteObserver();
+
+class _ChatRouteObserver extends RouteObserver<PageRoute> {
+  // Routes where the chat button should appear
+  static const _allowedRoutes = {
+    AppRouter.dashboardScreen,
+    AppRouter.oranizationScreen,
+    // add more routes here as needed
+  };
+
+  void _update(Route? route) {
+    final name = route?.settings.name;
+    if (name != null && _allowedRoutes.contains(name)) {
+      ChatOverlayManager.install();
+    } else {
+      ChatOverlayManager.uninstall();
+    }
+  }
+
+  @override
+  void didPush(Route route, Route? previousRoute) {
+    super.didPush(route, previousRoute);
+    _update(route);
+  }
+
+  @override
+  void didPop(Route route, Route? previousRoute) {
+    super.didPop(route, previousRoute);
+    _update(previousRoute);
+  }
+
+  @override
+  void didReplace({Route? newRoute, Route? oldRoute}) {
+    super.didReplace(newRoute: newRoute, oldRoute: oldRoute);
+    _update(newRoute);
+  }
+}
+Then wire it into MaterialApp:
+dartMaterialApp(
+  navigatorKey: navigatorKey,
+  navigatorObservers: [_chatRouteObserver], // add this
+  builder: (context, child) => child!,
+  // ... rest unchanged
+)
+And remove the install/uninstall calls from DashboardScreen since the observer handles it now.
+Option B is cleaner long-term — you just add route names to _allowedRoutes as your app grows.
