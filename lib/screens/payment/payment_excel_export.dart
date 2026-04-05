@@ -46,7 +46,6 @@ class PaymentExcelExporter {
       'create_success': {'vi': 'Đã tạo file Excel thành công', 'en': 'Excel file created successfully', 'bilingual': 'Thành công / Success'},
 
       // Main Headers
-      'sheet_name': {'vi': 'Hóa Đơn', 'en': 'Invoice', 'bilingual': 'Hóa Đơn / Invoice'},
       'invoice_title': {'vi': 'HÓA ĐƠN THANH TOÁN', 'en': 'PAYMENT INVOICE', 'bilingual': 'HÓA ĐƠN THANH TOÁN / PAYMENT INVOICE'},
       'info_section': {'vi': 'THÔNG TIN HÓA ĐƠN', 'en': 'INVOICE INFO', 'bilingual': 'THÔNG TIN HÓA ĐƠN / INVOICE INFO'},
       'detail_section': {'vi': 'CHI TIẾT CÁC KHOẢN', 'en': 'LINE ITEM DETAILS', 'bilingual': 'CHI TIẾT CÁC KHOẢN / DETAILS'},
@@ -433,7 +432,11 @@ class PaymentExcelExporter {
   }) {
     final workbook = xlsio.Workbook();
     final sheet = workbook.worksheets[0];
-    sheet.name = _l('sheet_name', language);
+    sheet.name = switch (language) {
+      ExportLanguage.vi        => 'Hoa Don',
+      ExportLanguage.en        => 'Invoice',
+      ExportLanguage.bilingual => 'Invoice - Hoa Don',
+    };
     sheet.showGridlines = false;
 
     final df = DateFormat('dd/MM/yyyy');
@@ -459,6 +462,14 @@ class PaymentExcelExporter {
         return sheet.getRangeByIndex(ro, co, re, ce);
       }
       return sheet.getRangeByIndex(ro, co);
+    }
+
+    void setBorder(int ro, int co, [int? re, int? ce]) {
+      final range = (re != null && ce != null)
+          ? sheet.getRangeByIndex(ro, co, re, ce)
+          : sheet.getRangeByIndex(ro, co);
+      range.cellStyle.borders.all.lineStyle = xlsio.LineStyle.thin;
+      range.cellStyle.borders.all.color = '#BDBDBD'; // light grey border
     }
 
     void mergeSet(int ro, int co, int re, int ce, {
@@ -495,7 +506,9 @@ class PaymentExcelExporter {
       r(ro, 1).setText(label);
       r(ro, 1).cellStyle.bold = true;
       r(ro, 1).cellStyle.fontSize = 10;
+      setBorder(ro, 1);                    // border on label cell
       mergeSet(ro, 2, ro, 7, text: value, fontSize: 10);
+      setBorder(ro, 2, ro, 7);             // border on value cell
     }
 
     // ── Document header ──────────────────────────────────────────────────────
@@ -557,15 +570,38 @@ class PaymentExcelExporter {
     row++;
 
     // Table column headers
-    final headers = ['#', _l('col_type', language), _l('col_note', language), '', '', _l('col_price', language), ''];
-    for (int col = 0; col < headers.length; col++) {
-      final cell = r(row, col + 1);
-      cell.setText(headers[col]);
-      cell.cellStyle.bold = true;
-      cell.cellStyle.backColor = cPrimary;
-      cell.cellStyle.fontColor = cPrimaryFg;
-      cell.cellStyle.hAlign = xlsio.HAlignType.center;
-    }
+    r(row, 1).setText('#');
+    r(row, 1).cellStyle.bold = true;
+    r(row, 1).cellStyle.backColor = cPrimary;
+    r(row, 1).cellStyle.fontColor = cPrimaryFg;
+    r(row, 1).cellStyle.hAlign = xlsio.HAlignType.center;
+
+    r(row, 2).setText(_l('col_type', language));
+    r(row, 2).cellStyle.bold = true;
+    r(row, 2).cellStyle.backColor = cPrimary;
+    r(row, 2).cellStyle.fontColor = cPrimaryFg;
+    r(row, 2).cellStyle.hAlign = xlsio.HAlignType.center;
+
+    // Merge cols 3-5 for the notes header
+    mergeSet(row, 3, row, 5,
+        text: _l('col_note', language),
+        bold: true,
+        bg: cPrimary,
+        fg: cPrimaryFg,
+        hAlign: xlsio.HAlignType.center);
+
+    // Merge cols 6-7 for the amount header
+    mergeSet(row, 6, row, 7,
+        text: _l('col_price', language),
+        bold: true,
+        bg: cPrimary,
+        fg: cPrimaryFg,
+        hAlign: xlsio.HAlignType.center);
+
+    setBorder(row, 1);
+    setBorder(row, 2);
+    setBorder(row, 3, row, 5);
+    setBorder(row, 6, row, 7);
     row++;
 
     final lineItems = _parseLineItems(payment, df, nf, language);
@@ -596,12 +632,14 @@ class PaymentExcelExporter {
           number: item.amount,
           bg: bg,
           hAlign: xlsio.HAlignType.right);
-      sheet.getRangeByIndex(row, 6, row, 7).numberFormat = '#,##0 "₫"';
+      sheet.getRangeByIndex(row, 6, row, 7).numberFormat = '#,##0';
 
+      setBorder(row, 1);
+      setBorder(row, 2);
+      setBorder(row, 3, row, 5);
+      setBorder(row, 6, row, 7);
       row++;
     }
-
-    row++;
 
     // ── Totals block ─────────────────────────────────────────────────────────
 
@@ -615,6 +653,7 @@ class PaymentExcelExporter {
       String? bg,
     }) {
       mergeSet(ro, 1, ro, 5, text: label, bold: bold, fontSize: fontSize, fg: labelColor, bg: bg);
+      setBorder(ro, 1, ro, 5);
       mergeSet(ro, 6, ro, 7,
           number: amount,
           bold: bold,
@@ -622,7 +661,8 @@ class PaymentExcelExporter {
           fg: labelColor,
           bg: bg,
           hAlign: xlsio.HAlignType.right);
-      sheet.getRangeByIndex(ro, 6, ro, 7).numberFormat = '#,##0 "₫"';
+      setBorder(ro, 6, ro, 7);
+      sheet.getRangeByIndex(ro, 6, ro, 7).numberFormat = '#,##0';
     }
 
     summaryRow(row, _l('total_items', language), payment.amount);
@@ -647,8 +687,12 @@ class PaymentExcelExporter {
     // Grand total — highlighted green
     summaryRow(row, _l('grand_total', language), payment.totalAmount, bold: true, fontSize: 13, bg: cTotal, labelColor: cTotalFg);
     sheet.getRangeByIndex(row, 1, row, 7).cellStyle.fontColor = cTotalFg;
-    row += 2;
+    
+    final totalRange = sheet.getRangeByIndex(row, 1, row, 7);
+    totalRange.cellStyle.borders.all.lineStyle = xlsio.LineStyle.medium;
+    totalRange.cellStyle.borders.all.color = '#1B5E20';
 
+    row += 2;
     // ── Payment status note ─────────────────────────────────────────────────
 
     if (payment.status == PaymentStatus.partial) {
@@ -674,16 +718,29 @@ class PaymentExcelExporter {
     mergeSet(row, 1, row, 7, text: '${_l('footer_msg', language)} • ${df.format(now)}', fontSize: 9, fg: '#9E9E9E', hAlign: xlsio.HAlignType.center);
 
     // ── Column widths ────────────────────────────────────────────────────────
-    //  Col 1: # (narrow)
-    //  Col 2: type label
-    //  Col 3-5: detail (wide merged)
-    //  Col 6-7: amount (merged)
-    sheet.setColumnWidthInPixels(1, 28);
-    sheet.setColumnWidthInPixels(2, 120);
-    sheet.setColumnWidthInPixels(3, 100);
-    sheet.setColumnWidthInPixels(4, 100);
-    sheet.setColumnWidthInPixels(5, 100);
-    sheet.setColumnWidthInPixels(6, 130);
+    // Collect all label strings and pick the longest
+    final labelStrings = [
+      _l('inv_id', language),
+      _l('tenant', language),
+      if (roomNumber != null) _l('room', language),
+      if (buildingName != null) _l('building', language),
+      if (tenantEmail != null && tenantEmail.isNotEmpty) _l('email', language),
+      _l('status', language),
+      _l('due_date', language),
+      if (payment.paidAt != null) _l('paid_date', language),
+      if (payment.status == PaymentStatus.partial) _l('paid_amount', language),
+      _l('export_date', language),
+    ];
+
+    // ~7px per character is a good approximation for fontSize 10
+    final longestLabel = labelStrings.map((s) => s.length).reduce((a, b) => a > b ? a : b);
+    final col1Width = (longestLabel * 7.0).clamp(80.0, 200.0);
+    sheet.setColumnWidthInPixels(1, col1Width.toInt());
+    sheet.setColumnWidthInPixels(2, 160);
+    sheet.setColumnWidthInPixels(3, 110);
+    sheet.setColumnWidthInPixels(4, 110);
+    sheet.setColumnWidthInPixels(5, 110);
+    sheet.setColumnWidthInPixels(6, 140);
     sheet.setColumnWidthInPixels(7, 10); // spacer
 
     final bytes = workbook.saveAsStream();

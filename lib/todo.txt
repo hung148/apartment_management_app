@@ -6,7 +6,9 @@
 [ERROR:flutter/shell/platform/windows/egl/egl.cc(57)] EGL Error: Context Lost (12302) in ../../../flutter/shell/platform/windows/egl/context.cc:33
 Happen sometimes when I resize 
 
+excel them bang 
 add search to building tab
+
 
 You should apply this same pattern to every Firestore method in your service classes, since any of them could be in-flight during logout:
 dart// Add this at the top of every Firestore method

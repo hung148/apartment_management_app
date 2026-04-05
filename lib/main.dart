@@ -10,6 +10,7 @@ import 'package:apartment_management_project_2/services/update_services.dart';
 
 import 'package:apartment_management_project_2/utils/app_localizations.dart';
 import 'package:apartment_management_project_2/utils/app_router.dart';
+import 'package:apartment_management_project_2/widgets/chat/chat_manager.dart';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -25,6 +26,34 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:window_manager/window_manager.dart';
 
 final navigatorKey = GlobalKey<NavigatorState>();
+final _chatRouteObserver = _ChatRouteObserver();
+
+// In _ChatRouteObserver, override didPop for ALL route types:
+class _ChatRouteObserver extends NavigatorObserver {  // ← change from RouteObserver<PageRoute>
+  static const _allowedRoutes = {
+    AppRouter.dashboardScreen,
+    AppRouter.oranizationScreen,
+  };
+
+  void _update(Route? route) {
+    final name = route?.settings.name;
+    if (name != null && _allowedRoutes.contains(name)) {
+      ChatOverlayManager.install();  // re-inserts on top every time
+    } else if (route is PageRoute) {
+      ChatOverlayManager.uninstall();
+    }
+    // If it's a DialogRoute popping, install() re-raises the FAB above it
+  }
+
+  @override
+  void didPush(Route route, Route? previousRoute) => _update(route is PageRoute ? route : previousRoute);
+
+  @override
+  void didPop(Route route, Route? previousRoute) => _update(previousRoute);
+
+  @override
+  void didReplace({Route? newRoute, Route? oldRoute}) => _update(newRoute);
+}
 
 class LocaleNotifier extends ChangeNotifier {
   Locale _locale = const Locale('vi', 'VN');
@@ -117,6 +146,7 @@ class MyApp extends StatelessWidget {
 
         return MaterialApp(
           navigatorKey: navigatorKey,
+          navigatorObservers: [_chatRouteObserver],
           builder: (context, child) => child!,
           locale: localeNotifier.locale,
           localizationsDelegates: const [

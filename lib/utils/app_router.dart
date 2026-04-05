@@ -20,8 +20,14 @@ class AppRouter {
 
   /// Use this with [Navigator.pushReplacement] for a smooth fade transition.
   /// e.g. Navigator.pushReplacement(context, AppRouter.fadeRoute(const DashboardScreen()));
-  static Route<dynamic> fadeRoute(Widget page, {Duration duration = const Duration(milliseconds: 500)}) {
+  static Route<dynamic> fadeRoute(
+    Widget page, {
+    Duration duration = const Duration(milliseconds: 500),
+    RouteSettings? settings,
+    
+  }) {
     return PageRouteBuilder(
+      settings: settings,
       pageBuilder: (_, __, ___) => page,
       transitionDuration: duration,
       transitionsBuilder: (_, animation, __, child) => FadeTransition(
@@ -40,7 +46,7 @@ class AppRouter {
       case loginScreen:
         return MaterialPageRoute(builder: (_) => LoginScreen());
       case dashboardScreen:
-        return fadeRoute(const DashboardScreen());
+        return fadeRoute(const DashboardScreen(), settings: settings);
       case oranizationScreen:
         final args = settings.arguments as Map<String, dynamic>;
         return MaterialPageRoute(builder: (_) => OrganizationScreen(

@@ -65,6 +65,21 @@ dependencies:
   country_flags: ^4.1.2
   google_generative_ai: ^0.4.7
   flutter_dotenv: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  web:
+    generate: true
+    image_path: "assets/icon/apartment_management_app_icon.png"
+  windows:
+    generate: true
+    image_path: "assets/icon/apartment_management_app_icon.png"
+  macos:
+    generate: true
+    image_path: "assets/icon/apartment_management_app_icon.png"
+  image_path: "assets/icon/apartment_management_app_icon.png"
 
 dev_dependencies:
   flutter_test:
@@ -96,7 +111,9 @@ flutter:
     - assets/fonts/AndikaNewBasic-B.ttf
     - assets/image/background_image.jpg
     - assets/image/background_image3.jpg
+    - assets/image/chat_button.png
     - .env
+    - assets/icon/
   #   - images/a_dot_burr.jpeg
   #   - images/a_dot_ham.jpeg
 

@@ -332,7 +332,7 @@ class AppTranslations {
       'excel_stat_empty': 'Phòng trống',
       'excel_stat_moved_out': 'Đã chuyển đi',
       'building_dialog_title_add': 'Thêm Toà Nhà',
-      'building_dialog_title_edit': 'Sửa Toà Nhà',
+      'building_dialog_title_edit': 'Chỉnh Sửa Toà Nhà',
       'building_name_label': 'Tên toà nhà *',
       'building_name_hint': 'VD: Toà A',
       'building_address_label': 'Địa chỉ *',
