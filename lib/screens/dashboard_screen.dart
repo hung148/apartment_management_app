@@ -2841,13 +2841,6 @@ class _DashboardScreenState extends State<DashboardScreen>
           color: bgColor,
           shape: BoxShape.circle,
           border: Border.all(color: borderColor, width: 1.8),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.25),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
         ),
         child: IconButton(
           onPressed: onTap,

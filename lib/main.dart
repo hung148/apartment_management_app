@@ -30,9 +30,11 @@ final _chatRouteObserver = _ChatRouteObserver();
 
 // In _ChatRouteObserver, override didPop for ALL route types:
 class _ChatRouteObserver extends NavigatorObserver {  // ← change from RouteObserver<PageRoute>
-  static const _allowedRoutes = {
+   static const _allowedRoutes = {
     AppRouter.dashboardScreen,
     AppRouter.oranizationScreen,
+    AppRouter.buildingRoomScreen, 
+    AppRouter.roomDetailScreen,   
   };
 
   void _update(Route? route) {
