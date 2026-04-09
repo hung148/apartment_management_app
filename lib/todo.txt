@@ -80,3 +80,5 @@ flutter build apk --release --obfuscate --split-debug-info=symbols/android
 flutter build windows --release --obfuscate --split-debug-info=symbols/windows
 
 Use kReleaseMode: Use this constant to disable all print() logs in your release app so users don't see your debug data in the Windows Event Viewer.
+
+http block on debug have to run in adminstration mode

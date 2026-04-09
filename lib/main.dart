@@ -129,9 +129,9 @@ void main() async {
 
   await FirebaseAuth.instance.authStateChanges().first;
 
-  setup();
-
   await dotenv.load(fileName: '.env');
+  
+  setup();
 
   runApp(const MyApp());
 }

@@ -10,7 +10,7 @@ import 'package:apartment_management_project_2/services/payments_service.dart';
 class AIAgentService {
   late GenerativeModel _model;
   final String _apiKey = dotenv.env['GEMINI_KEY'] ?? '';
-  final String _modelName = 'gemini-pro';
+  final String _modelName = 'gemini-2.5-flash';
   
   // Service locator dependencies
   late BuildingService _buildingService;
@@ -23,6 +23,10 @@ class AIAgentService {
     _initializeServices();
     _initializeModel();
   }
+
+  GenerativeModel get model => _model;
+  String get apiKey => _apiKey;
+  String get modelName => _modelName;
 
   /// Initialize dependent services from get_it
   void _initializeServices() {
@@ -48,6 +52,16 @@ class AIAgentService {
       _model = GenerativeModel(
         model: _modelName,
         apiKey: _apiKey,
+        systemInstruction: Content.system(
+          'Bạn là trợ lý AI cho ứng dụng quản lý căn hộ. '
+          'Hãy trả lời ngắn gọn, rõ ràng bằng ngôn ngữ mà người dùng đang dùng '
+          '(tiếng Việt hoặc tiếng Anh). '
+          'Bạn có thể giúp về: thông tin tòa nhà, phòng, người thuê, '
+          'thanh toán, và phân tích dữ liệu.'
+          'Khi người dùng yêu cầu tạo tòa nhà, phòng, hoặc người thuê: '
+          'LUÔN hỏi đầy đủ thông tin cần thiết (tên, địa chỉ...) TRƯỚC KHI gọi bất kỳ công cụ nào. '
+          'Không bao giờ tự đặt tên hoặc bịa thông tin.',
+        ),
       );
       logger.i('AI Agent Service initialized successfully');
     } catch (e) {
@@ -56,68 +70,113 @@ class AIAgentService {
     }
   }
 
-  /// ========================================
-  /// TEXT GENERATION METHODS
-  /// ========================================
+  static const List<Map<String, dynamic>> functionDeclarations = [
+    {
+      'name': 'create_building',
+      'description': 'Create a new building for the organization',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'name': {'type': 'string', 'description': 'Building name'},
+          'address': {'type': 'string', 'description': 'Building address'},
+        },
+        'required': ['name', 'address'],
+      },
+    },
+    {
+      'name': 'get_buildings',
+      'description': 'List all buildings in the organization',
+      'parameters': {
+        'type': 'object',
+        'properties': {},
+      },
+    },
+    {
+      'name': 'get_tenants',
+      'description': 'List all tenants, optionally filtered by building',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'buildingId': {'type': 'string', 'description': 'Optional building ID to filter by'},
+        },
+      },
+    },
+    {
+      'name': 'get_payments',
+      'description': 'List payments, optionally filtered by building or tenant',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'buildingId': {'type': 'string', 'description': 'Optional building ID'},
+          'tenantId': {'type': 'string', 'description': 'Optional tenant ID'},
+          'overdueOnly': {'type': 'boolean', 'description': 'If true, return only overdue payments'},
+        },
+      },
+    },
+  ];
 
-  /// Generate text content using AI
-  Future<String?> generateText(String prompt) async {
-    try {
-      logger.i('Generating text with prompt: $prompt');
-      
-      final content = [Content.text(prompt)];
-      final response = await _model.generateContent(content);
-      
-      final result = response.text ?? '';
-      logger.i('Text generation successful');
-      return result;
-    } catch (e) {
-      logger.e('Error generating text', error: e);
-      return null;
-    }
-  }
+  // /// ========================================
+  // /// TEXT GENERATION METHODS
+  // /// ========================================
 
-  /// Generate text with streaming response
-  Stream<String> generateTextStream(String prompt) async* {
-    try {
-      logger.i('Starting streaming text generation');
+  // /// Generate text content using AI
+  // Future<String?> generateText(String prompt) async {
+  //   try {
+  //     logger.i('Generating text with prompt: $prompt');
       
-      final content = [Content.text(prompt)];
-      final stream = _model.generateContentStream(content);
+  //     final content = [Content.text(prompt)];
+  //     final response = await _model.generateContent(content);
       
-      await for (final response in stream) {
-        final text = response.text ?? '';
-        if (text.isNotEmpty) {
-          yield text;
-        }
-      }
-      logger.i('Streaming text generation completed');
-    } catch (e) {
-      logger.e('Error in streaming text generation', error: e);
-      yield 'Error: ${e.toString()}';
-    }
-  }
+  //     final result = response.text ?? '';
+  //     logger.i('Text generation successful');
+  //     return result;
+  //   } catch (e) {
+  //     logger.e('Error generating text', error: e);
+  //     return null;
+  //   }
+  // }
 
-  /// ========================================
-  /// CONVERSATIONAL METHODS
-  /// ========================================
+  // /// Generate text with streaming response
+  // Stream<String> generateTextStream(String prompt) async* {
+  //   try {
+  //     logger.i('Starting streaming text generation');
+      
+  //     final content = [Content.text(prompt)];
+  //     final stream = _model.generateContentStream(content);
+      
+  //     await for (final response in stream) {
+  //       final text = response.text ?? '';
+  //       if (text.isNotEmpty) {
+  //         yield text;
+  //       }
+  //     }
+  //     logger.i('Streaming text generation completed');
+  //   } catch (e) {
+  //     logger.e('Error in streaming text generation', error: e);
+  //     yield 'Error: ${e.toString()}';
+  //   }
+  // }
 
-  /// Start a chat session and send a message
-  Future<String?> sendChatMessage(String message) async {
-    try {
-      logger.i('Sending chat message: $message');
+  // /// ========================================
+  // /// CONVERSATIONAL METHODS
+  // /// ========================================
+
+  // /// Start a chat session and send a message
+  // Future<String?> sendChatMessage(String message) async {
+  //   try {
+  //     logger.i('Sending chat message: $message');
       
-      final content = [Content.text(message)];
-      final response = await _model.generateContent(content);
+  //     final content = [Content.text(message)];
+  //     final response = await _model.generateContent(content);
       
-      final result = response.text ?? '';
-      logger.i('Chat message sent successfully');
-      return result;
-    } catch (e) {
-      logger.e('Error sending chat message', error: e);
-      return null;
-    }
-  }
+  //     final result = response.text ?? '';
+  //     logger.i('Chat message sent successfully');
+  //     return result;
+  //   } catch (e) {
+  //     logger.e('Error sending chat message', error: e);
+  //     return null;
+  //   }
+  // }
 
   /// ========================================
   /// CRUD OPERATIONS - BUILDINGS
@@ -261,281 +320,281 @@ class AIAgentService {
     }
   }
 
-  /// ========================================
-  /// DATA ANALYSIS (Phan tich du lieu)
-  /// ========================================
+  // /// ========================================
+  // /// DATA ANALYSIS (Phan tich du lieu)
+  // /// ========================================
 
-  /// Analyze financial data from real payment data
-  Future<String?> analyzeFinancialData(String organizationId, String buildingId) async {
-    try {
-      logger.i('Analyzing financial data for building: $buildingId');
+  // /// Analyze financial data from real payment data
+  // Future<String?> analyzeFinancialData(String organizationId, String buildingId) async {
+  //   try {
+  //     logger.i('Analyzing financial data for building: $buildingId');
       
-      // Fetch real payment data
-      final payments = await getPaymentsByBuilding(organizationId, buildingId);
-      if (payments.isEmpty) {
-        return 'Không có dữ liệu thanh toán để phân tích.';
-      }
+  //     // Fetch real payment data
+  //     final payments = await getPaymentsByBuilding(organizationId, buildingId);
+  //     if (payments.isEmpty) {
+  //       return 'Không có dữ liệu thanh toán để phân tích.';
+  //     }
       
-      // Prepare data summary for AI analysis
-      final dataStr = payments.toString();
+  //     // Prepare data summary for AI analysis
+  //     final dataStr = payments.toString();
       
-      final prompt = '''
-      Phân tích dữ liệu tài chính chi tiết từ các khoản thanh toán:
+  //     final prompt = '''
+  //     Phân tích dữ liệu tài chính chi tiết từ các khoản thanh toán:
       
-      Dữ liệu thanh toán: $dataStr
+  //     Dữ liệu thanh toán: $dataStr
       
-      Vui lòng cung cấp:
-      1. Tóm tắt các chỉ số chính
-      2. Các xu hướng và mẫu được xác định
-      3. Cách tiếp cận để cải thiện
-      4. Các khu vực rủi ro cần giám sát
-      5. Khuyến nghị chi tiết
-      ''';
+  //     Vui lòng cung cấp:
+  //     1. Tóm tắt các chỉ số chính
+  //     2. Các xu hướng và mẫu được xác định
+  //     3. Cách tiếp cận để cải thiện
+  //     4. Các khu vực rủi ro cần giám sát
+  //     5. Khuyến nghị chi tiết
+  //     ''';
       
-      return await generateText(prompt);
-    } catch (e) {
-      logger.e('Error analyzing financial data', error: e);
-      return null;
-    }
-  }
+  //     return await generateText(prompt);
+  //   } catch (e) {
+  //     logger.e('Error analyzing financial data', error: e);
+  //     return null;
+  //   }
+  // }
 
-  /// Analyze occupancy data
-  Future<String?> analyzeOccupancyData(String organizationId, String buildingId) async {
-    try {
-      logger.i('Analyzing occupancy data for building: $buildingId');
+  // /// Analyze occupancy data
+  // Future<String?> analyzeOccupancyData(String organizationId, String buildingId) async {
+  //   try {
+  //     logger.i('Analyzing occupancy data for building: $buildingId');
       
-      // Fetch real room and tenant data
-      final rooms = await getRoomsByBuilding(organizationId, buildingId);
-      final tenants = await getTenantsByBuilding(organizationId, buildingId);
+  //     // Fetch real room and tenant data
+  //     final rooms = await getRoomsByBuilding(organizationId, buildingId);
+  //     final tenants = await getTenantsByBuilding(organizationId, buildingId);
       
-      if (rooms.isEmpty) {
-        return 'Không có dữ liệu phòng để phân tích.';
-      }
+  //     if (rooms.isEmpty) {
+  //       return 'Không có dữ liệu phòng để phân tích.';
+  //     }
       
-      final occupancyRate = (tenants.length / rooms.length) * 100;
+  //     final occupancyRate = (tenants.length / rooms.length) * 100;
       
-      final prompt = '''
-      Phân tích dữ liệu chiếm dụng của tòa nhà:
+  //     final prompt = '''
+  //     Phân tích dữ liệu chiếm dụng của tòa nhà:
       
-      - Tổng số phòng: ${rooms.length}
-      - Phòng được thuê: ${tenants.length}
-      - Tỷ lệ chiếm dụng: ${occupancyRate.toStringAsFixed(2)}%
-      - Phòng trống: ${rooms.length - tenants.length}
+  //     - Tổng số phòng: ${rooms.length}
+  //     - Phòng được thuê: ${tenants.length}
+  //     - Tỷ lệ chiếm dụng: ${occupancyRate.toStringAsFixed(2)}%
+  //     - Phòng trống: ${rooms.length - tenants.length}
       
-      Vui lòng cung cấp:
-      1. Phân tích tỷ lệ chiếm dụng
-      2. Xu hướng và mẫu
-      3. Cơ hội cải thiện
-      4. Chiến lược tìm kiếm người thuê
-      5. Khuyến nghị để tối đa hóa doanh thu
-      ''';
+  //     Vui lòng cung cấp:
+  //     1. Phân tích tỷ lệ chiếm dụng
+  //     2. Xu hướng và mẫu
+  //     3. Cơ hội cải thiện
+  //     4. Chiến lược tìm kiếm người thuê
+  //     5. Khuyến nghị để tối đa hóa doanh thu
+  //     ''';
       
-      return await generateText(prompt);
-    } catch (e) {
-      logger.e('Error analyzing occupancy data', error: e);
-      return null;
-    }
-  }
+  //     return await generateText(prompt);
+  //   } catch (e) {
+  //     logger.e('Error analyzing occupancy data', error: e);
+  //     return null;
+  //   }
+  // }
 
-  /// Analyze tenant and payment trends
-  Future<String?> analyzeTenantTrends(String organizationId, String buildingId) async {
-    try {
-      logger.i('Analyzing tenant trends for building: $buildingId');
+  // /// Analyze tenant and payment trends
+  // Future<String?> analyzeTenantTrends(String organizationId, String buildingId) async {
+  //   try {
+  //     logger.i('Analyzing tenant trends for building: $buildingId');
       
-      final tenants = await getTenantsByBuilding(organizationId, buildingId);
-      final payments = await getPaymentsByBuilding(organizationId, buildingId);
-      final outstandingPayments = await getOutstandingPayments(organizationId);
+  //     final tenants = await getTenantsByBuilding(organizationId, buildingId);
+  //     final payments = await getPaymentsByBuilding(organizationId, buildingId);
+  //     final outstandingPayments = await getOutstandingPayments(organizationId);
       
-      final prompt = '''
-      Phân tích xu hướng người thuê và thanh toán:
+  //     final prompt = '''
+  //     Phân tích xu hướng người thuê và thanh toán:
       
-      - Tổng số người thuê: ${tenants.length}
-      - Tổng thanh toán: ${payments.length}
-      - Khoản thanh toán chưa thanh toán: ${outstandingPayments.length}
+  //     - Tổng số người thuê: ${tenants.length}
+  //     - Tổng thanh toán: ${payments.length}
+  //     - Khoản thanh toán chưa thanh toán: ${outstandingPayments.length}
       
-      Vui lòng cung cấp:
-      1. Phân tích hành vi thanh toán
-      2. Tỷ lệ tất toát nợ
-      3. Xu hướng giữ chân người thuê
-      4. Các cảnh báo sớm về độc tính
-      5. Khuyến nghị khôi phục và dự phòng
-      ''';
+  //     Vui lòng cung cấp:
+  //     1. Phân tích hành vi thanh toán
+  //     2. Tỷ lệ tất toát nợ
+  //     3. Xu hướng giữ chân người thuê
+  //     4. Các cảnh báo sớm về độc tính
+  //     5. Khuyến nghị khôi phục và dự phòng
+  //     ''';
       
-      return await generateText(prompt);
-    } catch (e) {
-      logger.e('Error analyzing tenant trends', error: e);
-      return null;
-    }
-  }
+  //     return await generateText(prompt);
+  //   } catch (e) {
+  //     logger.e('Error analyzing tenant trends', error: e);
+  //     return null;
+  //   }
+  // }
 
-  /// ========================================
-  /// REPORT GENERATION (Xuat bao cao)
-  /// ========================================
+  // /// ========================================
+  // /// REPORT GENERATION (Xuat bao cao)
+  // /// ========================================
 
-  /// Generate comprehensive building report
-  Future<String?> generateBuildingReport(String organizationId, String buildingId) async {
-    try {
-      logger.i('Generating comprehensive building report for: $buildingId');
+  // /// Generate comprehensive building report
+  // Future<String?> generateBuildingReport(String organizationId, String buildingId) async {
+  //   try {
+  //     logger.i('Generating comprehensive building report for: $buildingId');
       
-      // Fetch all relevant data
-      final building = await getBuildingById(buildingId);
-      final rooms = await getRoomsByBuilding(organizationId, buildingId);
-      final tenants = await getTenantsByBuilding(organizationId, buildingId);
-      final payments = await getPaymentsByBuilding(organizationId, buildingId);
+  //     // Fetch all relevant data
+  //     final building = await getBuildingById(buildingId);
+  //     final rooms = await getRoomsByBuilding(organizationId, buildingId);
+  //     final tenants = await getTenantsByBuilding(organizationId, buildingId);
+  //     final payments = await getPaymentsByBuilding(organizationId, buildingId);
       
-      if (building == null) {
-        return 'Không tìm thấy tòa nhà.';
-      }
+  //     if (building == null) {
+  //       return 'Không tìm thấy tòa nhà.';
+  //     }
       
-      final occupancyRate = rooms.isNotEmpty ? (tenants.length / rooms.length) * 100 : 0;
+  //     final occupancyRate = rooms.isNotEmpty ? (tenants.length / rooms.length) * 100 : 0;
       
-      final prompt = '''
-      Tạo báo cáo tòa nhà toàn diện:
+  //     final prompt = '''
+  //     Tạo báo cáo tòa nhà toàn diện:
       
-      Thông tin tòa nhà:
-      - Tên: $building
-      - Tổng phòng: ${rooms.length}
-      - Phòng được thuê: ${tenants.length}
-      - Tỷ lệ chiếm dụng: ${occupancyRate.toStringAsFixed(2)}%
-      - Tổng thanh toán: ${payments.length}
+  //     Thông tin tòa nhà:
+  //     - Tên: $building
+  //     - Tổng phòng: ${rooms.length}
+  //     - Phòng được thuê: ${tenants.length}
+  //     - Tỷ lệ chiếm dụng: ${occupancyRate.toStringAsFixed(2)}%
+  //     - Tổng thanh toán: ${payments.length}
       
-      Báo cáo phải bao gồm:
-      1. Tóm tắt điều hành
-      2. Thống kê hiệu suất chính
-      3. Phân tích chi tiết
-      4. Khuyến nghị cải thiện
-      5. Kết luận
-      ''';
+  //     Báo cáo phải bao gồm:
+  //     1. Tóm tắt điều hành
+  //     2. Thống kê hiệu suất chính
+  //     3. Phân tích chi tiết
+  //     4. Khuyến nghị cải thiện
+  //     5. Kết luận
+  //     ''';
       
-      return await generateText(prompt);
-    } catch (e) {
-      logger.e('Error generating building report', error: e);
-      return null;
-    }
-  }
+  //     return await generateText(prompt);
+  //   } catch (e) {
+  //     logger.e('Error generating building report', error: e);
+  //     return null;
+  //   }
+  // }
 
-  /// Generate monthly financial report
-  Future<String?> generateMonthlyFinancialReport(String organizationId, String buildingId) async {
-    try {
-      logger.i('Generating monthly financial report for: $buildingId');
+  // /// Generate monthly financial report
+  // Future<String?> generateMonthlyFinancialReport(String organizationId, String buildingId) async {
+  //   try {
+  //     logger.i('Generating monthly financial report for: $buildingId');
       
-      final payments = await getPaymentsByBuilding(organizationId, buildingId);
+  //     final payments = await getPaymentsByBuilding(organizationId, buildingId);
       
-      if (payments.isEmpty) {
-        return 'Không có dữ liệu thanh toán cho tháng này.';
-      }
+  //     if (payments.isEmpty) {
+  //       return 'Không có dữ liệu thanh toán cho tháng này.';
+  //     }
       
-      final prompt = '''
-      Tạo báo cáo tài chính hàng tháng:
+  //     final prompt = '''
+  //     Tạo báo cáo tài chính hàng tháng:
       
-      Dữ liệu thanh toán: $payments
+  //     Dữ liệu thanh toán: $payments
       
-      Báo cáo phải bao gồm:
-      1. Tóm tắt doanh thu
-      2. Doanh thu theo loại (tiền thuê, tiền điện, nước)
-      3. Khoản thanh toán chưa thanh toán
-      4. Xu hướng so với tháng trước
-      5. Dự báo cho tháng tiếp theo
-      6. Khuyến nghị hành động
-      ''';
+  //     Báo cáo phải bao gồm:
+  //     1. Tóm tắt doanh thu
+  //     2. Doanh thu theo loại (tiền thuê, tiền điện, nước)
+  //     3. Khoản thanh toán chưa thanh toán
+  //     4. Xu hướng so với tháng trước
+  //     5. Dự báo cho tháng tiếp theo
+  //     6. Khuyến nghị hành động
+  //     ''';
       
-      return await generateText(prompt);
-    } catch (e) {
-      logger.e('Error generating monthly financial report', error: e);
-      return null;
-    }
-  }
+  //     return await generateText(prompt);
+  //   } catch (e) {
+  //     logger.e('Error generating monthly financial report', error: e);
+  //     return null;
+  //   }
+  // }
 
-  /// Generate occupancy report
-  Future<String?> generateOccupancyReport(String organizationId, String buildingId) async {
-    try {
-      logger.i('Generating occupancy report for: $buildingId');
+  // /// Generate occupancy report
+  // Future<String?> generateOccupancyReport(String organizationId, String buildingId) async {
+  //   try {
+  //     logger.i('Generating occupancy report for: $buildingId');
       
-      final rooms = await getRoomsByBuilding(organizationId, buildingId);
-      final tenants = await getTenantsByBuilding(organizationId, buildingId);
+  //     final rooms = await getRoomsByBuilding(organizationId, buildingId);
+  //     final tenants = await getTenantsByBuilding(organizationId, buildingId);
       
-      if (rooms.isEmpty) {
-        return 'Không có dữ liệu phòng để tạo báo cáo.';
-      }
+  //     if (rooms.isEmpty) {
+  //       return 'Không có dữ liệu phòng để tạo báo cáo.';
+  //     }
       
-      final occupancyRate = (tenants.length / rooms.length) * 100;
+  //     final occupancyRate = (tenants.length / rooms.length) * 100;
       
-      final prompt = '''
-      Tạo báo cáo chiếm dụng chi tiết:
+  //     final prompt = '''
+  //     Tạo báo cáo chiếm dụng chi tiết:
       
-      - Tổng phòng: ${rooms.length}
-      - Phòng được thuê: ${tenants.length}
-      - Phòng trống: ${rooms.length - tenants.length}
-      - Tỷ lệ (%) : ${occupancyRate.toStringAsFixed(2)}%
+  //     - Tổng phòng: ${rooms.length}
+  //     - Phòng được thuê: ${tenants.length}
+  //     - Phòng trống: ${rooms.length - tenants.length}
+  //     - Tỷ lệ (%) : ${occupancyRate.toStringAsFixed(2)}%
       
-      Báo cáo phải bao gồm:
-      1. Phân tích tỷ lệ hiện tại
-      2. Xu hướng lịch sử
-      3. Dự báo chiếm dụng
-      4. Phòng có vấn đề
-      5. Chiến lược cải thiện chiếm dụng
-      6. Dự báo doanh thu
-      ''';
+  //     Báo cáo phải bao gồm:
+  //     1. Phân tích tỷ lệ hiện tại
+  //     2. Xu hướng lịch sử
+  //     3. Dự báo chiếm dụng
+  //     4. Phòng có vấn đề
+  //     5. Chiến lược cải thiện chiếm dụng
+  //     6. Dự báo doanh thu
+  //     ''';
       
-      return await generateText(prompt);
-    } catch (e) {
-      logger.e('Error generating occupancy report', error: e);
-      return null;
-    }
-  }
+  //     return await generateText(prompt);
+  //   } catch (e) {
+  //     logger.e('Error generating occupancy report', error: e);
+  //     return null;
+  //   }
+  // }
 
-  /// Stream comprehensive report generation
-  Stream<String> generateReportStream(String organizationId, String buildingId, {String reportType = 'comprehensive'}) async* {
-    try {
-      logger.i('Starting streaming $reportType report for building: $buildingId');
+  // /// Stream comprehensive report generation
+  // Stream<String> generateReportStream(String organizationId, String buildingId, {String reportType = 'comprehensive'}) async* {
+  //   try {
+  //     logger.i('Starting streaming $reportType report for building: $buildingId');
       
-      // Fetch data
-      final building = await getBuildingById(buildingId);
-      final rooms = await getRoomsByBuilding(organizationId, buildingId);
-      final tenants = await getTenantsByBuilding(organizationId, buildingId);
-      final payments = await getPaymentsByBuilding(organizationId, buildingId);
+  //     // Fetch data
+  //     final building = await getBuildingById(buildingId);
+  //     final rooms = await getRoomsByBuilding(organizationId, buildingId);
+  //     final tenants = await getTenantsByBuilding(organizationId, buildingId);
+  //     final payments = await getPaymentsByBuilding(organizationId, buildingId);
       
-      if (building == null) {
-        yield 'Không tìm thấy tòa nhà.';
-        return;
-      }
+  //     if (building == null) {
+  //       yield 'Không tìm thấy tòa nhà.';
+  //       return;
+  //     }
       
-      final occupancyRate = rooms.isNotEmpty ? (tenants.length / rooms.length) * 100 : 0;
+  //     final occupancyRate = rooms.isNotEmpty ? (tenants.length / rooms.length) * 100 : 0;
       
-      final prompt = '''
-      Tạo báo cáo $reportType toàn diện chi tiết:
+  //     final prompt = '''
+  //     Tạo báo cáo $reportType toàn diện chi tiết:
       
-      Thông tin tòa nhà:
-      - Tên: $building
-      - Tổng phòng: ${rooms.length}
-      - Phòng được thuê: ${tenants.length}
-      - Tỷ lệ chiếm dụng: ${occupancyRate.toStringAsFixed(2)}%
-      - Tổng thanh toán: ${payments.length}
+  //     Thông tin tòa nhà:
+  //     - Tên: $building
+  //     - Tổng phòng: ${rooms.length}
+  //     - Phòng được thuê: ${tenants.length}
+  //     - Tỷ lệ chiếm dụng: ${occupancyRate.toStringAsFixed(2)}%
+  //     - Tổng thanh toán: ${payments.length}
       
-      Báo cáo phải bao gồm:
-      1. Tóm tắt điều hành chi tiết
-      2. Phân tích tài chính
-      3. Phân tích chiếm dụng
-      4. Phân tích xu hướng người thuê
-      5. Khuyến nghị chiến lược
-      6. Kết luận và hành động tiếp theo
-      ''';
+  //     Báo cáo phải bao gồm:
+  //     1. Tóm tắt điều hành chi tiết
+  //     2. Phân tích tài chính
+  //     3. Phân tích chiếm dụng
+  //     4. Phân tích xu hướng người thuê
+  //     5. Khuyến nghị chiến lược
+  //     6. Kết luận và hành động tiếp theo
+  //     ''';
       
-      final content = [Content.text(prompt)];
-      final stream = _model.generateContentStream(content);
+  //     final content = [Content.text(prompt)];
+  //     final stream = _model.generateContentStream(content);
       
-      await for (final response in stream) {
-        final text = response.text ?? '';
-        if (text.isNotEmpty) {
-          yield text;
-        }
-      }
-      logger.i('Streaming report generation completed');
-    } catch (e) {
-      logger.e('Error in streaming report generation', error: e);
-      yield 'Lỗi: ${e.toString()}';
-    }
-  }
+  //     await for (final response in stream) {
+  //       final text = response.text ?? '';
+  //       if (text.isNotEmpty) {
+  //         yield text;
+  //       }
+  //     }
+  //     logger.i('Streaming report generation completed');
+  //   } catch (e) {
+  //     logger.e('Error in streaming report generation', error: e);
+  //     yield 'Lỗi: ${e.toString()}';
+  //   }
+  // }
 
   /// ========================================
   /// UTILITY METHODS

@@ -1,5 +1,127 @@
 import 'package:apartment_management_project_2/main.dart';
+import 'package:apartment_management_project_2/services/ai_agent_service.dart';
+import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
+import 'dart:convert';
+import 'dart:async' show TimeoutException;
+import 'package:http/http.dart' as http;
+import 'package:google_generative_ai/google_generative_ai.dart';
+
+class _IsolateHelper {
+  static Future<String?> fetchHttp(String url) async {
+    try {
+      final response = await http.get(Uri.parse(url))
+          .timeout(const Duration(seconds: 10));
+      return response.body;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  static Future<String> callGemini(Map<String, dynamic> args) async {
+    final apiKey = args['apiKey'] as String;
+    final modelName = args['modelName'] as String;
+    final systemPrompt = args['systemPrompt'] as String;
+    final userMsg = args['userMsg'] as String;
+    final history = List<Map<String, String>>.from(args['history'] as List);
+
+    final url = Uri.parse(
+      'https://generativelanguage.googleapis.com/v1beta/models/$modelName:generateContent?key=$apiKey',
+    );
+
+    final contents = <Map<String, dynamic>>[];
+    for (final h in history) {
+      contents.add({
+        'role': h['role'] == 'user' ? 'user' : 'model',
+        'parts': [{'text': h['text']}],
+      });
+    }
+    contents.add({
+      'role': 'user',
+      'parts': [{'text': userMsg}],
+    });
+
+    final body = jsonEncode({
+      'system_instruction': {
+        'parts': [{'text': systemPrompt}],
+      },
+      'contents': contents,
+    });
+
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: body,
+    ).timeout(const Duration(seconds: 30));
+
+    if (response.statusCode != 200) {
+      throw Exception('Gemini API error ${response.statusCode}: ${response.body}');
+    }
+
+    final json = jsonDecode(response.body) as Map<String, dynamic>;
+    final candidates = json['candidates'] as List?;
+    if (candidates == null || candidates.isEmpty) return '';
+    final content = candidates[0]['content'] as Map<String, dynamic>?;
+    final parts = content?['parts'] as List?;
+    if (parts == null || parts.isEmpty) return '';
+    return parts[0]['text'] as String? ?? '';
+  }
+}
+
+Future<String> _callGeminiHttp({
+  required String apiKey,
+  required String modelName,
+  required String systemPrompt,
+  required String userMsg,
+  required List<Map<String, String>> history,
+}) async {
+  final url = Uri.parse(
+    'https://generativelanguage.googleapis.com/v1beta/models/$modelName:generateContent?key=$apiKey',
+  );
+
+  final contents = <Map<String, dynamic>>[];
+
+  for (final h in history) {
+    contents.add({
+      'role': h['role'] == 'user' ? 'user' : 'model',
+      'parts': [{'text': h['text']}],
+    });
+  }
+  contents.add({
+    'role': 'user',
+    'parts': [{'text': userMsg}],
+  });
+
+  final body = jsonEncode({
+    'system_instruction': {
+      'parts': [{'text': systemPrompt}],
+    },
+    'contents': contents,
+  });
+
+  final response = await http.post(
+    url,
+    headers: {'Content-Type': 'application/json'},
+    body: body,
+  );
+
+  if (response.statusCode != 200) {
+    throw Exception('Gemini API error ${response.statusCode}: ${response.body}');
+  }
+
+  final json = jsonDecode(response.body) as Map<String, dynamic>;
+  final candidates = json['candidates'] as List?;
+  if (candidates == null || candidates.isEmpty) return '';
+  final content = candidates[0]['content'] as Map<String, dynamic>?;
+  final parts = content?['parts'] as List?;
+  if (parts == null || parts.isEmpty) return '';
+  return parts[0]['text'] as String? ?? '';
+}
+
+// =============================================================================
+// OVERLAY MANAGER
+// =============================================================================
 
 class ChatOverlayManager {
   static OverlayEntry? _entry;
@@ -42,40 +164,44 @@ class ChatOverlayManager {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Root overlay widget
-// ---------------------------------------------------------------------------
+// =============================================================================
+// ROOT OVERLAY WIDGET
+// =============================================================================
+
 class _ChatOverlay extends StatelessWidget {
   final ValueNotifier<bool> panelOpen;
   final ValueNotifier<Offset?> fabPosition;
+
   const _ChatOverlay({required this.panelOpen, required this.fabPosition});
 
   @override
   Widget build(BuildContext context) {
     final isSmall = MediaQuery.of(context).size.width < 600;
-    
+
     return ValueListenableBuilder<bool>(
       valueListenable: panelOpen,
       builder: (context, isOpen, __) {
         return Stack(
           fit: StackFit.expand,
           children: [
+            // Chat panel — always in tree, slides in/out
             Positioned(
               right: 0,
               bottom: 0,
-              top: isSmall ? 0 : 0,
-              left: isSmall ? 0 : null, // full width on small
+              top: 0,
+              left: isSmall ? 0 : null,
               child: AnimatedSlide(
                 offset: isOpen
                     ? Offset.zero
                     : isSmall
-                        ? const Offset(0, 1.0)  // slide up from bottom
-                        : const Offset(1.0, 0), // slide in from right
+                        ? const Offset(0, 1.0)
+                        : const Offset(1.0, 0),
                 duration: const Duration(milliseconds: 280),
                 curve: Curves.easeInOut,
                 child: _ChatPanel(onClose: () => panelOpen.value = false),
               ),
             ),
+            // FAB — only rendered when panel is closed
             if (!isOpen)
               _DraggableFab(
                 positionNotifier: fabPosition,
@@ -88,45 +214,38 @@ class _ChatOverlay extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Draggable FAB — position stored as fractional offset (0.0–1.0)
-// so it stays proportional when the window resizes
-// ---------------------------------------------------------------------------
+// =============================================================================
+// DRAGGABLE FAB
+// Stores position as fractional offset (0.0–1.0) so it stays proportional
+// when the window resizes.
+// =============================================================================
+
 class _DraggableFab extends StatefulWidget {
   final ValueNotifier<Offset?> positionNotifier;
   final VoidCallback onTap;
-  const _DraggableFab({
-    required this.positionNotifier,
-    required this.onTap,
-  });
+
+  const _DraggableFab({required this.positionNotifier, required this.onTap});
 
   @override
   State<_DraggableFab> createState() => _DraggableFabState();
 }
 
 class _DraggableFabState extends State<_DraggableFab> {
-  bool _didMove = false;
-  bool _dragging = false; // cursor style only
-  bool _hovered = false;
-  Offset _dragStart = Offset.zero;
-  Offset _posStart = Offset.zero; // pixel position at drag start
-
   static const double _fabSize = 96.0;
-
-  // Default: bottom-right corner
-  Offset _defaultFrac() => const Offset(1.0, 1.0);
-
   static const double _marginRight = 16.0;
   static const double _marginBottom = 24.0;
+
+  bool _didMove = false;
+  bool _dragging = false;
+  bool _hovered = false;
+  Offset _dragStart = Offset.zero;
+  Offset _posStart = Offset.zero;
 
   Offset _toPixel(Offset frac, Size screen) {
     final bottomPad = MediaQuery.of(context).padding.bottom;
     final maxX = screen.width - _fabSize - _marginRight;
     final maxY = screen.height - _fabSize - bottomPad - _marginBottom;
-    return Offset(
-      frac.dx * maxX,
-      frac.dy * maxY,
-    );
+    return Offset(frac.dx * maxX, frac.dy * maxY);
   }
 
   Offset _toFrac(Offset pixel, Size screen) {
@@ -145,7 +264,7 @@ class _DraggableFabState extends State<_DraggableFab> {
       valueListenable: widget.positionNotifier,
       builder: (context, savedFrac, __) {
         final screen = MediaQuery.of(context).size;
-        final frac = savedFrac ?? _defaultFrac();
+        final frac = savedFrac ?? const Offset(1.0, 1.0);
         final pos = _toPixel(frac, screen);
 
         return Positioned(
@@ -167,7 +286,7 @@ class _DraggableFabState extends State<_DraggableFab> {
                 final delta = details.globalPosition - _dragStart;
                 if (delta.distance > 4) {
                   _didMove = true;
-                  setState(() => _dragging = true);
+                  if (!_dragging) setState(() => _dragging = true);
                 }
                 if (!_didMove) return;
                 widget.positionNotifier.value =
@@ -195,9 +314,20 @@ class _DraggableFabState extends State<_DraggableFab> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Chat panel
-// ---------------------------------------------------------------------------
+// =============================================================================
+// CHAT MESSAGE MODEL
+// =============================================================================
+
+class _ChatMessage {
+  final String text;
+  final bool isUser;
+  const _ChatMessage({required this.text, required this.isUser});
+}
+
+// =============================================================================
+// CHAT PANEL
+// =============================================================================
+
 class _ChatPanel extends StatefulWidget {
   final VoidCallback onClose;
   const _ChatPanel({required this.onClose});
@@ -208,53 +338,227 @@ class _ChatPanel extends StatefulWidget {
 
 class _ChatPanelState extends State<_ChatPanel> {
   final _messages = <_ChatMessage>[];
+  final _history = <Content>[];
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
+
+  // ValueNotifier for the actively streaming bubble — avoids setState per chunk
+  final _streamingText = ValueNotifier<String>('');
+
   bool _loading = false;
+  bool _isStreaming = false;
+  bool _scrollPending = false; // throttle scroll callbacks
+
+  AIAgentService get _ai => getIt<AIAgentService>();
 
   @override
   void dispose() {
     _controller.dispose();
     _scrollController.dispose();
+    _streamingText.dispose();
     super.dispose();
   }
+
+  // ---------------------------------------------------------------------------
+  // Send
+  // ---------------------------------------------------------------------------
 
   void _send() {
     final text = _controller.text.trim();
     if (text.isEmpty || _loading) return;
 
+    _controller.clear();
+
     setState(() {
       _messages.add(_ChatMessage(text: text, isUser: true));
       _loading = true;
+      _isStreaming = true;
     });
-    _controller.clear();
-    _scrollToBottom();
 
-    // TODO: replace with AIAgentService call
-    Future.delayed(const Duration(milliseconds: 800), () {
-      if (!mounted) return;
-      setState(() {
-        _messages.add(_ChatMessage(
-          text: 'I received: "$text". Connect me to AIAgentService!',
-          isUser: false,
-        ));
-        _loading = false;
-      });
-      _scrollToBottom();
-    });
+    _scrollToBottom();
+    _testConnectivity();
   }
 
+  Future<void> _testConnectivity() async {
+    debugPrint('🧪 Testing HTTP via static isolate...');
+    try {
+      final body = await compute(_IsolateHelper.fetchHttp, 'https://httpbin.org/get');
+      debugPrint('🧪 httpbin result: ${body != null ? "OK (${body.length} bytes)" : "NULL"}');
+
+      debugPrint('🧪 Testing Gemini endpoint...');
+      final geminiBody = await compute(
+        _IsolateHelper.fetchHttp,
+        'https://generativelanguage.googleapis.com/v1beta/models?key=${_ai.apiKey}',
+      );
+      debugPrint('🧪 Gemini result: ${geminiBody != null ? "OK" : "NULL"} — ${geminiBody?.substring(0, geminiBody.length.clamp(0, 100))}');
+
+      // If both passed, proceed to actual reply
+      if (mounted) _streamReply(_messages.last.text);
+
+    } catch (e) {
+      debugPrint('🔴 Connectivity test FAILED: $e');
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _isStreaming = false;
+        });
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Stream reply
+  // ---------------------------------------------------------------------------
+  Future<void> _streamReply(String userText) async {
+
+    // Guard: fail immediately if API key is missing
+    if (_ai.apiKey.isEmpty) {
+      debugPrint('🔴 [CHAT] API key is empty — dotenv may not have loaded before AIAgentService constructed');
+      if (mounted) {
+        setState(() {
+          _messages.add(const _ChatMessage(
+            text: '⚠️ AI not configured. Please check your .env file.',
+            isUser: false,
+          ));
+          _loading = false;
+          _isStreaming = false;
+        });
+      }
+      return;
+    }
+
+    _history.add(Content.text(userText));
+    _streamingText.value = '';
+    final buffer = StringBuffer();
+
+    final sw = Stopwatch()..start();
+    debugPrint('🔵 [CHAT] _streamReply START');
+
+    try {
+      // --- Step 1: Build history ---
+      final List<Map<String, String>> historyData = [];
+      if (_history.length > 1) {
+        for (final c in _history.sublist(0, _history.length - 1)) {
+          try {
+            final part = c.parts.first;
+            if (part is TextPart) {
+              historyData.add({'role': c.role ?? 'user', 'text': part.text});
+            }
+          } catch (_) {}
+        }
+      }
+      debugPrint('🟡 [CHAT] history built in ${sw.elapsedMilliseconds}ms');
+
+      // debugPrint('🟡 [CHAT] apiKey length=${_ai.apiKey.length}, first4=${_ai.apiKey.isEmpty ? "EMPTY" : _ai.apiKey.substring(0, 4)}');
+
+      // --- Step 2: HTTP call ---
+      debugPrint('🟡 [CHAT] calling Gemini HTTP...');
+      final String result;
+      try {
+        result = await _callGeminiHttp(
+          apiKey: _ai.apiKey,
+          modelName: _ai.modelName,
+          systemPrompt: 'Bạn là trợ lý AI cho ứng dụng quản lý căn hộ. '
+              'Hãy trả lời ngắn gọn, rõ ràng bằng ngôn ngữ mà người dùng đang dùng '
+              '(tiếng Việt hoặc tiếng Anh).'
+              'Khi người dùng yêu cầu tạo tòa nhà, phòng, hoặc người thuê: '
+              'LUÔN hỏi đầy đủ thông tin cần thiết (tên, địa chỉ...) TRƯỚC KHI gọi bất kỳ công cụ nào. '
+              'Không bao giờ tự đặt tên hoặc bịa thông tin.',
+          userMsg: userText,
+          history: historyData,
+        ).timeout(
+          const Duration(seconds: 30),
+          onTimeout: () => throw TimeoutException('Gemini HTTP call timed out after 30s'),
+        );
+      } catch (e) {
+        debugPrint('🔴 [CHAT] HTTP call FAILED at ${sw.elapsedMilliseconds}ms: $e');
+        rethrow;
+      }
+      debugPrint('🟢 [CHAT] HTTP responded in ${sw.elapsedMilliseconds}ms, length=${result.length}');
+
+      // --- Step 3: Text animation loop ---
+      buffer.write(result);
+      if (mounted && result.isNotEmpty) {
+        const chunkSize = 8;
+        var i = 0;
+        var loopIterations = 0;
+        final loopSw = Stopwatch()..start();
+
+        while (i < result.length) {
+          if (!mounted) {
+            debugPrint('🔴 [CHAT] widget unmounted mid-animation, breaking');
+            break;
+          }
+          i = (i + chunkSize).clamp(0, result.length);
+          loopIterations++;
+
+          // Warn if a single iteration is taking too long
+          if (loopSw.elapsedMilliseconds > 500) {
+            debugPrint('⚠️ [CHAT] animation loop stalled: iter=$loopIterations i=$i at ${sw.elapsedMilliseconds}ms');
+            loopSw.reset();
+          }
+
+          _streamingText.value = result.substring(0, i);
+          _scrollToBottom();
+          await Future.delayed(const Duration(milliseconds: 16));
+        }
+        debugPrint('🟢 [CHAT] animation done: $loopIterations iters, ${sw.elapsedMilliseconds}ms total');
+      }
+
+      if (buffer.isNotEmpty) {
+        _history.add(Content.model([TextPart(buffer.toString())]));
+      }
+    } on TimeoutException catch (e) {
+      final errMsg = '⚠️ Timeout: ${e.message}';
+      debugPrint('🔴 [CHAT] $errMsg at ${sw.elapsedMilliseconds}ms');
+      _streamingText.value = errMsg;
+      buffer.write(errMsg);
+    } catch (e, stack) {
+      final errMsg = '⚠️ Lỗi: ${e.toString()}';
+      debugPrint('🔴 [CHAT] EXCEPTION at ${sw.elapsedMilliseconds}ms: $e');
+      debugPrint('🔴 [CHAT] STACK: $stack');
+      _streamingText.value = errMsg;
+      buffer.write(errMsg);
+    } finally {
+      debugPrint('🔵 [CHAT] finally block at ${sw.elapsedMilliseconds}ms, mounted=$mounted');
+      if (mounted) {
+        setState(() {
+          if (buffer.isNotEmpty) {
+            _messages.add(_ChatMessage(text: buffer.toString(), isUser: false));
+          }
+          _loading = false;
+          _isStreaming = false;
+        });
+        _streamingText.value = '';
+        _scrollToBottom();
+      }
+      sw.stop();
+      debugPrint('🔵 [CHAT] _streamReply DONE, total=${sw.elapsedMilliseconds}ms');
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Scroll — throttled so we don't schedule hundreds of callbacks
+  // ---------------------------------------------------------------------------
+
   void _scrollToBottom() {
+    if (_scrollPending) return;
+    _scrollPending = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollPending = false;
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
           _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 250),
+          duration: const Duration(milliseconds: 200),
           curve: Curves.easeOut,
         );
       }
     });
   }
+
+  // ---------------------------------------------------------------------------
+  // Build
+  // ---------------------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
@@ -283,7 +587,6 @@ class _ChatPanelState extends State<_ChatPanel> {
       ),
     );
 
-    // On small screens, wrap in a full-screen sized box
     if (isSmall) {
       return SizedBox(
         width: screenWidth,
@@ -293,6 +596,10 @@ class _ChatPanelState extends State<_ChatPanel> {
     }
     return panel;
   }
+
+  // ---------------------------------------------------------------------------
+  // Header
+  // ---------------------------------------------------------------------------
 
   Widget _buildHeader(ThemeData theme, {bool isSmall = false}) {
     return Container(
@@ -338,23 +645,80 @@ class _ChatPanelState extends State<_ChatPanel> {
               ),
             ),
           ),
+          IconButton(
+            onPressed: (_messages.isEmpty && !_isStreaming)
+                ? null
+                : () {
+                    setState(() {
+                      _messages.clear();
+                      _history.clear();
+                    });
+                  },
+            icon: Icon(
+              Icons.delete_sweep_outlined,
+              color: Colors.white.withValues(
+                alpha: (_messages.isEmpty && !_isStreaming) ? 0.4 : 1.0,
+              ),
+              size: 20,
+            ),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+            tooltip: 'Clear conversation',
+          ),
         ],
       ),
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Message list
+  // The streaming bubble is driven by ValueNotifier — zero setState per chunk.
+  // ---------------------------------------------------------------------------
+
   Widget _buildMessages() {
-    if (_messages.isEmpty) return const _EmptyState();
+    final hasContent = _messages.isNotEmpty || _isStreaming;
+    if (!hasContent) return const _EmptyState();
+
+    // Total items:
+    //   - committed messages
+    //   - streaming bubble (if active)
+    //   - typing indicator (while loading but stream hasn't started yet)
+    final itemCount = _messages.length +
+        (_isStreaming ? 1 : 0) +
+        (_loading && !_isStreaming ? 1 : 0);
+
     return ListView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.all(12),
-      itemCount: _messages.length + (_loading ? 1 : 0),
+      itemCount: itemCount,
       itemBuilder: (context, index) {
-        if (index == _messages.length) return const _TypingIndicator();
+        // Typing indicator slot (before stream starts)
+        if (_loading && !_isStreaming && index == _messages.length) {
+          return const _TypingIndicator();
+        }
+
+        // Streaming bubble slot — rebuilt only by ValueNotifier
+        if (_isStreaming && index == _messages.length) {
+          return ValueListenableBuilder<String>(
+            valueListenable: _streamingText,
+            builder: (_, text, __) {
+              if (text.isEmpty) return const _TypingIndicator();
+              return _MessageBubble(
+                message: _ChatMessage(text: text, isUser: false),
+              );
+            },
+          );
+        }
+
+        // Committed messages
         return _MessageBubble(message: _messages[index]);
       },
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // Input bar
+  // ---------------------------------------------------------------------------
 
   Widget _buildInputBar(ThemeData theme) {
     return Container(
@@ -371,8 +735,9 @@ class _ChatPanelState extends State<_ChatPanel> {
               controller: _controller,
               onSubmitted: (_) => _send(),
               textInputAction: TextInputAction.send,
+              enabled: !_loading,
               decoration: InputDecoration(
-                hintText: 'Type a message...',
+                hintText: _loading ? 'AI is thinking...' : 'Type a message...',
                 hintStyle: TextStyle(color: theme.colorScheme.outline),
                 filled: true,
                 fillColor: theme.colorScheme.surfaceContainerHighest
@@ -390,22 +755,16 @@ class _ChatPanelState extends State<_ChatPanel> {
             ),
           ),
           const SizedBox(width: 8),
-          _SendButton(onTap: _send),
+          _SendButton(onTap: _loading ? null : _send),
         ],
       ),
     );
   }
 }
 
-// ---------------------------------------------------------------------------
-// Supporting widgets
-// ---------------------------------------------------------------------------
-
-class _ChatMessage {
-  final String text;
-  final bool isUser;
-  const _ChatMessage({required this.text, required this.isUser});
-}
+// =============================================================================
+// MESSAGE BUBBLE
+// =============================================================================
 
 class _MessageBubble extends StatelessWidget {
   final _ChatMessage message;
@@ -416,12 +775,32 @@ class _MessageBubble extends StatelessWidget {
     final theme = Theme.of(context);
     final isUser = message.isUser;
 
+    if (!isUser && message.text.isEmpty) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: Container(
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          width: 80,
+          height: 32,
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHighest,
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(12),
+              topRight: Radius.circular(12),
+              bottomRight: Radius.circular(12),
+              bottomLeft: Radius.circular(2),
+            ),
+          ),
+        ),
+      );
+    }
+
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 4),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        constraints: const BoxConstraints(maxWidth: 240),
+        constraints: BoxConstraints(maxWidth: isUser ? 240 : 280),
         decoration: BoxDecoration(
           color: isUser
               ? theme.colorScheme.primary
@@ -433,17 +812,36 @@ class _MessageBubble extends StatelessWidget {
             bottomRight: Radius.circular(isUser ? 2 : 12),
           ),
         ),
-        child: Text(
-          message.text,
-          style: TextStyle(
-            fontSize: 13,
-            color: isUser ? Colors.white : theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
+        child: isUser
+            ? Text(
+                message.text,
+                style: const TextStyle(fontSize: 13, color: Colors.white),
+              )
+            : MarkdownBody(
+                data: message.text,
+                styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
+                  p: TextStyle(
+                    fontSize: 13,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  code: TextStyle(
+                    fontSize: 12,
+                    backgroundColor: theme.colorScheme.surface,
+                  ),
+                  blockquoteDecoration: BoxDecoration(
+                    color: theme.colorScheme.surface,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              ),
       ),
     );
   }
 }
+
+// =============================================================================
+// EMPTY STATE
+// =============================================================================
 
 class _EmptyState extends StatelessWidget {
   const _EmptyState();
@@ -454,8 +852,11 @@ class _EmptyState extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.chat_bubble_outline,
-              size: 40, color: Theme.of(context).colorScheme.outline),
+          Icon(
+            Icons.chat_bubble_outline,
+            size: 40,
+            color: Theme.of(context).colorScheme.outline,
+          ),
           const SizedBox(height: 12),
           Text(
             'Ask me anything about\nyour properties',
@@ -470,6 +871,10 @@ class _EmptyState extends StatelessWidget {
     );
   }
 }
+
+// =============================================================================
+// TYPING INDICATOR
+// =============================================================================
 
 class _TypingIndicator extends StatelessWidget {
   const _TypingIndicator();
@@ -490,11 +895,7 @@ class _TypingIndicator extends StatelessWidget {
             bottomLeft: Radius.circular(2),
           ),
         ),
-        child: const SizedBox(
-          width: 32,
-          height: 12,
-          child: _DotsAnimation(),
-        ),
+        child: const SizedBox(width: 32, height: 12, child: _DotsAnimation()),
       ),
     );
   }
@@ -509,7 +910,7 @@ class _DotsAnimation extends StatefulWidget {
 
 class _DotsAnimationState extends State<_DotsAnimation>
     with SingleTickerProviderStateMixin {
-  late AnimationController _ctrl;
+  late final AnimationController _ctrl;
 
   @override
   void initState() {
@@ -528,6 +929,7 @@ class _DotsAnimationState extends State<_DotsAnimation>
 
   @override
   Widget build(BuildContext context) {
+    final dotColor = Theme.of(context).colorScheme.outline;
     return AnimatedBuilder(
       animation: _ctrl,
       builder: (_, __) {
@@ -542,7 +944,7 @@ class _DotsAnimationState extends State<_DotsAnimation>
                 width: 6,
                 height: 6,
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.outline,
+                  color: dotColor,
                   shape: BoxShape.circle,
                 ),
               ),
@@ -554,23 +956,90 @@ class _DotsAnimationState extends State<_DotsAnimation>
   }
 }
 
-class _SendButton extends StatelessWidget {
-  final VoidCallback onTap;
+// =============================================================================
+// SEND BUTTON
+// =============================================================================
+
+class _SendButton extends StatefulWidget {
+  /// Null means disabled (while AI is responding).
+  final VoidCallback? onTap;
   const _SendButton({required this.onTap});
 
   @override
+  State<_SendButton> createState() => _SendButtonState();
+}
+
+class _SendButtonState extends State<_SendButton> {
+  bool _hovered = false;
+  bool _pressed = false;
+
+  Color _darken(Color c, double amount) => Color.fromARGB(
+        (c.a * 255.0).round().clamp(0, 255),
+        (c.r * 255.0 * (1 - amount)).round().clamp(0, 255),
+        (c.g * 255.0 * (1 - amount)).round().clamp(0, 255),
+        (c.b * 255.0 * (1 - amount)).round().clamp(0, 255),
+      );
+
+  @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.primary,
-          shape: BoxShape.circle,
+    final color = Theme.of(context).colorScheme.primary;
+    final disabled = widget.onTap == null;
+
+    final bgColor = disabled
+        ? color.withValues(alpha: 0.4)
+        : _pressed
+            ? _darken(color, 0.18)
+            : _hovered
+                ? _darken(color, 0.08)
+                : color;
+
+    return MouseRegion(
+      cursor:
+          disabled ? SystemMouseCursors.basic : SystemMouseCursors.click,
+      onEnter: (_) { if (!disabled) setState(() => _hovered = true); },
+      onExit: (_) => setState(() { _hovered = false; _pressed = false; }),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        onTapDown: (_) { if (!disabled) setState(() => _pressed = true); },
+        onTapUp: (_) => setState(() => _pressed = false),
+        onTapCancel: () => setState(() => _pressed = false),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          curve: Curves.easeOut,
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: bgColor,
+            shape: BoxShape.circle,
+            boxShadow: (_hovered && !_pressed && !disabled)
+                ? [
+                    BoxShadow(
+                      color: color.withValues(alpha: 0.35),
+                      blurRadius: 8,
+                      spreadRadius: 1,
+                    ),
+                  ]
+                : [],
+          ),
+          child: AnimatedScale(
+            scale: _pressed ? 0.88 : 1.0,
+            duration: const Duration(milliseconds: 100),
+            curve: Curves.easeOut,
+            child: disabled
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: Padding(
+                      padding: EdgeInsets.all(10),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    ),
+                  )
+                : const Icon(Icons.send_rounded, color: Colors.white, size: 16),
+          ),
         ),
-        child: const Icon(Icons.send_rounded, color: Colors.white, size: 16),
       ),
     );
   }

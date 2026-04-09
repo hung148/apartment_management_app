@@ -849,7 +849,7 @@ class PaymentService {
   // ========================================
   Future<double> calculateTotalDue(String organizationId, String roomId) async {
     try {
-      final payments = await getPendingRoomPayments(roomId, organizationId);
+      final payments = await getPendingRoomPayments(organizationId, roomId);
       return payments.fold<double>(0.0, (sum, payment) => sum + payment.remainingAmount);
     } catch (e) {
       print('Error calculating total due: $e');
