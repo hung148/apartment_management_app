@@ -1,75 +1,172 @@
-import 'package:apartment_management_project_2/main.dart';
-import 'package:apartment_management_project_2/services/ai_agent_service.dart';
-import 'package:flutter/foundation.dart' show compute;
-import 'package:flutter/material.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
 import 'dart:convert';
 import 'dart:async' show TimeoutException;
+
+import 'package:apartment_management_project_2/main.dart';
+import 'package:apartment_management_project_2/services/ai_agent_service.dart';
+import 'package:apartment_management_project_2/services/auth_service.dart';
+import 'package:apartment_management_project_2/services/building_service.dart';
+import 'package:apartment_management_project_2/services/organization_service.dart';
+import 'package:apartment_management_project_2/services/payments_service.dart';
+import 'package:apartment_management_project_2/services/room_service.dart';
+import 'package:apartment_management_project_2/services/tenants_service.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:http/http.dart' as http;
-import 'package:google_generative_ai/google_generative_ai.dart';
 
-class _IsolateHelper {
-  static Future<String?> fetchHttp(String url) async {
+Future<Map<String, dynamic>> _callWithRetry({
+  required String apiKey,
+  required String modelName,
+  required String systemPrompt,
+  required String userMsg,
+  required List<Map<String, String>> history,
+  int maxRetries = 3,
+}) async {
+  int attempt = 0;
+  while (true) {
     try {
-      final response = await http.get(Uri.parse(url))
-          .timeout(const Duration(seconds: 10));
-      return response.body;
+      return await _callGeminiHttp(
+        apiKey: apiKey,
+        modelName: modelName,
+        systemPrompt: systemPrompt,
+        userMsg: userMsg,
+        history: history,
+      ).timeout(const Duration(seconds: 30));
     } catch (e) {
-      return null;
+      attempt++;
+      final msg = e.toString();
+      final is503 = msg.contains('503') || msg.contains('UNAVAILABLE');
+      final is429 = msg.contains('429') || msg.contains('RESOURCE_EXHAUSTED');
+
+      if ((!is503 && !is429) || attempt >= maxRetries) rethrow;
+
+      final waitSeconds = is429 ? 60 : (2 << (attempt - 1));
+      await Future.delayed(Duration(seconds: waitSeconds));
     }
-  }
-
-  static Future<String> callGemini(Map<String, dynamic> args) async {
-    final apiKey = args['apiKey'] as String;
-    final modelName = args['modelName'] as String;
-    final systemPrompt = args['systemPrompt'] as String;
-    final userMsg = args['userMsg'] as String;
-    final history = List<Map<String, String>>.from(args['history'] as List);
-
-    final url = Uri.parse(
-      'https://generativelanguage.googleapis.com/v1beta/models/$modelName:generateContent?key=$apiKey',
-    );
-
-    final contents = <Map<String, dynamic>>[];
-    for (final h in history) {
-      contents.add({
-        'role': h['role'] == 'user' ? 'user' : 'model',
-        'parts': [{'text': h['text']}],
-      });
-    }
-    contents.add({
-      'role': 'user',
-      'parts': [{'text': userMsg}],
-    });
-
-    final body = jsonEncode({
-      'system_instruction': {
-        'parts': [{'text': systemPrompt}],
-      },
-      'contents': contents,
-    });
-
-    final response = await http.post(
-      url,
-      headers: {'Content-Type': 'application/json'},
-      body: body,
-    ).timeout(const Duration(seconds: 30));
-
-    if (response.statusCode != 200) {
-      throw Exception('Gemini API error ${response.statusCode}: ${response.body}');
-    }
-
-    final json = jsonDecode(response.body) as Map<String, dynamic>;
-    final candidates = json['candidates'] as List?;
-    if (candidates == null || candidates.isEmpty) return '';
-    final content = candidates[0]['content'] as Map<String, dynamic>?;
-    final parts = content?['parts'] as List?;
-    if (parts == null || parts.isEmpty) return '';
-    return parts[0]['text'] as String? ?? '';
   }
 }
 
-Future<String> _callGeminiHttp({
+Future<Map<String, dynamic>> _sendToolResultWithRetry({
+  required String apiKey,
+  required String modelName,
+  required String systemPrompt,
+  required List<Map<String, dynamic>> contents,
+  int maxRetries = 3,
+}) async {
+  int attempt = 0;
+  while (true) {
+    try {
+      return await _sendToolResult(
+        apiKey: apiKey,
+        modelName: modelName,
+        systemPrompt: systemPrompt,
+        contents: contents,
+      ).timeout(const Duration(seconds: 30));
+    } catch (e) {
+      attempt++;
+      final is503 = e.toString().contains('503') || e.toString().contains('UNAVAILABLE');
+      if (!is503 || attempt >= maxRetries) rethrow;
+      await Future.delayed(Duration(seconds: 2 << (attempt - 1)));
+    }
+  }
+}
+
+// =============================================================================
+// FUNCTION DECLARATIONS
+// =============================================================================
+
+const List<Map<String, dynamic>> _functionDeclarations = [
+  {
+    'name': 'get_organizations',
+    'description':
+        'Get all organizations the current user belongs to. '
+        'Call this first when the user mentions an organization by name, '
+        'to resolve the correct organizationId before calling other tools.',
+    'parameters': {
+      'type': 'object',
+      'properties': {},
+    },
+  },
+  {
+    'name': 'get_buildings',
+    'description':
+        'List all buildings in an organization. '
+        'Ask the user which organization if not already known.',
+    'parameters': {
+      'type': 'object',
+      'properties': {
+        'organizationId': {'type': 'string', 'description': 'The organization ID'},
+      },
+      'required': ['organizationId'],
+    },
+  },
+  {
+    'name': 'get_tenants',
+    'description':
+        'List tenants in an organization. '
+        'Optionally filter by buildingId.',
+    'parameters': {
+      'type': 'object',
+      'properties': {
+        'organizationId': {'type': 'string', 'description': 'The organization ID'},
+        'buildingId': {'type': 'string', 'description': 'Optional: filter by building ID'},
+      },
+      'required': ['organizationId'],
+    },
+  },
+  {
+    'name': 'get_payments',
+    'description':
+        'List payments in an organization. '
+        'Optionally filter by buildingId, tenantId, or overdue status.',
+    'parameters': {
+      'type': 'object',
+      'properties': {
+        'organizationId': {'type': 'string', 'description': 'The organization ID'},
+        'buildingId': {'type': 'string', 'description': 'Optional: filter by building ID'},
+        'tenantId': {'type': 'string', 'description': 'Optional: filter by tenant ID'},
+        'overdueOnly': {
+          'type': 'boolean',
+          'description': 'If true, return only overdue payments',
+        },
+      },
+      'required': ['organizationId'],
+    },
+  },
+  {
+    'name': 'create_building',
+    'description':
+        'Create a new building. '
+        'ALWAYS ask the user for the organization, building name, and address '
+        'before calling this. Never invent a name or address.',
+    'parameters': {
+      'type': 'object',
+      'properties': {
+        'organizationId': {'type': 'string', 'description': 'The organization ID'},
+        'name': {'type': 'string', 'description': 'Building name provided by the user'},
+        'address': {'type': 'string', 'description': 'Building address provided by the user'},
+      },
+      'required': ['organizationId', 'name', 'address'],
+    },
+  },
+  {
+    'name': 'get_rooms',
+    'description': 'List all rooms in a building.',
+    'parameters': {
+      'type': 'object',
+      'properties': {
+        'organizationId': {'type': 'string', 'description': 'The organization ID'},
+        'buildingId': {'type': 'string', 'description': 'The building ID'},
+      },
+      'required': ['organizationId', 'buildingId'],
+    },
+  },
+];
+
+// =============================================================================
+// GEMINI HTTP
+// =============================================================================
+
+Future<Map<String, dynamic>> _callGeminiHttp({
   required String apiKey,
   required String modelName,
   required String systemPrompt,
@@ -81,23 +178,31 @@ Future<String> _callGeminiHttp({
   );
 
   final contents = <Map<String, dynamic>>[];
-
   for (final h in history) {
     contents.add({
       'role': h['role'] == 'user' ? 'user' : 'model',
-      'parts': [{'text': h['text']}],
+      'parts': [
+        {'text': h['text']}
+      ],
     });
   }
   contents.add({
     'role': 'user',
-    'parts': [{'text': userMsg}],
+    'parts': [
+      {'text': userMsg}
+    ],
   });
 
   final body = jsonEncode({
     'system_instruction': {
-      'parts': [{'text': systemPrompt}],
+      'parts': [
+        {'text': systemPrompt}
+      ],
     },
     'contents': contents,
+    'tools': [
+      {'function_declarations': _functionDeclarations}
+    ],
   });
 
   final response = await http.post(
@@ -110,13 +215,63 @@ Future<String> _callGeminiHttp({
     throw Exception('Gemini API error ${response.statusCode}: ${response.body}');
   }
 
-  final json = jsonDecode(response.body) as Map<String, dynamic>;
+  return jsonDecode(response.body) as Map<String, dynamic>;
+}
+
+Future<Map<String, dynamic>> _sendToolResult({
+  required String apiKey,
+  required String modelName,
+  required String systemPrompt,
+  required List<Map<String, dynamic>> contents, // already fully built
+}) async {
+  final url = Uri.parse(
+    'https://generativelanguage.googleapis.com/v1beta/models/$modelName:generateContent?key=$apiKey',
+  );
+
+  final body = jsonEncode({
+    'system_instruction': {
+      'parts': [{'text': systemPrompt}],
+    },
+    'contents': contents,
+    'tools': [
+      {'function_declarations': _functionDeclarations}
+    ],
+  });
+
+  final response = await http.post(
+    url,
+    headers: {'Content-Type': 'application/json'},
+    body: body,
+  );
+
+  if (response.statusCode != 200) {
+    throw Exception('Gemini follow-up error ${response.statusCode}: ${response.body}');
+  }
+
+  return jsonDecode(response.body) as Map<String, dynamic>;
+}
+
+String _extractText(Map<String, dynamic> json) {
   final candidates = json['candidates'] as List?;
   if (candidates == null || candidates.isEmpty) return '';
   final content = candidates[0]['content'] as Map<String, dynamic>?;
   final parts = content?['parts'] as List?;
   if (parts == null || parts.isEmpty) return '';
   return parts[0]['text'] as String? ?? '';
+}
+
+Map<String, dynamic>? _extractFunctionCall(Map<String, dynamic> json) {
+  final candidates = json['candidates'] as List?;
+  if (candidates == null || candidates.isEmpty) return null;
+  final content = candidates[0]['content'] as Map<String, dynamic>?;
+  final parts = content?['parts'] as List?;
+  if (parts == null || parts.isEmpty) return null;
+  for (final part in parts) {
+    if ((part as Map)['functionCall'] != null) {
+      return part['functionCall'] as Map<String, dynamic>;
+    }
+  }
+  return null;
 }
 
 // =============================================================================
@@ -142,7 +297,6 @@ class ChatOverlayManager {
   static void _reinsertOnTop() {
     final overlay = navigatorKey.currentState?.overlay;
     if (overlay == null) return;
-
     _entry?.remove();
     _entry = OverlayEntry(
       builder: (_) => ValueListenableBuilder<bool>(
@@ -184,7 +338,6 @@ class _ChatOverlay extends StatelessWidget {
         return Stack(
           fit: StackFit.expand,
           children: [
-            // Chat panel — always in tree, slides in/out
             Positioned(
               right: 0,
               bottom: 0,
@@ -201,7 +354,6 @@ class _ChatOverlay extends StatelessWidget {
                 child: _ChatPanel(onClose: () => panelOpen.value = false),
               ),
             ),
-            // FAB — only rendered when panel is closed
             if (!isOpen)
               _DraggableFab(
                 positionNotifier: fabPosition,
@@ -216,8 +368,6 @@ class _ChatOverlay extends StatelessWidget {
 
 // =============================================================================
 // DRAGGABLE FAB
-// Stores position as fractional offset (0.0–1.0) so it stays proportional
-// when the window resizes.
 // =============================================================================
 
 class _DraggableFab extends StatefulWidget {
@@ -273,24 +423,21 @@ class _DraggableFabState extends State<_DraggableFab> {
           child: MouseRegion(
             onEnter: (_) => setState(() => _hovered = true),
             onExit: (_) => setState(() => _hovered = false),
-            cursor: _dragging
-                ? SystemMouseCursors.grabbing
-                : SystemMouseCursors.grab,
+            cursor: _dragging ? SystemMouseCursors.grabbing : SystemMouseCursors.grab,
             child: GestureDetector(
               onTap: _didMove ? null : widget.onTap,
-              onPanStart: (details) {
-                _dragStart = details.globalPosition;
+              onPanStart: (d) {
+                _dragStart = d.globalPosition;
                 _posStart = pos;
               },
-              onPanUpdate: (details) {
-                final delta = details.globalPosition - _dragStart;
+              onPanUpdate: (d) {
+                final delta = d.globalPosition - _dragStart;
                 if (delta.distance > 4) {
                   _didMove = true;
                   if (!_dragging) setState(() => _dragging = true);
                 }
                 if (!_didMove) return;
-                widget.positionNotifier.value =
-                    _toFrac(_posStart + delta, screen);
+                widget.positionNotifier.value = _toFrac(_posStart + delta, screen);
               },
               onPanEnd: (_) {
                 _didMove = false;
@@ -338,16 +485,21 @@ class _ChatPanel extends StatefulWidget {
 
 class _ChatPanelState extends State<_ChatPanel> {
   final _messages = <_ChatMessage>[];
-  final _history = <Content>[];
+  final _history = <Map<String, String>>[];
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
-
-  // ValueNotifier for the actively streaming bubble — avoids setState per chunk
   final _streamingText = ValueNotifier<String>('');
 
   bool _loading = false;
   bool _isStreaming = false;
-  bool _scrollPending = false; // throttle scroll callbacks
+  bool _scrollPending = false;
+
+  static const String _systemPrompt =
+      'Bạn là trợ lý AI cho ứng dụng quản lý căn hộ. '
+      'Hãy trả lời ngắn gọn, rõ ràng bằng ngôn ngữ mà người dùng đang dùng (tiếng Việt hoặc tiếng Anh). '
+      'Khi cần thông tin về tổ chức, tòa nhà, người thuê hoặc thanh toán — hãy dùng công cụ. '
+      'Khi người dùng yêu cầu tạo dữ liệu: LUÔN hỏi đầy đủ thông tin trước khi gọi công cụ. '
+      'Không bao giờ tự đặt tên hoặc bịa thông tin.';
 
   AIAgentService get _ai => getIt<AIAgentService>();
 
@@ -366,54 +518,131 @@ class _ChatPanelState extends State<_ChatPanel> {
   void _send() {
     final text = _controller.text.trim();
     if (text.isEmpty || _loading) return;
-
     _controller.clear();
-
     setState(() {
       _messages.add(_ChatMessage(text: text, isUser: true));
       _loading = true;
       _isStreaming = true;
     });
-
     _scrollToBottom();
-    _testConnectivity();
+    _streamReply(text);
   }
 
-  Future<void> _testConnectivity() async {
-    debugPrint('🧪 Testing HTTP via static isolate...');
-    try {
-      final body = await compute(_IsolateHelper.fetchHttp, 'https://httpbin.org/get');
-      debugPrint('🧪 httpbin result: ${body != null ? "OK (${body.length} bytes)" : "NULL"}');
+  // ---------------------------------------------------------------------------
+  // Tool executor
+  // ---------------------------------------------------------------------------
 
-      debugPrint('🧪 Testing Gemini endpoint...');
-      final geminiBody = await compute(
-        _IsolateHelper.fetchHttp,
-        'https://generativelanguage.googleapis.com/v1beta/models?key=${_ai.apiKey}',
-      );
-      debugPrint('🧪 Gemini result: ${geminiBody != null ? "OK" : "NULL"} — ${geminiBody?.substring(0, geminiBody.length.clamp(0, 100))}');
+  Future<String> _executeTool(String name, Map<String, dynamic> args) async {
+    final userId = getIt<AuthService>().currentUser?.uid;
+    if (userId == null) return 'Error: not authenticated.';
 
-      // If both passed, proceed to actual reply
-      if (mounted) _streamReply(_messages.last.text);
-
-    } catch (e) {
-      debugPrint('🔴 Connectivity test FAILED: $e');
-      if (mounted) {
-        setState(() {
-          _loading = false;
-          _isStreaming = false;
-        });
+    // Permission check for org-scoped tools
+    final orgId = args['organizationId'] as String?;
+    if (orgId != null && orgId.isNotEmpty) {
+      final membership = await getIt<OrganizationService>()
+          .getUserMembership(userId, orgId);
+      if (membership == null) {
+        return 'Access denied: you are not a member of this organization.';
       }
+      const writeTools = {'create_building'};
+      if (writeTools.contains(name) && membership.role != 'admin') {
+        return 'Access denied: admin role required for this action.';
+      }
+    }
+
+    try {
+      switch (name) {
+        case 'get_organizations':
+          final orgs = await getIt<OrganizationService>()
+              .getUserOrganizations(userId);
+          if (orgs.isEmpty) return 'No organizations found.';
+          return orgs.map((o) => '- ${o.name} (ID: ${o.id})').join('\n');
+
+        case 'get_buildings':
+          final buildings = await getIt<BuildingService>()
+              .getOrganizationBuildings(orgId!);
+          if (buildings.isEmpty) return 'No buildings found.';
+          return buildings
+              .map((b) => '- ${b.name}, ${b.address} (ID: ${b.id})')
+              .join('\n');
+
+        case 'get_tenants':
+          final bid = args['buildingId'] as String?;
+          final tenants = bid != null && bid.isNotEmpty
+              ? await getIt<TenantService>()
+                  .getBuildingTenants(orgId!, bid)
+              : await getIt<TenantService>()
+                  .getOrganizationTenants(orgId!);
+          if (tenants.isEmpty) return 'No tenants found.';
+          return tenants
+              .map((t) => '- ${t.fullName}, Phone: ${t.phoneNumber}, Room: ${t.roomId}')
+              .join('\n');
+
+        case 'get_payments':
+          final bid = args['buildingId'] as String?;
+          final tid = args['tenantId'] as String?;
+          final overdueOnly = args['overdueOnly'] as bool? ?? false;
+
+          final payments = overdueOnly
+              ? await getIt<PaymentService>().getOverduePayments(orgId!)
+              : bid != null && bid.isNotEmpty
+                  ? await getIt<PaymentService>()
+                      .getBuildingPayments(orgId!, bid)
+                  : tid != null && tid.isNotEmpty
+                      ? await getIt<PaymentService>()
+                          .getTenantPayments(orgId!, tid)
+                      : await getIt<PaymentService>()
+                          .getOrganizationPayments(orgId!);
+
+          if (payments.isEmpty) return 'No payments found.';
+          return payments
+              .map((p) =>
+                  '- ${p.tenantName}: ${p.totalAmount.toStringAsFixed(0)}đ '
+                  '(${p.status.name}, due: ${p.dueDate.day}/${p.dueDate.month}/${p.dueDate.year})')
+              .join('\n');
+
+        case 'create_building':
+          final buildingName = args['name'] as String? ?? '';
+          final address = args['address'] as String? ?? '';
+          if (buildingName.isEmpty) return 'Missing building name.';
+
+          final newId = await getIt<BuildingService>()
+              .addBuildingFromDialogResult(
+            organizationId: orgId!,
+            dialogResult: {
+              'name': buildingName,
+              'address': address,
+              'autoGenerateRooms': false,
+            },
+          );
+          if (newId == null) return 'Failed to create building. Please try again.';
+          return 'Building "$buildingName" created successfully. '
+              'You can now add rooms from the Buildings screen.';
+        
+        case 'get_rooms':
+          final bid = args['buildingId'] as String? ?? '';
+          if (bid.isEmpty) return 'Missing buildingId.';
+          final rooms = await getIt<RoomService>()
+              .getBuildingRooms(orgId!, bid);
+          if (rooms.isEmpty) return 'No rooms found in this building.';
+          return rooms
+              .map((r) => '- ${r.roomNumber}, Type: ${r.roomType}, Area: ${r.area}m² (ID: ${r.id})')
+              .join('\n');
+        
+        default:
+          return 'Unknown tool: $name';
+      }
+    } catch (e) {
+      return 'Tool error: $e';
     }
   }
 
   // ---------------------------------------------------------------------------
-  // Stream reply
+  // Reply with function calling support
   // ---------------------------------------------------------------------------
-  Future<void> _streamReply(String userText) async {
 
-    // Guard: fail immediately if API key is missing
+  Future<void> _streamReply(String userText) async {
     if (_ai.apiKey.isEmpty) {
-      debugPrint('🔴 [CHAT] API key is empty — dotenv may not have loaded before AIAgentService constructed');
       if (mounted) {
         setState(() {
           _messages.add(const _ChatMessage(
@@ -427,100 +656,101 @@ class _ChatPanelState extends State<_ChatPanel> {
       return;
     }
 
-    _history.add(Content.text(userText));
+    final historyData = List<Map<String, String>>.from(_history);
     _streamingText.value = '';
     final buffer = StringBuffer();
 
-    final sw = Stopwatch()..start();
-    debugPrint('🔵 [CHAT] _streamReply START');
-
     try {
-      // --- Step 1: Build history ---
-      final List<Map<String, String>> historyData = [];
-      if (_history.length > 1) {
-        for (final c in _history.sublist(0, _history.length - 1)) {
-          try {
-            final part = c.parts.first;
-            if (part is TextPart) {
-              historyData.add({'role': c.role ?? 'user', 'text': part.text});
-            }
-          } catch (_) {}
-        }
+      // Build contents list once — we'll append to it each tool round
+      final contents = <Map<String, dynamic>>[];
+      for (final h in historyData) {
+        contents.add({
+          'role': h['role'] == 'user' ? 'user' : 'model',
+          'parts': [{'text': h['text']}],
+        });
       }
-      debugPrint('🟡 [CHAT] history built in ${sw.elapsedMilliseconds}ms');
+      contents.add({
+        'role': 'user',
+        'parts': [{'text': userText}],
+      });
 
-      // debugPrint('🟡 [CHAT] apiKey length=${_ai.apiKey.length}, first4=${_ai.apiKey.isEmpty ? "EMPTY" : _ai.apiKey.substring(0, 4)}');
+      // First call
+      var responseJson = await _callWithRetry(
+        apiKey: _ai.apiKey,
+        modelName: _ai.modelName,
+        systemPrompt: _systemPrompt,
+        userMsg: userText,
+        history: historyData,
+      );
 
-      // --- Step 2: HTTP call ---
-      debugPrint('🟡 [CHAT] calling Gemini HTTP...');
-      final String result;
-      try {
-        result = await _callGeminiHttp(
+      // Loop to handle chained tool calls (e.g. get_organizations → get_buildings)
+      while (true) {
+        final functionCall = _extractFunctionCall(responseJson);
+        if (functionCall == null) break; // No more tools → proceed to final text
+
+        final fnName = functionCall['name'] as String;
+        final fnArgs = (functionCall['args'] as Map<String, dynamic>?) ?? {};
+
+        _streamingText.value = ''; // keep typing indicator visible
+
+        final toolResult = await _executeTool(fnName, fnArgs);
+
+        // Append this tool round to contents
+        contents.add({
+          'role': 'model',
+          'parts': [{'functionCall': functionCall}],
+        });
+        contents.add({
+          'role': 'user',
+          'parts': [
+            {
+              'functionResponse': {
+                'name': fnName,
+                'response': {'result': toolResult},
+              }
+            }
+          ],
+        });
+
+        // ✅ Add delay before next API call to avoid hitting rate limit
+        await Future.delayed(const Duration(seconds: 3));
+
+        // Send updated contents and get next response
+        responseJson = await _sendToolResultWithRetry(
           apiKey: _ai.apiKey,
           modelName: _ai.modelName,
-          systemPrompt: 'Bạn là trợ lý AI cho ứng dụng quản lý căn hộ. '
-              'Hãy trả lời ngắn gọn, rõ ràng bằng ngôn ngữ mà người dùng đang dùng '
-              '(tiếng Việt hoặc tiếng Anh).'
-              'Khi người dùng yêu cầu tạo tòa nhà, phòng, hoặc người thuê: '
-              'LUÔN hỏi đầy đủ thông tin cần thiết (tên, địa chỉ...) TRƯỚC KHI gọi bất kỳ công cụ nào. '
-              'Không bao giờ tự đặt tên hoặc bịa thông tin.',
-          userMsg: userText,
-          history: historyData,
-        ).timeout(
-          const Duration(seconds: 30),
-          onTimeout: () => throw TimeoutException('Gemini HTTP call timed out after 30s'),
+          systemPrompt: _systemPrompt,
+          contents: contents,
         );
-      } catch (e) {
-        debugPrint('🔴 [CHAT] HTTP call FAILED at ${sw.elapsedMilliseconds}ms: $e');
-        rethrow;
       }
-      debugPrint('🟢 [CHAT] HTTP responded in ${sw.elapsedMilliseconds}ms, length=${result.length}');
 
-      // --- Step 3: Text animation loop ---
+      // Now extract the final text response
+      final result = _extractText(responseJson);
+
       buffer.write(result);
       if (mounted && result.isNotEmpty) {
         const chunkSize = 8;
         var i = 0;
-        var loopIterations = 0;
-        final loopSw = Stopwatch()..start();
-
         while (i < result.length) {
-          if (!mounted) {
-            debugPrint('🔴 [CHAT] widget unmounted mid-animation, breaking');
-            break;
-          }
+          if (!mounted) break;
           i = (i + chunkSize).clamp(0, result.length);
-          loopIterations++;
-
-          // Warn if a single iteration is taking too long
-          if (loopSw.elapsedMilliseconds > 500) {
-            debugPrint('⚠️ [CHAT] animation loop stalled: iter=$loopIterations i=$i at ${sw.elapsedMilliseconds}ms');
-            loopSw.reset();
-          }
-
           _streamingText.value = result.substring(0, i);
           _scrollToBottom();
           await Future.delayed(const Duration(milliseconds: 16));
         }
-        debugPrint('🟢 [CHAT] animation done: $loopIterations iters, ${sw.elapsedMilliseconds}ms total');
       }
 
       if (buffer.isNotEmpty) {
-        _history.add(Content.model([TextPart(buffer.toString())]));
+        _history.add({'role': 'user', 'text': userText});
+        _history.add({'role': 'model', 'text': buffer.toString()});
       }
     } on TimeoutException catch (e) {
-      final errMsg = '⚠️ Timeout: ${e.message}';
-      debugPrint('🔴 [CHAT] $errMsg at ${sw.elapsedMilliseconds}ms');
-      _streamingText.value = errMsg;
-      buffer.write(errMsg);
-    } catch (e, stack) {
-      final errMsg = '⚠️ Lỗi: ${e.toString()}';
-      debugPrint('🔴 [CHAT] EXCEPTION at ${sw.elapsedMilliseconds}ms: $e');
-      debugPrint('🔴 [CHAT] STACK: $stack');
-      _streamingText.value = errMsg;
-      buffer.write(errMsg);
+      buffer.write('⚠️ Timeout: ${e.message}');
+      _streamingText.value = buffer.toString();
+    } catch (e) {
+      buffer.write('⚠️ Lỗi: $e');
+      _streamingText.value = buffer.toString();
     } finally {
-      debugPrint('🔵 [CHAT] finally block at ${sw.elapsedMilliseconds}ms, mounted=$mounted');
       if (mounted) {
         setState(() {
           if (buffer.isNotEmpty) {
@@ -532,13 +762,11 @@ class _ChatPanelState extends State<_ChatPanel> {
         _streamingText.value = '';
         _scrollToBottom();
       }
-      sw.stop();
-      debugPrint('🔵 [CHAT] _streamReply DONE, total=${sw.elapsedMilliseconds}ms');
     }
   }
 
   // ---------------------------------------------------------------------------
-  // Scroll — throttled so we don't schedule hundreds of callbacks
+  // Scroll
   // ---------------------------------------------------------------------------
 
   void _scrollToBottom() {
@@ -597,10 +825,6 @@ class _ChatPanelState extends State<_ChatPanel> {
     return panel;
   }
 
-  // ---------------------------------------------------------------------------
-  // Header
-  // ---------------------------------------------------------------------------
-
   Widget _buildHeader(ThemeData theme, {bool isSmall = false}) {
     return Container(
       padding: EdgeInsets.only(
@@ -648,17 +872,14 @@ class _ChatPanelState extends State<_ChatPanel> {
           IconButton(
             onPressed: (_messages.isEmpty && !_isStreaming)
                 ? null
-                : () {
-                    setState(() {
+                : () => setState(() {
                       _messages.clear();
                       _history.clear();
-                    });
-                  },
+                    }),
             icon: Icon(
               Icons.delete_sweep_outlined,
-              color: Colors.white.withValues(
-                alpha: (_messages.isEmpty && !_isStreaming) ? 0.4 : 1.0,
-              ),
+              color: Colors.white
+                  .withValues(alpha: (_messages.isEmpty && !_isStreaming) ? 0.4 : 1.0),
               size: 20,
             ),
             padding: EdgeInsets.zero,
@@ -670,19 +891,9 @@ class _ChatPanelState extends State<_ChatPanel> {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Message list
-  // The streaming bubble is driven by ValueNotifier — zero setState per chunk.
-  // ---------------------------------------------------------------------------
-
   Widget _buildMessages() {
-    final hasContent = _messages.isNotEmpty || _isStreaming;
-    if (!hasContent) return const _EmptyState();
+    if (_messages.isEmpty && !_isStreaming) return const _EmptyState();
 
-    // Total items:
-    //   - committed messages
-    //   - streaming bubble (if active)
-    //   - typing indicator (while loading but stream hasn't started yet)
     final itemCount = _messages.length +
         (_isStreaming ? 1 : 0) +
         (_loading && !_isStreaming ? 1 : 0);
@@ -692,12 +903,9 @@ class _ChatPanelState extends State<_ChatPanel> {
       padding: const EdgeInsets.all(12),
       itemCount: itemCount,
       itemBuilder: (context, index) {
-        // Typing indicator slot (before stream starts)
         if (_loading && !_isStreaming && index == _messages.length) {
           return const _TypingIndicator();
         }
-
-        // Streaming bubble slot — rebuilt only by ValueNotifier
         if (_isStreaming && index == _messages.length) {
           return ValueListenableBuilder<String>(
             valueListenable: _streamingText,
@@ -709,24 +917,16 @@ class _ChatPanelState extends State<_ChatPanel> {
             },
           );
         }
-
-        // Committed messages
         return _MessageBubble(message: _messages[index]);
       },
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Input bar
-  // ---------------------------------------------------------------------------
-
   Widget _buildInputBar(ThemeData theme) {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        border: Border(
-          top: BorderSide(color: theme.dividerColor, width: 0.5),
-        ),
+        border: Border(top: BorderSide(color: theme.dividerColor, width: 0.5)),
       ),
       child: Row(
         children: [
@@ -740,12 +940,10 @@ class _ChatPanelState extends State<_ChatPanel> {
                 hintText: _loading ? 'AI is thinking...' : 'Type a message...',
                 hintStyle: TextStyle(color: theme.colorScheme.outline),
                 filled: true,
-                fillColor: theme.colorScheme.surfaceContainerHighest
-                    .withValues(alpha: 0.5),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 10,
-                ),
+                fillColor:
+                    theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(20),
                   borderSide: BorderSide.none,
@@ -820,14 +1018,9 @@ class _MessageBubble extends StatelessWidget {
             : MarkdownBody(
                 data: message.text,
                 styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
-                  p: TextStyle(
-                    fontSize: 13,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
+                  p: TextStyle(fontSize: 13, color: theme.colorScheme.onSurfaceVariant),
                   code: TextStyle(
-                    fontSize: 12,
-                    backgroundColor: theme.colorScheme.surface,
-                  ),
+                      fontSize: 12, backgroundColor: theme.colorScheme.surface),
                   blockquoteDecoration: BoxDecoration(
                     color: theme.colorScheme.surface,
                     borderRadius: BorderRadius.circular(4),
@@ -852,19 +1045,14 @@ class _EmptyState extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            Icons.chat_bubble_outline,
-            size: 40,
-            color: Theme.of(context).colorScheme.outline,
-          ),
+          Icon(Icons.chat_bubble_outline,
+              size: 40, color: Theme.of(context).colorScheme.outline),
           const SizedBox(height: 12),
           Text(
             'Ask me anything about\nyour properties',
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 13,
-              color: Theme.of(context).colorScheme.outline,
-            ),
+                fontSize: 13, color: Theme.of(context).colorScheme.outline),
           ),
         ],
       ),
@@ -943,10 +1131,7 @@ class _DotsAnimationState extends State<_DotsAnimation>
               child: Container(
                 width: 6,
                 height: 6,
-                decoration: BoxDecoration(
-                  color: dotColor,
-                  shape: BoxShape.circle,
-                ),
+                decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle),
               ),
             );
           }),
@@ -961,7 +1146,6 @@ class _DotsAnimationState extends State<_DotsAnimation>
 // =============================================================================
 
 class _SendButton extends StatefulWidget {
-  /// Null means disabled (while AI is responding).
   final VoidCallback? onTap;
   const _SendButton({required this.onTap});
 
@@ -984,7 +1168,6 @@ class _SendButtonState extends State<_SendButton> {
   Widget build(BuildContext context) {
     final color = Theme.of(context).colorScheme.primary;
     final disabled = widget.onTap == null;
-
     final bgColor = disabled
         ? color.withValues(alpha: 0.4)
         : _pressed
@@ -994,13 +1177,19 @@ class _SendButtonState extends State<_SendButton> {
                 : color;
 
     return MouseRegion(
-      cursor:
-          disabled ? SystemMouseCursors.basic : SystemMouseCursors.click,
-      onEnter: (_) { if (!disabled) setState(() => _hovered = true); },
-      onExit: (_) => setState(() { _hovered = false; _pressed = false; }),
+      cursor: disabled ? SystemMouseCursors.basic : SystemMouseCursors.click,
+      onEnter: (_) {
+        if (!disabled) setState(() => _hovered = true);
+      },
+      onExit: (_) => setState(() {
+        _hovered = false;
+        _pressed = false;
+      }),
       child: GestureDetector(
         onTap: widget.onTap,
-        onTapDown: (_) { if (!disabled) setState(() => _pressed = true); },
+        onTapDown: (_) {
+          if (!disabled) setState(() => _pressed = true);
+        },
         onTapUp: (_) => setState(() => _pressed = false),
         onTapCancel: () => setState(() => _pressed = false),
         child: AnimatedContainer(
@@ -1032,9 +1221,7 @@ class _SendButtonState extends State<_SendButton> {
                     child: Padding(
                       padding: EdgeInsets.all(10),
                       child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
+                          strokeWidth: 2, color: Colors.white),
                     ),
                   )
                 : const Icon(Icons.send_rounded, color: Colors.white, size: 16),
