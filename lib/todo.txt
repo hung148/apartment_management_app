@@ -83,8 +83,6 @@ Use kReleaseMode: Use this constant to disable all print() logs in your release 
 
 http block on debug have to run in adminstration mode
 
-Interaction with ai tool
-can you get all buildings
-Answer: vui long cho biet bna muon xem cac toa nha cua to chuc nao 
-Chung cu ABC 
-Answer: 
+Not enough to only show room in payment
+Them button is too simple
+the click effect on back button is bigger than how it look

@@ -171,15 +171,14 @@ class _OrganizationScreenState extends State<OrganizationScreen>
   Future<List<dynamic>>? _summaryBarFuture;
   Future<List<Building>>? _buildingsFuture;
   Future<Membership?>? _membershipFuture;
-  Future<List<Membership>>? _membersFuture;
   Future<List<dynamic>>? _membersTabFuture;
+  PaymentStatus? _paymentStatusFilter;
 
   void _refreshAll() {
     if (!mounted) return;
     setState(() {
       _buildingsFuture = _getBuildings();
       _membershipFuture = _getMyMembership();
-      _membersFuture = _getMembers();
       _summaryBarFuture = Future.wait([_getAllRooms(), _getAllTenants()]);
       _buildingCardFutures.clear();
       _statsFuture = Future.wait([
@@ -1545,105 +1544,114 @@ class _OrganizationScreenState extends State<OrganizationScreen>
       builder: (context, _) {
         final allPayments = _paymentsNotifier.payments;
 
-        if (allPayments.isEmpty) {
-          return FutureBuilder<Membership?>(
-            future: _membershipFuture,
-            builder: (context, membershipSnapshot) {
-              final isAdmin = membershipSnapshot.hasData &&
-                  membershipSnapshot.data!.role == 'admin';
-              return Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.receipt_long_outlined,
-                        size: 64, color: Colors.grey),
-                    const SizedBox(height: 16),
-                    Text(
-                      t['no_payments'],
-                      style: const TextStyle(
-                          color: Colors.grey, fontSize: 16),
-                    ),
-                    const SizedBox(height: 24),
-                    if (isAdmin)
-                      ElevatedButton.icon(
-                        onPressed: _showAddPaymentDialog,
-                        icon: const Icon(Icons.add),
-                        label: Text(t['add_payment']),
-                      ),
-                  ],
-                ),
-              );
-            },
-          );
-        }
-
-        final sortedPayments = List<Payment>.from(allPayments)
-          ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-
         return FutureBuilder<Membership?>(
           future: _membershipFuture,
           builder: (context, membershipSnapshot) {
             final isAdmin = membershipSnapshot.hasData &&
                 membershipSnapshot.data!.role == 'admin';
-            return Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  ValueListenableBuilder<TextEditingValue>(
-                    valueListenable: _searchController,
-                    builder: (context, value, child) {
-                      return Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              controller: _searchController,
-                              maxLength: 100,
-                              decoration: InputDecoration(
-                                counterText: '',
-                                hintText: t['search_payments_hint'],
-                                prefixIcon:
-                                    const Icon(Icons.search),
-                                suffixIcon: value.text.isNotEmpty
-                                    ? IconButton(
-                                        icon:
-                                            const Icon(Icons.clear),
-                                        onPressed: () =>
-                                            _searchController
-                                                .clear(),
-                                      )
-                                    : null,
-                                border: OutlineInputBorder(
-                                    borderRadius:
-                                        BorderRadius.circular(8)),
-                                contentPadding:
-                                    const EdgeInsets.symmetric(
-                                        vertical: 12),
-                              ),
-                            ),
+
+            return FutureBuilder<List<dynamic>>(
+              future: _summaryBarFuture,
+              builder: (context, roomsSnap) {
+                final rooms = roomsSnap.data?[0] as List<Room>? ?? [];
+                if (allPayments.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.receipt_long_outlined, size: 64, color: Colors.grey.shade300),
+                        const SizedBox(height: 16),
+                        Text(t['no_payments'],
+                            style: TextStyle(color: Colors.grey.shade500, fontSize: 16)),
+                        const SizedBox(height: 24),
+                        if (isAdmin)
+                          ElevatedButton.icon(
+                            onPressed: _showAddPaymentDialog,
+                            icon: const Icon(Icons.add),
+                            label: Text(t['add_payment']),
                           ),
-                          const SizedBox(width: 12),
-                          if (isAdmin)
-                            ElevatedButton.icon(
-                              onPressed: _showAddPaymentDialog,
-                              icon: const Icon(Icons.add),
-                              label: Text(t['add']),
-                            ),
-                        ],
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  Expanded(
-                    child: ValueListenableBuilder<TextEditingValue>(
-                      valueListenable: _searchController,
-                      builder: (context, value, child) {
-                        return _buildPaymentsList(
-                            sortedPayments, value.text, isAdmin);
-                      },
+                      ],
                     ),
-                  ),
-                ],
-              ),
+                  );
+                }
+
+                final sorted = List<Payment>.from(allPayments)
+                  ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+                return Column(
+                  children: [
+                    // ── KPI bar ──────────────────────────────────────────────
+                    _buildPaymentKpis(sorted),
+
+                    // ── Revenue bar ──────────────────────────────────────────
+                    _buildPaymentRevenueBar(sorted),
+
+                    // ── Toolbar (search + filter chips + add button) ─────────
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+                      child: Column(
+                        children: [
+                          ValueListenableBuilder<TextEditingValue>(
+                            valueListenable: _searchController,
+                            builder: (context, value, _) {
+                              return Row(
+                                children: [
+                                  Expanded(
+                                    child: TextField(
+                                      controller: _searchController,
+                                      maxLength: 100,
+                                      decoration: InputDecoration(
+                                        counterText: '',
+                                        hintText: t['search_payments_hint'],
+                                        prefixIcon: const Icon(Icons.search, size: 18),
+                                        suffixIcon: value.text.isNotEmpty
+                                            ? IconButton(
+                                                icon: const Icon(Icons.clear, size: 16),
+                                                onPressed: () => _searchController.clear())
+                                            : null,
+                                        border: OutlineInputBorder(
+                                            borderRadius: BorderRadius.circular(10)),
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(vertical: 10),
+                                        isDense: true,
+                                      ),
+                                    ),
+                                  ),
+                                  if (isAdmin) ...[
+                                    const SizedBox(width: 10),
+                                    ElevatedButton.icon(
+                                      onPressed: _showAddPaymentDialog,
+                                      icon: const Icon(Icons.add, size: 16),
+                                      label: Text(t['add']),
+                                      style: ElevatedButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 14, vertical: 10)),
+                                    ),
+                                  ],
+                                ],
+                              );
+                            },
+                          ),
+                          const SizedBox(height: 10),
+                          _buildStatusFilterChips(sorted),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    // ── Payment list ─────────────────────────────────────────
+                    Expanded(
+                      child: ValueListenableBuilder<TextEditingValue>(
+                        valueListenable: _searchController,
+                        builder: (context, value, _) {
+                          return _buildPaymentsList(sorted, value.text, isAdmin, rooms);
+                        },
+                      ),
+                    ),
+                  ],
+                );
+              },
             );
           },
         );
@@ -1651,11 +1659,387 @@ class _OrganizationScreenState extends State<OrganizationScreen>
     );
   }
 
+  // ── KPI summary row ────────────────────────────────────────────────────────────
+  Widget _buildPaymentKpis(List<Payment> payments) {
+    final t = AppTranslations.of(context);
+    final total = payments.length;
+    final pending = payments.where((p) => p.status == PaymentStatus.pending).length;
+    final overdue = payments.where((p) => p.isOverdue).length;
+    final collected = payments.fold<double>(0, (s, p) {
+      if (p.status == PaymentStatus.paid) {
+        return s + (p.paidAmount > 0 ? p.paidAmount : p.totalWithAllFees);
+      }
+      return s + p.paidAmount;
+    });
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+      child: Row(
+        children: [
+          _payKpi(label: t['stat_total_payments'], value: total.toString(),
+              color: Theme.of(context).colorScheme.onSurface),
+          const SizedBox(width: 8),
+          _payKpi(label: t['stat_collected'], value: _formatCurrencyShort(collected),
+              color: const Color(0xFF3B6D11)),
+          const SizedBox(width: 8),
+          _payKpi(label: t['stat_pending'], value: pending.toString(),
+              color: const Color(0xFF854F0B)),
+          const SizedBox(width: 8),
+          _payKpi(label: t['stat_overdue'], value: overdue.toString(),
+              color: const Color(0xFFA32D2D)),
+        ],
+      ),
+    );
+  }
+
+  Widget _payKpi({required String label, required String value, required Color color}) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.shade200),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(value,
+                style: TextStyle(
+                    fontSize: 18, fontWeight: FontWeight.w700, color: color)),
+            const SizedBox(height: 3),
+            Text(label,
+                style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Revenue bar ────────────────────────────────────────────────────────────────
+  Widget _buildPaymentRevenueBar(List<Payment> payments) {
+    final t = AppTranslations.of(context);
+    final totalBilled = payments.fold<double>(0, (s, p) => s + p.totalAmount);
+    final collected = payments.fold<double>(0, (s, p) {
+      if (p.status == PaymentStatus.paid) {
+        return s + (p.paidAmount > 0 ? p.paidAmount : p.totalWithAllFees);
+      }
+      if (p.status == PaymentStatus.partial) {
+        return s + p.paidAmount;
+      }
+      return s;
+    });
+    final pct = totalBilled > 0 ? (collected / totalBilled).clamp(0.0, 1.0) : 0.0;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.shade200),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(t['stat_revenue_title'],
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey.shade600)),
+                Text('${(pct * 100).round()}% ${t['stat_collected'].toLowerCase()}',
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF3B6D11))),
+              ],
+            ),
+            const SizedBox(height: 10),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: LinearProgressIndicator(
+                value: pct,
+                minHeight: 8,
+                backgroundColor: Colors.grey.shade100,
+                color: const Color(0xFF639922),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                _revLegendDot(const Color(0xFF639922)),
+                const SizedBox(width: 5),
+                Text(
+                  '${t['stat_collected']}  ${_formatCurrencyShort(collected)}',
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                ),
+                const SizedBox(width: 16),
+                _revLegendDot(Colors.grey.shade300),
+                const SizedBox(width: 5),
+                Text(
+                  '${t['stat_uncollected']}  ${_formatCurrencyShort(totalBilled - collected)}',
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _revLegendDot(Color color) => Container(
+        width: 8, height: 8,
+        decoration: BoxDecoration(color: color, shape: BoxShape.circle));
+
+  // ── Filter chips ────────────────────────────────────────────────────────────────
+  // Add to state: PaymentStatus? _paymentStatusFilter;
+
+  Widget _buildStatusFilterChips(List<Payment> payments) {
+    final t = AppTranslations.of(context);
+    final counts = <PaymentStatus?, int>{null: payments.length};
+    for (final s in PaymentStatus.values) {
+      counts[s] = payments.where((p) => p.status == s).length;
+    }
+
+    final chips = <MapEntry<PaymentStatus?, String>>[
+      MapEntry(null, t['stat_total_payments']),
+      MapEntry(PaymentStatus.paid, t['stat_paid']),
+      MapEntry(PaymentStatus.pending, t['stat_pending']),
+      MapEntry(PaymentStatus.overdue, t['stat_overdue']),
+      MapEntry(PaymentStatus.partial, t['status_partial']),
+      MapEntry(PaymentStatus.cancelled, t['status_cancelled']),
+    ];
+
+    return SizedBox(
+      height: 34,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: chips.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 6),
+        itemBuilder: (context, i) {
+          final entry = chips[i];
+          final isActive = _paymentStatusFilter == entry.key;
+          final count = counts[entry.key] ?? 0;
+          return GestureDetector(
+            onTap: () => setState(() => _paymentStatusFilter = entry.key),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: isActive
+                    ? const Color(0xFF185FA5)
+                    : Theme.of(context).colorScheme.surface,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: isActive
+                      ? const Color(0xFF185FA5)
+                      : Colors.grey.shade300,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    entry.value,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: isActive ? Colors.white : Colors.grey.shade600,
+                    ),
+                  ),
+                  const SizedBox(width: 5),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: isActive
+                          ? Colors.white.withValues(alpha: 0.25)
+                          : Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      count.toString(),
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: isActive ? Colors.white : Colors.grey.shade500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  // ── Rich payment card ───────────────────────────────────────────────────────────
+  Widget _buildPaymentsListView(List<Payment> payments, bool isAdmin, List<Room> rooms) {
+    final t = AppTranslations.of(context);
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+      itemCount: payments.length,
+      itemBuilder: (context, index) {
+        return _buildRichPaymentCard(payments[index], isAdmin, t, rooms);
+      },
+    );
+  }
+
+  Widget _buildRichPaymentCard(Payment payment, bool isAdmin, AppTranslations t, List<Room> rooms) {
+    final statusColor = _getPaymentStatusColor(payment.status);
+    final initials = _getInitials(payment.tenantName ?? '?');
+    final remaining = payment.remainingAmount;
+    final isPartial = payment.status == PaymentStatus.partial;
+
+    // Resolve room number from pre-fetched list
+    final roomNumber = rooms
+        .where((r) => r.id == payment.roomId)
+        .firstOrNull
+        ?.roomNumber ?? '';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => _showPaymentDetailsDialog(payment, isAdmin),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              // Avatar
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Center(
+                  child: Text(initials,
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: statusColor)),
+                ),
+              ),
+              const SizedBox(width: 12),
+
+              // Main info
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      payment.tenantName ?? '—',
+                      style: const TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w600),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 3),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 2,
+                      children: [
+                        _metaChip(_getPaymentTitle(payment)),
+                        if (roomNumber.isNotEmpty)
+                          _metaChip('Room $roomNumber'),
+                        _metaChip(
+                            'Due ${DateFormat('dd/MM/yy').format(payment.dueDate)}'),
+                        if (payment.paidAt != null)
+                          _metaChip(
+                              'Paid ${DateFormat('dd/MM/yy').format(payment.paidAt!)}',
+                              color: const Color(0xFF3B6D11)),
+                        if (isPartial && remaining > 0)
+                          _metaChip('${t['stat_uncollected']}: ${_formatCurrencyShort(remaining)}', color: const Color(0xFF185FA5)),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+
+              // Right side: amount + badge + menu
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    _formatCurrency(payment.totalAmount),
+                    style: const TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 4),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: statusColor.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      payment.getStatusDisplayName(),
+                      style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: statusColor),
+                    ),
+                  ),
+                ],
+              ),
+              if (isAdmin) ...[
+                const SizedBox(width: 4),
+                Builder(
+                  builder: (ctx) => IconButton(
+                    icon: Icon(Icons.more_vert,
+                        size: 18, color: Colors.grey.shade400),
+                    padding: const EdgeInsets.all(4),
+                    constraints: const BoxConstraints(),
+                    onPressed: () => _showPaymentMenu(ctx, payment, isAdmin),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _metaChip(String text, {Color? color}) {
+    return Text(
+      text,
+      style: TextStyle(
+          fontSize: 11,
+          color: color ?? Colors.grey.shade500),
+    );
+  }
+
+  String _getInitials(String name) {
+    final words = name.trim().split(' ');
+    if (words.isEmpty) return '?';
+    if (words.length == 1) return words[0][0].toUpperCase();
+    return (words.first[0] + words.last[0]).toUpperCase();
+  }
+
   Widget _buildPaymentsList(
-      List<Payment> allPayments, String searchText, bool isAdmin) {
+      List<Payment> allPayments, String searchText, bool isAdmin, List<Room> rooms) {
     final t = AppTranslations.of(context);
     final searchTerm = searchText.toLowerCase();
     final filteredPayments = allPayments.where((payment) {
+      if (_paymentStatusFilter != null && payment.status != _paymentStatusFilter) {
+      return false;
+    }
       if (searchTerm.isEmpty) return true;
       if ((payment.tenantName?.toLowerCase() ?? '')
           .contains(searchTerm)) {return true;}
@@ -1720,12 +2104,12 @@ class _OrganizationScreenState extends State<OrganizationScreen>
           ),
           Expanded(
               child: _buildPaymentsListView(
-                  filteredPayments, isAdmin)),
+                  filteredPayments, isAdmin, rooms)),
         ],
       );
     }
 
-    return _buildPaymentsListView(filteredPayments, isAdmin);
+    return _buildPaymentsListView(filteredPayments, isAdmin, rooms);
   }
 
   String _getPaymentTitle(Payment payment) {
@@ -1758,85 +2142,6 @@ class _OrganizationScreenState extends State<OrganizationScreen>
 
     final key = typeKeys[payment.type.name];
     return key != null ? t[key] : payment.getTypeDisplayName();
-  }
-
-  Widget _buildPaymentsListView(
-      List<Payment> payments, bool isAdmin) {
-    final t = AppTranslations.of(context);
-    return ListView.builder(
-      itemCount: payments.length,
-      itemBuilder: (context, index) {
-        final payment = payments[index];
-        return Card(
-          margin: const EdgeInsets.only(bottom: 12),
-          child: ListTile(
-            leading: CircleAvatar(
-              backgroundColor: _getPaymentStatusColor(payment.status)
-                  .withOpacity(0.2),
-              child: Icon(
-                payment.status == PaymentStatus.paid
-                    ? Icons.check_circle
-                    : payment.isOverdue
-                        ? Icons.warning
-                        : Icons.pending,
-                color: _getPaymentStatusColor(payment.status),
-              ),
-            ),
-            title: Text(
-              _getPaymentTitle(payment),
-              style: const TextStyle(
-                  fontWeight: FontWeight.bold, fontSize: 16),
-            ),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 4),
-                Text('${t['tenant_label']}: ${payment.tenantName}'),
-                const SizedBox(height: 2),
-                Text(
-                    '${t['amount_label']}: ${_formatCurrency(payment.totalAmount)}'),
-                const SizedBox(height: 2),
-                Text(
-                    '${t['due_date_label']}: ${DateFormat('dd/MM/yyyy').format(payment.dueDate)}'),
-                const SizedBox(height: 4),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: _getPaymentStatusColor(payment.status)
-                        .withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    payment.getStatusDisplayName(),
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: _getPaymentStatusColor(payment.status),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            trailing: isAdmin
-                ? Builder(
-                    builder: (BuildContext ctx) {
-                      return IconButton(
-                        icon: const Icon(Icons.more_vert),
-                        onPressed: () =>
-                            _showPaymentMenu(ctx, payment, isAdmin),
-                      );
-                    },
-                  )
-                : IconButton(
-                    icon: const Icon(Icons.info_outline),
-                    onPressed: () =>
-                        _showPaymentDetailsDialog(payment, isAdmin),
-                  ),
-          ),
-        );
-      },
-    );
   }
 
   void _showPaymentMenu(
