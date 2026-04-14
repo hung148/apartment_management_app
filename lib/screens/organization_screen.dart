@@ -826,34 +826,36 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                 children: [
                   Row(
                     children: [
-                      InkWell(
-                        onTap: () => Navigator.of(context).pop(),
-                        borderRadius: BorderRadius.circular(10),
-                        child: Container(
-                          margin: const EdgeInsets.only(left: 12),
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.18),
-                              width: 1,
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.arrow_back_ios_new_rounded, size: 14, color: Colors.white),
-                              const SizedBox(width: 4),
-                              Text(
-                                'Back',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.white.withValues(alpha: 0.9),
-                                ),
+                      Padding(
+                        padding: const EdgeInsets.only(left: 12),  
+                        child: InkWell(
+                          onTap: () => Navigator.of(context).pop(),
+                          borderRadius: BorderRadius.circular(10),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.18),
+                                width: 1,
                               ),
-                            ],
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.arrow_back_ios_new_rounded, size: 14, color: Colors.white),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'Back',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white.withValues(alpha: 0.9),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
@@ -1619,13 +1621,58 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                                   ),
                                   if (isAdmin) ...[
                                     const SizedBox(width: 10),
-                                    ElevatedButton.icon(
-                                      onPressed: _showAddPaymentDialog,
-                                      icon: const Icon(Icons.add, size: 16),
-                                      label: Text(t['add']),
-                                      style: ElevatedButton.styleFrom(
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 14, vertical: 10)),
+                                    Material(
+                                      color: const Color(0xFF185FA5),
+                                      borderRadius: BorderRadius.circular(10),
+                                      child: InkWell(
+                                        onTap: _showAddPaymentDialog,
+                                        borderRadius: BorderRadius.circular(10),
+                                        hoverColor: Colors.white.withValues(alpha: 0.12),
+                                        splashColor: Colors.white.withValues(alpha: 0.2),
+                                        highlightColor: Colors.white.withValues(alpha: 0.08),
+                                        child: Container(
+                                          height: 42,
+                                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Container(
+                                                width: 24,
+                                                height: 24,
+                                                decoration: BoxDecoration(
+                                                  color: Colors.white.withValues(alpha: 0.18),
+                                                  shape: BoxShape.circle,
+                                                ),
+                                                child: const Icon(Icons.add, size: 15, color: Colors.white),
+                                              ),
+                                              const SizedBox(width: 10),
+                                              Column(
+                                                mainAxisAlignment: MainAxisAlignment.center,
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    t['add_payment'],
+                                                    style: const TextStyle(
+                                                      fontSize: 13,
+                                                      fontWeight: FontWeight.w600,
+                                                      color: Colors.white,
+                                                      height: 1.2,
+                                                    ),
+                                                  ),
+                                                  Text(
+                                                    t['create_invoice'],
+                                                    style: TextStyle(
+                                                      fontSize: 10,
+                                                      color: Colors.white.withValues(alpha: 0.65),
+                                                      height: 1.2,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
                                     ),
                                   ],
                                 ],
@@ -1826,52 +1873,66 @@ class _OrganizationScreenState extends State<OrganizationScreen>
           final entry = chips[i];
           final isActive = _paymentStatusFilter == entry.key;
           final count = counts[entry.key] ?? 0;
-          return GestureDetector(
-            onTap: () => setState(() => _paymentStatusFilter = entry.key),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 150),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: isActive
-                    ? const Color(0xFF185FA5)
-                    : Theme.of(context).colorScheme.surface,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
+          return Material(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(20),
+            child: InkWell(
+              onTap: () => setState(() => _paymentStatusFilter = entry.key),
+              borderRadius: BorderRadius.circular(20),
+              hoverColor: isActive
+                  ? Colors.white.withValues(alpha: 0.12)
+                  : Colors.grey.withValues(alpha: 0.08),
+              splashColor: isActive
+                  ? Colors.white.withValues(alpha: 0.2)
+                  : const Color(0xFF185FA5).withValues(alpha: 0.12),
+              highlightColor: isActive
+                  ? Colors.white.withValues(alpha: 0.08)
+                  : const Color(0xFF185FA5).withValues(alpha: 0.06),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
                   color: isActive
                       ? const Color(0xFF185FA5)
-                      : Colors.grey.shade300,
-                ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    entry.value,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: isActive ? Colors.white : Colors.grey.shade600,
-                    ),
+                      : Theme.of(context).colorScheme.surface,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: isActive
+                        ? const Color(0xFF185FA5)
+                        : Colors.grey.shade300,
                   ),
-                  const SizedBox(width: 5),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                    decoration: BoxDecoration(
-                      color: isActive
-                          ? Colors.white.withValues(alpha: 0.25)
-                          : Colors.grey.shade100,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Text(
-                      count.toString(),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      entry.value,
                       style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        color: isActive ? Colors.white : Colors.grey.shade500,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: isActive ? Colors.white : Colors.grey.shade600,
                       ),
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 5),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: isActive
+                            ? Colors.white.withValues(alpha: 0.25)
+                            : Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        count.toString(),
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: isActive ? Colors.white : Colors.grey.shade500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           );
@@ -1898,130 +1959,189 @@ class _OrganizationScreenState extends State<OrganizationScreen>
     final remaining = payment.remainingAmount;
     final isPartial = payment.status == PaymentStatus.partial;
 
-    // Resolve room number from pre-fetched list
     final roomNumber = rooms
         .where((r) => r.id == payment.roomId)
         .firstOrNull
         ?.roomNumber ?? '';
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
+      margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.grey.shade200),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade100),
+        boxShadow: [
+          BoxShadow(
+            color: statusColor.withValues(alpha: 0.08),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 4,
+            offset: const Offset(0, 1),
+          ),
+        ],
       ),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         onTap: () => _showPaymentDetailsDialog(payment, isAdmin),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          child: Row(
-            children: [
-              // Avatar
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: statusColor.withValues(alpha: 0.12),
-                  shape: BoxShape.circle,
-                ),
-                child: Center(
-                  child: Text(initials,
-                      style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: statusColor)),
-                ),
-              ),
-              const SizedBox(width: 12),
+        child: Column(
+          children: [
+            // ── Colored top accent ───────────────────────────────────
+            Container(height: 4, color: statusColor),
 
-              // Main info
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      payment.tenantName ?? '—',
-                      style: const TextStyle(
-                          fontSize: 13, fontWeight: FontWeight.w600),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 3),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 2,
-                      children: [
-                        _metaChip(_getPaymentTitle(payment)),
-                        if (roomNumber.isNotEmpty)
-                          _metaChip('Room $roomNumber'),
-                        _metaChip(
-                            'Due ${DateFormat('dd/MM/yy').format(payment.dueDate)}'),
-                        if (payment.paidAt != null)
-                          _metaChip(
-                              'Paid ${DateFormat('dd/MM/yy').format(payment.paidAt!)}',
-                              color: const Color(0xFF3B6D11)),
-                        if (isPartial && remaining > 0)
-                          _metaChip('${t['stat_uncollected']}: ${_formatCurrencyShort(remaining)}', color: const Color(0xFF185FA5)),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 10),
-
-              // Right side: amount + badge + menu
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    _formatCurrency(payment.totalAmount),
-                    style: const TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 4),
+                  // ── Avatar ──────────────────────────────────────────
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    width: 42,
+                    height: 42,
                     decoration: BoxDecoration(
                       color: statusColor.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Text(
-                      payment.getStatusDisplayName(),
-                      style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          color: statusColor),
+                    child: Center(
+                      child: Text(
+                        initials,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: statusColor,
+                        ),
+                      ),
                     ),
                   ),
+                  const SizedBox(width: 12),
+
+                  // ── Main info ────────────────────────────────────────
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Name + status badge
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                payment.tenantName ?? '—',
+                                style: const TextStyle(
+                                    fontSize: 14, fontWeight: FontWeight.w700),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: statusColor.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                payment.getStatusDisplayName(),
+                                style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                    color: statusColor),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 5),
+
+                        // Amount
+                        Text(
+                          _formatCurrency(payment.totalAmount),
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                            color: Theme.of(context).colorScheme.onSurface,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+
+                        // Meta chips row
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 4,
+                          children: [
+                            _infoChip(
+                              icon: Icons.label_outline_rounded,
+                              text: _getPaymentTitle(payment),
+                              color: Colors.grey.shade600,
+                            ),
+                            if (roomNumber.isNotEmpty)
+                              _infoChip(
+                                icon: Icons.meeting_room_outlined,
+                                text: 'Room $roomNumber',
+                                color: Colors.grey.shade600,
+                              ),
+                            _infoChip(
+                              icon: Icons.calendar_today_outlined,
+                              text: DateFormat('dd/MM/yy').format(payment.dueDate),
+                              color: payment.isOverdue
+                                  ? const Color(0xFFA32D2D)
+                                  : Colors.grey.shade600,
+                            ),
+                            if (payment.paidAt != null)
+                              _infoChip(
+                                icon: Icons.check_circle_outline_rounded,
+                                text: DateFormat('dd/MM/yy').format(payment.paidAt!),
+                                color: const Color(0xFF3B6D11),
+                              ),
+                            if (isPartial && remaining > 0)
+                              _infoChip(
+                                icon: Icons.pending_outlined,
+                                text: _formatCurrencyShort(remaining),
+                                color: const Color(0xFF185FA5),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // ── Menu button ──────────────────────────────────────
+                  if (isAdmin)
+                    Builder(
+                      builder: (ctx) => IconButton(
+                        icon: Icon(Icons.more_vert,
+                            size: 18, color: Colors.grey.shade400),
+                        padding: const EdgeInsets.all(4),
+                        constraints: const BoxConstraints(),
+                        onPressed: () => _showPaymentMenu(ctx, payment, isAdmin),
+                      ),
+                    ),
                 ],
               ),
-              if (isAdmin) ...[
-                const SizedBox(width: 4),
-                Builder(
-                  builder: (ctx) => IconButton(
-                    icon: Icon(Icons.more_vert,
-                        size: 18, color: Colors.grey.shade400),
-                    padding: const EdgeInsets.all(4),
-                    constraints: const BoxConstraints(),
-                    onPressed: () => _showPaymentMenu(ctx, payment, isAdmin),
-                  ),
-                ),
-              ],
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _metaChip(String text, {Color? color}) {
-    return Text(
-      text,
-      style: TextStyle(
-          fontSize: 11,
-          color: color ?? Colors.grey.shade500),
+  Widget _infoChip({
+    required IconData icon,
+    required String text,
+    required Color color,
+  }) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 11, color: color),
+        const SizedBox(width: 3),
+        Text(
+          text,
+          style: TextStyle(fontSize: 11, color: color),
+        ),
+      ],
     );
   }
 

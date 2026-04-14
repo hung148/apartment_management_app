@@ -736,6 +736,8 @@ class AppTranslations {
       'room_popup_edit': 'Chỉnh sửa',
       'room_popup_delete': 'Xoá',
       'room_area_value': '{{area}} m²',
+
+      'create_invoice': 'Hoá đơn mới',
     },
 
     'en': {
@@ -1464,6 +1466,8 @@ class AppTranslations {
       'room_popup_edit': 'Edit',
       'room_popup_delete': 'Delete',
       'room_area_value': '{{area}} m²',
+
+      'create_invoice': 'New payment',
     },
   };
 
