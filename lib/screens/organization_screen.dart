@@ -22,6 +22,7 @@ import 'package:apartment_management_project_2/services/payments_notifier.dart';
 import 'package:apartment_management_project_2/services/room_service.dart';
 import 'package:apartment_management_project_2/utils/app_localizations.dart';
 import 'package:apartment_management_project_2/widgets/shared.dart';
+import 'package:flutter/gestures.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart';
@@ -164,6 +165,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
   String? _selectedOccupancyBuildingId;
 
   final TextEditingController _searchController = TextEditingController();
+  final ScrollController _filterChipsScrollController = ScrollController();
 
   Future<List<dynamic>>? _statsFuture;
   // Cache per-building futures to avoid recreation on rebuild
@@ -210,6 +212,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
     WidgetsBinding.instance.removeObserver(this);
     _searchController.dispose();
     _resizeDebounceTimer?.cancel();
+    _filterChipsScrollController.dispose();
     super.dispose();
   }
 
@@ -1845,8 +1848,6 @@ class _OrganizationScreenState extends State<OrganizationScreen>
         decoration: BoxDecoration(color: color, shape: BoxShape.circle));
 
   // ── Filter chips ────────────────────────────────────────────────────────────────
-  // Add to state: PaymentStatus? _paymentStatusFilter;
-
   Widget _buildStatusFilterChips(List<Payment> payments) {
     final t = AppTranslations.of(context);
     final counts = <PaymentStatus?, int>{null: payments.length};
@@ -1865,83 +1866,56 @@ class _OrganizationScreenState extends State<OrganizationScreen>
 
     return SizedBox(
       height: 34,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: chips.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 6),
-        itemBuilder: (context, i) {
-          final entry = chips[i];
-          final isActive = _paymentStatusFilter == entry.key;
-          final count = counts[entry.key] ?? 0;
-          return Material(
-            color: Colors.transparent,
-            borderRadius: BorderRadius.circular(20),
-            child: InkWell(
-              onTap: () => setState(() => _paymentStatusFilter = entry.key),
-              borderRadius: BorderRadius.circular(20),
-              hoverColor: isActive
-                  ? Colors.white.withValues(alpha: 0.12)
-                  : Colors.grey.withValues(alpha: 0.08),
-              splashColor: isActive
-                  ? Colors.white.withValues(alpha: 0.2)
-                  : const Color(0xFF185FA5).withValues(alpha: 0.12),
-              highlightColor: isActive
-                  ? Colors.white.withValues(alpha: 0.08)
-                  : const Color(0xFF185FA5).withValues(alpha: 0.06),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 150),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: isActive
-                      ? const Color(0xFF185FA5)
-                      : Theme.of(context).colorScheme.surface,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: isActive
-                        ? const Color(0xFF185FA5)
-                        : Colors.grey.shade300,
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      entry.value,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        color: isActive ? Colors.white : Colors.grey.shade600,
-                      ),
-                    ),
-                    const SizedBox(width: 5),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                      decoration: BoxDecoration(
-                        color: isActive
-                            ? Colors.white.withValues(alpha: 0.25)
-                            : Colors.grey.shade100,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        count.toString(),
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          color: isActive ? Colors.white : Colors.grey.shade500,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+      child: GestureDetector(
+        onHorizontalDragUpdate: (_) {},
+        child: Listener(
+          onPointerSignal: (event) {
+            if (event is PointerScrollEvent) {
+              final newOffset = (_filterChipsScrollController.offset + event.scrollDelta.dy)
+                  .clamp(0.0, _filterChipsScrollController.position.maxScrollExtent);
+              _filterChipsScrollController.jumpTo(newOffset);
+            }
+          },
+          onPointerPanZoomUpdate: (event) {
+            final delta = event.panDelta.dx.abs() > event.panDelta.dy.abs()
+                ? -event.panDelta.dx
+                : -event.panDelta.dy;
+            final newOffset = (_filterChipsScrollController.offset + delta)
+                .clamp(0.0, _filterChipsScrollController.position.maxScrollExtent);
+            _filterChipsScrollController.jumpTo(newOffset);
+          },
+          child: ScrollConfiguration(
+            behavior: ScrollConfiguration.of(context).copyWith(
+              dragDevices: {
+                PointerDeviceKind.touch,
+                PointerDeviceKind.mouse,
+              },
             ),
-          );
-        },
+            child: ListView.separated(
+              controller: _filterChipsScrollController,
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: chips.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 6),
+              itemBuilder: (context, i) {
+                final entry = chips[i];
+                final isActive = _paymentStatusFilter == entry.key;
+                final count = counts[entry.key] ?? 0;
+                return _FilterChip(
+                  label: entry.value,
+                  count: count,
+                  isActive: isActive,
+                  onTap: () => setState(() => _paymentStatusFilter = entry.key),
+                );
+              },
+            ),
+          ),
+        ),
       ),
     );
   }
 
-  // ── Rich payment card ───────────────────────────────────────────────────────────
   Widget _buildPaymentsListView(List<Payment> payments, bool isAdmin, List<Room> rooms) {
     final t = AppTranslations.of(context);
     return ListView.builder(
@@ -5366,6 +5340,130 @@ class _CompactTab extends StatelessWidget {
           const SizedBox(height: 3),
           Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
         ],
+      ),
+    );
+  }
+}
+
+class _FilterChip extends StatefulWidget {
+  final String label;
+  final int count;
+  final bool isActive;
+  final VoidCallback onTap;
+
+  const _FilterChip({
+    required this.label,
+    required this.count,
+    required this.isActive,
+    required this.onTap,
+  });
+
+  @override
+  State<_FilterChip> createState() => _FilterChipState();
+}
+
+class _FilterChipState extends State<_FilterChip> {
+  bool _hovered = false;
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = _pressed ? 0.94 : (_hovered ? 1.04 : 1.0);
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() {
+        _hovered = false;
+        _pressed = false;
+      }),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTapDown: (_) => setState(() => _pressed = true),
+        onTapUp: (_) => setState(() => _pressed = false),
+        onTapCancel: () => setState(() => _pressed = false),
+        onTap: widget.onTap,
+        child: AnimatedScale(
+          scale: scale,
+          duration: const Duration(milliseconds: 120),
+          curve: Curves.easeOut,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: widget.isActive
+                  ? const Color(0xFF185FA5)
+                  : _hovered
+                      ? const Color(0xFF185FA5).withValues(alpha: 0.08)
+                      : Theme.of(context).colorScheme.surface,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: widget.isActive
+                    ? const Color(0xFF185FA5)
+                    : _hovered
+                        ? const Color(0xFF185FA5).withValues(alpha: 0.5)
+                        : Colors.grey.shade300,
+              ),
+              boxShadow: _hovered && !widget.isActive
+                  ? [
+                      BoxShadow(
+                        color: const Color(0xFF185FA5).withValues(alpha: 0.15),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ]
+                  : widget.isActive
+                      ? [
+                          BoxShadow(
+                            color: const Color(0xFF185FA5).withValues(alpha: 0.35),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
+                          ),
+                        ]
+                      : null,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  widget.label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: widget.isActive
+                        ? Colors.white
+                        : _hovered
+                            ? const Color(0xFF185FA5)
+                            : Colors.grey.shade600,
+                  ),
+                ),
+                const SizedBox(width: 5),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: widget.isActive
+                        ? Colors.white.withValues(alpha: 0.25)
+                        : _hovered
+                            ? const Color(0xFF185FA5).withValues(alpha: 0.12)
+                            : Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    widget.count.toString(),
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: widget.isActive
+                          ? Colors.white
+                          : _hovered
+                              ? const Color(0xFF185FA5)
+                              : Colors.grey.shade500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
