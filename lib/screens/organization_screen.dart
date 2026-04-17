@@ -5016,13 +5016,23 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                 Row(
                   children: [
                     _footerActionBtn(
-                      icon: Icons.vpn_key_rounded,
+                      icon: inviteCode == null
+                          ? Icons.vpn_key_rounded
+                          : Icons.visibility_off_rounded,
                       label: inviteCode == null
                           ? t['get_invite_code']
-                          : t['invite_code_label'],
+                          : t['hide_invite_code'], // add this key to AppTranslations
                       color: const Color(0xFF534AB7),
                       bgColor: const Color(0xFFEEEDFE),
-                      onTap: loadingInvite ? () {} : _loadInviteCode,
+                      onTap: loadingInvite
+                          ? () {}
+                          : () {
+                              if (inviteCode != null) {
+                                setState(() => inviteCode = null);
+                              } else {
+                                _loadInviteCode();
+                              }
+                            },
                     ),
                     if (inviteCode != null) ...[
                       const SizedBox(width: 8),
@@ -5206,7 +5216,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                                 border: Border.all(color: Colors.grey.shade300),
                               ),
                               child: Text(
-                                'You',
+                                t['you'],
                                 style: TextStyle(
                                   fontSize: 10,
                                   fontWeight: FontWeight.w500,
@@ -5239,8 +5249,8 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                                 ? Icons.hourglass_top_rounded
                                 : Icons.check_circle_outline_rounded,
                             text: isPending
-                                ? t['stat_pending']
-                                : t['tenant_status_active'],
+                                ? t['member_status_pending']
+                                : t['member_status_active'],
                             color: isPending
                                 ? const Color(0xFF854F0B)
                                 : const Color(0xFF3B6D11),

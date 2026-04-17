@@ -925,6 +925,16 @@ class _TenantsTabState extends State<TenantsTab>
     }
   }
 
+  String _getTenantStatusDisplayName(TenantStatus status) {
+    final t = AppTranslations.of(context);
+    switch (status) {
+      case TenantStatus.active:   return t['tenant_status_active'];
+      case TenantStatus.inactive: return t['tenant_status_inactive'];
+      case TenantStatus.moveOut:  return t['tenant_status_moved_out'];
+      case TenantStatus.suspended: return t['tenant_status_suspended'];
+    }
+  }
+
   // ─── Summary bar ─────────────────────────────────────────────────────────────
   Widget _buildSummaryBar(List<Tenant> tenants) {
     final t = AppTranslations.of(context);
@@ -1525,7 +1535,7 @@ class _TenantsTabState extends State<TenantsTab>
                             ),
                             const SizedBox(width: 5),
                             Text(
-                              tenant.getStatusDisplayName(),
+                              _getTenantStatusDisplayName(tenant.status),
                               style: TextStyle(
                                 fontSize: 11,
                                 color: statusColor,

@@ -499,6 +499,7 @@ class AppTranslations {
       'tenant_status_active': 'Đang ở',
       'tenant_status_inactive': 'Tạm ngưng',
       'tenant_status_moved_out': 'Đã dọn đi',
+      'tenant_status_suspended': 'Tạm đình chỉ',
       'tenant_room_occupied': 'Phòng {{number}} (Đã thuê)',
       'tenant_room_vacant': 'Phòng {{number}} (Trống)',
       'tenant_add_title': 'Thêm Người Thuê',
@@ -739,6 +740,11 @@ class AppTranslations {
 
       'create_invoice': 'Hoá đơn mới',
       'invite_code_copied': "Đã sao chép!",
+      'hide_invite_code': "Ẩn mã",
+
+      'you': 'Bạn',
+      'member_status_active': 'Đang hoạt động',
+      'member_status_pending': 'Chờ duyệt',
     },
 
     'en': {
@@ -1231,6 +1237,7 @@ class AppTranslations {
       'tenant_status_active': 'Active',
       'tenant_status_inactive': 'Suspended',
       'tenant_status_moved_out': 'Moved out',
+      'tenant_status_suspended': 'Suspended',
       'tenant_room_occupied': 'Room {{number}} (Occupied)',
       'tenant_room_vacant': 'Room {{number}} (Vacant)',
       'tenant_add_title': 'Add Tenant',
@@ -1470,6 +1477,12 @@ class AppTranslations {
 
       'create_invoice': 'New payment',
       'invite_code_copied': "Copied!",
+
+      'hide_invite_code': "Hide code",
+      'you': 'You',
+
+      'member_status_active':  'Active',
+      'member_status_pending': 'Pending'  
     },
   };
 
