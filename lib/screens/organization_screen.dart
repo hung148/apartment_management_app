@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/services.dart';
 
 import 'package:apartment_management_project_2/main.dart';
 import 'package:apartment_management_project_2/models/buildings_model.dart';
@@ -91,6 +92,10 @@ class OrganizationScreen extends StatefulWidget {
 
 class _OrganizationScreenState extends State<OrganizationScreen>
     with WidgetsBindingObserver {
+  
+  bool _codeCopied = false;
+  bool _codeHovered = false;
+  bool _codePressed = false;
 
   // Track how many overlays (dialogs/bottom sheets) are currently open
   int _overlayCount = 0;
@@ -181,7 +186,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
     setState(() {
       _buildingsFuture = _getBuildings();
       _membershipFuture = _getMyMembership();
-      _summaryBarFuture = Future.wait([_getAllRooms(), _getAllTenants()]);
+      _summaryBarFuture = Future.wait([_getAllRooms(), _getAllTenants(), _getBuildings()]);
       _buildingCardFutures.clear();
       _statsFuture = Future.wait([
         _getAllTenants(),
@@ -1559,6 +1564,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
               future: _summaryBarFuture,
               builder: (context, roomsSnap) {
                 final rooms = roomsSnap.data?[0] as List<Room>? ?? [];
+                final buildings = roomsSnap.data?[2] as List<Building>? ?? [];
                 if (allPayments.isEmpty) {
                   return Center(
                     child: Column(
@@ -1695,7 +1701,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                       child: ValueListenableBuilder<TextEditingValue>(
                         valueListenable: _searchController,
                         builder: (context, value, _) {
-                          return _buildPaymentsList(sorted, value.text, isAdmin, rooms);
+                          return _buildPaymentsList(sorted, value.text, isAdmin, rooms, buildings);
                         },
                       ),
                     ),
@@ -1916,18 +1922,18 @@ class _OrganizationScreenState extends State<OrganizationScreen>
     );
   }
 
-  Widget _buildPaymentsListView(List<Payment> payments, bool isAdmin, List<Room> rooms) {
+  Widget _buildPaymentsListView(List<Payment> payments, bool isAdmin, List<Room> rooms, List<Building> buildings) {
     final t = AppTranslations.of(context);
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
       itemCount: payments.length,
       itemBuilder: (context, index) {
-        return _buildRichPaymentCard(payments[index], isAdmin, t, rooms);
+        return _buildRichPaymentCard(payments[index], isAdmin, t, rooms, buildings);
       },
     );
   }
 
-  Widget _buildRichPaymentCard(Payment payment, bool isAdmin, AppTranslations t, List<Room> rooms) {
+  Widget _buildRichPaymentCard(Payment payment, bool isAdmin, AppTranslations t, List<Room> rooms, List<Building> buildings) {
     final statusColor = _getPaymentStatusColor(payment.status);
     final initials = _getInitials(payment.tenantName ?? '?');
     final remaining = payment.remainingAmount;
@@ -1937,6 +1943,11 @@ class _OrganizationScreenState extends State<OrganizationScreen>
         .where((r) => r.id == payment.roomId)
         .firstOrNull
         ?.roomNumber ?? '';
+
+    final buildingName = buildings
+      .where((b) => b.id == payment.buildingId)
+      .firstOrNull
+      ?.name ?? '';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -2050,10 +2061,16 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                               text: _getPaymentTitle(payment),
                               color: Colors.grey.shade600,
                             ),
+                            if (buildingName.isNotEmpty)
+                              _infoChip(
+                                icon: Icons.apartment_rounded,
+                                text: buildingName,
+                                color: Colors.grey.shade600,
+                              ),
                             if (roomNumber.isNotEmpty)
                               _infoChip(
                                 icon: Icons.meeting_room_outlined,
-                                text: 'Room $roomNumber',
+                                text: 'P.$roomNumber',
                                 color: Colors.grey.shade600,
                               ),
                             _infoChip(
@@ -2127,7 +2144,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
   }
 
   Widget _buildPaymentsList(
-      List<Payment> allPayments, String searchText, bool isAdmin, List<Room> rooms) {
+      List<Payment> allPayments, String searchText, bool isAdmin, List<Room> rooms, List<Building> buildings) {
     final t = AppTranslations.of(context);
     final searchTerm = searchText.toLowerCase();
     final filteredPayments = allPayments.where((payment) {
@@ -2198,12 +2215,12 @@ class _OrganizationScreenState extends State<OrganizationScreen>
           ),
           Expanded(
               child: _buildPaymentsListView(
-                  filteredPayments, isAdmin, rooms)),
+                  filteredPayments, isAdmin, rooms, buildings)),
         ],
       );
     }
 
-    return _buildPaymentsListView(filteredPayments, isAdmin, rooms);
+    return _buildPaymentsListView(filteredPayments, isAdmin, rooms, buildings);
   }
 
   String _getPaymentTitle(Payment payment) {
@@ -4690,141 +4707,340 @@ class _OrganizationScreenState extends State<OrganizationScreen>
   // ========================================
   Widget _buildMembersTab() {
     final t = AppTranslations.of(context);
-    return Padding(
-      padding: const EdgeInsets.all(16),
+    return FutureBuilder<List<dynamic>>(
+      future: _membersTabFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final members = (snapshot.data?[0] as List<Membership>?) ?? [];
+        final myMembership = snapshot.data?[1] as Membership?;
+        final isAdmin = myMembership?.role == 'admin';
+
+        final totalMembers = members.length;
+        final adminCount = members.where((m) => m.role == 'admin').length;
+        final activeCount = members.where((m) => m.status == 'active').length;
+
+        return CustomScrollView(
+          slivers: [
+            // ── Summary bar ──────────────────────────────────────────
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildMemberSummaryBar(
+                      total: totalMembers,
+                      admins: adminCount,
+                      active: activeCount,
+                      t: t,
+                    ),
+                    const SizedBox(height: 16),
+
+                    // ── Invite card (admin only) ──────────────────────
+                    if (isAdmin && myMembership != null)
+                      _buildInviteCard(myMembership, t),
+
+                    // ── Section header ────────────────────────────────
+                    if (members.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Row(
+                          children: [
+                            Text(
+                              t['members_tab'].toUpperCase(),
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.8,
+                                color: Colors.grey.shade500,
+                              ),
+                            ),
+                            const Spacer(),
+                            Text(
+                              '$totalMembers ${t['members_tab'].toLowerCase()}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade400,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+
+            // ── Members list ─────────────────────────────────────────
+            if (members.isEmpty)
+              SliverFillRemaining(
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.group_outlined,
+                          size: 64, color: Colors.grey.shade300),
+                      const SizedBox(height: 16),
+                      Text(t['no_members'],
+                          style: TextStyle(color: Colors.grey.shade400)),
+                    ],
+                  ),
+                ),
+              )
+            else
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+                sliver: SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) => _buildMemberCard(
+                      member: members[index],
+                      myMembership: myMembership,
+                      isAdmin: isAdmin,
+                      t: t,
+                    ),
+                    childCount: members.length,
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  // ── Summary bar ───────────────────────────────────────────────────────────────
+  Widget _buildMemberSummaryBar({
+    required int total,
+    required int admins,
+    required int active,
+    required AppTranslations t,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          _summaryBarItem(
+            value: total.toString(),
+            label: t['members_title'],
+            color: const Color(0xFF185FA5),
+            isFirst: true,
+          ),
+          _summaryBarDivider(),
+          _summaryBarItem(
+            value: admins.toString(),
+            label: t['member_role_admin'],
+            color: const Color(0xFF854F0B),
+          ),
+          _summaryBarDivider(),
+          _summaryBarItem(
+            value: active.toString(),
+            label: t['tenant_status_active'],
+            color: const Color(0xFF3B6D11),
+            isLast: true,
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Invite card ───────────────────────────────────────────────────────────────
+  Widget _buildInviteCard(Membership myMembership, AppTranslations t) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          FutureBuilder<Membership?>(
-            future: _membershipFuture,
-            builder: (context, snapshot) {
-              if (!snapshot.hasData) return const SizedBox();
-              final membership = snapshot.data!;
-              if (membership.role != 'admin') return const SizedBox();
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      ElevatedButton(
-                        onPressed: loadingInvite ? null : _loadInviteCode,
-                        child: Text(t['get_invite_code']),
+          Container(height: 4, color: const Color(0xFF534AB7)),
+
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ── Header ──────────────────────────────────────────────
+                Row(
+                  children: [
+                    Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEEEDFE),
+                        borderRadius: BorderRadius.circular(10),
                       ),
-                      if (inviteCode != null) ...[
-                        const SizedBox(width: 8),
-                        ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.orange,
-                            foregroundColor: Colors.white,
+                      child: const Icon(Icons.link_rounded,
+                          size: 20, color: Color(0xFF534AB7)),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            t['get_invite_code'],
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
-                          onPressed: _refreshingCode
-                              ? null
-                              : () async {
-                                  final confirm = await _showTrackedDialog<bool>(
-                                    context: context,
-                                    builder: (ctx) => AlertDialog(
-                                      title: Text(t['refresh_invite_code_title']),
-                                      content: Text(t['refresh_invite_code_body']),
-                                      actions: [
-                                        TextButton(
-                                          onPressed: () => Navigator.pop(ctx, false),
-                                          child: Text(t['cancel']),
-                                        ),
-                                        ElevatedButton(
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor: Colors.orange,
-                                            foregroundColor: Colors.white,
-                                          ),
-                                          onPressed: () => Navigator.pop(ctx, true),
-                                          child: Text(t['refresh_action']),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-
-                                  if (confirm != true || !mounted) return;
-
-                                  setState(() => _refreshingCode = true);
-                                  try {
-                                    final success = await _orgService.refreshInviteCode(
-                                      membership.ownerId,
-                                      widget.organization.id,
-                                    );
-                                    if (success && mounted) {
-                                      await _loadInviteCode();
-                                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                                        content: Text(t['code_refreshed']),
-                                        backgroundColor: Colors.green,
-                                      ));
-                                    } else if (mounted) {
-                                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                                        content: Text(t['cannot_refresh_code']),
-                                        backgroundColor: Colors.red,
-                                      ));
-                                    }
-                                  } finally {
-                                    if (mounted) setState(() => _refreshingCode = false);
-                                  }
-                                },
-                          icon: _refreshingCode
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : const Icon(Icons.refresh, size: 18),
-                          label: Text(t['refresh_code']),
-                        ),
-                      ],
-                    ],
-                  ),
-                  if (inviteCode != null) ...[
-                    const SizedBox(height: 8),
-                    SelectableText(
-                      '${t['invite_code_label']}: $inviteCode',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
+                          Text(
+                            t['invite_code_label'],
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade500,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
-                  const Divider(height: 32),
+                ),
+
+                const SizedBox(height: 14),
+
+                // ── Code display ─────────────────────────────────────────
+                if (inviteCode != null) ...[
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEEEDFE),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                          color: const Color(0xFF534AB7).withValues(alpha: 0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: SelectableText(
+                            inviteCode!,
+                            style: const TextStyle(
+                              fontFamily: 'monospace',
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF534AB7),
+                              letterSpacing: 3,
+                            ),
+                          ),
+                        ),
+                        // ── Copy icon button ─────────────────────────────
+                        MouseRegion(
+                          onEnter: (_) => setState(() => _codeHovered = true),
+                          onExit: (_) => setState(() {
+                            _codeHovered = false;
+                            _codePressed = false;
+                          }),
+                          cursor: SystemMouseCursors.click,
+                          child: GestureDetector(
+                            onTapDown: (_) =>
+                                setState(() => _codePressed = true),
+                            onTapUp: (_) =>
+                                setState(() => _codePressed = false),
+                            onTapCancel: () =>
+                                setState(() => _codePressed = false),
+                            onTap: () {
+                              Clipboard.setData(
+                                  ClipboardData(text: inviteCode!));
+                              setState(() => _codeCopied = true);
+                              Future.delayed(const Duration(seconds: 2), () {
+                                if (mounted)
+                                  setState(() => _codeCopied = false);
+                              });
+                            },
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 150),
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: _codeCopied
+                                    ? const Color(0xFF3B6D11)
+                                        .withValues(alpha: 0.12)
+                                    : _codePressed
+                                        ? const Color(0xFF534AB7)
+                                            .withValues(alpha: 0.2)
+                                        : _codeHovered
+                                            ? const Color(0xFF534AB7)
+                                                .withValues(alpha: 0.1)
+                                            : Colors.transparent,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: AnimatedScale(
+                                scale: _codePressed ? 0.88 : 1.0,
+                                duration: const Duration(milliseconds: 100),
+                                child: Icon(
+                                  _codeCopied
+                                      ? Icons.check_circle_rounded
+                                      : Icons.copy_rounded,
+                                  size: 16,
+                                  color: _codeCopied
+                                      ? const Color(0xFF3B6D11)
+                                      : const Color(0xFF534AB7),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
                 ],
-              );
-            },
-          ),
-          Text(
-            t['members_title'],
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          Expanded(
-            // ✅ Wrap BOTH futures together so membership is resolved once
-            // before the list is built — no per-tile fetching at all
-            child: FutureBuilder<List<dynamic>>(
-              future: _membersTabFuture,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
 
-                final members = (snapshot.data?[0] as List<Membership>?) ?? [];
-                final myMembership = snapshot.data?[1] as Membership?;
-                final isAdmin = myMembership?.role == 'admin';
-
-                if (members.isEmpty) {
-                  return Center(child: Text(t['no_members']));
-                }
-
-                return ListView.builder(
-                  itemCount: members.length,
-                  itemBuilder: (context, index) {
-                    final member = members[index];
-                    // ✅ Pass resolved values down — no async work here at all
-                    return _buildMemberTile(member, myMembership, isAdmin);
-                  },
-                );
-              },
+                // ── Action buttons ───────────────────────────────────────
+                Row(
+                  children: [
+                    _footerActionBtn(
+                      icon: Icons.vpn_key_rounded,
+                      label: inviteCode == null
+                          ? t['get_invite_code']
+                          : t['invite_code_label'],
+                      color: const Color(0xFF534AB7),
+                      bgColor: const Color(0xFFEEEDFE),
+                      onTap: loadingInvite ? () {} : _loadInviteCode,
+                    ),
+                    if (inviteCode != null) ...[
+                      const SizedBox(width: 8),
+                      _footerActionBtn(
+                        icon: _refreshingCode
+                            ? Icons.hourglass_top_rounded
+                            : Icons.refresh_rounded,
+                        label: t['refresh_code'],
+                        color: const Color(0xFF854F0B),
+                        bgColor: const Color(0xFFFAEEDA),
+                        onTap: _refreshingCode
+                            ? () {}
+                            : () => _confirmRefreshInviteCode(myMembership),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
             ),
           ),
         ],
@@ -4832,178 +5048,405 @@ class _OrganizationScreenState extends State<OrganizationScreen>
     );
   }
 
-  // ✅ Pure sync widget — receives membership as plain parameters
-  Widget _buildMemberTile(
-    Membership member,
-    Membership? myMembership,
-    bool isAdmin,
-  ) {
-    final t = AppTranslations.of(context);
-    final ownerName = member.displayName.isNotEmpty
+  // ── Member card ───────────────────────────────────────────────────────────────
+  Widget _buildMemberCard({
+    required Membership member,
+    required Membership? myMembership,
+    required bool isAdmin,
+    required AppTranslations t,
+  }) {
+    final isMe = myMembership != null && member.ownerId == myMembership.ownerId;
+    final isAdminMember = member.role == 'admin';
+    final isPending = member.status != 'active';
+
+    final displayName = member.displayName.isNotEmpty
         ? member.displayName
         : member.email.isNotEmpty
             ? member.email
             : member.ownerId;
-    final roleText = member.role == 'admin'
-        ? t['member_role_admin']
-        : t['member_role_member'];
 
-    // ✅ Resolved synchronously — no FutureBuilder needed
-    final Widget trailing;
-    if (!isAdmin || myMembership == null) {
-      trailing = member.status == 'active'
-          ? const Icon(Icons.check_circle, color: Colors.green, size: 20)
-          : const Icon(Icons.pending, color: Colors.orange, size: 20);
-    } else if (member.ownerId == myMembership.ownerId) {
-      trailing = const Icon(Icons.check_circle, color: Colors.green, size: 20);
-    } else {
-      trailing = Builder(
-        builder: (ctx) => IconButton(
-          icon: const Icon(Icons.more_vert),
-          onPressed: () => _showMemberMenu(ctx, member, myMembership, ownerName),
-        ),
-      );
-    }
+    final initials = _getMemberInitials(displayName);
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: member.role == 'admin' ? Colors.orange : Colors.blue,
-          child: Icon(
-            member.role == 'admin' ? Icons.admin_panel_settings : Icons.person,
-            color: Colors.white,
+    final Color accentColor = isAdminMember
+        ? const Color(0xFF854F0B)
+        : const Color(0xFF185FA5);
+
+    final Color avatarBg = isAdminMember
+        ? const Color(0xFFFAEEDA)
+        : const Color(0xFFE6F1FB);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [
+          BoxShadow(
+            color: accentColor.withValues(alpha: 0.07),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
           ),
-        ),
-        title: Text(ownerName,
-            style: const TextStyle(fontWeight: FontWeight.w500)),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              roleText,
-              style: TextStyle(
-                color: member.role == 'admin' ? Colors.orange : Colors.grey,
-                fontWeight: FontWeight.bold,
-                fontSize: 12,
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          // ── Colored top accent ────────────────────────────────────
+          Container(height: 4, color: accentColor),
+
+          // ── Card body ─────────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Avatar
+                Stack(
+                  children: [
+                    Container(
+                      width: 46,
+                      height: 46,
+                      decoration: BoxDecoration(
+                        color: avatarBg,
+                        borderRadius: BorderRadius.circular(13),
+                      ),
+                      child: Center(
+                        child: Text(
+                          initials,
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: accentColor,
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (isPending)
+                      Positioned(
+                        right: 0,
+                        bottom: 0,
+                        child: Container(
+                          width: 14,
+                          height: 14,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEF9F27),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                                color: Theme.of(context).colorScheme.surface,
+                                width: 2),
+                          ),
+                        ),
+                      )
+                    else
+                      Positioned(
+                        right: 0,
+                        bottom: 0,
+                        child: Container(
+                          width: 14,
+                          height: 14,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF639922),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                                color: Theme.of(context).colorScheme.surface,
+                                width: 2),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(width: 12),
+
+                // Name + role + email
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              displayName,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          // Role badge
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 9, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: accentColor.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              isAdminMember
+                                  ? t['member_role_admin']
+                                  : t['member_role_member'],
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: accentColor,
+                              ),
+                            ),
+                          ),
+                          if (isMe) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 7, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade100,
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(color: Colors.grey.shade300),
+                              ),
+                              child: Text(
+                                'You',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      if (member.email.isNotEmpty) ...[
+                        const SizedBox(height: 3),
+                        Text(
+                          member.email,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade500,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                      const SizedBox(height: 8),
+                      // Meta chips
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        children: [
+                          _memberInfoChip(
+                            icon: isPending
+                                ? Icons.hourglass_top_rounded
+                                : Icons.check_circle_outline_rounded,
+                            text: isPending
+                                ? t['stat_pending']
+                                : t['tenant_status_active'],
+                            color: isPending
+                                ? const Color(0xFF854F0B)
+                                : const Color(0xFF3B6D11),
+                          ),
+                          if (isAdminMember)
+                            _memberInfoChip(
+                              icon: Icons.admin_panel_settings_rounded,
+                              text: t['member_role_admin'],
+                              color: const Color(0xFF854F0B),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // ── Footer actions ────────────────────────────────────────
+          if (isAdmin && !isMe && myMembership != null) ...[
+            Divider(height: 1, color: Colors.grey.shade100),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                children: [
+                  if (member.role == 'member')
+                    Expanded(
+                      child: _footerActionBtn(
+                        icon: Icons.arrow_upward_rounded,
+                        label: t['promote_to_admin'],
+                        color: const Color(0xFF534AB7),
+                        bgColor: const Color(0xFFEEEDFE),
+                        onTap: () => _promoteMember(member, myMembership, t),
+                      ),
+                    ),
+                  if (member.role == 'member') const SizedBox(width: 8),
+                  Expanded(
+                    child: _footerActionBtn(
+                      icon: Icons.person_remove_outlined,
+                      label: t['remove_from_org'],
+                      color: const Color(0xFFA32D2D),
+                      bgColor: const Color(0xFFFCEBEB),
+                      onTap: () => _removeMember(member, myMembership, displayName, t),
+                    ),
+                  ),
+                ],
               ),
             ),
-            if (member.email.isNotEmpty)
-              Text(member.email,
-                  style: const TextStyle(fontSize: 12, color: Colors.grey)),
           ],
-        ),
-        trailing: trailing,
+        ],
       ),
     );
   }
 
-  void _showMemberMenu(
-    BuildContext ctx,
+  // ── Member info chip ──────────────────────────────────────────────────────────
+  Widget _memberInfoChip({
+    required IconData icon,
+    required String text,
+    required Color color,
+  }) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 11, color: color),
+        const SizedBox(width: 3),
+        Text(text, style: TextStyle(fontSize: 11, color: color)),
+      ],
+    );
+  }
+
+  // ── Member initials ───────────────────────────────────────────────────────────
+  String _getMemberInitials(String name) {
+    final words = name.trim().split(' ');
+    if (words.isEmpty || words.first.isEmpty) return '?';
+    if (words.length == 1) return words[0][0].toUpperCase();
+    return (words.first[0] + words.last[0]).toUpperCase();
+  }
+
+  // ── Promote action ────────────────────────────────────────────────────────────
+  Future<void> _promoteMember(
     Membership member,
     Membership myMembership,
-    String ownerName,
-  ) {
-    final t = AppTranslations.of(context);
-    final scaffoldMessenger = ScaffoldMessenger.of(context);
-    final RenderBox button =
-        ctx.findRenderObject() as RenderBox;
-    final RenderBox overlay = Navigator.of(ctx)
-        .overlay!
-        .context
-        .findRenderObject() as RenderBox;
-    final RelativeRect position = RelativeRect.fromRect(
-      Rect.fromPoints(
-        button.localToGlobal(Offset.zero, ancestor: overlay) +
-            const Offset(0, 48),
-        button.localToGlobal(button.size.bottomRight(Offset.zero),
-            ancestor: overlay),
+    AppTranslations t,
+  ) async {
+    final confirm = await _showTrackedDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(t['promote_to_admin']),
+        content: Text(t.textWithParams(
+            'member_remove_confirm_body', {'name': member.displayName.isNotEmpty ? member.displayName : member.email})),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(t['cancel'])),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF534AB7),
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(t['promote_to_admin']),
+          ),
+        ],
       ),
-      Offset.zero & overlay.size,
     );
-    showMenu<String>(
-      context: ctx,
-      position: position,
-      items: [
-        if (member.role == 'member')
-          PopupMenuItem(
-            value: 'promote',
-            child: Row(children: [
-              const Icon(Icons.arrow_upward, size: 20),
-              const SizedBox(width: 8),
-              Text(t['promote_to_admin']),
-            ]),
+    if (confirm != true || !mounted) return;
+    final success = await _orgService.promoteMemberToAdmin(
+      currentAdminId: myMembership.ownerId,
+      memberIdToPromote: member.ownerId,
+      orgId: widget.organization.id,
+    );
+    if (success && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(t['member_promoted_success'])),
+      );
+      _refreshAll();
+    }
+  }
+
+  // ── Remove action ─────────────────────────────────────────────────────────────
+  Future<void> _removeMember(
+    Membership member,
+    Membership myMembership,
+    String displayName,
+    AppTranslations t,
+  ) async {
+    final confirm = await _showTrackedDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(t['member_remove_confirm_title']),
+        content: Text(t.textWithParams(
+            'member_remove_confirm_body', {'name': displayName})),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(t['cancel'])),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(t['delete'],
+                style: const TextStyle(color: Colors.red)),
           ),
-        if (member.role == 'admin')
-          PopupMenuItem(
-            value: 'remove',
-            child: Row(children: [
-              const Icon(Icons.remove_circle,
-                  size: 20, color: Colors.red),
-              const SizedBox(width: 8),
-              Text(t['remove_from_org'],
-                  style:
-                      const TextStyle(color: Colors.red)),
-            ]),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+    final success = await _orgService.leaveOrganization(
+      member.ownerId,
+      widget.organization.id,
+    );
+    if (success && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(t['member_removed_success'])),
+      );
+      _refreshAll();
+    }
+  }
+
+  // ── Refresh invite code confirm ───────────────────────────────────────────────
+  Future<void> _confirmRefreshInviteCode(Membership myMembership) async {
+    final t = AppTranslations.of(context);
+    final confirm = await _showTrackedDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(t['refresh_invite_code_title']),
+        content: Text(t['refresh_invite_code_body']),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(t['cancel'])),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF854F0B),
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(t['refresh_action']),
           ),
-      ],
-    ).then((value) async {
-      if (value == 'promote') {
-        final success =
-            await _orgService.promoteMemberToAdmin(
-          currentAdminId: myMembership.ownerId,
-          memberIdToPromote: member.ownerId,
-          orgId: widget.organization.id,
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+    setState(() => _refreshingCode = true);
+    try {
+      final success = await _orgService.refreshInviteCode(
+        myMembership.ownerId,
+        widget.organization.id,
+      );
+      if (success && mounted) {
+        await _loadInviteCode();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text(t['code_refreshed']),
+              backgroundColor: Colors.green),
         );
-        if (success && mounted) {
-          scaffoldMessenger.showSnackBar(SnackBar(
-              content:
-                  Text(t['member_promoted_success'])));
-          setState(() {});
-        }
-      } else if (value == 'remove') {
-        if (!mounted) return;
-        final confirm =
-            await _showTrackedDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: Text(t['member_remove_confirm_title']),
-            content: Text(t.textWithParams(
-                'member_remove_confirm_body',
-                {'name': ownerName})),
-            actions: [
-              TextButton(
-                onPressed: () =>
-                    Navigator.pop(context, false),
-                child: Text(t['cancel']),
-              ),
-              TextButton(
-                onPressed: () =>
-                    Navigator.pop(context, true),
-                child: Text(t['delete'],
-                    style: const TextStyle(
-                        color: Colors.red)),
-              ),
-            ],
-          ),
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text(t['cannot_refresh_code']),
+              backgroundColor: Colors.red),
         );
-        if (confirm == true) {
-          final success =
-              await _orgService.leaveOrganization(
-            member.ownerId,
-            widget.organization.id,
-          );
-          if (success && mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                  content:
-                      Text(t['member_removed_success'])),
-            );
-            setState(() {});
-          }
-        }
       }
-    });
+    } finally {
+      if (mounted) setState(() => _refreshingCode = false);
+    }
   }
 
   // ========================================
@@ -5386,40 +5829,27 @@ class _FilterChipState extends State<_FilterChip> {
           scale: scale,
           duration: const Duration(milliseconds: 120),
           curve: Curves.easeOut,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 150),
+          child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
               color: widget.isActive
                   ? const Color(0xFF185FA5)
-                  : _hovered
-                      ? const Color(0xFF185FA5).withValues(alpha: 0.08)
-                      : Theme.of(context).colorScheme.surface,
+                  : Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
                 color: widget.isActive
                     ? const Color(0xFF185FA5)
-                    : _hovered
-                        ? const Color(0xFF185FA5).withValues(alpha: 0.5)
-                        : Colors.grey.shade300,
+                    : Colors.grey.shade300,
               ),
-              boxShadow: _hovered && !widget.isActive
+              boxShadow: widget.isActive
                   ? [
                       BoxShadow(
-                        color: const Color(0xFF185FA5).withValues(alpha: 0.15),
+                        color: const Color(0xFF185FA5).withValues(alpha: 0.35),
                         blurRadius: 6,
                         offset: const Offset(0, 2),
                       ),
                     ]
-                  : widget.isActive
-                      ? [
-                          BoxShadow(
-                            color: const Color(0xFF185FA5).withValues(alpha: 0.35),
-                            blurRadius: 6,
-                            offset: const Offset(0, 2),
-                          ),
-                        ]
-                      : null,
+                  : null,
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -5429,11 +5859,7 @@ class _FilterChipState extends State<_FilterChip> {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w500,
-                    color: widget.isActive
-                        ? Colors.white
-                        : _hovered
-                            ? const Color(0xFF185FA5)
-                            : Colors.grey.shade600,
+                    color: widget.isActive ? Colors.white : Colors.grey.shade600,
                   ),
                 ),
                 const SizedBox(width: 5),
@@ -5442,9 +5868,7 @@ class _FilterChipState extends State<_FilterChip> {
                   decoration: BoxDecoration(
                     color: widget.isActive
                         ? Colors.white.withValues(alpha: 0.25)
-                        : _hovered
-                            ? const Color(0xFF185FA5).withValues(alpha: 0.12)
-                            : Colors.grey.shade100,
+                        : Colors.grey.shade100,
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Text(
@@ -5452,11 +5876,7 @@ class _FilterChipState extends State<_FilterChip> {
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w600,
-                      color: widget.isActive
-                          ? Colors.white
-                          : _hovered
-                              ? const Color(0xFF185FA5)
-                              : Colors.grey.shade500,
+                      color: widget.isActive ? Colors.white : Colors.grey.shade500,
                     ),
                   ),
                 ),

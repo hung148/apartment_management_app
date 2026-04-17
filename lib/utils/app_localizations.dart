@@ -738,6 +738,7 @@ class AppTranslations {
       'room_area_value': '{{area}} m²',
 
       'create_invoice': 'Hoá đơn mới',
+      'invite_code_copied': "Đã sao chép!",
     },
 
     'en': {
@@ -1468,6 +1469,7 @@ class AppTranslations {
       'room_area_value': '{{area}} m²',
 
       'create_invoice': 'New payment',
+      'invite_code_copied': "Copied!",
     },
   };
 

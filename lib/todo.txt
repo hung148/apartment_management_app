@@ -83,4 +83,4 @@ Use kReleaseMode: Use this constant to disable all print() logs in your release 
 
 http block on debug have to run in adminstration mode
 
-Not enough to only show room in payment
+
