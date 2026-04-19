@@ -15,7 +15,7 @@ import 'package:apartment_management_project_2/utils/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-// ─── Shared helpers (mirrors the View/Edit file) ──────────────────────────────
+// ─── Shared helpers ───────────────────────────────────────────────────────────
 
 const _typeColors = <String, Color>{
   'rent': Color(0xFF6366F1),
@@ -103,6 +103,8 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
   bool _isSaving = false;
 
   final _formKey = GlobalKey<FormState>();
+
+  // ── Text controllers ────────────────────────────────────────────────────────
   late TextEditingController _paidAmountController;
   late TextEditingController _currencyController;
   late TextEditingController _transactionIdController;
@@ -113,6 +115,11 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
   late TextEditingController _taxAmountController;
   late TextEditingController _recurringParentIdController;
 
+  // ── Display-only controllers (fix: use controllers not initialValue) ────────
+  late TextEditingController _buildingDisplayController;
+  late TextEditingController _roomDisplayController;
+
+  // ── Selection state ─────────────────────────────────────────────────────────
   String? _selectedBuildingId;
   String? _selectedRoomId;
   String? _selectedTenantId;
@@ -127,6 +134,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
 
   bool _isRecurring = false;
 
+  // ── Data lists ──────────────────────────────────────────────────────────────
   List<Building> _buildings = [];
   List<Room> _rooms = [];
   List<Tenant> _allTenants = [];
@@ -136,7 +144,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
   double get _totalAmount =>
       _lineItems.fold(0.0, (sum, item) => sum + item.amount);
 
-  // ─── Helpers ────────────────────────────────────────────────────────────────
+  // ─── Label helpers ───────────────────────────────────────────────────────────
 
   String _typeLabel(AppTranslations t, PaymentType type) {
     const keyMap = {
@@ -182,12 +190,13 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
     }
   }
 
-  // ─── Lifecycle ──────────────────────────────────────────────────────────────
+  // ─── Lifecycle ───────────────────────────────────────────────────────────────
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+
     _paidAmountController = TextEditingController(text: '0.0');
     _currencyController = TextEditingController(text: 'VND');
     _transactionIdController = TextEditingController();
@@ -197,6 +206,10 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
     _lateFeeController = TextEditingController(text: '0.0');
     _taxAmountController = TextEditingController(text: '0.0');
     _recurringParentIdController = TextEditingController();
+
+    // Empty until _loadData populates the lists and calls _refreshDisplayControllers
+    _buildingDisplayController = TextEditingController();
+    _roomDisplayController = TextEditingController();
 
     _selectedPaymentStatus = PaymentStatus.pending;
     _dueDate = DateTime.now().add(const Duration(days: 30));
@@ -221,10 +234,12 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
     _lateFeeController.dispose();
     _taxAmountController.dispose();
     _recurringParentIdController.dispose();
+    _buildingDisplayController.dispose();
+    _roomDisplayController.dispose();
     super.dispose();
   }
 
-  // ─── Data loading ────────────────────────────────────────────────────────────
+  // ─── Data loading ─────────────────────────────────────────────────────────────
 
   Future<void> _loadData() async {
     try {
@@ -234,9 +249,14 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
         widget.tenantService.getOrganizationTenants(widget.organization.id),
       ]);
 
+      if (!mounted) return;
+
       setState(() {
         _buildings = results[0] as List<Building>;
         _rooms = results[1] as List<Room>;
+
+        // Populate display controllers now that lists are available
+        _refreshDisplayControllers();
 
         final allOrgTenants = (results[2] as List<Tenant>)
             .where((t) => t.status == TenantStatus.active)
@@ -260,7 +280,44 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
     }
   }
 
-  // ─── Tenant selection ────────────────────────────────────────────────────────
+  /// Syncs _buildingDisplayController and _roomDisplayController with
+  /// the current selected IDs. Must be called inside setState whenever
+  /// _selectedBuildingId, _selectedRoomId, _buildings, or _rooms change.
+  void _refreshDisplayControllers() {
+    if (_selectedBuildingId != null && _buildings.isNotEmpty) {
+      final building = _buildings.firstWhere(
+        (b) => b.id == _selectedBuildingId,
+        orElse: () => Building(
+            id: '',
+            address: '',
+            name: 'N/A',
+            organizationId: '',
+            createdAt: DateTime.now()),
+      );
+      _buildingDisplayController.text = building.name;
+    } else {
+      _buildingDisplayController.text = '';
+    }
+
+    if (_selectedRoomId != null && _rooms.isNotEmpty) {
+      final room = _rooms.firstWhere(
+        (r) => r.id == _selectedRoomId,
+        orElse: () => Room(
+            id: '',
+            area: 0.0,
+            roomType: '',
+            organizationId: '',
+            buildingId: '',
+            roomNumber: 'N/A',
+            createdAt: DateTime.now()),
+      );
+      _roomDisplayController.text = room.roomNumber;
+    } else {
+      _roomDisplayController.text = '';
+    }
+  }
+
+  // ─── Tenant selection ─────────────────────────────────────────────────────────
 
   void _onTenantSelected(String? tenantId) {
     final t = AppTranslations.of(context);
@@ -272,6 +329,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
         if (widget.room == null) {
           _selectedBuildingId = null;
           _selectedRoomId = null;
+          _refreshDisplayControllers();
         }
       });
       return;
@@ -285,6 +343,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
       if (widget.room == null) {
         _selectedBuildingId = tenant.buildingId;
         _selectedRoomId = tenant.roomId;
+        _refreshDisplayControllers();
       }
     });
 
@@ -318,7 +377,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
     }
   }
 
-  // ─── Add line item dialog ────────────────────────────────────────────────────
+  // ─── Add line item dialog ─────────────────────────────────────────────────────
 
   Future<void> _showAddLineItemDialog() async {
     final t = AppTranslations.of(context);
@@ -326,22 +385,20 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
     final amountController = TextEditingController();
     final descriptionController = TextEditingController();
 
-    // Electricity fields
+    // Electricity
     final electricityStartReadingController = TextEditingController();
     DateTime? electricityStartDate;
     final electricityEndReadingController = TextEditingController();
     DateTime? electricityEndDate;
     final electricityPriceController = TextEditingController();
-    // Toggle: true = enter amount directly, false = use meter readings
     bool electricityUseDirectAmount = false;
 
-    // Water fields
+    // Water
     final waterStartReadingController = TextEditingController();
     DateTime? waterStartDate;
     final waterEndReadingController = TextEditingController();
     DateTime? waterEndDate;
     final waterPriceController = TextEditingController();
-    // Toggle: true = enter amount directly, false = use meter readings
     bool waterUseDirectAmount = false;
 
     DateTime? billingStart;
@@ -376,14 +433,14 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
           final dt = AppTranslations.of(context);
 
           void calculateAmount() {
-            // Only auto-calculate when NOT in direct-amount mode
             if (selectedType == PaymentType.electricity &&
                 !electricityUseDirectAmount) {
               final start =
                   double.tryParse(electricityStartReadingController.text) ?? 0;
               final end =
                   double.tryParse(electricityEndReadingController.text) ?? 0;
-              final price = CurrencyParser.parse(electricityPriceController.text);
+              final price =
+                  CurrencyParser.parse(electricityPriceController.text);
               final usage = end - start;
               if (usage > 0 && price > 0) {
                 amountController.text = (usage * price).toStringAsFixed(0);
@@ -392,7 +449,8 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                 !waterUseDirectAmount) {
               final start =
                   double.tryParse(waterStartReadingController.text) ?? 0;
-              final end = double.tryParse(waterEndReadingController.text) ?? 0;
+              final end =
+                  double.tryParse(waterEndReadingController.text) ?? 0;
               final price = CurrencyParser.parse(waterPriceController.text);
               final usage = end - start;
               if (usage > 0 && price > 0) {
@@ -401,8 +459,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
             }
           }
 
-          // ── Small helper: mode toggle chip ─────────────────────────────
-          Widget _modeToggle({
+          Widget modeToggle({
             required bool useDirectAmount,
             required Color color,
             required IconData meterIcon,
@@ -418,7 +475,6 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                 border: Border.all(color: color.withValues(alpha: 0.18)),
               ),
               child: Row(children: [
-                // Meter readings tab
                 Expanded(
                   child: GestureDetector(
                     onTap: () => onChanged(false),
@@ -441,34 +497,29 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                                   ? color
                                   : Colors.grey.shade500),
                           const SizedBox(width: 5),
-                          Text(
-                            meterLabel,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: !useDirectAmount
-                                  ? FontWeight.w700
-                                  : FontWeight.w400,
-                              color: !useDirectAmount
-                                  ? color
-                                  : Colors.grey.shade500,
-                            ),
-                          ),
+                          Text(meterLabel,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: !useDirectAmount
+                                    ? FontWeight.w700
+                                    : FontWeight.w400,
+                                color: !useDirectAmount
+                                    ? color
+                                    : Colors.grey.shade500,
+                              )),
                         ],
                       ),
                     ),
                   ),
                 ),
-                // Divider
                 Container(
                     width: 1,
                     height: 28,
                     color: color.withValues(alpha: 0.18)),
-                // Direct amount tab
                 Expanded(
                   child: GestureDetector(
                     onTap: () {
                       onChanged(true);
-                      // Clear auto-calculated amount so user starts fresh
                       amountController.clear();
                     },
                     child: AnimatedContainer(
@@ -490,18 +541,16 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                                   ? color
                                   : Colors.grey.shade500),
                           const SizedBox(width: 5),
-                          Text(
-                            directLabel,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: useDirectAmount
-                                  ? FontWeight.w700
-                                  : FontWeight.w400,
-                              color: useDirectAmount
-                                  ? color
-                                  : Colors.grey.shade500,
-                            ),
-                          ),
+                          Text(directLabel,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: useDirectAmount
+                                    ? FontWeight.w700
+                                    : FontWeight.w400,
+                                color: useDirectAmount
+                                    ? color
+                                    : Colors.grey.shade500,
+                              )),
                         ],
                       ),
                     ),
@@ -511,12 +560,9 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
             );
           }
 
-          final typeColor =
-              selectedType != null ? _typeColor(selectedType!) : Colors.grey;
-
           return Dialog(
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20)),
             child: ConstrainedBox(
               constraints: BoxConstraints(
                 maxWidth: 500,
@@ -525,11 +571,12 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // ── Dialog header
+                  // Header
                   Container(
                     padding: const EdgeInsets.fromLTRB(20, 18, 12, 18),
                     decoration: BoxDecoration(
-                      color: Theme.of(context).primaryColor.withOpacity(0.06),
+                      color:
+                          Theme.of(context).primaryColor.withOpacity(0.06),
                       borderRadius: const BorderRadius.vertical(
                           top: Radius.circular(20)),
                     ),
@@ -537,18 +584,21 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color:
-                              Theme.of(context).primaryColor.withOpacity(0.12),
+                          color: Theme.of(context)
+                              .primaryColor
+                              .withOpacity(0.12),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Icon(Icons.add_circle_outline_rounded,
-                            color: Theme.of(context).primaryColor, size: 18),
+                            color: Theme.of(context).primaryColor,
+                            size: 18),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(dt['add_item_dialog_title'],
                             style: const TextStyle(
-                                fontSize: 16, fontWeight: FontWeight.w700)),
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700)),
                       ),
                       IconButton(
                         icon: const Icon(Icons.close_rounded),
@@ -567,7 +617,8 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                           DropdownButtonFormField<PaymentType>(
                             initialValue: selectedType,
                             decoration: _inputDec(
-                                dt['add_item_type_label'], Icons.category_rounded),
+                                dt['add_item_type_label'],
+                                Icons.category_rounded),
                             items: PaymentType.values
                                 .map((type) => DropdownMenuItem(
                                       value: type,
@@ -590,14 +641,14 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                           ),
                           const SizedBox(height: 16),
 
-                          // ── Electricity fields ──────────────────────────
+                          // ── Electricity ────────────────────────────────
                           if (selectedType == PaymentType.electricity) ...[
-                            _formSectionLabel(dt['add_item_elec_title'],
-                                Icons.bolt_rounded, const Color(0xFFF59E0B)),
+                            _formSectionLabel(
+                                dt['add_item_elec_title'],
+                                Icons.bolt_rounded,
+                                const Color(0xFFF59E0B)),
                             const SizedBox(height: 10),
-
-                            // Mode toggle
-                            _modeToggle(
+                            modeToggle(
                               useDirectAmount: electricityUseDirectAmount,
                               color: const Color(0xFFF59E0B),
                               meterIcon: Icons.electric_meter_rounded,
@@ -606,13 +657,12 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                               onChanged: (val) => setDialogState(
                                   () => electricityUseDirectAmount = val),
                             ),
-
-                            // Meter reading fields (hidden when direct mode)
                             if (!electricityUseDirectAmount) ...[
                               Row(children: [
                                 Expanded(
                                   child: TextFormField(
-                                    controller: electricityStartReadingController,
+                                    controller:
+                                        electricityStartReadingController,
                                     maxLength: 10,
                                     decoration: _inputDec(
                                         dt['add_item_start_reading'], null,
@@ -640,7 +690,8 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                               Row(children: [
                                 Expanded(
                                   child: TextFormField(
-                                    controller: electricityEndReadingController,
+                                    controller:
+                                        electricityEndReadingController,
                                     maxLength: 10,
                                     decoration: _inputDec(
                                         dt['add_item_end_reading'], null,
@@ -659,7 +710,8 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                                     initialDate: electricityEndDate,
                                     firstDate: DateTime(2020),
                                     lastDate: DateTime.now(),
-                                    onDateChanged: (date) => setDialogState(() {
+                                    onDateChanged: (date) =>
+                                        setDialogState(() {
                                       electricityEndDate = date;
                                       calculateAmount();
                                     }),
@@ -671,7 +723,8 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                                 controller: electricityPriceController,
                                 maxLength: 15,
                                 inputFormatters: [CurrencyInputFormatter()],
-                                decoration: _inputDec(dt['add_item_elec_price'],
+                                decoration: _inputDec(
+                                    dt['add_item_elec_price'],
                                     Icons.price_change_rounded,
                                     suffix: 'đ/kWh'),
                                 keyboardType: TextInputType.number,
@@ -680,9 +733,10 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                                   calculateAmount();
                                 },
                               ),
-                              if (electricityStartReadingController.text
-                                      .isNotEmpty &&
-                                  electricityEndReadingController.text.isNotEmpty)
+                              if (electricityStartReadingController
+                                      .text.isNotEmpty &&
+                                  electricityEndReadingController
+                                      .text.isNotEmpty)
                                 _calcPreviewChip(
                                   t: dt,
                                   icon: Icons.bolt_rounded,
@@ -694,15 +748,14 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                             ],
                           ],
 
-                          // ── Water fields ────────────────────────────────
+                          // ── Water ──────────────────────────────────────
                           if (selectedType == PaymentType.water) ...[
-                            _formSectionLabel(dt['add_item_water_title'],
+                            _formSectionLabel(
+                                dt['add_item_water_title'],
                                 Icons.water_drop_rounded,
                                 const Color(0xFF06B6D4)),
                             const SizedBox(height: 10),
-
-                            // Mode toggle
-                            _modeToggle(
+                            modeToggle(
                               useDirectAmount: waterUseDirectAmount,
                               color: const Color(0xFF06B6D4),
                               meterIcon: Icons.water_rounded,
@@ -711,13 +764,12 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                               onChanged: (val) => setDialogState(
                                   () => waterUseDirectAmount = val),
                             ),
-
-                            // Meter reading fields (hidden when direct mode)
                             if (!waterUseDirectAmount) ...[
                               Row(children: [
                                 Expanded(
                                   child: TextFormField(
-                                    controller: waterStartReadingController,
+                                    controller:
+                                        waterStartReadingController,
                                     maxLength: 10,
                                     decoration: _inputDec(
                                         dt['add_item_start_reading'], null,
@@ -736,8 +788,8 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                                     initialDate: waterStartDate,
                                     firstDate: DateTime(2020),
                                     lastDate: DateTime.now(),
-                                    onDateChanged: (date) =>
-                                        setDialogState(() => waterStartDate = date),
+                                    onDateChanged: (date) => setDialogState(
+                                        () => waterStartDate = date),
                                   ),
                                 ),
                               ]),
@@ -764,7 +816,8 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                                     initialDate: waterEndDate,
                                     firstDate: DateTime(2020),
                                     lastDate: DateTime.now(),
-                                    onDateChanged: (date) => setDialogState(() {
+                                    onDateChanged: (date) =>
+                                        setDialogState(() {
                                       waterEndDate = date;
                                       calculateAmount();
                                     }),
@@ -776,7 +829,8 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                                 controller: waterPriceController,
                                 maxLength: 15,
                                 inputFormatters: [CurrencyInputFormatter()],
-                                decoration: _inputDec(dt['add_item_water_price'],
+                                decoration: _inputDec(
+                                    dt['add_item_water_price'],
                                     Icons.price_change_rounded,
                                     suffix: 'đ/m³'),
                                 keyboardType: TextInputType.number,
@@ -785,7 +839,8 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                                   calculateAmount();
                                 },
                               ),
-                              if (waterStartReadingController.text.isNotEmpty &&
+                              if (waterStartReadingController
+                                      .text.isNotEmpty &&
                                   waterEndReadingController.text.isNotEmpty)
                                 _calcPreviewChip(
                                   t: dt,
@@ -798,7 +853,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                             ],
                           ],
 
-                          // Billing period (rent or water)
+                          // ── Billing period ─────────────────────────────
                           if (selectedType == PaymentType.rent ||
                               selectedType == PaymentType.water) ...[
                             _formSectionLabel(
@@ -813,8 +868,8 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                                   initialDate: billingStart,
                                   firstDate: DateTime(2020),
                                   lastDate: DateTime(2030),
-                                  onDateChanged: (date) =>
-                                      setDialogState(() => billingStart = date),
+                                  onDateChanged: (date) => setDialogState(
+                                      () => billingStart = date),
                                 ),
                               ),
                               const SizedBox(width: 10),
@@ -824,38 +879,38 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                                   initialDate: billingEnd,
                                   firstDate: DateTime(2020),
                                   lastDate: DateTime(2030),
-                                  onDateChanged: (date) =>
-                                      setDialogState(() => billingEnd = date),
+                                  onDateChanged: (date) => setDialogState(
+                                      () => billingEnd = date),
                                 ),
                               ),
                             ]),
                             const SizedBox(height: 16),
                           ],
 
-                          // Amount — always editable in direct mode,
-                          // read-only (auto-calculated) in meter mode
+                          // ── Amount ─────────────────────────────────────
                           TextFormField(
                             controller: amountController,
                             maxLength: 20,
                             inputFormatters: [CurrencyInputFormatter()],
-                            decoration: _inputDec(
-                                dt['add_item_amount'], Icons.payments_rounded,
+                            decoration: _inputDec(dt['add_item_amount'],
+                                Icons.payments_rounded,
                                 suffix: 'VND'),
                             keyboardType: TextInputType.number,
-                            // Editable when: not electricity/water, OR in direct mode
-                            readOnly: (selectedType == PaymentType.electricity &&
+                            readOnly: (selectedType ==
+                                        PaymentType.electricity &&
                                     !electricityUseDirectAmount) ||
                                 (selectedType == PaymentType.water &&
                                     !waterUseDirectAmount),
                           ),
                           const SizedBox(height: 12),
 
-                          // Description
+                          // ── Description ────────────────────────────────
                           TextFormField(
                             controller: descriptionController,
                             maxLength: 200,
                             decoration: _inputDec(
-                                dt['add_item_description'], Icons.notes_rounded),
+                                dt['add_item_description'],
+                                Icons.notes_rounded),
                             maxLines: 2,
                           ),
                         ],
@@ -863,7 +918,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                     ),
                   ),
 
-                  // ── Dialog footer
+                  // Footer
                   Container(
                     padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
                     decoration: BoxDecoration(
@@ -883,7 +938,8 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                         child: OutlinedButton(
                           onPressed: () => Navigator.pop(context, null),
                           style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 13),
+                            padding:
+                                const EdgeInsets.symmetric(vertical: 13),
                             shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(10)),
                           ),
@@ -894,17 +950,20 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                       Expanded(
                         flex: 2,
                         child: ElevatedButton.icon(
-                          icon: const Icon(Icons.add_rounded, size: 18),
+                          icon:
+                              const Icon(Icons.add_rounded, size: 18),
                           label: Text(dt['add_item_btn_add']),
                           style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 13),
+                            padding:
+                                const EdgeInsets.symmetric(vertical: 13),
                             shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(10)),
                           ),
                           onPressed: () {
                             if (selectedType != null &&
                                 amountController.text.isNotEmpty) {
-                              final amount = CurrencyParser.parse(amountController.text);
+                              final amount = CurrencyParser.parse(
+                                  amountController.text);
                               if (amount > 0) {
                                 final res = <String, dynamic>{
                                   'type': selectedType!,
@@ -914,8 +973,8 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                                           ? null
                                           : descriptionController.text,
                                 };
-                                // Only save meter reading data when not in direct mode
-                                if (selectedType == PaymentType.electricity &&
+                                if (selectedType ==
+                                        PaymentType.electricity &&
                                     !electricityUseDirectAmount) {
                                   res['electricityStartReading'] =
                                       double.tryParse(
@@ -923,23 +982,28 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                                               .text);
                                   res['electricityStartDate'] =
                                       electricityStartDate;
-                                  res['electricityEndReading'] = double.tryParse(
-                                      electricityEndReadingController.text);
-                                  res['electricityEndDate'] = electricityEndDate;
+                                  res['electricityEndReading'] =
+                                      double.tryParse(
+                                          electricityEndReadingController
+                                              .text);
+                                  res['electricityEndDate'] =
+                                      electricityEndDate;
                                   res['electricityPricePerUnit'] =
                                       double.tryParse(
                                           electricityPriceController.text);
                                 }
                                 if (selectedType == PaymentType.water &&
                                     !waterUseDirectAmount) {
-                                  res['waterStartReading'] = double.tryParse(
-                                      waterStartReadingController.text);
+                                  res['waterStartReading'] =
+                                      double.tryParse(
+                                          waterStartReadingController.text);
                                   res['waterStartDate'] = waterStartDate;
                                   res['waterEndReading'] = double.tryParse(
                                       waterEndReadingController.text);
                                   res['waterEndDate'] = waterEndDate;
-                                  res['waterPricePerUnit'] = double.tryParse(
-                                      waterPriceController.text);
+                                  res['waterPricePerUnit'] =
+                                      double.tryParse(
+                                          waterPriceController.text);
                                 }
                                 if (selectedType == PaymentType.rent ||
                                     selectedType == PaymentType.water) {
@@ -948,16 +1012,16 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                                 }
                                 Navigator.pop(context, res);
                               } else {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                        content:
-                                            Text(dt['add_item_err_amount'])));
+                                ScaffoldMessenger.of(context)
+                                    .showSnackBar(SnackBar(
+                                        content: Text(
+                                            dt['add_item_err_amount'])));
                               }
                             } else {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                      content:
-                                          Text(dt['add_item_err_required'])));
+                              ScaffoldMessenger.of(context)
+                                  .showSnackBar(SnackBar(
+                                      content: Text(
+                                          dt['add_item_err_required'])));
                             }
                           },
                         ),
@@ -981,8 +1045,10 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
           description: result['description'] as String?,
           electricityStartReading:
               result['electricityStartReading'] as double?,
-          electricityStartDate: result['electricityStartDate'] as DateTime?,
-          electricityEndReading: result['electricityEndReading'] as double?,
+          electricityStartDate:
+              result['electricityStartDate'] as DateTime?,
+          electricityEndReading:
+              result['electricityEndReading'] as double?,
           electricityEndDate: result['electricityEndDate'] as DateTime?,
           electricityPricePerUnit:
               result['electricityPricePerUnit'] as double?,
@@ -998,7 +1064,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
     }
   }
 
-  // ─── Line items list ─────────────────────────────────────────────────────────
+  // ─── Line items list ──────────────────────────────────────────────────────────
 
   void _removeLineItem(String id) {
     setState(() => _lineItems.removeWhere((item) => item.id == id));
@@ -1019,12 +1085,12 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                 size: 44, color: Colors.grey.shade300),
             const SizedBox(height: 8),
             Text(t['payment_items_empty'],
-                style:
-                    TextStyle(color: Colors.grey.shade400, fontSize: 14)),
+                style: TextStyle(
+                    color: Colors.grey.shade400, fontSize: 14)),
             const SizedBox(height: 4),
             Text(t['payment_items_empty_hint'],
-                style:
-                    TextStyle(color: Colors.grey.shade400, fontSize: 12)),
+                style: TextStyle(
+                    color: Colors.grey.shade400, fontSize: 12)),
           ],
         ),
       );
@@ -1140,7 +1206,8 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
 
         // Total row
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          padding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
             color: Theme.of(context).primaryColor.withOpacity(0.06),
             borderRadius: BorderRadius.circular(12),
@@ -1172,7 +1239,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
     );
   }
 
-  // ─── Save ────────────────────────────────────────────────────────────────────
+  // ─── Save ─────────────────────────────────────────────────────────────────────
 
   Future<void> _savePayment() async {
     final t = AppTranslations.of(context);
@@ -1181,14 +1248,14 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
     setState(() => _isSaving = true);
 
     if (_selectedBuildingId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(t['payment_err_building'])));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(t['payment_err_building'])));
       setState(() => _isSaving = false);
       return;
     }
     if (_selectedRoomId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(t['payment_err_room'])));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(t['payment_err_room'])));
       setState(() => _isSaving = false);
       return;
     }
@@ -1199,8 +1266,8 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
       return;
     }
     if (_dueDate == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(t['payment_err_due_date'])));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(t['payment_err_due_date'])));
       setState(() => _isSaving = false);
       return;
     }
@@ -1244,7 +1311,8 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
           paidAt: _paidAt,
           paidBy: null,
           description: item.description,
-          notes: _notesController.text.isEmpty ? null : _notesController.text,
+          notes:
+              _notesController.text.isEmpty ? null : _notesController.text,
           metadata: null,
           lateFee: _lateFeeController.text.isEmpty
               ? null
@@ -1297,7 +1365,8 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
           paidAt: _paidAt,
           paidBy: null,
           description: lineItemsDescription,
-          notes: _notesController.text.isEmpty ? null : _notesController.text,
+          notes:
+              _notesController.text.isEmpty ? null : _notesController.text,
           metadata: null,
           lateFee: _lateFeeController.text.isEmpty
               ? null
@@ -1328,7 +1397,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
     }
   }
 
-  // ─── Resize / overlay helpers ──────────────────────────────────────────────
+  // ─── Resize / overlay helpers ─────────────────────────────────────────────────
 
   Timer? _resizeDebounceTimer;
   bool _isDismissing = false;
@@ -1337,7 +1406,8 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
   void didChangeMetrics() {
     super.didChangeMetrics();
     _resizeDebounceTimer?.cancel();
-    _resizeDebounceTimer = Timer(const Duration(milliseconds: 300), () {
+    _resizeDebounceTimer =
+        Timer(const Duration(milliseconds: 300), () {
       if (!mounted) return;
       final w = MediaQuery.sizeOf(context).width;
       final h = MediaQuery.sizeOf(context).height;
@@ -1377,7 +1447,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
     }
   }
 
-  // ─── Build ───────────────────────────────────────────────────────────────────
+  // ─── Build ────────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -1385,8 +1455,8 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
     final bool isPhone = MediaQuery.of(context).size.width < 600;
     final bool isRoomMode = widget.room != null;
     final String dialogTitle = isRoomMode
-        ? t.textWithParams(
-            'payment_dialog_title_room', {'room': widget.room!.roomNumber})
+        ? t.textWithParams('payment_dialog_title_room',
+            {'room': widget.room!.roomNumber})
         : t['payment_dialog_title'];
 
     return Dialog(
@@ -1403,7 +1473,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
             backgroundColor: const Color(0xFFF8F9FA),
             body: Column(
               children: [
-                // ── HEADER ─────────────────────────────────────────────────
+                // ── HEADER ───────────────────────────────────────────────
                 Container(
                   padding: const EdgeInsets.fromLTRB(20, 20, 12, 20),
                   decoration: BoxDecoration(
@@ -1421,12 +1491,14 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                       width: 40,
                       height: 40,
                       decoration: BoxDecoration(
-                        color:
-                            Theme.of(context).primaryColor.withOpacity(0.1),
+                        color: Theme.of(context)
+                            .primaryColor
+                            .withOpacity(0.1),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Icon(Icons.receipt_long_rounded,
-                          color: Theme.of(context).primaryColor, size: 20),
+                          color: Theme.of(context).primaryColor,
+                          size: 20),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -1435,7 +1507,8 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                         children: [
                           Text(dialogTitle,
                               style: const TextStyle(
-                                  fontSize: 18, fontWeight: FontWeight.w700)),
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w700)),
                           Text(t['payment_dialog_subtitle'],
                               style: const TextStyle(
                                   fontSize: 12, color: Colors.grey)),
@@ -1449,7 +1522,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                   ]),
                 ),
 
-                // ── BODY ───────────────────────────────────────────────────
+                // ── BODY ─────────────────────────────────────────────────
                 Expanded(
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.all(16),
@@ -1458,17 +1531,20 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          // ── Tenant section
+                          // ── Tenant section ───────────────────────────────
                           _sectionLabel(t['payment_section_tenant']),
 
                           if (isRoomMode)
                             DropdownButtonFormField<String>(
+                              // Use value (not initialValue) so it re-renders
+                              // correctly when _availableTenants loads
                               initialValue: _selectedTenantId,
                               decoration: _inputDec(
                                   t['payment_select_tenant'],
                                   Icons.person_outline_rounded),
                               items: _availableTenants
-                                  .map((tenant) => DropdownMenuItem<String>(
+                                  .map((tenant) =>
+                                      DropdownMenuItem<String>(
                                         value: tenant.id,
                                         child: Text(
                                             '${tenant.fullName} (${tenant.phoneNumber})'),
@@ -1483,19 +1559,21 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                             Autocomplete<Tenant>(
                               displayStringForOption: (Tenant tn) =>
                                   '${tn.fullName} (${tn.phoneNumber})',
-                              optionsBuilder: (TextEditingValue value) {
+                              optionsBuilder:
+                                  (TextEditingValue value) {
                                 if (value.text.isEmpty) {
                                   return const Iterable<Tenant>.empty();
                                 }
                                 return _availableTenants.where((tn) =>
                                     tn.fullName.toLowerCase().contains(
                                         value.text.toLowerCase()) ||
-                                    tn.phoneNumber.contains(value.text));
+                                    tn.phoneNumber
+                                        .contains(value.text));
                               },
                               onSelected: (Tenant selection) =>
                                   _onTenantSelected(selection.id),
-                              fieldViewBuilder: (context, textCtrl, focusNode,
-                                  onFieldSubmitted) {
+                              fieldViewBuilder: (context, textCtrl,
+                                  focusNode, onFieldSubmitted) {
                                 return TextFormField(
                                   controller: textCtrl,
                                   focusNode: focusNode,
@@ -1503,15 +1581,18 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                                     t['payment_search_tenant'],
                                     Icons.search_rounded,
                                   ).copyWith(
-                                    suffixIcon: textCtrl.text.isNotEmpty
-                                        ? IconButton(
-                                            icon: const Icon(Icons.clear),
-                                            onPressed: () {
-                                              textCtrl.clear();
-                                              _onTenantSelected(null);
-                                            },
-                                          )
-                                        : null,
+                                    suffixIcon:
+                                        textCtrl.text.isNotEmpty
+                                            ? IconButton(
+                                                icon: const Icon(
+                                                    Icons.clear),
+                                                onPressed: () {
+                                                  textCtrl.clear();
+                                                  _onTenantSelected(
+                                                      null);
+                                                },
+                                              )
+                                            : null,
                                   ),
                                   validator: (v) =>
                                       _selectedTenantId == null
@@ -1525,10 +1606,13 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                                   alignment: Alignment.topLeft,
                                   child: Material(
                                     elevation: 4.0,
-                                    borderRadius: BorderRadius.circular(12),
+                                    borderRadius:
+                                        BorderRadius.circular(12),
                                     child: ConstrainedBox(
-                                      constraints: const BoxConstraints(
-                                          maxHeight: 200, maxWidth: 400),
+                                      constraints:
+                                          const BoxConstraints(
+                                              maxHeight: 200,
+                                              maxWidth: 400),
                                       child: ListView.builder(
                                         padding: EdgeInsets.zero,
                                         shrinkWrap: true,
@@ -1541,8 +1625,12 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                                             subtitle: Text(
                                                 t.textWithParams(
                                                     'payment_tenant_phone_prefix',
-                                                    {'phone': opt.phoneNumber})),
-                                            onTap: () => onSelected(opt),
+                                                    {
+                                                      'phone':
+                                                          opt.phoneNumber
+                                                    })),
+                                            onTap: () =>
+                                                onSelected(opt),
                                           );
                                         },
                                       ),
@@ -1554,24 +1642,12 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
 
                           const SizedBox(height: 12),
 
-                          // Building & room (read-only)
+                          // ── Building & Room (controller-based, no initialValue) ──
                           Row(children: [
                             Expanded(
                               child: TextFormField(
-                                key: ValueKey('building_$_selectedBuildingId'),
+                                controller: _buildingDisplayController,
                                 readOnly: true,
-                                initialValue: _selectedBuildingId != null
-                                    ? _buildings
-                                        .firstWhere(
-                                            (b) => b.id == _selectedBuildingId,
-                                            orElse: () => Building(
-                                                id: '',
-                                                address: 'N/A',
-                                                name: 'N/A',
-                                                organizationId: '',
-                                                createdAt: DateTime.now()))
-                                        .name
-                                    : t['payment_building_unknown'],
                                 decoration: _inputDec(
                                   t['payment_building_label'],
                                   Icons.apartment_rounded,
@@ -1584,22 +1660,8 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                             const SizedBox(width: 10),
                             Expanded(
                               child: TextFormField(
-                                key: ValueKey('room_$_selectedRoomId'),
+                                controller: _roomDisplayController,
                                 readOnly: true,
-                                initialValue: _selectedRoomId != null
-                                    ? _rooms
-                                        .firstWhere(
-                                            (r) => r.id == _selectedRoomId,
-                                            orElse: () => Room(
-                                                id: '',
-                                                area: 0.0,
-                                                roomType: '',
-                                                organizationId: '',
-                                                buildingId: '',
-                                                roomNumber: 'N/A',
-                                                createdAt: DateTime.now()))
-                                        .roomNumber
-                                    : t['payment_building_unknown'],
                                 decoration: _inputDec(
                                   t['payment_room_label'],
                                   Icons.door_front_door_outlined,
@@ -1611,27 +1673,31 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                             ),
                           ]),
 
-                          // ── Line items section
+                          // ── Line items section ───────────────────────────
                           _sectionLabel(t['payment_section_items']),
 
                           Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            mainAxisAlignment:
+                                MainAxisAlignment.spaceBetween,
                             children: [
                               Text(
                                 t.textWithParams('payment_item_count',
                                     {'count': _lineItems.length}),
                                 style: TextStyle(
-                                    fontSize: 13, color: Colors.grey.shade500),
+                                    fontSize: 13,
+                                    color: Colors.grey.shade500),
                               ),
                               ElevatedButton.icon(
                                 onPressed: _showAddLineItemDialog,
-                                icon: const Icon(Icons.add_rounded, size: 16),
+                                icon: const Icon(Icons.add_rounded,
+                                    size: 16),
                                 label: Text(t['payment_add_item_btn']),
                                 style: ElevatedButton.styleFrom(
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 14, vertical: 8),
                                   shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8)),
+                                      borderRadius:
+                                          BorderRadius.circular(8)),
                                 ),
                               ),
                             ],
@@ -1639,18 +1705,18 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                           const SizedBox(height: 12),
                           _buildLineItemsList(t),
 
-                          // ── Payment settings section
+                          // ── Payment settings section ─────────────────────
                           _sectionLabel(t['payment_section_settings']),
 
                           LocalizedDatePicker(
                             labelText: t['payment_due_date_label'],
                             prefixIcon: Icons.event_rounded,
                             required: true,
-                            initialDate:
-                                DateTime.now().add(const Duration(days: 30)),
+                            initialDate: DateTime.now()
+                                .add(const Duration(days: 30)),
                             firstDate: DateTime.now(),
-                            lastDate:
-                                DateTime.now().add(const Duration(days: 365)),
+                            lastDate: DateTime.now()
+                                .add(const Duration(days: 365)),
                             onDateChanged: (date) =>
                                 setState(() => _dueDate = date),
                             validator: (date) => date == null
@@ -1659,11 +1725,11 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                           ),
                           const SizedBox(height: 12),
 
-                          // Status dropdown with colour dots
                           DropdownButtonFormField<PaymentStatus>(
                             initialValue: _selectedPaymentStatus,
                             decoration: _inputDec(
-                                t['payment_status_label'], Icons.flag_rounded),
+                                t['payment_status_label'],
+                                Icons.flag_rounded),
                             items: PaymentStatus.values.map((s) {
                               final color = _statusColor(s);
                               return DropdownMenuItem(
@@ -1681,18 +1747,19 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                                 ]),
                               );
                             }).toList(),
-                            onChanged: (v) =>
-                                setState(() => _selectedPaymentStatus = v),
+                            onChanged: (v) => setState(
+                                () => _selectedPaymentStatus = v),
                           ),
                           const SizedBox(height: 12),
 
-                          // ── Additional section
+                          // ── Additional section ───────────────────────────
                           _sectionLabel(t['payment_section_additional']),
 
                           TextFormField(
                             controller: _notesController,
                             maxLength: 500,
-                            decoration: _inputDec(t['payment_notes_label'],
+                            decoration: _inputDec(
+                                t['payment_notes_label'],
                                 Icons.sticky_note_2_rounded),
                             maxLines: 2,
                           ),
@@ -1705,8 +1772,9 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                             decoration: _inputDec(t['payment_tax_label'],
                                 Icons.receipt_rounded,
                                 suffix: 'VND'),
-                            keyboardType: const TextInputType.numberWithOptions(
-                                decimal: true),
+                            keyboardType:
+                                const TextInputType.numberWithOptions(
+                                    decimal: true),
                             validator: (v) {
                               if (v != null && v.isNotEmpty) {
                                 try {
@@ -1725,13 +1793,12 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                   ),
                 ),
 
-                // ── FOOTER ─────────────────────────────────────────────────
+                // ── FOOTER ───────────────────────────────────────────────
                 Container(
                   color: Colors.white,
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                   child: Column(
                     children: [
-                      // Total preview
                       if (_lineItems.isNotEmpty)
                         Container(
                           padding: const EdgeInsets.symmetric(
@@ -1744,7 +1811,8 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            mainAxisAlignment:
+                                MainAxisAlignment.spaceBetween,
                             children: [
                               Text(t['payment_total_label'],
                                   style: TextStyle(
@@ -1767,10 +1835,11 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                           child: OutlinedButton(
                             onPressed: () => Navigator.pop(context),
                             style: OutlinedButton.styleFrom(
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: 13),
+                              padding: const EdgeInsets.symmetric(
+                                  vertical: 13),
                               shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10)),
+                                  borderRadius:
+                                      BorderRadius.circular(10)),
                             ),
                             child: Text(t['payment_btn_cancel']),
                           ),
@@ -1787,15 +1856,18 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                                         strokeWidth: 2,
                                         color: Colors.white),
                                   )
-                                : const Icon(Icons.save_rounded, size: 18),
+                                : const Icon(Icons.save_rounded,
+                                    size: 18),
                             label: Text(t['payment_btn_save']),
                             style: ElevatedButton.styleFrom(
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: 13),
+                              padding: const EdgeInsets.symmetric(
+                                  vertical: 13),
                               shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10)),
+                                  borderRadius:
+                                      BorderRadius.circular(10)),
                             ),
-                            onPressed: _isSaving ? null : _savePayment,
+                            onPressed:
+                                _isSaving ? null : _savePayment,
                           ),
                         ),
                       ]),
@@ -1811,7 +1883,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
   }
 }
 
-// ─── Shared form helpers (same API as the View/Edit file) ─────────────────────
+// ─── Shared form helpers ──────────────────────────────────────────────────────
 
 InputDecoration _inputDec(String label, IconData? icon,
         {String? suffix, String? helper}) =>
@@ -1826,7 +1898,6 @@ InputDecoration _inputDec(String label, IconData? icon,
           const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
     );
 
-/// Divider with label in the middle — mirrors `_sectionLabel` in the View/Edit file.
 Widget _sectionLabel(String text) => Padding(
       padding: const EdgeInsets.symmetric(vertical: 16),
       child: Row(children: [
@@ -1875,16 +1946,19 @@ Widget _calcPreviewChip({
       margin: const EdgeInsets.only(top: 8, bottom: 4),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
+        color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(children: [
         Icon(icon, size: 14, color: color),
         const SizedBox(width: 6),
         Text(t['calc_preview_consumption_label'],
-            style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+            style:
+                TextStyle(fontSize: 12, color: Colors.grey.shade600)),
         Text(usage,
             style: TextStyle(
-                fontSize: 12, fontWeight: FontWeight.w700, color: color)),
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: color)),
       ]),
     );
