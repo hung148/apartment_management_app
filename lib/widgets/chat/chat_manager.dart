@@ -9,6 +9,7 @@ import 'package:apartment_management_project_2/services/organization_service.dar
 import 'package:apartment_management_project_2/services/payments_service.dart';
 import 'package:apartment_management_project_2/services/room_service.dart';
 import 'package:apartment_management_project_2/services/tenants_service.dart';
+import 'package:apartment_management_project_2/utils/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:http/http.dart' as http;
@@ -642,11 +643,16 @@ class _ChatPanelState extends State<_ChatPanel> {
   // ---------------------------------------------------------------------------
 
   Future<void> _streamReply(String userText) async {
+    final t = AppTranslations.of(context);
+    final msgNotConfigured = t.text('chat_not_configured');
+    final msgTimeout       = t.text('chat_error_timeout');   // raw template
+    final msgError         = t.text('chat_error_generic');   // raw template
+
     if (_ai.apiKey.isEmpty) {
       if (mounted) {
         setState(() {
-          _messages.add(const _ChatMessage(
-            text: '⚠️ AI not configured. Please check your .env file.',
+          _messages.add(_ChatMessage(
+            text: msgNotConfigured,
             isUser: false,
           ));
           _loading = false;
@@ -745,10 +751,10 @@ class _ChatPanelState extends State<_ChatPanel> {
         _history.add({'role': 'model', 'text': buffer.toString()});
       }
     } on TimeoutException catch (e) {
-      buffer.write('⚠️ Timeout: ${e.message}');
+       buffer.write(msgTimeout.replaceAll('{{message}}', e.message ?? ''));
       _streamingText.value = buffer.toString();
     } catch (e) {
-      buffer.write('⚠️ Lỗi: $e');
+       buffer.write(msgError.replaceAll('{{error}}', e.toString()));
       _streamingText.value = buffer.toString();
     } finally {
       if (mounted) {
@@ -859,9 +865,9 @@ class _ChatPanelState extends State<_ChatPanel> {
           const SizedBox(width: 4),
           const Icon(Icons.smart_toy_outlined, color: Colors.white, size: 20),
           const SizedBox(width: 8),
-          const Expanded(
+          Expanded(
             child: Text(
-              'AI Assistant',
+              AppTranslations.of(context).text('chat_ai_assistant'),
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 15,
@@ -884,7 +890,7 @@ class _ChatPanelState extends State<_ChatPanel> {
             ),
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-            tooltip: 'Clear conversation',
+            tooltip: AppTranslations.of(context).text('chat_clear_conversation'),
           ),
         ],
       ),
@@ -937,7 +943,9 @@ class _ChatPanelState extends State<_ChatPanel> {
               textInputAction: TextInputAction.send,
               enabled: !_loading,
               decoration: InputDecoration(
-                hintText: _loading ? 'AI is thinking...' : 'Type a message...',
+                hintText: _loading
+                    ? AppTranslations.of(context).text('chat_input_thinking')
+                    : AppTranslations.of(context).text('chat_input_hint'),
                 hintStyle: TextStyle(color: theme.colorScheme.outline),
                 filled: true,
                 fillColor:
@@ -1049,7 +1057,7 @@ class _EmptyState extends StatelessWidget {
               size: 40, color: Theme.of(context).colorScheme.outline),
           const SizedBox(height: 12),
           Text(
-            'Ask me anything about\nyour properties',
+            AppTranslations.of(context).text('chat_empty_hint'),
             textAlign: TextAlign.center,
             style: TextStyle(
                 fontSize: 13, color: Theme.of(context).colorScheme.outline),

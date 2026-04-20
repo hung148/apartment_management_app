@@ -1695,9 +1695,16 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
               actions: [
                 if (_isSelectionMode) ...[
                   IconButton(
-                    icon: const Icon(Icons.select_all_rounded, color: Colors.white),
+                    icon: Icon(
+                      _cachedRooms != null && _selectedRoomIds.length == _cachedRooms!.length
+                          ? Icons.deselect_rounded
+                          : Icons.select_all_rounded,
+                      color: Colors.white,
+                    ),
                     onPressed: _selectAll,
-                    tooltip: t['room_select_all_tooltip'],
+                    tooltip: _cachedRooms != null && _selectedRoomIds.length == _cachedRooms!.length
+                        ? t['room_deselect_all_tooltip']
+                        : t['room_select_all_tooltip'],
                   ),
                   if (_selectedRoomIds.isNotEmpty)
                     IconButton(
@@ -1934,9 +1941,14 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
 
   void _selectAll() {
     if (_cachedRooms == null) return;
-    print('☑️ [_selectAll] Selecting all ${_cachedRooms!.length} rooms');
+    final allSelected = _selectedRoomIds.length == _cachedRooms!.length;
+    print('☑️ [_selectAll] ${allSelected ? "Deselecting" : "Selecting"} all ${_cachedRooms!.length} rooms');
     setState(() {
-      _selectedRoomIds = _cachedRooms!.map((r) => r.id).toSet();
+      if (allSelected) {
+        _selectedRoomIds.clear();
+      } else {
+        _selectedRoomIds = _cachedRooms!.map((r) => r.id).toSet();
+      }
       _isSelectionMode = true;
     });
   }
