@@ -74,13 +74,10 @@ class CurrencyInputFormatter extends TextInputFormatter {
     int cursorPosition = formatted.length;
     
     // Try to maintain cursor position relative to digits
-    final oldCursorPos = oldValue.selection.baseOffset;
     final newCursorPos = newValue.selection.baseOffset;
     
     if (newCursorPos > 0) {
       // Count digits before cursor in old and new raw text
-      final digitsBeforeCursorOld = oldValue.text.substring(0, oldCursorPos.clamp(0, oldValue.text.length))
-          .replaceAll(RegExp(r'[^\d]'), '').length;
       final digitsBeforeCursorNew = newValue.text.substring(0, newCursorPos.clamp(0, newValue.text.length))
           .replaceAll(RegExp(r'[^\d]'), '').length;
       

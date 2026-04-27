@@ -176,7 +176,7 @@ class _BuildingDialogState extends State<BuildingDialog>
     bulkRoomsController.dispose();
     bulkTypeController.dispose();
     bulkAreaController.dispose();
-    for (var config in floorConfigs) config.dispose();
+    for (var config in floorConfigs) {config.dispose();}
     super.dispose();
   }
 
@@ -205,15 +205,15 @@ class _BuildingDialogState extends State<BuildingDialog>
     final start = int.tryParse(bulkStartFloorController.text);
     final end   = int.tryParse(bulkEndFloorController.text);
     if (start == null || end == null ||
-        start < 1 || end > floorConfigs.length || start > end) return;
+        start < 1 || end > floorConfigs.length || start > end) {return;}
     setState(() {
       for (int i = start - 1; i < end; i++) {
         if (bulkRoomsController.text.isNotEmpty)
-          floorConfigs[i].countController.text = bulkRoomsController.text;
+          {floorConfigs[i].countController.text = bulkRoomsController.text;}
         if (bulkTypeController.text.isNotEmpty)
-          floorConfigs[i].typeController.text = bulkTypeController.text;
+          {floorConfigs[i].typeController.text = bulkTypeController.text;}
         if (bulkAreaController.text.isNotEmpty)
-          floorConfigs[i].areaController.text = bulkAreaController.text;
+          {floorConfigs[i].areaController.text = bulkAreaController.text;}
       }
       showBulkEdit = false;
     });
@@ -222,13 +222,13 @@ class _BuildingDialogState extends State<BuildingDialog>
   String? _validate() {
     final t = AppTranslations.of(context);
     if (nameController.text.trim().isEmpty)
-      return t['building_error_name_required'];
+      {return t['building_error_name_required'];}
     if (addressController.text.trim().isEmpty)
-      return t['building_error_address_required'];
+      {return t['building_error_address_required'];}
     if (!autoGenerateRooms) return null;
     final floors = int.tryParse(floorsController.text.trim());
     if (floors == null || floors <= 0)
-      return t['building_error_floors_invalid'];
+      {return t['building_error_floors_invalid'];}
     if (uniformRoomsPerFloor) {
       final rp = int.tryParse(uniformRoomsController.text.trim());
       if (rp == null || rp <= 0) return t['building_error_rooms_invalid'];
@@ -281,8 +281,8 @@ class _BuildingDialogState extends State<BuildingDialog>
       );
       return;
     }
-    while (config.customNames.length < roomCount) config.customNames.add('');
-    while (config.customNames.length > roomCount) config.customNames.removeLast();
+    while (config.customNames.length < roomCount) {config.customNames.add('');}
+    while (config.customNames.length > roomCount) {config.customNames.removeLast();}
 
     final controllers = config.customNames
         .map((name) => TextEditingController(text: name))
@@ -438,7 +438,7 @@ class _BuildingDialogState extends State<BuildingDialog>
         );
       },
     ).then((_) {
-      for (var c in controllers) c.dispose();
+      for (var c in controllers) {c.dispose();}
     });
   }
 
@@ -523,10 +523,10 @@ class _BuildingDialogState extends State<BuildingDialog>
                             },
                             validator: (v) {
                               if (v == null || v.trim().isEmpty)
-                                return t['building_error_floors_required'];
+                                {return t['building_error_floors_required'];}
                               final f = int.tryParse(v);
                               if (f == null || f <= 0)
-                                return t['building_error_floors_positive'];
+                                {return t['building_error_floors_positive'];}
                               return null;
                             },
                           ),
@@ -770,7 +770,8 @@ class _BuildingDialogState extends State<BuildingDialog>
           Switch.adaptive(
             value: autoGenerateRooms,
             onChanged: (v) => setState(() => autoGenerateRooms = v),
-            activeColor: _DS.primary,
+            activeTrackColor: _DS.primary,
+            activeThumbColor: _DS.primary,
           ),
         ]),
       ),
@@ -870,10 +871,10 @@ class _BuildingDialogState extends State<BuildingDialog>
         keyboardType: TextInputType.number,
         validator: (v) {
           if (v == null || v.trim().isEmpty)
-            return t['building_error_rooms_required'];
+            {return t['building_error_rooms_required'];}
           final r = int.tryParse(v);
           if (r == null || r <= 0)
-            return t['building_error_rooms_positive'];
+            {return t['building_error_rooms_positive'];}
           return null;
         },
       ),

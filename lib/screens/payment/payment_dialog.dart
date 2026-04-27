@@ -99,7 +99,6 @@ class ImprovedPaymentFormDialog extends StatefulWidget {
 
 class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
     with WidgetsBindingObserver {
-  int _overlayCount = 0;
   bool _isSaving = false;
 
   final _formKey = GlobalKey<FormState>();
@@ -132,14 +131,12 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
   DateTime? _dueDate;
   DateTime? _paidAt;
 
-  bool _isRecurring = false;
-
   // ── Data lists ──────────────────────────────────────────────────────────────
   List<Building> _buildings = [];
   List<Room> _rooms = [];
   List<Tenant> _allTenants = [];
   List<Tenant> _availableTenants = [];
-  List<InvoiceLineItem> _lineItems = [];
+  final List<InvoiceLineItem> _lineItems = [];
 
   double get _totalAmount =>
       _lineItems.fold(0.0, (sum, item) => sum + item.amount);
@@ -1320,7 +1317,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
           taxAmount: _taxAmountController.text.isEmpty
               ? null
               : CurrencyParser.parse(_taxAmountController.text),
-          isRecurring: _isRecurring,
+          isRecurring: false,
           recurringParentId: _recurringParentIdController.text.isEmpty
               ? null
               : _recurringParentIdController.text,
@@ -1374,7 +1371,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
           taxAmount: _taxAmountController.text.isEmpty
               ? null
               : CurrencyParser.parse(_taxAmountController.text),
-          isRecurring: _isRecurring,
+          isRecurring: false,
           recurringParentId: _recurringParentIdController.text.isEmpty
               ? null
               : _recurringParentIdController.text,
@@ -1435,7 +1432,6 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
     required WidgetBuilder builder,
     bool barrierDismissible = true,
   }) async {
-    _overlayCount++;
     try {
       return await showDialog<T>(
         context: context,
@@ -1443,7 +1439,6 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
         builder: builder,
       );
     } finally {
-      if (mounted) _overlayCount--;
     }
   }
 

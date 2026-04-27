@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/date_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/tenants_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/buildings_model.dart';
@@ -26,18 +25,6 @@ const List<Color> _tenantAccentColors = [
   Color(0xFF1A7E5A),
   Color(0xFF6B4226),
 ];
-
-// ─── Gradient presets per accent color ───────────────────────────────────────
-LinearGradient _headerGradient(Color accentColor) {
-  return LinearGradient(
-    colors: [
-      Color.lerp(accentColor, const Color(0xFF0D1B40), 0.35)!,
-      accentColor,
-    ],
-    begin: Alignment.centerLeft,
-    end: Alignment.centerRight,
-  );
-}
 
 // The default blue gradient used for most dialogs
 const LinearGradient _defaultHeaderGradient = LinearGradient(
@@ -503,7 +490,7 @@ Widget _dropdownField<T>({
   return Padding(
     padding: const EdgeInsets.only(bottom: 12),
     child: DropdownButtonFormField<T>(
-      value: value,
+      initialValue: value,
       decoration: InputDecoration(
         labelText: label,
         labelStyle: TextStyle(color: Colors.grey.shade500, fontSize: 14),
@@ -754,7 +741,7 @@ class TenantsTab extends StatefulWidget {
   final VoidCallback? onChanged;
 
   const TenantsTab({
-    Key? key,
+    super.key, 
     required this.organization,
     required this.tenantService,
     required this.buildingService,
@@ -762,7 +749,7 @@ class TenantsTab extends StatefulWidget {
     required this.organizationService,
     required this.authService,
     this.onChanged,
-  }) : super(key: key);
+  });
 
   @override
   State<TenantsTab> createState() => _TenantsTabState();
@@ -776,7 +763,6 @@ class _TenantsTabState extends State<TenantsTab>
   final TextEditingController _searchController = TextEditingController();
   late Future<List<dynamic>> _initialFuture;
 
-  int _overlayCount = 0;
 
   List<Tenant> _allTenants = [];
   List<Building> _buildings = [];
@@ -839,7 +825,6 @@ class _TenantsTabState extends State<TenantsTab>
     required WidgetBuilder builder,
     bool barrierDismissible = true,
   }) async {
-    _overlayCount++;
     try {
       return await showDialog<T>(
         context: context,
@@ -847,7 +832,6 @@ class _TenantsTabState extends State<TenantsTab>
         builder: builder,
       );
     } finally {
-      if (mounted) _overlayCount--;
     }
   }
 
@@ -858,7 +842,6 @@ class _TenantsTabState extends State<TenantsTab>
     ShapeBorder? shape,
     BoxConstraints? constraints,
   }) async {
-    _overlayCount++;
     try {
       return await showModalBottomSheet<T>(
         context: context,
@@ -868,7 +851,6 @@ class _TenantsTabState extends State<TenantsTab>
         builder: builder,
       );
     } finally {
-      if (mounted) _overlayCount--;
     }
   }
 
@@ -1727,18 +1709,18 @@ class _TenantsTabState extends State<TenantsTab>
     final searchLower = query.toLowerCase().trim();
     return tenants.where((tenant) {
       if (tenant.fullName.toLowerCase().contains(searchLower))
-        return true;
+        {return true;}
       if (tenant.phoneNumber.contains(searchLower)) return true;
       if (tenant.email != null &&
-          tenant.email!.toLowerCase().contains(searchLower)) return true;
+          tenant.email!.toLowerCase().contains(searchLower)) {return true;}
       if (tenant.nationalId != null &&
-          tenant.nationalId!.contains(searchLower)) return true;
+          tenant.nationalId!.contains(searchLower)) {return true;}
       if (tenant.occupation != null &&
           tenant.occupation!.toLowerCase().contains(searchLower))
-        return true;
+        {return true;}
       if (tenant.workplace != null &&
           tenant.workplace!.toLowerCase().contains(searchLower))
-        return true;
+        {return true;}
       return false;
     }).toList();
   }
@@ -2112,7 +2094,7 @@ class _TenantsTabState extends State<TenantsTab>
     final screenWidth = MediaQuery.sizeOf(context).width;
     final isLargeScreen = screenWidth >= 600;
 
-    Widget _menuTile({
+    Widget menuTile({
       required IconData icon,
       required String title,
       String? subtitle,
@@ -2160,14 +2142,14 @@ class _TenantsTabState extends State<TenantsTab>
       );
     }
 
-    Widget _menuDivider() => Divider(
+    Widget menuDivider() => Divider(
         height: 1,
         indent: 20,
         endIndent: 20,
         color: Colors.grey.shade100);
 
     List<Widget> menuItems = [
-      _menuTile(
+      menuTile(
         icon: Icons.info_outline_rounded,
         title: t['tenant_menu_view_detail'],
         onTap: () {
@@ -2198,8 +2180,8 @@ class _TenantsTabState extends State<TenantsTab>
               tenant, building.name, room.roomNumber);
         },
       ),
-      _menuDivider(),
-      _menuTile(
+      menuDivider(),
+      menuTile(
         icon: Icons.edit_rounded,
         title: t['tenant_menu_edit'],
         color: const Color(0xFF2563EB),
@@ -2208,8 +2190,8 @@ class _TenantsTabState extends State<TenantsTab>
           _showEditTenantDialog(tenant);
         },
       ),
-      _menuDivider(),
-      _menuTile(
+      menuDivider(),
+      menuTile(
         icon: Icons.swap_horiz_rounded,
         title: t['tenant_menu_move_room'],
         color: const Color(0xFF0F6E56),
@@ -2219,8 +2201,8 @@ class _TenantsTabState extends State<TenantsTab>
         },
       ),
       if (!isMovedOut) ...[
-        _menuDivider(),
-        _menuTile(
+        menuDivider(),
+        menuTile(
           icon: Icons.logout_rounded,
           title: t['tenant_menu_move_out'],
           color: const Color(0xFF854F0B),
@@ -2230,8 +2212,8 @@ class _TenantsTabState extends State<TenantsTab>
           },
         ),
       ],
-      _menuDivider(),
-      _menuTile(
+      menuDivider(),
+      menuTile(
         icon: Icons.directions_car_rounded,
         title: t['tenant_menu_vehicles'],
         subtitle: tenant.vehicles != null && tenant.vehicles!.isNotEmpty
@@ -2244,8 +2226,8 @@ class _TenantsTabState extends State<TenantsTab>
           _showVehicleManagementDialog(tenant);
         },
       ),
-      _menuDivider(),
-      _menuTile(
+      menuDivider(),
+      menuTile(
         icon: Icons.history_rounded,
         title: t['tenant_menu_rental_history'],
         onTap: () {
@@ -2253,8 +2235,8 @@ class _TenantsTabState extends State<TenantsTab>
           _showRentalHistoryDialog(tenant);
         },
       ),
-      _menuDivider(),
-      _menuTile(
+      menuDivider(),
+      menuTile(
         icon: Icons.delete_outline_rounded,
         title: t['tenant_menu_delete'],
         color: const Color(0xFFE74C3C),
@@ -2388,6 +2370,7 @@ class _TenantsTabState extends State<TenantsTab>
                           size: 22, color: Colors.white),
                       tooltip: t['tenant_vehicle_add_tooltip'],
                       onPressed: () async {
+                        final messenger = ScaffoldMessenger.of(context); // capture before await
                         try {
                           final result = await _showAddVehicleDialog();
                           if (result != null) {
@@ -2399,34 +2382,21 @@ class _TenantsTabState extends State<TenantsTab>
                                   .tenantService
                                   .getTenantById(tenant.id);
                               if (updatedTenant != null) {
-                                setDialogState(
-                                    () => tenant = updatedTenant);
+                                setDialogState(() => tenant = updatedTenant);
                               }
-                              if (mounted) {
-                                ScaffoldMessenger.of(context)
-                                    .showSnackBar(SnackBar(
-                                        content: Text(
-                                            t['tenant_vehicle_added'])));
-                              }
+                              messenger.showSnackBar(SnackBar(
+                                  content: Text(t['tenant_vehicle_added'])));
                             } else {
-                              if (mounted) {
-                                ScaffoldMessenger.of(context)
-                                    .showSnackBar(SnackBar(
-                                        content: Text(t[
-                                            'tenant_vehicle_add_error']),
-                                        backgroundColor: Colors.red));
-                              }
+                              messenger.showSnackBar(SnackBar(
+                                  content: Text(t['tenant_vehicle_add_error']),
+                                  backgroundColor: Colors.red));
                             }
                           }
                         } catch (e) {
-                          if (mounted) {
-                            ScaffoldMessenger.of(context)
-                                .showSnackBar(SnackBar(
-                              content: Text(t.textWithParams(
-                                  'tenant_error', {'error': e})),
-                              backgroundColor: Colors.red,
-                            ));
-                          }
+                          messenger.showSnackBar(SnackBar(
+                            content: Text(t.textWithParams('tenant_error', {'error': e})),
+                            backgroundColor: Colors.red,
+                          ));
                         }
                       },
                     ),
@@ -2461,7 +2431,7 @@ class _TenantsTabState extends State<TenantsTab>
                                   padding: const EdgeInsets.all(16),
                                   itemCount:
                                       currentTenant.vehicles?.length ?? 0,
-                                  separatorBuilder: (_, __) =>
+                                  separatorBuilder: (_, _) =>
                                       const SizedBox(height: 0),
                                   itemBuilder: (context, index) {
                                     final vehicle =
@@ -2538,91 +2508,56 @@ class _TenantsTabState extends State<TenantsTab>
                                         ),
                                       ],
                                       onMenuSelected: (value) async {
+                                        final messenger = ScaffoldMessenger.of(context); // capture once
                                         if (value == 'edit') {
-                                          final result =
-                                              await _showEditVehicleDialog(
-                                                  vehicle);
+                                          final result = await _showEditVehicleDialog(vehicle);
                                           if (result != null) {
-                                            final success = await widget
-                                                .tenantService
-                                                .updateVehicle(tenant.id,
-                                                    index, result);
+                                            final success = await widget.tenantService
+                                                .updateVehicle(tenant.id, index, result);
                                             if (success) {
                                               await _refreshAll();
                                               setDialogState(() {});
-                                              if (mounted) {
-                                                ScaffoldMessenger.of(
-                                                        context)
-                                                    .showSnackBar(SnackBar(
-                                                        content: Text(t[
-                                                            'tenant_vehicle_updated'])));
-                                              }
+                                              messenger.showSnackBar(SnackBar(
+                                                  content: Text(t['tenant_vehicle_updated'])));
                                             }
                                           }
                                         } else if (value == 'parking') {
-                                          final spot =
-                                              await _showParkingSpotDialog();
+                                          final spot = await _showParkingSpotDialog();
                                           if (spot != null) {
-                                            final success = await widget
-                                                .tenantService
-                                                .registerParkingSpot(
-                                                    tenant.id, index, spot);
+                                            final success = await widget.tenantService
+                                                .registerParkingSpot(tenant.id, index, spot);
                                             if (success) {
                                               await _refreshAll();
                                               setDialogState(() {});
-                                              if (mounted) {
-                                                ScaffoldMessenger.of(
-                                                        context)
-                                                    .showSnackBar(SnackBar(
-                                                        content: Text(t[
-                                                            'tenant_vehicle_parking_registered'])));
-                                              }
+                                              messenger.showSnackBar(SnackBar(
+                                                  content: Text(t['tenant_vehicle_parking_registered'])));
                                             }
                                           }
                                         } else if (value == 'unparking') {
-                                          final success = await widget
-                                              .tenantService
-                                              .unregisterParkingSpot(
-                                                  tenant.id, index);
+                                          final success = await widget.tenantService
+                                              .unregisterParkingSpot(tenant.id, index);
                                           if (success) {
                                             await _refreshAll();
                                             setDialogState(() {});
-                                            if (mounted) {
-                                              ScaffoldMessenger.of(context)
-                                                  .showSnackBar(SnackBar(
-                                                      content: Text(t[
-                                                          'tenant_vehicle_parking_unregistered'])));
-                                            }
+                                            messenger.showSnackBar(SnackBar(
+                                                content: Text(t['tenant_vehicle_parking_unregistered'])));
                                           }
                                         } else if (value == 'delete') {
-                                          final ok =
-                                              await _showConfirmDialog(
-                                            title: t[
-                                                'tenant_vehicle_delete_title'],
-                                            message: t.textWithParams(
-                                                'tenant_vehicle_delete_confirm',
-                                                {
-                                                  'plate':
-                                                      vehicle.licensePlate
-                                                }),
+                                          final ok = await _showConfirmDialog(
+                                            title: t['tenant_vehicle_delete_title'],
+                                            message: t.textWithParams('tenant_vehicle_delete_confirm',
+                                                {'plate': vehicle.licensePlate}),
                                             confirmLabel: t['delete'],
                                             destructive: true,
                                           );
                                           if (ok == true) {
-                                            final success = await widget
-                                                .tenantService
-                                                .removeVehicle(
-                                                    tenant.id, index);
+                                            final success = await widget.tenantService
+                                                .removeVehicle(tenant.id, index);
                                             if (success) {
                                               await _refreshAll();
                                               setDialogState(() {});
-                                              if (mounted) {
-                                                ScaffoldMessenger.of(
-                                                        context)
-                                                    .showSnackBar(SnackBar(
-                                                        content: Text(t[
-                                                            'tenant_vehicle_deleted'])));
-                                              }
+                                              messenger.showSnackBar(SnackBar(
+                                                  content: Text(t['tenant_vehicle_deleted'])));
                                             }
                                           }
                                         }
@@ -3159,9 +3094,10 @@ class _TenantsTabState extends State<TenantsTab>
                           required: true,
                           prefixIcon: Icons.calendar_today_rounded,
                           onDateChanged: (date) {
-                            if (date != null)
+                            if (date != null) {
                               setDialogState(
                                   () => editedMoveInDate = date);
+                            }
                           },
                         ),
                         const _ContentDivider(),
@@ -3292,6 +3228,9 @@ class _TenantsTabState extends State<TenantsTab>
     String? selectedRoomId =
         tenant.roomId.isNotEmpty ? tenant.roomId : null;
 
+    final t = AppTranslations.of(context);         // capture before await
+    final messenger = ScaffoldMessenger.of(context); // capture before await
+
     final result = await _showTrackedDialog<bool>(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -3382,20 +3321,16 @@ class _TenantsTabState extends State<TenantsTab>
         selectedBuildingId != null &&
         selectedRoomId != null) {
       if (selectedRoomId == tenant.roomId) return;
-      final t = AppTranslations.of(context);
       final success = await widget.tenantService.moveTenantToRoom(
           tenant.id, selectedBuildingId!, selectedRoomId!);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(success
-              ? t['tenant_move_room_success']
-              : t['tenant_move_room_error']),
-          backgroundColor:
-              success ? const Color(0xFF3B6D11) : Colors.red,
-        ));
-        _refreshAll();
-        widget.onChanged?.call();
-      }
+      messenger.showSnackBar(SnackBar(
+        content: Text(success
+            ? t['tenant_move_room_success']
+            : t['tenant_move_room_error']),
+        backgroundColor: success ? const Color(0xFF3B6D11) : Colors.red,
+      ));
+      _refreshAll();
+      widget.onChanged?.call();
     }
   }
 
@@ -3405,6 +3340,9 @@ class _TenantsTabState extends State<TenantsTab>
   Future<void> _showMoveOutDialog(Tenant tenant) async {
     DateTime selectedDate = DateTime.now();
     String? selectedReason;
+
+    final t = AppTranslations.of(context);           // capture here
+    final messenger = ScaffoldMessenger.of(context); // capture here
 
     final result = await _showTrackedDialog<Map<String, dynamic>>(
       context: context,
@@ -3481,8 +3419,9 @@ class _TenantsTabState extends State<TenantsTab>
                           required: true,
                           prefixIcon: Icons.calendar_today_rounded,
                           onDateChanged: (date) {
-                            if (date != null)
+                            if (date != null) {
                               setDialogState(() => selectedDate = date);
+                            }
                           },
                         ),
                         const SizedBox(height: 12),
@@ -3537,14 +3476,12 @@ class _TenantsTabState extends State<TenantsTab>
     );
 
     if (result != null) {
-      final t = AppTranslations.of(context);
       final success = await widget.tenantService.markTenantAsMovedOut(
         tenant.id,
         moveOutDate: result['date'],
         moveOutReason: result['reason'],
       );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      messenger.showSnackBar(SnackBar(
         content: Text(success
             ? t['tenant_moveout_success']
             : t['tenant_moveout_failed']),
@@ -3752,7 +3689,7 @@ class _TenantsTabState extends State<TenantsTab>
                         Padding(
                           padding: const EdgeInsets.only(bottom: 12),
                           child: DropdownButtonFormField<String>(
-                            value: selectedRoomId,
+                            initialValue: selectedRoomId,
                             decoration: InputDecoration(
                               labelText: t['tenant_field_room'],
                               labelStyle: TextStyle(
@@ -3841,10 +3778,11 @@ class _TenantsTabState extends State<TenantsTab>
                                   String label =
                                       t['tenant_status_active'];
                                   if (s == TenantStatus.inactive)
-                                    label = t['tenant_status_inactive'];
-                                  if (s == TenantStatus.moveOut)
+                                    {label = t['tenant_status_inactive'];}
+                                  if (s == TenantStatus.moveOut) {
                                     label =
                                         t['tenant_status_moved_out'];
+                                  }
                                   return DropdownMenuItem(
                                       value: s, child: Text(label));
                                 }).toList(),
@@ -3894,7 +3832,7 @@ class _TenantsTabState extends State<TenantsTab>
                           prefixIcon: Icons.calendar_today_rounded,
                           onDateChanged: (date) {
                             if (date != null)
-                              setDialogState(() => moveInDate = date);
+                              {setDialogState(() => moveInDate = date);}
                           },
                         ),
                         const _ContentDivider(),
@@ -3962,7 +3900,7 @@ class _TenantsTabState extends State<TenantsTab>
                       icon: Icons.person_add_rounded,
                       onPressed: () {
                         if (nameController.text.isEmpty ||
-                            selectedRoomId == null) return;
+                            selectedRoomId == null) {return;}
                         Navigator.pop(context, {
                           'fullName': nameController.text.trim(),
                           'phoneNumber': phoneController.text.trim(),
