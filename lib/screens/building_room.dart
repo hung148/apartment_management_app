@@ -1,9 +1,9 @@
-import 'package:apartment_management_project_2/models/buildings_model.dart';
-import 'package:apartment_management_project_2/models/organization_model.dart';
-import 'package:apartment_management_project_2/models/rooms_model.dart';
-import 'package:apartment_management_project_2/services/room_service.dart';
-import 'package:apartment_management_project_2/utils/app_localizations.dart';
-import 'package:apartment_management_project_2/widgets/shared.dart';
+import 'package:phan_mem_quan_ly_can_ho/models/buildings_model.dart';
+import 'package:phan_mem_quan_ly_can_ho/models/organization_model.dart';
+import 'package:phan_mem_quan_ly_can_ho/models/rooms_model.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/room_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
+import 'package:phan_mem_quan_ly_can_ho/widgets/shared.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
 

@@ -1,8 +1,8 @@
 import 'dart:io';
 
-import 'package:apartment_management_project_2/models/organization_model.dart';
-import 'package:apartment_management_project_2/models/payment_model.dart';
-import 'package:apartment_management_project_2/utils/app_localizations.dart';
+import 'package:phan_mem_quan_ly_can_ho/models/organization_model.dart';
+import 'package:phan_mem_quan_ly_can_ho/models/payment_model.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';

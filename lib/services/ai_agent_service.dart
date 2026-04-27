@@ -1,4 +1,4 @@
-import 'package:apartment_management_project_2/widgets/app_logger.dart';
+import 'package:phan_mem_quan_ly_can_ho/widgets/app_logger.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class AIAgentService {

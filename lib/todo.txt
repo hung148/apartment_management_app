@@ -1,11 +1,3 @@
-
-[ERROR:flutter/shell/gpu/gpu_surface_gl_skia.cc(220)] Could not make the context current to acquire the frame.
-2
-[ERROR:flutter/shell/platform/windows/egl/egl.cc(57)] EGL Error: Context Lost (12302) in ../../../flutter/shell/platform/windows/egl/surface.cc:28
-2
-[ERROR:flutter/shell/platform/windows/egl/egl.cc(57)] EGL Error: Context Lost (12302) in ../../../flutter/shell/platform/windows/egl/context.cc:33
-Happen sometimes when I resize 
-
 add search to building tab
 
 
@@ -83,4 +75,4 @@ Use kReleaseMode: Use this constant to disable all print() logs in your release 
 
 http block on debug have to run in adminstration mode
 
-back button doesn't have language support
+

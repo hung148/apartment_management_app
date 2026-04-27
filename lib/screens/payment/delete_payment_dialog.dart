@@ -1,6 +1,6 @@
-import 'package:apartment_management_project_2/models/payment_model.dart';
-import 'package:apartment_management_project_2/services/payments_service.dart';
-import 'package:apartment_management_project_2/utils/app_localizations.dart';
+import 'package:phan_mem_quan_ly_can_ho/models/payment_model.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/payments_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 

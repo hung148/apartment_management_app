@@ -895,6 +895,10 @@ class AppTranslations {
       'room_detail_window_too_small':      'Kích thước cửa sổ quá nhỏ',
       'room_detail_window_min_size':       'Kích thước tối thiểu: 360x600',
       'room_detail_window_current_size':   'Hiện tại: {{width}}x{{height}}',
+    
+      'back': 'Quay lại',
+
+      'title': 'Quản lý chung cư',
     },
 
     'en': {
@@ -1783,6 +1787,9 @@ class AppTranslations {
       'room_detail_window_too_small':      'Window size too small',
       'room_detail_window_min_size':       'Minimum size: 360x600',
       'room_detail_window_current_size':   'Current: {{width}}x{{height}}',
+
+      'back': 'Back',
+      'title': 'Apartment Management',
     },
   };
 

@@ -9,7 +9,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.apartment_management_project_2"
+    namespace = "com.example.phan_mem_quan_ly_can_ho"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -24,7 +24,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.apartment_management_project_2"
+        applicationId = "com.example.phan_mem_quan_ly_can_ho"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

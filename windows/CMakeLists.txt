@@ -1,10 +1,10 @@
 # Project-level configuration.
 cmake_minimum_required(VERSION 3.14)
-project(apartment_management_project_2 LANGUAGES CXX)
+project(phan_mem_quan_ly_can_ho LANGUAGES CXX)
 
 # The name of the executable created for the application. Change this to change
 # the on-disk name of your application.
-set(BINARY_NAME "apartment_management_project_2")
+set(BINARY_NAME "phan_mem_quan_ly_can_ho")
 
 # Explicitly opt in to modern CMake behaviors to avoid warnings with recent
 # versions of CMake.

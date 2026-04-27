@@ -1,5 +1,5 @@
-import 'package:apartment_management_project_2/utils/app_router.dart';
-import 'package:apartment_management_project_2/widgets/loading.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/app_router.dart';
+import 'package:phan_mem_quan_ly_can_ho/widgets/loading.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 

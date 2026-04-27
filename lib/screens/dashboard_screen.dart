@@ -1,15 +1,15 @@
 import 'dart:ui';
 
-import 'package:apartment_management_project_2/main.dart';
-import 'package:apartment_management_project_2/models/membership_model.dart';
-import 'package:apartment_management_project_2/models/organization_model.dart';
-import 'package:apartment_management_project_2/models/owner_model.dart';
-import 'package:apartment_management_project_2/services/auth_service.dart';
-import 'package:apartment_management_project_2/services/organization_service.dart';
-import 'package:apartment_management_project_2/services/update_services.dart';
-import 'package:apartment_management_project_2/utils/app_localizations.dart';
-import 'package:apartment_management_project_2/utils/app_router.dart';
-import 'package:apartment_management_project_2/widgets/loading.dart';
+import 'package:phan_mem_quan_ly_can_ho/main.dart';
+import 'package:phan_mem_quan_ly_can_ho/models/membership_model.dart';
+import 'package:phan_mem_quan_ly_can_ho/models/organization_model.dart';
+import 'package:phan_mem_quan_ly_can_ho/models/owner_model.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/auth_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/organization_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/update_services.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/app_router.dart';
+import 'package:phan_mem_quan_ly_can_ho/widgets/loading.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:country_flags/country_flags.dart';

@@ -1,9 +1,9 @@
-import 'package:apartment_management_project_2/screens/building_room.dart';
-import 'package:apartment_management_project_2/screens/dashboard_screen.dart';
-import 'package:apartment_management_project_2/screens/login_screen.dart';
-import 'package:apartment_management_project_2/screens/organization_screen.dart';
-import 'package:apartment_management_project_2/screens/room_detail.dart';
-import 'package:apartment_management_project_2/screens/splash_screen.dart';
+import 'package:phan_mem_quan_ly_can_ho/screens/building_room.dart';
+import 'package:phan_mem_quan_ly_can_ho/screens/dashboard_screen.dart';
+import 'package:phan_mem_quan_ly_can_ho/screens/login_screen.dart';
+import 'package:phan_mem_quan_ly_can_ho/screens/organization_screen.dart';
+import 'package:phan_mem_quan_ly_can_ho/screens/room_detail.dart';
+import 'package:phan_mem_quan_ly_can_ho/screens/splash_screen.dart';
 import 'package:flutter/material.dart';
 
 class AppRouter {

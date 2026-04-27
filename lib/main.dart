@@ -1,16 +1,16 @@
-import 'package:apartment_management_project_2/services/ai_agent_service.dart';
-import 'package:apartment_management_project_2/services/auth_service.dart';
-import 'package:apartment_management_project_2/services/building_service.dart';
-import 'package:apartment_management_project_2/services/organization_service.dart';
-import 'package:apartment_management_project_2/services/payments_service.dart';
-import 'package:apartment_management_project_2/services/payments_notifier.dart';
-import 'package:apartment_management_project_2/services/room_service.dart';
-import 'package:apartment_management_project_2/services/tenants_service.dart';
-import 'package:apartment_management_project_2/services/update_services.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/ai_agent_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/auth_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/building_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/organization_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/payments_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/payments_notifier.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/room_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/tenants_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/update_services.dart';
 
-import 'package:apartment_management_project_2/utils/app_localizations.dart';
-import 'package:apartment_management_project_2/utils/app_router.dart';
-import 'package:apartment_management_project_2/widgets/chat/chat_manager.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/app_router.dart';
+import 'package:phan_mem_quan_ly_can_ho/widgets/chat/chat_manager.dart';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';

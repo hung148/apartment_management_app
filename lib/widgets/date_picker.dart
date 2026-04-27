@@ -1,4 +1,4 @@
-import 'package:apartment_management_project_2/utils/app_localizations.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';

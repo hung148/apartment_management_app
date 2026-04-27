@@ -13,7 +13,7 @@ class UpdateService {
   
   static const String _appStoreId = 'YOUR_APP_STORE_ID';
   
-  static const String _androidPackageName = 'com.example.apartment_management_project_2';
+  static const String _androidPackageName = 'com.example.phan_mem_quan_ly_can_ho';
 
   /// Check if an update is available (works on all platforms)
   Future<bool> isUpdateAvailable() async {

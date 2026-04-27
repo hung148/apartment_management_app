@@ -2,27 +2,27 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/services.dart';
 
-import 'package:apartment_management_project_2/main.dart';
-import 'package:apartment_management_project_2/models/buildings_model.dart';
-import 'package:apartment_management_project_2/models/membership_model.dart';
-import 'package:apartment_management_project_2/models/organization_model.dart';
-import 'package:apartment_management_project_2/models/tenants_model.dart';
-import 'package:apartment_management_project_2/models/payment_model.dart';
-import 'package:apartment_management_project_2/models/rooms_model.dart';
-import 'package:apartment_management_project_2/screens/building/building_dialog.dart';
-import 'package:apartment_management_project_2/screens/payment/delete_payment_dialog.dart';
-import 'package:apartment_management_project_2/screens/payment/payment_dialog.dart';
-import 'package:apartment_management_project_2/screens/payment/view_edit_dialogs.dart';
-import 'package:apartment_management_project_2/screens/organizations/tenant_tab.dart';
-import 'package:apartment_management_project_2/services/auth_service.dart';
-import 'package:apartment_management_project_2/services/building_service.dart';
-import 'package:apartment_management_project_2/services/organization_service.dart';
-import 'package:apartment_management_project_2/services/tenants_service.dart';
-import 'package:apartment_management_project_2/services/payments_service.dart';
-import 'package:apartment_management_project_2/services/payments_notifier.dart';
-import 'package:apartment_management_project_2/services/room_service.dart';
-import 'package:apartment_management_project_2/utils/app_localizations.dart';
-import 'package:apartment_management_project_2/widgets/shared.dart';
+import 'package:phan_mem_quan_ly_can_ho/main.dart';
+import 'package:phan_mem_quan_ly_can_ho/models/buildings_model.dart';
+import 'package:phan_mem_quan_ly_can_ho/models/membership_model.dart';
+import 'package:phan_mem_quan_ly_can_ho/models/organization_model.dart';
+import 'package:phan_mem_quan_ly_can_ho/models/tenants_model.dart';
+import 'package:phan_mem_quan_ly_can_ho/models/payment_model.dart';
+import 'package:phan_mem_quan_ly_can_ho/models/rooms_model.dart';
+import 'package:phan_mem_quan_ly_can_ho/screens/building/building_dialog.dart';
+import 'package:phan_mem_quan_ly_can_ho/screens/payment/delete_payment_dialog.dart';
+import 'package:phan_mem_quan_ly_can_ho/screens/payment/payment_dialog.dart';
+import 'package:phan_mem_quan_ly_can_ho/screens/payment/view_edit_dialogs.dart';
+import 'package:phan_mem_quan_ly_can_ho/screens/organizations/tenant_tab.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/auth_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/building_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/organization_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/tenants_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/payments_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/payments_notifier.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/room_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
+import 'package:phan_mem_quan_ly_can_ho/widgets/shared.dart';
 import 'package:flutter/gestures.dart';
 import 'package:intl/intl.dart' hide TextDirection;
 import 'package:flutter/material.dart';
@@ -96,6 +96,8 @@ class _OrganizationScreenState extends State<OrganizationScreen>
   bool _codeCopied = false;
   bool _codeHovered = false;
   bool _codePressed = false;
+
+  bool _isResizing = false;
 
   // Track how many overlays (dialogs/bottom sheets) are currently open
   int _overlayCount = 0;
@@ -227,10 +229,16 @@ class _OrganizationScreenState extends State<OrganizationScreen>
   @override
   void didChangeMetrics() {
     super.didChangeMetrics();
+    
+    if (!_isResizing) {
+      setState(() => _isResizing = true);
+    }
+    
     _resizeDebounceTimer?.cancel();
-    _resizeDebounceTimer =
-        Timer(const Duration(milliseconds: 300), () {
+    _resizeDebounceTimer = Timer(const Duration(milliseconds: 400), () {
       if (!mounted) return;
+      setState(() => _isResizing = false);
+      
       final screenWidth = MediaQuery.sizeOf(context).width;
       final screenHeight = MediaQuery.sizeOf(context).height;
       if (screenWidth < 360 || screenHeight < 600) {
@@ -855,7 +863,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                                 const Icon(Icons.arrow_back_ios_new_rounded, size: 14, color: Colors.white),
                                 const SizedBox(width: 4),
                                 Text(
-                                  'Back',
+                                  t['back'],
                                   style: TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.w600,
@@ -893,7 +901,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                               overflow: TextOverflow.ellipsis,
                             ),
                             Text(
-                              'Quản lý chung cư',
+                              t['title'],
                               style: TextStyle(
                                 fontSize: 11,
                                 color: Colors.white.withValues(alpha: 0.7),
@@ -929,7 +937,9 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                 ),
               ),
             ),
-            body: TabBarView(
+           body: _isResizing
+          ? const SizedBox.expand() // or a lightweight placeholder
+          : TabBarView(
               children: [
                 _StableTab(
                   key: const ValueKey('buildings'),

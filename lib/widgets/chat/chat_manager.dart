@@ -1,15 +1,15 @@
 import 'dart:convert';
 import 'dart:async' show TimeoutException;
 
-import 'package:apartment_management_project_2/main.dart';
-import 'package:apartment_management_project_2/services/ai_agent_service.dart';
-import 'package:apartment_management_project_2/services/auth_service.dart';
-import 'package:apartment_management_project_2/services/building_service.dart';
-import 'package:apartment_management_project_2/services/organization_service.dart';
-import 'package:apartment_management_project_2/services/payments_service.dart';
-import 'package:apartment_management_project_2/services/room_service.dart';
-import 'package:apartment_management_project_2/services/tenants_service.dart';
-import 'package:apartment_management_project_2/utils/app_localizations.dart';
+import 'package:phan_mem_quan_ly_can_ho/main.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/ai_agent_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/auth_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/building_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/organization_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/payments_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/room_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/tenants_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:http/http.dart' as http;
@@ -495,12 +495,23 @@ class _ChatPanelState extends State<_ChatPanel> {
   bool _isStreaming = false;
   bool _scrollPending = false;
 
-  static const String _systemPrompt =
-      'Bạn là trợ lý AI cho ứng dụng quản lý căn hộ. '
-      'Hãy trả lời ngắn gọn, rõ ràng bằng ngôn ngữ mà người dùng đang dùng (tiếng Việt hoặc tiếng Anh). '
-      'Khi cần thông tin về tổ chức, tòa nhà, người thuê hoặc thanh toán — hãy dùng công cụ. '
-      'Khi người dùng yêu cầu tạo dữ liệu: LUÔN hỏi đầy đủ thông tin trước khi gọi công cụ. '
-      'Không bao giờ tự đặt tên hoặc bịa thông tin.';
+  String get _systemPrompt {
+    final isVi = getIt<LocaleNotifier>().locale.languageCode == 'vi';
+    
+    if (isVi) {
+      return 'Bạn là trợ lý AI cho ứng dụng quản lý căn hộ. '
+          'Hãy trả lời ngắn gọn, rõ ràng. '
+          'Khi cần thông tin về tổ chức, tòa nhà, người thuê hoặc thanh toán — hãy dùng công cụ. '
+          'Khi người dùng yêu cầu tạo dữ liệu: LUÔN hỏi đầy đủ thông tin trước khi gọi công cụ. '
+          'Không bao giờ tự đặt tên hoặc bịa thông tin.';
+    }
+    
+    return 'You are an AI assistant for an apartment management app. '
+        'Be concise and clear. '
+        'When you need data about organizations, buildings, tenants, or payments — use the provided tools. '
+        'When the user asks to create data: ALWAYS ask for all required info before calling any tool. '
+        'Never invent names or details.';
+  }
 
   AIAgentService get _ai => getIt<AIAgentService>();
 

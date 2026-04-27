@@ -1,4 +1,4 @@
-package com.example.apartment_management_project_2
+package com.example.phan_mem_quan_ly_can_ho
 
 import io.flutter.embedding.android.FlutterActivity
 

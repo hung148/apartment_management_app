@@ -1,20 +1,20 @@
 import 'dart:async';
 
-import 'package:apartment_management_project_2/utils/app_localizations.dart';
-import 'package:apartment_management_project_2/widgets/date_picker.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
+import 'package:phan_mem_quan_ly_can_ho/widgets/date_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import 'package:apartment_management_project_2/models/tenants_model.dart';
-import 'package:apartment_management_project_2/models/buildings_model.dart';
-import 'package:apartment_management_project_2/models/rooms_model.dart';
-import 'package:apartment_management_project_2/models/membership_model.dart';
-import 'package:apartment_management_project_2/models/organization_model.dart';
-import 'package:apartment_management_project_2/services/tenants_service.dart';
-import 'package:apartment_management_project_2/services/building_service.dart';
-import 'package:apartment_management_project_2/services/room_service.dart';
-import 'package:apartment_management_project_2/services/organization_service.dart';
-import 'package:apartment_management_project_2/services/auth_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/models/tenants_model.dart';
+import 'package:phan_mem_quan_ly_can_ho/models/buildings_model.dart';
+import 'package:phan_mem_quan_ly_can_ho/models/rooms_model.dart';
+import 'package:phan_mem_quan_ly_can_ho/models/membership_model.dart';
+import 'package:phan_mem_quan_ly_can_ho/models/organization_model.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/tenants_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/building_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/room_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/organization_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/auth_service.dart';
 
 // ─── Color palette ───────────────────────────────────────────────────────────
 const List<Color> _tenantAccentColors = [

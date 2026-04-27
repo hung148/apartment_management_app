@@ -30,7 +30,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   FlutterWindow window(project);
   Win32Window::Point origin(10, 10);
   Win32Window::Size size(1280, 720);
-  if (!window.Create(L"apartment_management_project_2", origin, size)) {
+  if (!window.Create(L"phan_mem_quan_ly_can_ho", origin, size)) {
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);

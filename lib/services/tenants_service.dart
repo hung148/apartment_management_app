@@ -1,4 +1,4 @@
-import 'package:apartment_management_project_2/models/tenants_model.dart';
+import 'package:phan_mem_quan_ly_can_ho/models/tenants_model.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 

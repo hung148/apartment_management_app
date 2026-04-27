@@ -1,7 +1,7 @@
-import 'package:apartment_management_project_2/models/buildings_model.dart';
-import 'package:apartment_management_project_2/services/tenants_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/models/buildings_model.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/tenants_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:apartment_management_project_2/widgets/app_logger.dart';
+import 'package:phan_mem_quan_ly_can_ho/widgets/app_logger.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class BuildingService {
