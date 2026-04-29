@@ -377,7 +377,6 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
   // ─── Add line item dialog ─────────────────────────────────────────────────────
 
   Future<void> _showAddLineItemDialog() async {
-    final t = AppTranslations.of(context);
     PaymentType? selectedType;
     final amountController = TextEditingController();
     final descriptionController = TextEditingController();
@@ -423,6 +422,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
       }
     }
 
+    if (!mounted) return;
     final result = await _showTrackedDialog<Map<String, dynamic>?>(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -573,7 +573,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                     padding: const EdgeInsets.fromLTRB(20, 18, 12, 18),
                     decoration: BoxDecoration(
                       color:
-                          Theme.of(context).primaryColor.withOpacity(0.06),
+                          Theme.of(context).primaryColor.withValues(alpha: 0.06),
                       borderRadius: const BorderRadius.vertical(
                           top: Radius.circular(20)),
                     ),
@@ -583,7 +583,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                         decoration: BoxDecoration(
                           color: Theme.of(context)
                               .primaryColor
-                              .withOpacity(0.12),
+                              .withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Icon(Icons.add_circle_outline_rounded,
@@ -924,7 +924,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                           bottom: Radius.circular(20)),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
+                          color: Colors.black.withValues(alpha: 0.05),
                           blurRadius: 10,
                           offset: const Offset(0, -4),
                         ),
@@ -1136,7 +1136,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
               border: Border.all(color: Colors.grey.shade100),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.04),
+                  color: Colors.black.withValues(alpha: 0.04),
                   blurRadius: 8,
                   offset: const Offset(0, 2),
                 ),
@@ -1149,7 +1149,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                 width: 36,
                 height: 36,
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.12),
+                  color: color.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 alignment: Alignment.center,
@@ -1177,7 +1177,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                     padding: const EdgeInsets.symmetric(
                         horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
-                      color: color.withOpacity(0.08),
+                      color: color.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
@@ -1206,7 +1206,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
           padding:
               const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
-            color: Theme.of(context).primaryColor.withOpacity(0.06),
+            color: Theme.of(context).primaryColor.withValues(alpha: 0.06),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Row(
@@ -1475,7 +1475,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                     color: Colors.white,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.06),
+                        color: Colors.black.withValues(alpha: 0.06),
                         blurRadius: 8,
                         offset: const Offset(0, 2),
                       ),
@@ -1488,7 +1488,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                       decoration: BoxDecoration(
                         color: Theme.of(context)
                             .primaryColor
-                            .withOpacity(0.1),
+                            .withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Icon(Icons.receipt_long_rounded,
@@ -1802,7 +1802,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                           decoration: BoxDecoration(
                             color: Theme.of(context)
                                 .primaryColor
-                                .withOpacity(0.06),
+                                .withValues(alpha: 0.06),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Row(

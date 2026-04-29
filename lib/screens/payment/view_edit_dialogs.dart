@@ -332,7 +332,6 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog>
   Building? _building;
   Tenant? _tenant;
   bool _isLoadingRoomData = true;
-  int _overlayCount = 0;
   Timer? _resizeDebounceTimer;
   bool _isDismissing = false;
 
@@ -381,7 +380,6 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog>
     required WidgetBuilder builder,
     bool barrierDismissible = true,
   }) async {
-    _overlayCount++;
     try {
       return await showDialog<T>(
         context: context,
@@ -389,7 +387,6 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog>
         builder: builder,
       );
     } finally {
-      if (mounted) _overlayCount--;
     }
   }
 
@@ -666,7 +663,7 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog>
       Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.06),
+          color: color.withValues(alpha: 0.06),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Row(
@@ -747,8 +744,8 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog>
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                       colors: [
-                        statusColor.withOpacity(0.9),
-                        statusColor.withOpacity(0.7),
+                        statusColor.withValues(alpha: 0.9),
+                        statusColor.withValues(alpha: 0.7),
                       ],
                     ),
                   ),
@@ -781,7 +778,7 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog>
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 8, vertical: 2),
                               decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.2),
+                                color: Colors.white.withValues(alpha: 0.2),
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: Text(
@@ -972,7 +969,7 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog>
     bool loading = false,
   }) =>
       Material(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(10),
         child: InkWell(
           borderRadius: BorderRadius.circular(10),

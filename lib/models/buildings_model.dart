@@ -11,7 +11,6 @@ class Building {
   final bool? uniformRooms;
   final int? roomsPerFloor;
 
-  // THÊM ĐẦY ĐỦ 2 DÒNG NÀY VÀO CLASS
   final List<int>? floorRoomCounts; // Dữ liệu cũ (Chỉ chứa số lượng)
   final List<Map<String, dynamic>>? floorDetails; // Dữ liệu mới (Số lượng, Loại, Diện tích)
   
