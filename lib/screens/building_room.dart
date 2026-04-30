@@ -3,6 +3,7 @@ import 'package:phan_mem_quan_ly_can_ho/models/organization_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/rooms_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/room_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
+import 'package:phan_mem_quan_ly_can_ho/widgets/app_logger.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/shared.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
@@ -30,20 +31,12 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
   bool _isSelectionMode = false;
 
   bool _isSmallScreen(BuildContext context) => MediaQuery.of(context).size.width < 600;
-  bool _isMediumScreen(BuildContext context) {
-    final width = MediaQuery.of(context).size.width;
-    return width >= 600 && width < 1200;
-  }
 
   double _getDialogWidth(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     if (screenWidth < 600) return screenWidth * 0.95;
     if (screenWidth < 1200) return 600;
     return 800;
-  }
-
-  EdgeInsets _getResponsivePadding(BuildContext context) {
-    return EdgeInsets.all(_isSmallScreen(context) ? 12.0 : 16.0);
   }
 
   Widget _buildMinimumSizeWarning(BuildContext context, BoxConstraints constraints) {
@@ -91,59 +84,59 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
   void initState() {
     super.initState();
     _isNavigating = false; // prevent stale state from hot reload
-    print('🟢 [initState] START — building.id=${widget.building.id}, org.id=${widget.organization.id}');
+    logger.d('🟢 [initState] START — building.id=${widget.building.id}, org.id=${widget.organization.id}');
     WidgetsBinding.instance.addObserver(this);
     try {  
       _initializeStream();
     } catch (e, stackTrace) {
-      print('❌ [initState] CAUGHT ERROR: $e');
-      print('Stack trace: $stackTrace');
+      logger.e('❌ [initState] CAUGHT ERROR: $e');
+      logger.e('Stack trace: $stackTrace');
     }
-    print('🟢 [initState] END');
+    logger.d('🟢 [initState] END');
   }
 
   void _initializeStream() {
-    print('🔵 [_initializeStream] START — mounted=$mounted');
+    logger.d('🔵 [_initializeStream] START — mounted=$mounted');
     if (!mounted) {
-      print('⚠️ [_initializeStream] Not mounted, returning early');
+      logger.w('⚠️ [_initializeStream] Not mounted, returning early');
       return;
     }
 
-    print('🔵 [_initializeStream] Cancelling existing subscription...');
+    logger.d('🔵 [_initializeStream] Cancelling existing subscription...');
     _roomSubscription?.cancel();
-    print('🔵 [_initializeStream] Subscription cancelled');
+    logger.d('🔵 [_initializeStream] Subscription cancelled');
     
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
-    print('🔵 [_initializeStream] setState(loading=true) done');
+    logger.d('🔵 [_initializeStream] setState(loading=true) done');
     
     try {
-      print('🔵 [_initializeStream] Calling _roomService.streamBuildingRooms...');
+      logger.d('🔵 [_initializeStream] Calling _roomService.streamBuildingRooms...');
       final stream = _roomService.streamBuildingRooms(
         widget.building.id,
         widget.organization.id,
       );
-      print('🔵 [_initializeStream] Stream object created: $stream');
+      logger.d('🔵 [_initializeStream] Stream object created: $stream');
 
       _roomSubscription = stream.listen(
         (rooms) {
-          print('✅ [stream.onData] Received ${rooms.length} rooms — mounted=$mounted');
+          logger.d('✅ [stream.onData] Received ${rooms.length} rooms — mounted=$mounted');
           if (mounted) {
             setState(() {
               _cachedRooms = rooms;
               _isLoading = false;
               _errorMessage = null;
             });
-            print('✅ [stream.onData] setState done, _cachedRooms.length=${_cachedRooms?.length}');
+            logger.d('✅ [stream.onData] setState done, _cachedRooms.length=${_cachedRooms?.length}');
           } else {
-            print('⚠️ [stream.onData] Widget unmounted, skipping setState');
+            logger.w('⚠️ [stream.onData] Widget unmounted, skipping setState');
           }
         },
         onError: (error, stackTrace) {
-          print('❌ [stream.onError] $error');
-          print('Stack trace: $stackTrace');
+          logger.e('❌ [stream.onError] $error');
+          logger.e('Stack trace: $stackTrace');
           if (mounted) {
             setState(() {
               _errorMessage = 'Stream error: $error';
@@ -153,29 +146,29 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
         },
         onDone: () {
           // This fires when the stream closes — should NOT happen for a real-time stream
-          print('⚠️ [stream.onDone] Stream closed unexpectedly! mounted=$mounted');
+          logger.w('⚠️ [stream.onDone] Stream closed unexpectedly! mounted=$mounted');
         },
         cancelOnError: false,
       );
-      print('🔵 [_initializeStream] listen() called, subscription=$_roomSubscription');
+      logger.d('🔵 [_initializeStream] listen() called, subscription=$_roomSubscription');
     } catch (e, stackTrace) {
-      print('❌ [_initializeStream] Exception setting up stream: $e');
-      print('Stack trace: $stackTrace');
+      logger.e('❌ [_initializeStream] Exception setting up stream: $e');
+      logger.e('Stack trace: $stackTrace');
       setState(() {
         _errorMessage = 'Failed to setup stream: $e';
         _isLoading = false;
       });
     }
-    print('🔵 [_initializeStream] END');
+    logger.d('🔵 [_initializeStream] END');
   }
 
   @override
   void dispose() {
-    print('🔴 [dispose] START — cancelling subscription');
+    logger.d('🔴 [dispose] START — cancelling subscription');
     WidgetsBinding.instance.removeObserver(this);
     _roomSubscription?.cancel();
     _resizeDebounceTimer?.cancel();
-    print('🔴 [dispose] END');
+    logger.d('🔴 [dispose] END');
     super.dispose();
   }
 
@@ -191,16 +184,16 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
       // Use WidgetsBinding instead of MediaQuery to avoid frame scheduling issues
       final view = WidgetsBinding.instance.platformDispatcher.views.first;
       final size = view.physicalSize / view.devicePixelRatio;
-      print('📐 [didChangeMetrics] size=${size.width}x${size.height}');
+      logger.d('📐 [didChangeMetrics] size=${size.width}x${size.height}');
       if (size.width < 360 || size.height < 600) {
-        print('📐 [didChangeMetrics] Below minimum, dismissing overlays');
+        logger.d('📐 [didChangeMetrics] Below minimum, dismissing overlays');
         _dismissAllOverlays();
       }
     });
   }
 
   Future<void> _dismissAllOverlays() async {
-    print('🔔 [_dismissAllOverlays] START — _isDismissing=$_isDismissing, mounted=$mounted');
+    logger.d('🔔 [_dismissAllOverlays] START — _isDismissing=$_isDismissing, mounted=$mounted');
     if (!mounted || _isDismissing) return;
     _isDismissing = true;
 
@@ -210,17 +203,17 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
       while (nav.canPop()) {
         nav.pop();
         popCount++;
-        print('🔔 [_dismissAllOverlays] Popped overlay #$popCount');
+        logger.d('🔔 [_dismissAllOverlays] Popped overlay #$popCount');
         await Future.delayed(const Duration(milliseconds: 50));
         if (!mounted) {
-          print('🔔 [_dismissAllOverlays] Unmounted during pop loop, breaking');
+          logger.d('🔔 [_dismissAllOverlays] Unmounted during pop loop, breaking');
           break;
         }
       }
-      print('🔔 [_dismissAllOverlays] Done — total pops=$popCount');
+      logger.d('🔔 [_dismissAllOverlays] Done — total pops=$popCount');
     } finally {
       _isDismissing = false;
-      print('🔔 [_dismissAllOverlays] END');
+      logger.d('🔔 [_dismissAllOverlays] END');
     }
   }
 
@@ -230,19 +223,19 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
     bool barrierDismissible = true,
   }) async {
     _overlayCount++;
-    print('🪟 [_showTrackedDialog] Showing dialog — overlayCount=$_overlayCount');
+    logger.d('🪟 [_showTrackedDialog] Showing dialog — overlayCount=$_overlayCount');
     try {
       final result = await showDialog<T>(
         context: context,
         barrierDismissible: barrierDismissible,
         builder: builder,
       );
-      print('🪟 [_showTrackedDialog] Dialog closed — result=$result');
+      logger.d('🪟 [_showTrackedDialog] Dialog closed — result=$result');
       return result;
     } finally {
       if (mounted) {
         _overlayCount--;
-        print('🪟 [_showTrackedDialog] overlayCount now=$_overlayCount');
+        logger.d('🪟 [_showTrackedDialog] overlayCount now=$_overlayCount');
       }
     }
   }
@@ -251,7 +244,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
   // ADD / EDIT ROOM DIALOG
   // =========================
   void _showRoomDialog({Room? room}) {
-    print('📝 [_showRoomDialog] Opening — editing=${room != null}, room=${room?.id}');
+    logger.d('📝 [_showRoomDialog] Opening — editing=${room != null}, room=${room?.id}');
     final t = AppTranslations.of(context);
     final isEditing = room != null;
 
@@ -279,7 +272,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.15),
+                    color: Colors.black.withValues(alpha: 0.15),
                     blurRadius: 24,
                     offset: const Offset(0, 8),
                   ),
@@ -308,7 +301,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                           Container(
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.2),
+                              color: Colors.white.withValues(alpha: 0.2),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Icon(
@@ -334,7 +327,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                                 Text(
                                   isEditing ? t['room_dialog_subtitle_edit'] : t['room_dialog_subtitle_add'],
                                   style: TextStyle(
-                                    color: Colors.white.withOpacity(0.85),
+                                    color: Colors.white.withValues(alpha: 0.85),
                                     fontSize: 13,
                                   ),
                                 ),
@@ -453,7 +446,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                                       final roomNumber = numberController.text.trim();
                                       final roomType = typeController.text.trim();
                                       final area = double.tryParse(areaController.text.trim()) ?? 0.0;
-                                      print('📝 [_showRoomDialog] Save — number="$roomNumber", type="$roomType", area=$area');
+                                      logger.d('📝 [_showRoomDialog] Save — number="$roomNumber", type="$roomType", area=$area');
 
                                       if (roomNumber.isEmpty) {
                                         ScaffoldMessenger.of(context).showSnackBar(

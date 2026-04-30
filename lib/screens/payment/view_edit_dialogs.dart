@@ -756,7 +756,7 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog>
                         width: 44,
                         height: 44,
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
+                          color: Colors.white.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Icon(_statusIcon(payment.status),
@@ -924,7 +924,7 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog>
                               label: t['delete'],
                               icon: Icons.delete_rounded,
                               color: const Color(0xFFEF4444),
-                              onTap: () => _showDeleteConfirmation(context, t),
+                              onTap: () => _showDeleteConfirmation(t),
                             ),
                           ),
                         ]),
@@ -1000,7 +1000,7 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog>
         ),
       );
 
-  void _showDeleteConfirmation(BuildContext context, AppTranslations t) {
+  void _showDeleteConfirmation(AppTranslations t) {
     _showTrackedDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -1070,7 +1070,6 @@ class EditPaymentDialog extends StatefulWidget {
 
 class _EditPaymentDialogState extends State<EditPaymentDialog>
     with WidgetsBindingObserver {
-  int _overlayCount = 0;
   final _formKey = GlobalKey<FormState>();
 
   late TextEditingController _notesController;
@@ -1084,7 +1083,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
   List<InvoiceLineItem> _lineItems = [];
 
   double get _totalAmount =>
-      _lineItems.fold(0.0, (sum, item) => sum + item.amount);
+      _lineItems.fold(0.0, (acc, item) => acc + item.amount);
 
   Timer? _resizeDebounceTimer;
   bool _isDismissing = false;
@@ -1149,7 +1148,6 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
     required WidgetBuilder builder,
     bool barrierDismissible = true,
   }) async {
-    _overlayCount++;
     try {
       return await showDialog<T>(
         context: context,
@@ -1157,7 +1155,6 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
         builder: builder,
       );
     } finally {
-      if (mounted) _overlayCount--;
     }
   }
 
@@ -1189,7 +1186,6 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
       setState(() => _lineItems.removeWhere((item) => item.id == id));
 
   Future<void> _showAddLineItemDialog() async {
-    final t = AppTranslations.of(context);
     PaymentType? selectedType;
     final amountController = TextEditingController();
     final descriptionController = TextEditingController();
@@ -1245,7 +1241,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
               decoration: BoxDecoration(
                 color: color.withValues(alpha: 0.06),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: color.withOpacity(0.18)),
+                border: Border.all(color: color.withValues(alpha: 0.18)),
               ),
               child: Row(children: [
                 Expanded(
@@ -1812,7 +1808,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                 width: 36,
                 height: 36,
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.12),
+                  color: color.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 alignment: Alignment.center,
@@ -1837,7 +1833,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                     padding: const EdgeInsets.symmetric(
                         horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
-                      color: color.withOpacity(0.08),
+                      color: color.withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
@@ -1864,7 +1860,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
           padding:
               const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
-            color: Theme.of(context).primaryColor.withOpacity(0.06),
+            color: Theme.of(context).primaryColor.withValues(alpha: 0.06),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Row(
@@ -2008,7 +2004,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                     color: Colors.white,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.06),
+                        color: Colors.black.withValues(alpha: 0.06),
                         blurRadius: 8,
                         offset: const Offset(0, 2),
                       ),
@@ -2020,7 +2016,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                       height: 40,
                       decoration: BoxDecoration(
                         color:
-                            Theme.of(context).primaryColor.withOpacity(0.1),
+                            Theme.of(context).primaryColor.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Icon(Icons.edit_rounded,
@@ -2059,7 +2055,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                           // ── Tenant
                           _sectionLabel(t['payment_section_tenant']),
                           DropdownButtonFormField<String?>(
-                            value: _tenants
+                            initialValue: _tenants
                                     .any((ten) => ten.id == _selectedTenantId)
                                 ? _selectedTenantId
                                 : null,
@@ -2071,7 +2067,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                                   child: Text(t['no_data'])),
                               ..._tenants.map((ten) => DropdownMenuItem<String?>(
                                   value: ten.id,
-                                  child: Text(ten.fullName ?? ''))),
+                                  child: Text(ten.fullName))),
                             ],
                             onChanged: (v) {
                               if (v != null && v.isNotEmpty) {
@@ -2247,7 +2243,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                         decoration: BoxDecoration(
                           color: Theme.of(context)
                               .primaryColor
-                              .withOpacity(0.06),
+                              .withValues(alpha: 0.06),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Row(
@@ -2356,7 +2352,7 @@ Widget _calcPreviewChip({
       margin: const EdgeInsets.only(top: 8, bottom: 4),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
+        color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(children: [
