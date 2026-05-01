@@ -899,6 +899,7 @@ class AppTranslations {
       'back': 'Quay lại',
 
       'title': 'Quản lý chung cư',
+      'app_title': 'Phần Mền Quản Lý Căn Hộ',
     },
 
     'en': {
@@ -1790,6 +1791,7 @@ class AppTranslations {
 
       'back': 'Back',
       'title': 'Apartment Management',
+      'app_title': 'Apartment Management App',
     },
   };
 

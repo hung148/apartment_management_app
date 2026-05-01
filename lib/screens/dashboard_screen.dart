@@ -660,9 +660,9 @@ class _DashboardScreenState extends State<DashboardScreen>
                     const SizedBox(width: 12),
                     Expanded(
                       child: FilledButton(
-                        onPressed: () {
-                          notifier.setLocale(tempLocale);
-                          Navigator.pop(ctx);
+                        onPressed: () async {
+                          await notifier.setLocale(tempLocale);  // ✅ await the async call
+                          if (ctx.mounted) Navigator.pop(ctx);
                         },
                         style: FilledButton.styleFrom(
                           backgroundColor: _DS.primary,

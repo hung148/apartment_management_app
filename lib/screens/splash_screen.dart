@@ -1,3 +1,4 @@
+import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_router.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/loading.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -94,43 +95,117 @@ class _SplashScreenState extends State<SplashScreen>
             fit: StackFit.expand,
             children: [
               child,
+              // Dark overlay for better text readability
+              Container(
+                color: Colors.black.withValues(alpha: 0.35),
+              ),
               SafeArea(
-                child: Center(
-                  child: FadeTransition(
-                    opacity: _fadeAnim,
-                    child: SlideTransition(
-                      position: _slideAnim,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.apartment_rounded, size: 80, color: Colors.white70),
-                          const SizedBox(height: 16),
-                          const Text(
-                            'Phần Mền Quản Lý Căn Hộ',
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white,
-                              letterSpacing: 1.0,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 48),
-                          SizedBox(
-                            width: 160,
-                            child: AnimatedBuilder(
-                              animation: _progressController,
-                              builder: (context, _) => LinearProgressIndicator(
-                                value: _progressController.value, // 0.0 → 1.0 over 3 seconds
-                                backgroundColor: Colors.white24,
-                                valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
-                                minHeight: 3,
-                                borderRadius: BorderRadius.circular(8),
+                child: FadeTransition(
+                  opacity: _fadeAnim,
+                  child: SlideTransition(
+                    position: _slideAnim,
+                    child: Stack(
+                      children: [
+                        // ── Center content ──────────────────────────
+                        Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              // App icon — rounded square like a real app icon
+                              Container(
+                                width: 100,
+                                height: 100,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(24),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: const Color(0xFF1A56DB).withValues(alpha: 0.5),
+                                      blurRadius: 32,
+                                      spreadRadius: 4,
+                                      offset: const Offset(0, 8),
+                                    ),
+                                  ],
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(24),
+                                  child: Image.asset(
+                                    'assets/icon/apartment_management_app_icon.png',
+                                    fit: BoxFit.cover,
+                                  ),
+                                ),
                               ),
-                            ),
+                              const SizedBox(height: 24),
+
+                              // App name with blue accent on first letter
+                              RichText(
+                                text: const TextSpan(
+                                  children: [
+                                    TextSpan(
+                                      text: 'P',
+                                      style: TextStyle(
+                                        fontSize: 52,
+                                        fontWeight: FontWeight.w800,
+                                        color: Color(0xFF4D8EFF),
+                                        letterSpacing: -1.5,
+                                        height: 1.0,
+                                      ),
+                                    ),
+                                    TextSpan(
+                                      text: 'ropy',
+                                      style: TextStyle(
+                                        fontSize: 52,
+                                        fontWeight: FontWeight.w800,
+                                        color: Colors.white,
+                                        letterSpacing: -1.5,
+                                        height: 1.0,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+
+                              // Subtitle
+                              Text(
+                                AppTranslations.of(context).text('app_title'),
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w400,
+                                  color: Colors.white.withValues(alpha: 0.6),
+                                  letterSpacing: 1.5,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
+                        ),
+
+                        // ── Progress bar pinned to bottom ───────────
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: 48,
+                          child: Column(
+                            children: [
+                              AnimatedBuilder(
+                                animation: _progressController,
+                                builder: (context, _) => Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 80),
+                                  child: LinearProgressIndicator(
+                                    value: _progressController.value,
+                                    backgroundColor: Colors.white.withValues(alpha: 0.15),
+                                    valueColor: const AlwaysStoppedAnimation<Color>(
+                                      Colors.white,
+                                    ),
+                                    minHeight: 3,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),

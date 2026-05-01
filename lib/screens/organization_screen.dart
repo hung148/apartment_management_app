@@ -99,20 +99,10 @@ class _OrganizationScreenState extends State<OrganizationScreen>
 
   bool _isResizing = false;
 
-  // Track how many overlays (dialogs/bottom sheets) are currently open
-  int _overlayCount = 0;
-
   int _tenantTabRefreshKey = 0;
 
   bool _isSmallScreen(BuildContext context) =>
       MediaQuery.of(context).size.width < 600;
-
-  double _getDialogWidth(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    if (screenWidth < 600) return screenWidth * 0.95;
-    if (screenWidth < 1200) return 600;
-    return 800;
-  }
 
   EdgeInsets _getResponsivePadding(BuildContext context) {
     return EdgeInsets.all(_isSmallScreen(context) ? 12.0 : 16.0);
@@ -267,7 +257,6 @@ class _OrganizationScreenState extends State<OrganizationScreen>
     required WidgetBuilder builder,
     bool barrierDismissible = true,
   }) async {
-    _overlayCount++;
     try {
       return await showDialog<T>(
         context: context,
@@ -275,7 +264,6 @@ class _OrganizationScreenState extends State<OrganizationScreen>
         builder: builder,
       );
     } finally {
-      if (mounted) _overlayCount--;
     }
   }
 
@@ -481,6 +469,8 @@ class _OrganizationScreenState extends State<OrganizationScreen>
   Future<void> _deleteBuilding(
       Building building, Organization organization) async {
     final t = AppTranslations.of(context);
+    final contentPadding = _getResponsivePadding(context);
+
     final tenants = await _tenantService.getBuildingTenants(
         organization.id, building.id);
     final activeTenants = tenants
@@ -490,7 +480,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
             tn.status == TenantStatus.suspended)
         .toList();
 
-    final contentPadding = _getResponsivePadding(context);
+    if (!mounted) return;
 
     final confirm = await _showTrackedDialog<bool>(
       context: context,
@@ -1913,7 +1903,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
               physics: const BouncingScrollPhysics(),
               padding: const EdgeInsets.symmetric(horizontal: 16),
               itemCount: chips.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 6),
+              separatorBuilder: (_, _) => const SizedBox(width: 6),
               itemBuilder: (context, i) {
                 final entry = chips[i];
                 final isActive = _paymentStatusFilter == entry.key;
@@ -3050,13 +3040,13 @@ class _OrganizationScreenState extends State<OrganizationScreen>
       final pendingRevenue =
           payments.fold<double>(0, (sum, p) {
         if (p.status == PaymentStatus.paid ||
-            p.status == PaymentStatus.cancelled) return sum;
+            p.status == PaymentStatus.cancelled) {return sum;}
         return sum + p.remainingAmount;
       });
       final overdueRevenue =
           payments.fold<double>(0, (sum, p) {
         if (p.status == PaymentStatus.paid ||
-            p.status == PaymentStatus.cancelled) return sum;
+            p.status == PaymentStatus.cancelled) {return sum;}
         if (p.status == PaymentStatus.overdue) {
           return sum + p.remainingAmount;
         }
@@ -3548,7 +3538,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                             color: PdfColors.grey600)),
                   )
                 else ...[
-                  pw.Table.fromTextArray(
+                  pw.TableHelper.fromTextArray(
                     headers: [
                       t['pdf_building_col_name'],
                       t['pdf_building_col_total'],
@@ -3901,7 +3891,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
       final overdueRevenue =
           payments.fold<double>(0, (sum, p) {
         if (p.status == PaymentStatus.paid ||
-            p.status == PaymentStatus.cancelled) return sum;
+            p.status == PaymentStatus.cancelled) {return sum;}
         if (p.status == PaymentStatus.overdue) {
           return sum + p.remainingAmount;
         }
@@ -4497,7 +4487,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                         padding: const EdgeInsets.symmetric(
                             horizontal: 9, vertical: 3),
                         decoration: BoxDecoration(
-                          color: barColor.withOpacity(0.12),
+                          color: barColor.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text(
@@ -4515,7 +4505,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                     borderRadius: BorderRadius.circular(6),
                     child: LinearProgressIndicator(
                       value: pct / 100,
-                      backgroundColor: barColor.withOpacity(0.1),
+                      backgroundColor: barColor.withValues(alpha: 0.1),
                       color: barColor,
                       minHeight: 10,
                     ),
@@ -4658,7 +4648,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                                     gradient: hasData
                                         ? LinearGradient(
                                             colors: [
-                                              barColor.withOpacity(0.7),
+                                              barColor.withValues(alpha: 0.7),
                                               barColor,
                                             ],
                                             begin: Alignment.topCenter,
@@ -4980,8 +4970,9 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                                   ClipboardData(text: inviteCode!));
                               setState(() => _codeCopied = true);
                               Future.delayed(const Duration(seconds: 2), () {
-                                if (mounted)
+                                if (mounted) {
                                   setState(() => _codeCopied = false);
+                                }
                               });
                             },
                             child: AnimatedContainer(
@@ -5423,6 +5414,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
   // ── Refresh invite code confirm ───────────────────────────────────────────────
   Future<void> _confirmRefreshInviteCode(Membership myMembership) async {
     final t = AppTranslations.of(context);
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
     final confirm = await _showTrackedDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -5452,13 +5444,13 @@ class _OrganizationScreenState extends State<OrganizationScreen>
       );
       if (success && mounted) {
         await _loadInviteCode();
-        ScaffoldMessenger.of(context).showSnackBar(
+        scaffoldMessenger.showSnackBar(
           SnackBar(
               content: Text(t['code_refreshed']),
               backgroundColor: Colors.green),
         );
       } else if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        scaffoldMessenger.showSnackBar(
           SnackBar(
               content: Text(t['cannot_refresh_code']),
               backgroundColor: Colors.red),
@@ -5638,7 +5630,7 @@ class _MonthlyRevenueChartState extends State<_MonthlyRevenueChart> {
                                 end: Alignment.bottomCenter,
                               )
                             : null,
-                        color: isHighest ? null : const Color(0xFF378ADD).withOpacity(0.25),
+                        color: isHighest ? null : const Color(0xFF378ADD).withValues(alpha: 0.25),
                         borderRadius: const BorderRadius.vertical(top: Radius.circular(5)),
                       ),
                     ),

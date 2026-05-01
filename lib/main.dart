@@ -15,6 +15,7 @@ import 'package:phan_mem_quan_ly_can_ho/widgets/chat/chat_manager.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'firebase_options.dart';
 
 import 'package:flutter/material.dart';
@@ -62,8 +63,10 @@ class LocaleNotifier extends ChangeNotifier {
 
   Locale get locale => _locale;
 
-  void setLocale(Locale locale) {
+  Future<void> setLocale(Locale locale) async {
     _locale = locale;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('language_code', locale.languageCode);
     notifyListeners();
   }
 }
@@ -133,6 +136,11 @@ void main() async {
   
   setup();
 
+  final prefs = await SharedPreferences.getInstance();
+  final savedLang = prefs.getString('language_code') ?? 'vi';
+  final savedCountry = savedLang == 'vi' ? 'VN' : 'US';
+  getIt<LocaleNotifier>().setLocale(Locale(savedLang, savedCountry));
+  
   runApp(const MyApp());
 }
 
