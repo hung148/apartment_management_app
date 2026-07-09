@@ -868,19 +868,26 @@ class _TenantsTabState extends State<TenantsTab>
   }
 
   Future<void> _refreshAll() async {
+    final future = Future.wait([
+      _getAllTenants(),
+      _getBuildings(),
+      _getAllRooms(),
+      _getMyMembership(),
+    ]);
+    
     setState(() {
-      _initialFuture = Future.wait([
-        _getAllTenants(),
-        _getBuildings(),
-        _getAllRooms(),
-        _getMyMembership(),
-      ]);
+      _initialFuture = future;
     });
-    final data = await _initialFuture;
-    _allTenants = List<Tenant>.from(data[0] as List<Tenant>);
-    _buildings = List<Building>.from(data[1] as List<Building>);
-    _rooms = List<Room>.from(data[2] as List<Room>);
-    _membership = data[3] as Membership?;
+    
+    final data = await future;  // await the local, not _initialFuture
+    if (!mounted) return;
+    
+    setState(() {
+      _allTenants = List<Tenant>.from(data[0] as List<Tenant>);
+      _buildings = List<Building>.from(data[1] as List<Building>);
+      _rooms = List<Room>.from(data[2] as List<Room>);
+      _membership = data[3] as Membership?;
+    });
   }
 
   String _formatCurrency(double value) {

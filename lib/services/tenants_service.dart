@@ -28,13 +28,20 @@ class TenantService {
   // ========================================
   Future<Tenant?> getTenantById(String tenantId) async {
     try {
-      final doc = await _firestore.collection('tenants').doc(tenantId).get();
-      
-      if (!doc.exists) {
-        print('Tenant not found: $tenantId');
-        return null;
+      DocumentSnapshot<Map<String, dynamic>> doc;
+      try {
+        doc = await _firestore
+            .collection('tenants')
+            .doc(tenantId)
+            .get(const GetOptions(source: Source.server));
+      } catch (_) {
+        doc = await _firestore
+            .collection('tenants')
+            .doc(tenantId)
+            .get(const GetOptions(source: Source.cache));
       }
-      
+
+      if (!doc.exists) return null;
       return Tenant.fromMap(doc.id, doc.data()!);
     } catch (e) {
       print('Error getting tenant: $e');
@@ -53,7 +60,7 @@ class TenantService {
           .where('roomId', isEqualTo: roomId)
           .orderBy('isMainTenant', descending: true) // Main tenant first
           .orderBy('createdAt', descending: false)
-          .get();
+          .get(const GetOptions(source: Source.server));
 
       return snapshot.docs
           .map((doc) => Tenant.fromMap(doc.id, doc.data()))
@@ -75,7 +82,7 @@ class TenantService {
           .where('roomId', isEqualTo: roomId)
           .where('status', isEqualTo: 'active')
           .orderBy('isMainTenant', descending: true)
-          .get();
+          .get(const GetOptions(source: Source.server));
 
       return snapshot.docs
           .map((doc) => Tenant.fromMap(doc.id, doc.data()))
@@ -96,7 +103,7 @@ class TenantService {
           .where('organizationId', isEqualTo: organizationId)
           .where('buildingId', isEqualTo: buildingId)
           .orderBy('createdAt', descending: true)
-          .get();
+          .get(const GetOptions(source: Source.server));
 
       return snapshot.docs
           .map((doc) => Tenant.fromMap(doc.id, doc.data()))
@@ -112,11 +119,20 @@ class TenantService {
   // ========================================
   Future<List<Tenant>> getOrganizationTenants(String organizationId) async {
     try {
-      final snapshot = await _firestore
-          .collection('tenants')
-          .where('organizationId', isEqualTo: organizationId)
-          .orderBy('createdAt', descending: true)
-          .get();
+      QuerySnapshot<Map<String, dynamic>> snapshot;
+      try {
+        snapshot = await _firestore
+            .collection('tenants')
+            .where('organizationId', isEqualTo: organizationId)
+            .orderBy('createdAt', descending: true)
+            .get(const GetOptions(source: Source.server));
+      } catch (_) {
+        snapshot = await _firestore
+            .collection('tenants')
+            .where('organizationId', isEqualTo: organizationId)
+            .orderBy('createdAt', descending: true)
+            .get(const GetOptions(source: Source.cache));
+      }
 
       return snapshot.docs
           .map((doc) => Tenant.fromMap(doc.id, doc.data()))
@@ -140,7 +156,7 @@ class TenantService {
           .where('organizationId', isEqualTo: organizationId)
           .where('status', isEqualTo: status.name)
           .orderBy('createdAt', descending: true)
-          .get();
+          .get(const GetOptions(source: Source.server));
 
       return snapshot.docs
           .map((doc) => Tenant.fromMap(doc.id, doc.data()))
@@ -167,7 +183,7 @@ class TenantService {
           .where('organizationId', isEqualTo: organizationId)
           .where('status', isEqualTo: 'active')
           .orderBy('contractEndDate', descending: false)
-          .get();
+          .get(const GetOptions(source: Source.server));
 
       // Filter in memory for contracts expiring within threshold
       return snapshot.docs
@@ -197,7 +213,7 @@ class TenantService {
           .where('organizationId', isEqualTo: organizationId)
           .where('phoneNumber', isEqualTo: phoneNumber)
           .limit(1)
-          .get();
+          .get(const GetOptions(source: Source.server));
 
       if (snapshot.docs.isEmpty) {
         return null;
@@ -223,7 +239,7 @@ class TenantService {
           .where('organizationId', isEqualTo: organizationId)
           .where('nationalId', isEqualTo: nationalId)
           .limit(1)
-          .get();
+          .get(const GetOptions(source: Source.server));
 
       if (snapshot.docs.isEmpty) {
         return null;
@@ -249,7 +265,7 @@ class TenantService {
           .where('organizationId', isEqualTo: organizationId)
           .where('occupation', isEqualTo: occupation)
           .orderBy('createdAt', descending: true)
-          .get();
+          .get(const GetOptions(source: Source.server));
 
       return snapshot.docs
           .map((doc) => Tenant.fromMap(doc.id, doc.data()))
@@ -350,12 +366,12 @@ class TenantService {
       final building = await _firestore
           .collection('buildings')
           .doc(tenant.buildingId)
-          .get();
+          .get(const GetOptions(source: Source.server));
       
       final room = await _firestore
           .collection('rooms')
           .doc(tenant.roomId)
-          .get();
+          .get(const GetOptions(source: Source.server));
 
       final currentBuildingName = building.exists && building.data()?['name'] != null
           ? building.data()!['name'] as String
@@ -461,12 +477,12 @@ class TenantService {
         final oldBuilding = await _firestore
             .collection('buildings')
             .doc(tenant.buildingId)
-            .get();
+            .get(const GetOptions(source: Source.server));
         
         final oldRoom = await _firestore
             .collection('rooms')
             .doc(tenant.roomId)
-            .get();
+            .get(const GetOptions(source: Source.server));
 
         final oldBuildingName = oldBuilding.exists && oldBuilding.data()?['name'] != null
             ? oldBuilding.data()!['name'] as String
@@ -683,7 +699,7 @@ class TenantService {
           .collection('tenants')
           .where('organizationId', isEqualTo: organizationId)
           .where('roomId', isEqualTo: roomId)
-          .get();
+          .get(const GetOptions(source: Source.server));
 
       final batch = _firestore.batch();
       for (var doc in snapshot.docs) {
@@ -745,7 +761,7 @@ class TenantService {
           .where('roomId', isEqualTo: roomId)
           .where('status', isEqualTo: 'active')
           .limit(1)
-          .get();
+          .get(const GetOptions(source: Source.server));
 
       return snapshot.docs.isNotEmpty;
     } catch (e) {
@@ -766,7 +782,7 @@ class TenantService {
           .where('isMainTenant', isEqualTo: true)
           .where('status', isEqualTo: 'active')
           .limit(1)
-          .get();
+          .get(const GetOptions(source: Source.server));
 
       if (snapshot.docs.isEmpty) {
         return null;
@@ -790,7 +806,7 @@ class TenantService {
       final snapshot = await _firestore
           .collection('tenants')
           .where('organizationId', isEqualTo: organizationId)
-          .get();
+          .get(const GetOptions(source: Source.server));
 
       // Filter by name, phone, occupation, or workplace in memory
       final searchLower = searchTerm.toLowerCase();
@@ -818,7 +834,7 @@ class TenantService {
       final snapshot = await _firestore
           .collection('tenants')
           .where('organizationId', isEqualTo: organizationId)
-          .get();
+          .get(const GetOptions(source: Source.server));
 
       final tenants = snapshot.docs
           .map((doc) => Tenant.fromMap(doc.id, doc.data()))
@@ -873,7 +889,7 @@ class TenantService {
           .where('organizationId', isEqualTo: organizationId)
           .where('buildingId', isEqualTo: buildingId)
           .where('status', whereIn: ['active', 'inactive', 'suspended'])
-          .get();
+          .get(const GetOptions(source: Source.server));
 
       if (snapshot.docs.isEmpty) {
         print('No active tenants found in building');
@@ -890,12 +906,12 @@ class TenantService {
         final building = await _firestore
             .collection('buildings')
             .doc(tenant.buildingId)
-            .get();
+            .get(const GetOptions(source: Source.server));
         
         final room = await _firestore
             .collection('rooms')
             .doc(tenant.roomId)
-            .get();
+            .get(const GetOptions(source: Source.server));
         
         final buildingName = (() {
           if (building.exists != true) return 'Không xác định';
@@ -973,7 +989,7 @@ class TenantService {
           .collection('tenants')
           .where('organizationId', isEqualTo: organizationId)
           .where('buildingId', isEqualTo: buildingId)
-          .get();
+          .get(const GetOptions(source: Source.server));
 
       final batch = _firestore.batch();
       for (var doc in snapshot.docs) {
@@ -1184,7 +1200,7 @@ class TenantService {
       final snapshot = await _firestore
           .collection('tenants')
           .where('organizationId', isEqualTo: organizationId)
-          .get();
+          .get(const GetOptions(source: Source.server));
 
       for (var doc in snapshot.docs) {
         final tenant = Tenant.fromMap(doc.id, doc.data());

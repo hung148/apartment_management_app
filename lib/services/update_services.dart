@@ -274,11 +274,18 @@ class UpdateService {
   /// This must be a top-level function or static method for compute()
   static Future<String?> _fetchVersionData(String url) async {
     try {
-      final response = await http.get(Uri.parse(url)).timeout(
-        const Duration(seconds: 2),
-        onTimeout: () {
-          throw TimeoutException('Connection timeout');
+      // Add cache-busting timestamp
+      final bustUrl = '$url?t=${DateTime.now().millisecondsSinceEpoch}';
+      final response = await http.get(
+        Uri.parse(bustUrl),
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
         },
+      ).timeout(
+        const Duration(seconds: 2),
+        onTimeout: () => throw TimeoutException('Connection timeout'),
       );
 
       if (response.statusCode == 200) {
@@ -286,7 +293,6 @@ class UpdateService {
       }
       return null;
     } catch (e) {
-      // Return null on any error
       return null;
     }
   }
