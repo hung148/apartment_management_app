@@ -4,6 +4,8 @@ workflows:
     max_build_duration: 60
     instance_type: mac_mini_m2
     environment:
+      groups:
+        - ios_signing_credentials   # must contain CERTIFICATE_PRIVATE_KEY (see setup steps)
       vars:
         BUNDLE_ID: "com.tom.apartmentmanagement"
         XCODE_WORKSPACE: "ios/Runner.xcworkspace"
@@ -11,8 +13,11 @@ workflows:
       flutter: stable
       xcode: latest
       cocoapods: default
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.tom.apartmentmanagement
     integrations:
-      app_store_connect: codemagic_app_store_connection   # TODO: name this to match your Codemagic integration
+      app_store_connect: codemagic_app_store_connection
 
     scripts:
       - name: Get Flutter packages
@@ -22,20 +27,6 @@ workflows:
       - name: Install pods
         script: |
           find . -name "Podfile" -execdir pod install \;
-
-      - name: Set up keychain
-        script: |
-          keychain initialize
-
-      - name: Fetch signing files
-        script: |
-          app-store-connect fetch-signing-files "$BUNDLE_ID" \
-            --type IOS_APP_STORE \
-            --create
-
-      - name: Add certificates to keychain
-        script: |
-          keychain add-certificates
 
       - name: Set up code signing settings on Xcode project
         script: |
