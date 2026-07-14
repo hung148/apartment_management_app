@@ -59,7 +59,7 @@ class DefaultFirebaseOptions {
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyDc9DUl3lM7KSSpxGXMWOmH-fHjujIhYRs',
+    apiKey: 'AIzaSyATphuPRJgxcVwk5eaIcq336Vr02WgMo6o',
     appId: '1:595994118808:ios:0581199a4341bcb8271eed',
     messagingSenderId: '595994118808',
     projectId: 'apartment-management-app-776b9',
