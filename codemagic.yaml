@@ -6,6 +6,7 @@ workflows:
     environment:
       groups:
         - ios_signing_credentials   # must contain CERTIFICATE_PRIVATE_KEY (see setup steps)
+        - app_secrets
       vars:
         BUNDLE_ID: "com.tom.apartmentmanagement"
         XCODE_WORKSPACE: "ios/Runner.xcworkspace"
@@ -25,6 +26,10 @@ workflows:
         script: |
           find . -name "Podfile" -execdir pod install \;
 
+      - name: Recreate .env file
+        script: |
+          echo "$ENV_FILE_CONTENTS" > .env
+      
       - name: Set up keychain
         script: |
           keychain initialize
