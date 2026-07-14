@@ -1,0 +1,56 @@
+workflows:
+  ios-workflow:
+    name: iOS Build and TestFlight
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      vars:
+        BUNDLE_ID: "com.tom.apartmentmanagement"
+        XCODE_WORKSPACE: "ios/Runner.xcworkspace"
+        XCODE_SCHEME: "Runner"
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+    integrations:
+      app_store_connect: codemagic_app_store_connection   # TODO: name this to match your Codemagic integration
+
+    scripts:
+      - name: Get Flutter packages
+        script: |
+          flutter packages pub get
+
+      - name: Install pods
+        script: |
+          find . -name "Podfile" -execdir pod install \;
+
+      - name: Set up code signing settings on Xcode project
+        script: |
+          xcode-project use-profiles
+
+      - name: Flutter build ipa and automatic versioning
+        script: |
+          BUILD_NUMBER=$(app-store-connect get-latest-app-store-build-number "$BUNDLE_ID")
+          UP_BUILD_NUMBER=$((BUILD_NUMBER + 1))
+          flutter build ipa --release \
+            --build-name=1.0.0 \
+            --build-number=$UP_BUILD_NUMBER \
+            --export-options-plist=/Users/builder/export_options.plist
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - flutter_drive.log
+
+    publishing:
+      email:
+        recipients:
+          - trinhhungqt2004@gmail.com
+        notify:
+          success: true
+          failure: true
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        # beta_groups:
+        #   - Internal Testers   # TODO: uncomment once you've created this group in App Store Connect
+        # submit_to_app_store: false   # flip to true when ready for full App Store review
