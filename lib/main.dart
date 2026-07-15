@@ -130,7 +130,7 @@ void main() async {
     print('Firestore settings note: $e');
   }
 
-  await FirebaseAuth.instance.authStateChanges().first;
+  //await FirebaseAuth.instance.authStateChanges().first;
 
   await dotenv.load(fileName: '.env');
   
