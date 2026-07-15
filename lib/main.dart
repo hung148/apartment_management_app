@@ -174,8 +174,14 @@ class MyApp extends StatelessWidget {
             colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
           ),
           debugShowCheckedModeBanner: false,
-          initialRoute: '/',
-          onGenerateRoute: AppRouter.generateRoute,
+          //initialRoute: '/',
+          //onGenerateRoute: AppRouter.generateRoute,
+          home: Scaffold(
+            backgroundColor: Colors.red,
+            body: Center(
+              child: Text('TEST OK', style: TextStyle(color: Colors.white, fontSize: 32)),
+            ),
+          ),
         );
       },
     );
