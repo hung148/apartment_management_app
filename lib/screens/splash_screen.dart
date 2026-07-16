@@ -141,7 +141,7 @@ class _SplashScreenState extends State<SplashScreen>
                                 text: const TextSpan(
                                   children: [
                                     TextSpan(
-                                      text: 'P',
+                                      text: 'C',
                                       style: TextStyle(
                                         fontSize: 52,
                                         fontWeight: FontWeight.w800,
@@ -151,7 +151,7 @@ class _SplashScreenState extends State<SplashScreen>
                                       ),
                                     ),
                                     TextSpan(
-                                      text: 'ropy',
+                                      text: 'anHo360',
                                       style: TextStyle(
                                         fontSize: 52,
                                         fontWeight: FontWeight.w800,

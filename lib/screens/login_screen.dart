@@ -119,7 +119,7 @@ class LoginScreen extends StatelessWidget {
                                         "Phần Mền Quản Lý Căn Hộ",
                                         style: TextStyle(
                                           fontSize: titleSize,
-                                          fontWeight: FontWeight.w600,
+                                          fontWeight: FontWeight.w700,
                                           color: Colors.white,
                                           letterSpacing: 1.0,
                                         ),
@@ -345,7 +345,7 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
           "Đăng nhập",
           style: TextStyle(
             fontSize: titleSize - 5,
-            fontWeight: FontWeight.w400,  // lighter than the app title
+            fontWeight: FontWeight.w500,  // lighter than the app title
             color: Colors.white70,        // slightly dimmed
             letterSpacing: 1.5,
           ),
@@ -459,7 +459,7 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
           "Đăng ký",
           style: TextStyle(
             fontSize: titleSize - 5,
-            fontWeight: FontWeight.w400,  // lighter than the app title
+            fontWeight: FontWeight.w500,  // lighter than the app title
             color: Colors.white70,        // slightly dimmed
             letterSpacing: 1.5,
           ),
@@ -634,16 +634,32 @@ class _SwitchAuthLinkState extends State<SwitchAuthLink> {
         child: RichText(
           text: TextSpan(
             text: isLogin ? "Chưa có tài khoản? " : "Đã có tài khoản? ",
-            style: TextStyle(color: Colors.white70, fontSize: widget.textSize + 2),
+            style: TextStyle(
+              color: Colors.white70, fontSize: widget.textSize + 2,
+              shadows: [
+                Shadow(
+                  color: Colors.black.withValues(alpha: 0.5),
+                  blurRadius: 6,
+                  offset: const Offset(0, 1),
+                ),
+              ],
+            ),
             children: [
               TextSpan(
                 text: isLogin ? "Đăng ký" : "Đăng nhập",
                 style: TextStyle(
-                  color: _hovered ? Colors.blue : Colors.white,
+                  color: _hovered ? Colors.blue : Colors.white70,
                   fontSize: widget.textSize + 2,
+                  shadows: [
+                    Shadow(
+                      color: Colors.black.withValues(alpha: 0.5),
+                      blurRadius: 6,
+                      offset: const Offset(0, 1),
+                    ),
+                  ],
                   fontWeight: FontWeight.bold,
                   decoration: TextDecoration.underline,
-                  decorationColor: _hovered ? Colors.blue : Colors.white,
+                  decorationColor: _hovered ? Colors.blue : Colors.white70,
                 ),
               ),
             ],
