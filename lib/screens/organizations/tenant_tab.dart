@@ -1,9 +1,10 @@
 import 'dart:async';
+import 'package:collection/collection.dart';
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/date_picker.dart';
-import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/tenants_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/buildings_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/rooms_model.dart';
@@ -14,6 +15,7 @@ import 'package:phan_mem_quan_ly_can_ho/services/building_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/room_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/organization_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/auth_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/widgets/combo_box.dart';
 
 // ─── Color palette ───────────────────────────────────────────────────────────
 const List<Color> _tenantAccentColors = [
@@ -3024,6 +3026,9 @@ class _TenantsTabState extends State<TenantsTab>
   // ═══════════════════════════════════════════════════════════════
   // EDIT TENANT DIALOG
   // ═══════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════
+  // EDIT TENANT DIALOG
+  // ═══════════════════════════════════════════════════════════════
   Future<void> _showEditTenantDialog(Tenant tenant) async {
     await _getBuildings();
     await _getAllRooms();
@@ -3048,11 +3053,29 @@ class _TenantsTabState extends State<TenantsTab>
 
     DateTime editedMoveInDate = tenant.moveInDate;
 
+    // Rooms occupied by OTHER active main tenants (exclude this tenant's own room)
+    final Set<String> occupiedRoomIds = _allTenants
+        .where((t) =>
+            t.id != tenant.id &&
+            t.status == TenantStatus.active &&
+            t.isMainTenant)
+        .map((t) => t.roomId)
+        .toSet();
+
+    String? selectedBuildingId =
+        tenant.buildingId.isNotEmpty ? tenant.buildingId : null;
+    String? selectedRoomId =
+        tenant.roomId.isNotEmpty ? tenant.roomId : null;
+
     final result = await _showTrackedDialog<Map<String, dynamic>>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
           final t = AppTranslations.of(context);
+          final availableRooms = _rooms
+              .where((r) => r.buildingId == selectedBuildingId)
+              .toList();
+
           return _DialogShell(
             maxWidth: 520,
             child: Column(
@@ -3112,6 +3135,51 @@ class _TenantsTabState extends State<TenantsTab>
                           t['tenant_section_invoice_apt'],
                           icon: Icons.apartment_rounded,
                         ),
+                        ComboBoxField<Building>(
+                          options: _buildings,
+                          labelOf: (b) => b.name,
+                          selected: _buildings
+                              .where((b) => b.id == selectedBuildingId)
+                              .firstOrNull,
+                          icon: Icons.apartment_rounded,
+                          label: t['tenant_field_building'],
+                          onSelected: (building) {
+                            setDialogState(() {
+                              selectedBuildingId = building?.id;
+                              selectedRoomId = null;
+                            });
+                          },
+                        ),
+                        ComboBoxField<Room>(
+                          options: availableRooms,
+                          labelOf: (r) => t.textWithParams(
+                            occupiedRoomIds.contains(r.id)
+                                ? 'tenant_room_occupied'
+                                : 'tenant_room_vacant',
+                            {'number': r.roomNumber},
+                          ),
+                          colorOf: (r) => occupiedRoomIds.contains(r.id)
+                              ? const Color(0xFFDC2626) // red — occupied
+                              : const Color(0xFF3B6D11), // green — vacant
+                          isSelectable: (r) =>
+                              !occupiedRoomIds.contains(r.id) ||
+                              r.id == tenant.roomId,
+                          selected: availableRooms
+                              .where((r) => r.id == selectedRoomId)
+                              .firstOrNull,
+                          enabled: selectedBuildingId != null,
+                          icon: Icons.door_front_door_rounded,
+                          label: t['tenant_field_room'],
+                          onSelected: (room) {
+                            if (room == null) return;
+                            setDialogState(() {
+                              selectedRoomId = room.id;
+                              areaController.text = room.area.toString();
+                              typeController.text = room.roomType;
+                            });
+                          },
+                        ),
+                        const SizedBox(height: 4),
                         Row(
                           children: [
                             Expanded(
@@ -3169,35 +3237,40 @@ class _TenantsTabState extends State<TenantsTab>
                       label: t['tenant_edit_save'],
                       primary: true,
                       icon: Icons.check_rounded,
-                      onPressed: () {
-                        Navigator.pop(context, {
-                          'fullName': nameController.text.trim(),
-                          'phoneNumber': phoneController.text.trim(),
-                          'email': emailController.text.trim().isEmpty
-                              ? null
-                              : emailController.text.trim(),
-                          'nationalId': nationalIdController.text
-                                  .trim()
-                                  .isEmpty
-                              ? null
-                              : nationalIdController.text.trim(),
-                          'occupation': occupationController.text
-                                  .trim()
-                                  .isEmpty
-                              ? null
-                              : occupationController.text.trim(),
-                          'workplace':
-                              workplaceController.text.trim().isEmpty
-                                  ? null
-                                  : workplaceController.text.trim(),
-                          'monthlyRent': double.tryParse(
-                              monthlyRentController.text.trim()),
-                          'apartmentArea': double.tryParse(
-                              areaController.text.trim()),
-                          'apartmentType': typeController.text.trim(),
-                          'moveInDate': editedMoveInDate,
-                        });
-                      },
+                      onPressed: (selectedBuildingId == null ||
+                              selectedRoomId == null)
+                          ? null
+                          : () {
+                              Navigator.pop(context, {
+                                'fullName': nameController.text.trim(),
+                                'phoneNumber': phoneController.text.trim(),
+                                'email': emailController.text.trim().isEmpty
+                                    ? null
+                                    : emailController.text.trim(),
+                                'nationalId': nationalIdController.text
+                                        .trim()
+                                        .isEmpty
+                                    ? null
+                                    : nationalIdController.text.trim(),
+                                'occupation': occupationController.text
+                                        .trim()
+                                        .isEmpty
+                                    ? null
+                                    : occupationController.text.trim(),
+                                'workplace':
+                                    workplaceController.text.trim().isEmpty
+                                        ? null
+                                        : workplaceController.text.trim(),
+                                'monthlyRent': double.tryParse(
+                                    monthlyRentController.text.trim()),
+                                'apartmentArea': double.tryParse(
+                                    areaController.text.trim()),
+                                'apartmentType': typeController.text.trim(),
+                                'moveInDate': editedMoveInDate,
+                                'buildingId': selectedBuildingId,
+                                'roomId': selectedRoomId,
+                              });
+                            },
                     ),
                   ],
                 ),
@@ -3219,8 +3292,88 @@ class _TenantsTabState extends State<TenantsTab>
     typeController.dispose();
 
     if (result != null) {
-      await widget.tenantService.updateTenant(tenant.id, result);
-      if (!mounted) return;
+      final newBuildingId = result['buildingId'] as String?;
+      final newRoomId = result['roomId'] as String?;
+      final roomChanged = newBuildingId != null &&
+          newRoomId != null &&
+          (newBuildingId != tenant.buildingId || newRoomId != tenant.roomId);
+
+      if (roomChanged) {
+        // Handles history tracking, moveInDate reset, status/contract reset
+        final moveSuccess = await widget.tenantService.moveTenantToRoom(
+          tenant.id,
+          newBuildingId,
+          newRoomId,
+        );
+
+        if (!mounted) return;
+
+        if (!moveSuccess) {
+          final t = AppTranslations.of(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(t['tenant_move_room_error']),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return; // Block: don't apply any other field edits, let user retry
+        }
+
+        // Apply the rest of the edited fields (name, phone, personal info, rent, etc.)
+        // and let the user's explicitly-chosen moveInDate override the
+        // auto-stamped "now" that moveTenantToRoom just set.
+        final fieldUpdates = Map<String, dynamic>.from(result)
+          ..remove('buildingId')
+          ..remove('roomId');
+        final updateSuccess =
+            await widget.tenantService.updateTenant(tenant.id, fieldUpdates);
+
+        if (!mounted) return;
+
+        if (!updateSuccess) {
+          final t = AppTranslations.of(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(t['tenant_edit_save_error']),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
+
+        final t = AppTranslations.of(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(t['tenant_edit_save_success']),
+            backgroundColor: const Color(0xFF3B6D11),
+          ),
+        );
+      } else {
+        final updateSuccess =
+            await widget.tenantService.updateTenant(tenant.id, result);
+
+        if (!mounted) return;
+
+        if (!updateSuccess) {
+          final t = AppTranslations.of(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(t['tenant_edit_save_error']),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
+
+        final t = AppTranslations.of(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(t['tenant_edit_save_success']),
+            backgroundColor: const Color(0xFF3B6D11),
+          ),
+        );
+      }
+
       _refreshAll();
       widget.onChanged?.call();
     }
@@ -3681,120 +3834,74 @@ class _TenantsTabState extends State<TenantsTab>
                           t['tenant_detail_location'],
                           icon: Icons.location_on_rounded,
                         ),
-                        _dropdownField<String>(
+                        ComboBoxField<Building>(
+                          options: buildings,
+                          labelOf: (b) => b.name,
+                          selected: buildings
+                              .where((b) => b.id == selectedBuildingId)
+                              .firstOrNull,
+                          icon: Icons.apartment_rounded,
                           label: t['tenant_field_building'],
-                          value: selectedBuildingId,
-                          items: buildings
-                              .map((b) => DropdownMenuItem(
-                                  value: b.id, child: Text(b.name)))
-                              .toList(),
-                          onChanged: (val) => setDialogState(() {
-                            selectedBuildingId = val;
-                            selectedRoomId = null;
-                          }),
+                          onSelected: (building) {
+                            setDialogState(() {
+                              selectedBuildingId = building?.id;
+                              selectedRoomId = null;
+                            });
+                          },
                         ),
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: DropdownButtonFormField<String>(
-                            initialValue: selectedRoomId,
-                            decoration: InputDecoration(
-                              labelText: t['tenant_field_room'],
-                              labelStyle: TextStyle(
-                                  color: Colors.grey.shade500,
-                                  fontSize: 14),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10),
-                                borderSide: BorderSide(
-                                    color: Colors.grey.shade300),
-                              ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10),
-                                borderSide: BorderSide(
-                                    color: Colors.grey.shade300),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10),
-                                borderSide: const BorderSide(
-                                    color: Color(0xFF2563EB), width: 1.5),
-                              ),
-                              filled: true,
-                              fillColor: Colors.grey.shade50,
-                              isDense: true,
-                              contentPadding:
-                                  const EdgeInsets.symmetric(
-                                      horizontal: 14, vertical: 14),
-                            ),
-                            items: availableRooms.map((room) {
-                              final bool isOccupied =
-                                  occupiedRoomIds.contains(room.id);
-                              return DropdownMenuItem(
-                                value: room.id,
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      width: 6,
-                                      height: 6,
-                                      margin: const EdgeInsets.only(
-                                          right: 8),
-                                      decoration: BoxDecoration(
-                                        color: isOccupied
-                                            ? const Color(0xFFDC2626)
-                                            : const Color(0xFF3B6D11),
-                                        shape: BoxShape.circle,
-                                      ),
-                                    ),
-                                    Text(
-                                      t.textWithParams(
-                                          isOccupied
-                                              ? 'tenant_room_occupied'
-                                              : 'tenant_room_vacant',
-                                          {'number': room.roomNumber}),
-                                      style: TextStyle(
-                                        color: isOccupied
-                                            ? const Color(0xFFDC2626)
-                                            : const Color(0xFF3B6D11),
-                                        fontWeight: isOccupied
-                                            ? FontWeight.normal
-                                            : FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            }).toList(),
-                            onChanged: (val) {
-                              final room = allRooms
-                                  .firstWhere((r) => r.id == val);
-                              setDialogState(() {
-                                selectedRoomId = val;
-                                areaController.text =
-                                    room.area.toString();
-                                typeController.text = room.roomType;
-                              });
-                            },
+                        ComboBoxField<Room>(
+                          options: availableRooms,
+                          labelOf: (r) => t.textWithParams(
+                            occupiedRoomIds.contains(r.id)
+                                ? 'tenant_room_occupied'
+                                : 'tenant_room_vacant',
+                            {'number': r.roomNumber},
                           ),
+                          colorOf: (r) => occupiedRoomIds.contains(r.id)
+                              ? const Color(0xFFDC2626) // red — occupied
+                              : const Color(0xFF3B6D11), // green — vacant
+                          isSelectable: (r) => !occupiedRoomIds.contains(r.id),
+                          selected: availableRooms
+                              .where((r) => r.id == selectedRoomId)
+                              .firstOrNull,
+                          enabled: selectedBuildingId != null,
+                          icon: Icons.door_front_door_rounded,
+                          label: t['tenant_field_room'],
+                          onSelected: (room) {
+                            if (room == null) return;
+                            setDialogState(() {
+                              selectedRoomId = room.id;
+                              areaController.text = room.area.toString();
+                              typeController.text = room.roomType;
+                            });
+                          },
                         ),
 
                         Row(
                           children: [
                             Expanded(
-                              child: _dropdownField<TenantStatus>(
-                                label: t['tenant_field_status'],
-                                value: selectedStatus,
-                                items: TenantStatus.values.map((s) {
-                                  String label =
-                                      t['tenant_status_active'];
-                                  if (s == TenantStatus.inactive)
-                                    {label = t['tenant_status_inactive'];}
-                                  if (s == TenantStatus.moveOut) {
-                                    label =
-                                        t['tenant_status_moved_out'];
+                              child: ComboBoxField<TenantStatus>(
+                                options: TenantStatus.values,
+                                labelOf: (s) {
+                                  switch (s) {
+                                    case TenantStatus.active:
+                                      return t['tenant_status_active'];
+                                    case TenantStatus.inactive:
+                                      return t['tenant_status_inactive'];
+                                    case TenantStatus.moveOut:
+                                      return t['tenant_status_moved_out'];
+                                    case TenantStatus.suspended:
+                                      return t['tenant_status_suspended'];
                                   }
-                                  return DropdownMenuItem(
-                                      value: s, child: Text(label));
-                                }).toList(),
-                                onChanged: (val) => setDialogState(
-                                    () => selectedStatus = val!),
+                                },
+                                selected: selectedStatus,
+                                icon: Icons.toggle_on_rounded,
+                                label: t['tenant_field_status'],
+                                onSelected: (val) {
+                                  if (val != null) {
+                                    setDialogState(() => selectedStatus = val);
+                                  }
+                                },
                               ),
                             ),
                             const SizedBox(width: 12),
