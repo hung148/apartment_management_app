@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
+import 'package:phan_mem_quan_ly_can_ho/widgets/constants.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/date_picker.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/tenants_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/buildings_model.dart';
@@ -3026,9 +3027,6 @@ class _TenantsTabState extends State<TenantsTab>
   // ═══════════════════════════════════════════════════════════════
   // EDIT TENANT DIALOG
   // ═══════════════════════════════════════════════════════════════
-  // ═══════════════════════════════════════════════════════════════
-  // EDIT TENANT DIALOG
-  // ═══════════════════════════════════════════════════════════════
   Future<void> _showEditTenantDialog(Tenant tenant) async {
     await _getBuildings();
     await _getAllRooms();
@@ -3048,8 +3046,8 @@ class _TenantsTabState extends State<TenantsTab>
         text: tenant.monthlyRent?.toString() ?? '');
     final areaController =
         TextEditingController(text: tenant.apartmentArea?.toString() ?? '');
-    final typeController =
-        TextEditingController(text: tenant.apartmentType ?? '');
+    // Normalize once, up front — keys only from here on out.
+    String selectedAptType = normalizeAptType(tenant.apartmentType);
 
     DateTime editedMoveInDate = tenant.moveInDate;
 
@@ -3075,6 +3073,12 @@ class _TenantsTabState extends State<TenantsTab>
           final availableRooms = _rooms
               .where((r) => r.buildingId == selectedBuildingId)
               .toList();
+
+          // Keys, not labels. Inject the current key if it's not one of
+          // the canonical four (legacy/custom values still get shown).
+          final aptTypeOptions = kApartmentTypes.contains(selectedAptType)
+              ? kApartmentTypes
+              : [selectedAptType, ...kApartmentTypes];
 
           return _DialogShell(
             maxWidth: 520,
@@ -3175,7 +3179,10 @@ class _TenantsTabState extends State<TenantsTab>
                             setDialogState(() {
                               selectedRoomId = room.id;
                               areaController.text = room.area.toString();
-                              typeController.text = room.roomType;
+                              // Normalize here too — room.roomType may
+                              // also be legacy free text.
+                              selectedAptType =
+                                  normalizeAptType(room.roomType);
                             });
                           },
                         ),
@@ -3183,11 +3190,17 @@ class _TenantsTabState extends State<TenantsTab>
                         Row(
                           children: [
                             Expanded(
-                                child: _inputField(
-                                    typeController,
-                                    t['tenant_field_apt_type'],
-                                    Icons.category_rounded,
-                                    maxLength: 50)),
+                              child: ComboBoxField<String>(
+                                options: aptTypeOptions,
+                                labelOf: (v) => aptTypeLabel(t, v),
+                                selected: selectedAptType,
+                                icon: Icons.category_rounded,
+                                label: t['tenant_field_apt_type'],
+                                onSelected: (v) {
+                                  if (v != null) setDialogState(() => selectedAptType = v);
+                                },
+                              ),
+                            ),
                             const SizedBox(width: 12),
                             Expanded(
                                 child: _inputField(
@@ -3265,7 +3278,7 @@ class _TenantsTabState extends State<TenantsTab>
                                     monthlyRentController.text.trim()),
                                 'apartmentArea': double.tryParse(
                                     areaController.text.trim()),
-                                'apartmentType': typeController.text.trim(),
+                                'apartmentType': selectedAptType,
                                 'moveInDate': editedMoveInDate,
                                 'buildingId': selectedBuildingId,
                                 'roomId': selectedRoomId,
@@ -3289,8 +3302,6 @@ class _TenantsTabState extends State<TenantsTab>
     workplaceController.dispose();
     monthlyRentController.dispose();
     areaController.dispose();
-    typeController.dispose();
-
     if (result != null) {
       final newBuildingId = result['buildingId'] as String?;
       final newRoomId = result['roomId'] as String?;

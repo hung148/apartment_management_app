@@ -68,6 +68,7 @@ dependencies:
   flutter_launcher_icons: ^0.14.4
   flutter_markdown: ^0.7.7+1
   shared_preferences: ^2.5.5
+  collection: ^1.19.1
 
 flutter_launcher_icons:
   android: true

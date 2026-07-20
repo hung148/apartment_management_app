@@ -903,6 +903,11 @@ class AppTranslations {
 
       'title': 'Quản lý chung cư',
       'app_title': 'Phần Mền Quản Lý Căn Hộ',
+
+      'apt_type_standard': 'Tiêu chuẩn',
+      'apt_type_deluxe': 'Cao cấp',
+      'apt_type_suite': 'Suite',
+      'apt_type_penthouse': 'Penthouse',
     },
 
     'en': {
@@ -1798,6 +1803,11 @@ class AppTranslations {
       'back': 'Back',
       'title': 'Apartment Management',
       'app_title': 'Apartment Management App',
+
+      'apt_type_standard': 'Standard',
+      'apt_type_deluxe': 'Deluxe',
+      'apt_type_suite': 'Suite',
+      'apt_type_penthouse': 'Penthouse',
     },
   };
 
