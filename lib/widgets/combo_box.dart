@@ -5,7 +5,7 @@ class ComboBoxField<T> extends StatelessWidget {
   final List<T> options;
   final String Function(T) labelOf;
   final T? selected;
-  final String label;
+  final String? label;
   final IconData? icon;
   final bool enabled;
   final void Function(T?) onSelected;
@@ -20,18 +20,52 @@ class ComboBoxField<T> extends StatelessWidget {
   /// the whole dialog on long lists.
   final double menuHeight;
 
+  final Color? fillColor;
+  final Color? disabledFillColor;
+  final Color? borderColor;
+  final Color? focusedBorderColor;
+  final Color? iconColor;
+  final Color? textColor;
+  final double borderRadius;
+  final EdgeInsets contentPadding;
+
+  final bool wrapInBottomPadding;
+
+  final Widget? trailingIcon;
+
+  final double fontSize;
+  final double iconSize;
+  final double entryFontSize;
+
+  final bool showTrailingIcon;
+
   const ComboBoxField({
     super.key,
     required this.options,
     required this.labelOf,
     required this.selected,
-    required this.label,
+    this.label,
     this.icon,
     this.enabled = true,
     required this.onSelected,
     this.colorOf,
     this.isSelectable,
     this.menuHeight = 280,
+    this.fillColor,
+    this.disabledFillColor,
+    this.borderColor,
+    this.focusedBorderColor,
+    this.iconColor,
+    this.textColor,
+    this.borderRadius = 10,
+    this.contentPadding =
+        const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+    this.wrapInBottomPadding = true,
+    this.trailingIcon,
+    this.fontSize = 14,       // default matches old hardcoded value
+    this.iconSize = 18,       // default matches old hardcoded value
+    this.entryFontSize = 13.5,
+    this.showTrailingIcon = true,
   });
 
   @override
@@ -40,71 +74,81 @@ class ComboBoxField<T> extends StatelessWidget {
     // list, or an initialSelection that doesn't match any entry.
     final bool hasValidSelection =
         selected != null && options.any((o) => o == selected);
+    
+    final Color resolvedFill =
+        enabled ? (fillColor ?? Colors.grey.shade50) : (disabledFillColor ?? Colors.grey.shade100);
+    final Color resolvedBorder = borderColor ?? Colors.grey.shade300;
+    final Color resolvedFocusedBorder = focusedBorderColor ?? const Color(0xFF2563EB);
+    final Color resolvedIconColor = iconColor ?? Colors.grey.shade400;
+    final Color resolvedTextColor = textColor ?? Colors.black87;
 
-    if (options.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+    final Widget field = options.isEmpty
+      ? Container(
+          padding: contentPadding,
           decoration: BoxDecoration(
             color: Colors.grey.shade100,
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(borderRadius),
             border: Border.all(color: Colors.grey.shade300),
           ),
           child: Row(
             children: [
               if (icon != null) ...[
-                Icon(icon, size: 18, color: Colors.grey.shade400),
+                Icon(icon, size: iconSize, color: Colors.grey.shade400),
                 const SizedBox(width: 10),
               ],
               Expanded(
                 child: Text(
-                  label,
-                  style: TextStyle(color: Colors.grey.shade500, fontSize: 14),
+                  label ?? '',
+                  style: TextStyle(color: Colors.grey.shade500, fontSize: fontSize),
                 ),
               ),
             ],
           ),
-        ),
-      );
-    }
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: DropdownMenu<T>(
-        key: ValueKey(selected),
-        enabled: enabled,
-        enableFilter: true,
-        requestFocusOnTap: true,
-        initialSelection: hasValidSelection ? selected : null,
-        expandedInsets: EdgeInsets.zero,
-        menuHeight: menuHeight,
-        // Gap between the field and the opened popup.
-        alignmentOffset: const Offset(0, 4),
-        label: Text(label),
-        leadingIcon: icon != null
-            ? Icon(icon, size: 18, color: Colors.grey.shade400)
+        )
+      : DropdownMenu<T>(
+          key: ValueKey(selected),
+          enabled: enabled,
+          enableFilter: true,
+          requestFocusOnTap: true,
+          trailingIcon: showTrailingIcon
+            ? (trailingIcon ??
+                Icon(Icons.keyboard_arrow_down_rounded,
+                    size: iconSize, color: resolvedIconColor))
+            : const SizedBox.shrink(),
+          selectedTrailingIcon: showTrailingIcon
+            ? (trailingIcon ??
+                Icon(Icons.keyboard_arrow_up_rounded, 
+                    size: iconSize, color: resolvedIconColor))
+            : const SizedBox.shrink(),
+          initialSelection: hasValidSelection ? selected : null,
+          expandedInsets: EdgeInsets.zero,
+          menuHeight: menuHeight,
+          alignmentOffset: const Offset(0, 4),
+          label: label != null
+            ? Text(label!, style: TextStyle(fontSize: fontSize))
             : null,
-        textStyle: const TextStyle(fontSize: 14),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: enabled ? Colors.grey.shade50 : Colors.grey.shade100,
-          isDense: true,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
-            borderSide: BorderSide(color: Colors.grey.shade300),
+          leadingIcon: icon != null
+              ? Icon(icon, size: iconSize, color: resolvedIconColor)
+              : null,
+          textStyle: TextStyle(fontSize: fontSize, color: resolvedTextColor),
+          inputDecorationTheme: InputDecorationTheme(
+            filled: true,
+            fillColor: resolvedFill,
+            isDense: true,
+            contentPadding: contentPadding,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(borderRadius),
+              borderSide: BorderSide(color: resolvedBorder),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(borderRadius),
+              borderSide: BorderSide(color: resolvedBorder),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(borderRadius),
+              borderSide: BorderSide(color: resolvedFocusedBorder, width: 1.8),
+            ),
           ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
-            borderSide: BorderSide(color: Colors.grey.shade300),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
-            borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.5),
-          ),
-        ),
         // ── Menu chrome: rounded corners, soft shadow, subtle border ──
         menuStyle: MenuStyle(
           elevation: const WidgetStatePropertyAll(6),
@@ -142,8 +186,8 @@ class ComboBoxField<T> extends StatelessWidget {
                     ),
                     padding: const WidgetStatePropertyAll(
                         EdgeInsets.symmetric(horizontal: 14, vertical: 12)),
-                    textStyle: const WidgetStatePropertyAll(
-                      TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5),
+                    textStyle: WidgetStatePropertyAll(
+                      TextStyle(fontWeight: FontWeight.w600, fontSize: entryFontSize),
                     ),
                   )
                 : ButtonStyle(
@@ -162,13 +206,16 @@ class ComboBoxField<T> extends StatelessWidget {
                     ),
                     padding: const WidgetStatePropertyAll(
                         EdgeInsets.symmetric(horizontal: 14, vertical: 12)),
-                    textStyle: const WidgetStatePropertyAll(
-                      TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5),
+                    textStyle: WidgetStatePropertyAll(
+                      TextStyle(fontWeight: FontWeight.w600, fontSize: entryFontSize),
                     ),
                   ),
           );
         }).toList(),
-      ),
-    );
+      );
+
+    return wrapInBottomPadding
+      ? Padding(padding: const EdgeInsets.only(bottom: 12), child: field)
+      : field;
   }
 }

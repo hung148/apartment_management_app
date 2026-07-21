@@ -3788,7 +3788,7 @@ class _TenantsTabState extends State<TenantsTab>
     final workplaceController = TextEditingController();
     final monthlyRentController = TextEditingController();
     final areaController = TextEditingController();
-    final typeController = TextEditingController();
+    String selectedAptType = normalizeAptType(null);
 
     String? selectedBuildingId =
         buildings.isNotEmpty ? buildings.first.id : null;
@@ -3805,6 +3805,10 @@ class _TenantsTabState extends State<TenantsTab>
           final availableRooms = allRooms
               .where((r) => r.buildingId == selectedBuildingId)
               .toList();
+
+          final aptTypeOptions = kApartmentTypes.contains(selectedAptType)
+            ? kApartmentTypes
+            : [selectedAptType, ...kApartmentTypes];
 
           return _DialogShell(
             maxWidth: 520,
@@ -3883,7 +3887,7 @@ class _TenantsTabState extends State<TenantsTab>
                             setDialogState(() {
                               selectedRoomId = room.id;
                               areaController.text = room.area.toString();
-                              typeController.text = room.roomType;
+                              selectedAptType = normalizeAptType(room.roomType);
                             });
                           },
                         ),
@@ -3968,11 +3972,17 @@ class _TenantsTabState extends State<TenantsTab>
                         Row(
                           children: [
                             Expanded(
-                                child: _inputField(
-                                    typeController,
-                                    t['tenant_field_apt_type'],
-                                    Icons.category_rounded,
-                                    maxLength: 50)),
+                                child: ComboBoxField<String>(
+                                options: aptTypeOptions,
+                                labelOf: (v) => aptTypeLabel(t, v),
+                                selected: selectedAptType,
+                                icon: Icons.category_rounded,
+                                label: t['tenant_field_apt_type'],
+                                onSelected: (v) {
+                                  if (v != null) setDialogState(() => selectedAptType = v);
+                                },
+                              ),
+                            ),
                             const SizedBox(width: 12),
                             Expanded(
                                 child: _inputField(
@@ -4042,7 +4052,7 @@ class _TenantsTabState extends State<TenantsTab>
                               0,
                           'apartmentArea':
                               double.tryParse(areaController.text) ?? 0,
-                          'apartmentType': typeController.text.trim(),
+                          'apartmentType': selectedAptType,
                           'isMainTenant': isMainTenant,
                           'status': selectedStatus,
                           'moveInDate': moveInDate,
@@ -4066,7 +4076,6 @@ class _TenantsTabState extends State<TenantsTab>
     workplaceController.dispose();
     monthlyRentController.dispose();
     areaController.dispose();
-    typeController.dispose();
 
     if (result != null) {
       final tenant = Tenant(

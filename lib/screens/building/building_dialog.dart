@@ -1,4 +1,6 @@
 import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
+import 'package:phan_mem_quan_ly_can_ho/widgets/combo_box.dart';
+import 'package:phan_mem_quan_ly_can_ho/widgets/constants.dart';
 import 'package:flutter/material.dart';
 
 // ─────────────────────────────────────────────────────────────
@@ -61,7 +63,7 @@ class _BuildingDialogState extends State<BuildingDialog>
   bool uniformRoomsPerFloor = true;
 
   final uniformRoomsController = TextEditingController();
-  late final TextEditingController uniformTypeController;
+  String selectedUniformAptType = '';
   final uniformAreaController  = TextEditingController();
 
   List<FloorConfig> floorConfigs = [];
@@ -70,7 +72,7 @@ class _BuildingDialogState extends State<BuildingDialog>
   final bulkStartFloorController = TextEditingController();
   final bulkEndFloorController   = TextEditingController();
   final bulkRoomsController      = TextEditingController();
-  late final TextEditingController bulkTypeController;
+  String? selectedBulkAptType;
   final bulkAreaController = TextEditingController();
 
   late final AnimationController _animCtrl;
@@ -79,8 +81,6 @@ class _BuildingDialogState extends State<BuildingDialog>
   @override
   void initState() {
     super.initState();
-    uniformTypeController = TextEditingController();
-    bulkTypeController    = TextEditingController();
     _animCtrl = AnimationController(
       vsync: this, duration: const Duration(milliseconds: 350),
     )..forward();
@@ -92,11 +92,8 @@ class _BuildingDialogState extends State<BuildingDialog>
     super.didChangeDependencies();
     final t = AppTranslations.of(context);
 
-    if (uniformTypeController.text.isEmpty) {
-      uniformTypeController.text = t['building_room_type_standard'];
-    }
-    if (bulkTypeController.text.isEmpty) {
-      bulkTypeController.text = t['building_room_type_standard'];
+    if (selectedUniformAptType.isEmpty) {
+      selectedUniformAptType = normalizeAptType(null);
     }
 
     if (widget.initialName != null && nameController.text.isEmpty) {
@@ -116,8 +113,7 @@ class _BuildingDialogState extends State<BuildingDialog>
       if (uniformRoomsPerFloor) {
         uniformRoomsController.text =
             widget.initialRoomsPerFloor?.toString() ?? '';
-        uniformTypeController.text =
-            widget.initialRoomType ?? t['building_room_type_standard'];
+        selectedUniformAptType = normalizeAptType(widget.initialRoomType);
         uniformAreaController.text =
             widget.initialRoomArea?.toString() ?? '';
       } else {
@@ -130,8 +126,7 @@ class _BuildingDialogState extends State<BuildingDialog>
               floorNumber: entry.key + 1,
               countController:
                   TextEditingController(text: entry.value.toString()),
-              typeController: TextEditingController(
-                  text: t['building_room_type_standard']),
+              aptType: normalizeAptType(null),   
               areaController: TextEditingController(text: '50'),
               customNames: [],
             );
@@ -142,7 +137,6 @@ class _BuildingDialogState extends State<BuildingDialog>
   }
 
   void _loadFloorConfigs(List<Map<String, dynamic>> details) {
-    final t = AppTranslations.of(context);
     floorConfigs = details.asMap().entries.map((entry) {
       final detail = entry.value;
       final List<String> customNames = detail['customNames'] != null
@@ -152,8 +146,7 @@ class _BuildingDialogState extends State<BuildingDialog>
         floorNumber: entry.key + 1,
         countController:
             TextEditingController(text: detail['count']?.toString() ?? '10'),
-        typeController: TextEditingController(
-            text: detail['type'] ?? t['building_room_type_standard']),
+        aptType: normalizeAptType(detail['type']),
         areaController:
             TextEditingController(text: detail['area']?.toString() ?? '50'),
         customNames: customNames,
@@ -169,12 +162,10 @@ class _BuildingDialogState extends State<BuildingDialog>
     floorsController.dispose();
     roomPrefixController.dispose();
     uniformRoomsController.dispose();
-    uniformTypeController.dispose();
     uniformAreaController.dispose();
     bulkStartFloorController.dispose();
     bulkEndFloorController.dispose();
     bulkRoomsController.dispose();
-    bulkTypeController.dispose();
     bulkAreaController.dispose();
     for (var config in floorConfigs) {config.dispose();}
     super.dispose();
@@ -189,8 +180,7 @@ class _BuildingDialogState extends State<BuildingDialog>
         floorConfigs.add(FloorConfig(
           floorNumber: floorConfigs.length + 1,
           countController: TextEditingController(text: '10'),
-          typeController: TextEditingController(
-              text: t['building_room_type_standard']),
+          aptType: normalizeAptType(null),
           areaController: TextEditingController(text: '50'),
           customNames: [],
         ));
@@ -210,8 +200,8 @@ class _BuildingDialogState extends State<BuildingDialog>
       for (int i = start - 1; i < end; i++) {
         if (bulkRoomsController.text.isNotEmpty)
           {floorConfigs[i].countController.text = bulkRoomsController.text;}
-        if (bulkTypeController.text.isNotEmpty)
-          {floorConfigs[i].typeController.text = bulkTypeController.text;}
+        if (selectedBulkAptType != null)
+          {floorConfigs[i].aptType = selectedBulkAptType!;}
         if (bulkAreaController.text.isNotEmpty)
           {floorConfigs[i].areaController.text = bulkAreaController.text;}
       }
@@ -250,14 +240,14 @@ class _BuildingDialogState extends State<BuildingDialog>
         'uniformRooms': true,
         'floors': int.tryParse(floorsController.text) ?? 0,
         'roomsPerFloor': int.tryParse(uniformRoomsController.text) ?? 0,
-        'roomType': uniformTypeController.text.trim(),
+        'roomType': selectedUniformAptType,
         'roomArea': double.tryParse(uniformAreaController.text) ?? 0.0,
         'roomPrefix': roomPrefixController.text.trim(),
       };
     } else {
       final details = floorConfigs.map((c) => {
         'count': int.tryParse(c.countController.text) ?? 0,
-        'type': c.typeController.text.trim(),
+        'type': c.aptType,
         'area': double.tryParse(c.areaController.text) ?? 0.0,
         'customNames': c.customNames,
       }).toList();
@@ -863,6 +853,11 @@ class _BuildingDialogState extends State<BuildingDialog>
 
   // ── UNIFORM SECTION ──────────────────────────────────────────
   Widget _buildUniformSection(AppTranslations t) {
+
+    final aptTypeOptions = kApartmentTypes.contains(selectedUniformAptType)
+      ? kApartmentTypes
+      : [selectedUniformAptType, ...kApartmentTypes];
+
     return Column(children: [
       _styledField(
         controller: uniformRoomsController,
@@ -884,12 +879,25 @@ class _BuildingDialogState extends State<BuildingDialog>
       Row(children: [
         Expanded(
           flex: 3,
-          child: _styledField(
-            controller: uniformTypeController,
-            label: t['building_room_type_label'],
-            hint: '',
-            icon: Icons.category_rounded,
-            maxLength: 50,
+          child: SizedBox(
+            height: 52, // _styledField is taller than _compactField — measure and adjust
+            child: ComboBoxField<String>(
+              options: aptTypeOptions,
+              labelOf: (v) => aptTypeLabel(t, v),
+              selected: selectedUniformAptType,
+              icon: Icons.category_rounded,
+              label: t['building_room_type_label'],
+              onSelected: (v) {
+                if (v != null) setState(() => selectedUniformAptType = v);
+              },
+              fillColor: _DS.surface,
+              borderColor: Colors.grey.withValues(alpha: 0.22),
+              focusedBorderColor: _DS.primary,
+              iconColor: _DS.textSecondary,
+              textColor: _DS.textPrimary,
+              borderRadius: 12,
+              wrapInBottomPadding: false,
+            ),
           ),
         ),
         const SizedBox(width: 10),
@@ -993,7 +1001,7 @@ class _BuildingDialogState extends State<BuildingDialog>
               child: Text(t['building_col_area'],
                   style: _headerStyle, textAlign: TextAlign.center),
             ),
-            const SizedBox(width: 38),
+            const SizedBox(width: 30),
           ]),
         ),
         const SizedBox(height: 6),
@@ -1048,20 +1056,43 @@ class _BuildingDialogState extends State<BuildingDialog>
         const SizedBox(height: 8),
         Row(children: [
           Expanded(
-            child: _compactField(bulkRoomsController,
-                t['building_bulk_rooms'], '10', TextInputType.number),
+            child: SizedBox(
+              height: 30,
+              child: _compactField(bulkRoomsController,
+                  t['building_bulk_rooms'], '10', TextInputType.number),
+            ),
           ),
           const SizedBox(width: 8),
           Expanded(
             flex: 2,
-            child: _compactField(
-                bulkTypeController, t['building_bulk_type'], '',
-                TextInputType.text),
+            child: SizedBox(
+              height: 30,
+              child: ComboBoxField<String>(
+                options: kApartmentTypes,
+                labelOf: (v) => aptTypeLabel(t, v),
+                selected: selectedBulkAptType,
+                label: t['building_bulk_type'],
+                onSelected: (v) => setState(() => selectedBulkAptType = v),
+                fillColor: Colors.white,
+                borderColor: Colors.grey.withValues(alpha: 0.2),
+                focusedBorderColor: _DS.primary,
+                borderRadius: 8,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+                wrapInBottomPadding: false,
+                fontSize: 13,
+                iconSize: 14,
+                entryFontSize: 13,
+                showTrailingIcon: false,
+              ),
+            ),
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: _compactField(bulkAreaController,
-                t['building_bulk_area'], '50', TextInputType.number),
+            child: SizedBox(
+              height: 30,
+              child: _compactField(bulkAreaController,
+                  t['building_bulk_area'], '50', TextInputType.number),
+            ),
           ),
         ]),
         const SizedBox(height: 10),
@@ -1126,9 +1157,27 @@ class _BuildingDialogState extends State<BuildingDialog>
         const SizedBox(width: 4),
         Expanded(
           flex: 2,
-          child: _compactField(
-              config.typeController, '', '', TextInputType.text,
-              maxLength: 50),
+          child: SizedBox(
+            height: 30,
+            child: ComboBoxField<String>(
+              options: kApartmentTypes,
+              labelOf: (v) => aptTypeLabel(t, v),
+              selected: kApartmentTypes.contains(config.aptType) ? config.aptType : null,
+              onSelected: (v) {
+                if (v != null) setState(() => config.aptType = v);
+              },
+              fillColor: Colors.white,
+              borderColor: Colors.grey.withValues(alpha: 0.2),
+              focusedBorderColor: _DS.primary,
+              borderRadius: 8,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
+              wrapInBottomPadding: false,
+              fontSize: 13,       // matches _compactField
+              iconSize: 14,        // shrunk from default 18
+              entryFontSize: 13,   // shrunk dropdown-list text too
+              showTrailingIcon: false,
+            ),
+          ),
         ),
         const SizedBox(width: 4),
         Expanded(child: _compactField(
@@ -1276,21 +1325,20 @@ class _BuildingDialogState extends State<BuildingDialog>
 class FloorConfig {
   final int floorNumber;
   final TextEditingController countController;
-  final TextEditingController typeController;
+  String aptType;  
   final TextEditingController areaController;
   final List<String> customNames;
 
   FloorConfig({
     required this.floorNumber,
     required this.countController,
-    required this.typeController,
+    required this.aptType,   
     required this.areaController,
     required this.customNames,
   });
 
   void dispose() {
     countController.dispose();
-    typeController.dispose();
     areaController.dispose();
   }
 }
