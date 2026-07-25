@@ -1,6 +1,9 @@
 import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/combo_box.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/constants.dart';
+import 'package:phan_mem_quan_ly_can_ho/models/buildings_model.dart';
+import 'package:phan_mem_quan_ly_can_ho/widgets/date_picker.dart';
+import 'package:phan_mem_quan_ly_can_ho/models/rooms_model.dart';
 import 'package:flutter/material.dart';
 
 // ─────────────────────────────────────────────────────────────
@@ -31,6 +34,14 @@ class BuildingDialog extends StatefulWidget {
   final double? initialRoomArea;
   final List<Map<String, dynamic>>? initialFloorDetails;
   final List<int>? initialFloorRoomCounts;
+  final BuildingManagementType? initialManagementType;
+  final String? initialRenterName;
+  final String? initialRenterPhone;
+  final double? initialRentAmount;
+  final int? initialRentDueDay;
+  final DateTime? initialRentContractStart;
+  final DateTime? initialRentContractEnd;
+  final String? initialRenterNotes;
 
   const BuildingDialog({
     super.key,
@@ -45,6 +56,14 @@ class BuildingDialog extends StatefulWidget {
     this.initialRoomArea,
     this.initialFloorDetails,
     this.initialFloorRoomCounts,
+    this.initialManagementType,
+    this.initialRenterName,
+    this.initialRenterPhone,
+    this.initialRentAmount,
+    this.initialRentDueDay,
+    this.initialRentContractStart,
+    this.initialRentContractEnd,
+    this.initialRenterNotes,
   });
 
   @override
@@ -59,8 +78,20 @@ class _BuildingDialogState extends State<BuildingDialog>
   final floorsController  = TextEditingController();
   final roomPrefixController = TextEditingController();
 
+  BuildingManagementType managementType = BuildingManagementType.selfManaged;
+  bool _managementInitialized = false;
+
+  final renterNameController  = TextEditingController();
+  final renterPhoneController = TextEditingController();
+  final rentAmountController    = TextEditingController();
+  final rentDueDayController    = TextEditingController();
+  final renterNotesController = TextEditingController();
+  DateTime? rentContractStart;
+  DateTime? rentContractEnd;
+
   bool autoGenerateRooms   = true;
   bool uniformRoomsPerFloor = true;
+  RoomRentalMode selectedRentalMode = RoomRentalMode.both;
 
   final uniformRoomsController = TextEditingController();
   String selectedUniformAptType = '';
@@ -90,7 +121,6 @@ class _BuildingDialogState extends State<BuildingDialog>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final t = AppTranslations.of(context);
 
     if (selectedUniformAptType.isEmpty) {
       selectedUniformAptType = normalizeAptType(null);
@@ -101,6 +131,18 @@ class _BuildingDialogState extends State<BuildingDialog>
     }
     if (widget.initialAddress != null && addressController.text.isEmpty) {
       addressController.text = widget.initialAddress!;
+    }
+
+    if (!_managementInitialized) {
+      _managementInitialized = true;
+      managementType = widget.initialManagementType ?? BuildingManagementType.selfManaged;
+      renterNameController.text  = widget.initialRenterName ?? '';
+      renterPhoneController.text = widget.initialRenterPhone ?? '';
+      rentAmountController.text    = widget.initialRentAmount?.toString() ?? '';
+      rentDueDayController.text    = widget.initialRentDueDay?.toString() ?? '';
+      renterNotesController.text = widget.initialRenterNotes ?? '';
+      rentContractStart = widget.initialRentContractStart;
+      rentContractEnd   = widget.initialRentContractEnd;
     }
 
     if (widget.isEditMode &&
@@ -167,12 +209,16 @@ class _BuildingDialogState extends State<BuildingDialog>
     bulkEndFloorController.dispose();
     bulkRoomsController.dispose();
     bulkAreaController.dispose();
+    renterNameController.dispose();
+    renterPhoneController.dispose();
+    rentAmountController.dispose();
+    rentDueDayController.dispose();
+    renterNotesController.dispose();
     for (var config in floorConfigs) {config.dispose();}
     super.dispose();
   }
 
   void _updateFloorConfigs() {
-    final t = AppTranslations.of(context);
     final floors = int.tryParse(floorsController.text.trim());
     if (floors == null || floors <= 0) return;
     setState(() {
@@ -215,6 +261,15 @@ class _BuildingDialogState extends State<BuildingDialog>
       {return t['building_error_name_required'];}
     if (addressController.text.trim().isEmpty)
       {return t['building_error_address_required'];}
+    if (managementType == BuildingManagementType.rented) {
+      if (renterNameController.text.trim().isEmpty) {
+        return t['building_error_renter_name_required'];
+      }
+      final rent = double.tryParse(rentAmountController.text.trim());
+      if (rent == null || rent <= 0) {
+        return t['building_error_rent_amount_invalid'];
+      }
+    }
     if (!autoGenerateRooms) return null;
     final floors = int.tryParse(floorsController.text.trim());
     if (floors == null || floors <= 0)
@@ -231,6 +286,21 @@ class _BuildingDialogState extends State<BuildingDialog>
       'name': nameController.text.trim(),
       'address': addressController.text.trim(),
       'autoGenerateRooms': autoGenerateRooms,
+      'defaultRentalMode': selectedRentalMode,
+      'managementType': managementType.name,
+      if (managementType == BuildingManagementType.rented) ...{
+        'renterName': renterNameController.text.trim(),
+        'renterPhone': renterPhoneController.text.trim().isEmpty
+            ? null
+            : renterPhoneController.text.trim(),
+        'rentAmount': double.tryParse(rentAmountController.text.trim()) ?? 0.0,
+        'rentDueDay': int.tryParse(rentDueDayController.text.trim()),
+        'rentContractStart': rentContractStart,
+        'rentContractEnd': rentContractEnd,
+        'renterNotes': renterNotesController.text.trim().isEmpty
+            ? null
+            : renterNotesController.text.trim(),
+      },
     };
     if (!autoGenerateRooms) return baseData;
 
@@ -492,6 +562,18 @@ class _BuildingDialogState extends State<BuildingDialog>
 
                         const SizedBox(height: 20),
 
+                        // ── Management type ─────────────
+                        _sectionLabel(Icons.badge_rounded, t['building_section_management']),
+                        const SizedBox(height: 10),
+                        _buildManagementTypeToggle(t),
+
+                        if (managementType == BuildingManagementType.rented) ...[
+                          const SizedBox(height: 14),
+                          _buildRenterSection(t),
+                        ],
+
+                        const SizedBox(height: 20),
+
                         // ── Room generation toggle ──────
                         _buildAutoGenerateToggle(t),
 
@@ -499,6 +581,8 @@ class _BuildingDialogState extends State<BuildingDialog>
                           const SizedBox(height: 20),
                           _sectionLabel(Icons.layers_rounded,
                               t['building_section_rooms']),
+                          const SizedBox(height: 10),
+                          _buildRentalModeSelector(t),
                           const SizedBox(height: 10),
                           _styledField(
                             controller: floorsController,
@@ -770,6 +854,76 @@ class _BuildingDialogState extends State<BuildingDialog>
     );
   }
 
+  // ── DEFAULT RENTAL MODE (applies to auto-generated rooms) ──────
+  Widget _buildRentalModeSelector(AppTranslations t) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _DS.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.grey.withValues(alpha: 0.18)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            const Icon(Icons.event_available_rounded, size: 14, color: _DS.primary),
+            const SizedBox(width: 6),
+            Text(
+              'CHẾ ĐỘ CHO THUÊ MẶC ĐỊNH',
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: _DS.primary,
+                letterSpacing: 0.6,
+              ),
+            ),
+          ]),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: RoomRentalMode.values.map((mode) {
+              final selected = selectedRentalMode == mode;
+              return ChoiceChip(
+                label: Text(_rentalModeLabel(mode)),
+                selected: selected,
+                onSelected: (_) => setState(() => selectedRentalMode = mode),
+                selectedColor: _DS.primary,
+                labelStyle: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: selected ? Colors.white : _DS.textSecondary,
+                ),
+                backgroundColor: Colors.white,
+                side: BorderSide(
+                  color: selected ? _DS.primary : Colors.grey.withValues(alpha: 0.25),
+                ),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Áp dụng cho tất cả phòng được tạo tự động. Có thể chỉnh sửa từng phòng sau.',
+            style: TextStyle(fontSize: 11, color: _DS.textSecondary),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _rentalModeLabel(RoomRentalMode mode) {
+    switch (mode) {
+      case RoomRentalMode.monthly:
+        return 'Dài hạn';
+      case RoomRentalMode.hourly:
+        return 'Theo giờ';
+      case RoomRentalMode.both:
+        return 'Linh hoạt';
+    }
+  }
+
   // ── DISTRIBUTION TOGGLE ──────────────────────────────────────
   Widget _buildDistributionToggle(AppTranslations t) {
     return Container(
@@ -847,6 +1001,139 @@ class _BuildingDialogState extends State<BuildingDialog>
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  // ── MANAGEMENT TYPE TOGGLE ───────────────────────────────────
+  Widget _buildManagementTypeToggle(AppTranslations t) {
+    return Container(
+      decoration: BoxDecoration(
+        color: _DS.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.withValues(alpha: 0.18)),
+      ),
+      child: Row(children: [
+        _toggleOption(
+          label: t['building_management_self'],
+          icon: Icons.home_work_rounded,
+          selected: managementType == BuildingManagementType.selfManaged,
+          onTap: () => setState(
+              () => managementType = BuildingManagementType.selfManaged),
+          isLeft: true,
+        ),
+        _toggleOption(
+          label: t['building_management_rented'],
+          icon: Icons.real_estate_agent_rounded,
+          selected: managementType == BuildingManagementType.rented,
+          onTap: () => setState(
+              () => managementType = BuildingManagementType.rented),
+          isLeft: false,
+        ),
+      ]),
+    );
+  }
+
+  // ── RENTER SECTION (rented-out buildings only) ────────────────
+  Widget _buildRenterSection(AppTranslations t) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _DS.primaryLight.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _DS.primary.withValues(alpha: 0.18)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionLabel(Icons.person_pin_rounded,
+              t['building_section_renter']),
+          const SizedBox(height: 10),
+          _styledField(
+            controller: renterNameController,
+            label: t['building_renter_name_label'],
+            hint: t['building_renter_name_hint'],
+            icon: Icons.person_rounded,
+            maxLength: 100,
+            validator: (v) =>
+                managementType == BuildingManagementType.rented &&
+                        (v == null || v.trim().isEmpty)
+                    ? t['building_error_renter_name_required']
+                    : null,
+          ),
+          const SizedBox(height: 12),
+          _styledField(
+            controller: renterPhoneController,
+            label: t['building_renter_phone_label'],
+            hint: '09xx xxx xxx',
+            icon: Icons.phone_rounded,
+            maxLength: 20,
+            keyboardType: TextInputType.phone,
+          ),
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(
+              child: _styledField(
+                controller: rentAmountController,
+                label: t['building_rent_amount_label'],
+                hint: '5,000,000',
+                icon: Icons.payments_rounded,
+                maxLength: 15,
+                keyboardType: TextInputType.number,
+                validator: (v) {
+                  if (managementType != BuildingManagementType.rented) {
+                    return null;
+                  }
+                  final amount = double.tryParse((v ?? '').trim());
+                  if (amount == null || amount <= 0) {
+                    return t['building_error_rent_amount_invalid'];
+                  }
+                  return null;
+                },
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _styledField(
+                controller: rentDueDayController,
+                label: t['building_rent_due_day_label'],
+                hint: '5',
+                icon: Icons.event_repeat_rounded,
+                maxLength: 2,
+                keyboardType: TextInputType.number,
+              ),
+            ),
+          ]),
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(
+              child: CompactLocalizedDatePicker(
+                labelText: t['building_rent_contract_start_label'],
+                initialDate: rentContractStart,
+                onDateChanged: (d) =>
+                    setState(() => rentContractStart = d),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: CompactLocalizedDatePicker(
+                labelText: t['building_rent_contract_end_label'],
+                initialDate: rentContractEnd,
+                onDateChanged: (d) =>
+                    setState(() => rentContractEnd = d),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 12),
+          _styledField(
+            controller: renterNotesController,
+            label: t['building_renter_notes_label'],
+            hint: t['building_renter_notes_hint'],
+            icon: Icons.notes_rounded,
+            maxLength: 300,
+            maxLines: 2,
+          ),
+        ],
       ),
     );
   }

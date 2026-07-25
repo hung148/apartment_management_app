@@ -169,6 +169,58 @@ class PaymentsNotifier extends ChangeNotifier {
     }
   }
 
+  // Add building rent payment (whole-building expense, no tenant/room)
+  Future<String?> addBuildingRentPayment({
+    required String organizationId,
+    required String buildingId,
+    required double amount,
+    required DateTime dueDate,
+    DateTime? startDate,
+    DateTime? endDate,
+    String? description,
+  }) async {
+    try {
+      final paymentId = await _paymentService.addBuildingRentPayment(
+        organizationId: organizationId,
+        buildingId: buildingId,
+        amount: amount,
+        dueDate: dueDate,
+        startDate: startDate,
+        endDate: endDate,
+        description: description,
+      );
+
+      if (paymentId != null) {
+        await refreshPayments(organizationId);
+      }
+
+      return paymentId;
+    } catch (e) {
+      print('Error adding building rent payment in notifier: $e');
+      rethrow;
+    }
+  }
+
+  // Generic payment update (used for editing amount/dueDate/description etc.)
+  Future<bool> updatePayment(
+    String paymentId,
+    Map<String, dynamic> data, {
+    String? organizationId,
+  }) async {
+    try {
+      final success = await _paymentService.updatePayment(paymentId, data);
+
+      if (success && organizationId != null) {
+        await refreshPayments(organizationId);
+      }
+
+      return success;
+    } catch (e) {
+      print('Error updating payment in notifier: $e');
+      rethrow;
+    }
+  }
+
   // Update payment status in both lists
   Future<void> updatePaymentStatus(String paymentId, PaymentStatus status) async {
     try {

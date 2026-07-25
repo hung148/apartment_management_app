@@ -52,6 +52,18 @@ class BuildingService {
         
         // Handle Custom specific data
         floorDetails: dialogResult['uniformRooms'] == false ? dialogResult['floorDetails'] : null,
+
+        managementType: BuildingManagementType.values.firstWhere(
+          (e) => e.name == dialogResult['managementType'],
+          orElse: () => BuildingManagementType.selfManaged,
+        ),
+        renterName: dialogResult['renterName'],
+        renterPhone: dialogResult['renterPhone'],
+        rentAmount: dialogResult['rentAmount'],
+        rentDueDay: dialogResult['rentDueDay'],
+        rentContractStart: dialogResult['rentContractStart'],
+        rentContractEnd: dialogResult['rentContractEnd'],
+        renterNotes: dialogResult['renterNotes'],
       );
 
       final docRef = await _firestore.collection('buildings').add(building.toMap());
@@ -177,6 +189,53 @@ class BuildingService {
   }
 
   // ========================================
+  // UPDATE - Update building management/renter info from dialog result
+  // ========================================
+  Future<bool> updateBuildingManagementFromDialogResult({
+    required String buildingId,
+    required Map<String, dynamic> dialogResult,
+  }) async {
+    if (FirebaseAuth.instance.currentUser == null) return false;
+
+    try {
+      final isRented = dialogResult['managementType'] == BuildingManagementType.rented.name;
+
+      final updateData = <String, dynamic>{
+        'managementType': dialogResult['managementType'],
+      };
+
+      if (isRented) {
+        updateData['renterName'] = dialogResult['renterName'];
+        updateData['renterPhone'] = dialogResult['renterPhone'];
+        updateData['rentAmount'] = dialogResult['rentAmount'];
+        updateData['rentDueDay'] = dialogResult['rentDueDay'];
+        updateData['rentContractStart'] = dialogResult['rentContractStart'] != null
+            ? Timestamp.fromDate(dialogResult['rentContractStart'])
+            : null;
+        updateData['rentContractEnd'] = dialogResult['rentContractEnd'] != null
+            ? Timestamp.fromDate(dialogResult['rentContractEnd'])
+            : null;
+        updateData['renterNotes'] = dialogResult['renterNotes'];
+      } else {
+        // Switched back to self-managed — clear renter fields
+        updateData['renterName'] = FieldValue.delete();
+        updateData['renterPhone'] = FieldValue.delete();
+        updateData['rentAmount'] = FieldValue.delete();
+        updateData['rentDueDay'] = FieldValue.delete();
+        updateData['rentContractStart'] = FieldValue.delete();
+        updateData['rentContractEnd'] = FieldValue.delete();
+        updateData['renterNotes'] = FieldValue.delete();
+      }
+
+      await _firestore.collection('buildings').doc(buildingId).update(updateData);
+      return true;
+    } catch (e) {
+      logger.e('Error updating building management info', error: e);
+      return false;
+    }
+  }
+
+  // ========================================
   // UPDATE - Update specific fields
   // ========================================
   Future<bool> updateBuildingName(String buildingId, String newName) async {
@@ -185,6 +244,43 @@ class BuildingService {
 
   Future<bool> updateBuildingAddress(String buildingId, String newAddress) async {
     return updateBuilding(buildingId, {'address': newAddress});
+  }
+
+  // ========================================
+  // UPDATE - Set building management type (self-managed vs rented)
+  // ========================================
+  Future<bool> updateBuildingManagementType(
+    String buildingId,
+    BuildingManagementType type,
+  ) async {
+    return updateBuilding(buildingId, {'managementType': type.name});
+  }
+
+  // ========================================
+  // UPDATE - Update renter / rental info (only meaningful when rented)
+  // ========================================
+  Future<bool> updateRenterInfo(
+    String buildingId, {
+    String? renterName,
+    String? renterPhone,
+    double? rentAmount,
+    int? rentDueDay,
+    DateTime? rentContractStart,
+    DateTime? rentContractEnd,
+    String? renterNotes,
+  }) async {
+    final data = <String, dynamic>{
+      if (renterName != null) 'renterName': renterName,
+      if (renterPhone != null) 'renterPhone': renterPhone,
+      if (rentAmount != null) 'rentAmount': rentAmount,
+      if (rentDueDay != null) 'rentDueDay': rentDueDay,
+      if (rentContractStart != null)
+        'rentContractStart': Timestamp.fromDate(rentContractStart),
+      if (rentContractEnd != null)
+        'rentContractEnd': Timestamp.fromDate(rentContractEnd),
+      if (renterNotes != null) 'renterNotes': renterNotes,
+    };
+    return updateBuilding(buildingId, data);
   }
 
   // ========================================

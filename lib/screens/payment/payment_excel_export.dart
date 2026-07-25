@@ -88,6 +88,7 @@ class PaymentExcelExporter {
       'maintenance': {'vi': 'Phí bảo trì', 'en': 'Maintenance', 'bilingual': 'Phí bảo trì / Maintenance'},
       'deposit': {'vi': 'Tiền cọc', 'en': 'Deposit', 'bilingual': 'Tiền cọc / Deposit'},
       'penalty': {'vi': 'Tiền phạt', 'en': 'Penalty', 'bilingual': 'Tiền phạt / Penalty'},
+      'buildingRent': {'vi': 'Tiền thuê tòa nhà', 'en': 'Building Rent', 'bilingual': 'Tiền thuê tòa nhà / Building Rent'},
       'other': {'vi': 'Khác', 'en': 'Other', 'bilingual': 'Khác / Other'},
       'meter_reading': {'vi': 'Chỉ số:', 'en': 'Reading:', 'bilingual': 'Chỉ số / Reading:'},
       'billing_cycle': {'vi': 'Kỳ:', 'en': 'Period:', 'bilingual': 'Kỳ / Period:'},

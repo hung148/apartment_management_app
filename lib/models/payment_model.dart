@@ -9,6 +9,8 @@ enum PaymentType {
   maintenance,    // Phí bảo trì
   deposit,        // Tiền cọc
   penalty,        // Tiền phạt
+  buildingRent, 
+  hourlyRent,
   other,          // Khác
 }
 
@@ -93,6 +95,7 @@ class Payment {
   final double? lateFee;
   final bool isRecurring;
   final String? recurringParentId;
+  final String? bookingId; 
 
   Payment({
     required this.id,
@@ -142,6 +145,7 @@ class Payment {
     this.lateFee,
     this.isRecurring = false,
     this.recurringParentId,
+    this.bookingId,
   });
 
   // Helper getters
@@ -151,6 +155,12 @@ class Payment {
                         (status == PaymentStatus.pending && DateTime.now().isAfter(dueDate));
   bool get isPartiallyPaid => status == PaymentStatus.partial;
   
+  // Building-level rent received FROM a renter leasing the whole building
+  // (income), not a per-tenant payment. roomId will be empty and tenantId
+  // will be null for this type.
+  bool get isBuildingLevelIncome => type == PaymentType.buildingRent;
+  bool get isHourlyBookingIncome => type == PaymentType.hourlyRent;
+
   double get remainingAmount => amount - paidAmount + (lateFee ?? 0) + (taxAmount ?? 0);
   double get totalAmount => amount + (lateFee ?? 0) + (taxAmount ?? 0);
   
@@ -246,6 +256,7 @@ class Payment {
       'lateFee': lateFee,
       'isRecurring': isRecurring,
       'recurringParentId': recurringParentId,
+      'bookingId': bookingId,
     };
   }
 
@@ -323,6 +334,7 @@ class Payment {
       lateFee: (map['lateFee'] as num?)?.toDouble(),
       isRecurring: map['isRecurring'] ?? false,
       recurringParentId: map['recurringParentId'],
+      bookingId: map['bookingId'],
     );
   }
 
@@ -370,6 +382,7 @@ class Payment {
     double? lateFee,
     bool? isRecurring,
     String? recurringParentId,
+    String? bookingId,
   }) {
     return Payment(
       id: id ?? this.id,
@@ -414,6 +427,7 @@ class Payment {
       lateFee: lateFee ?? this.lateFee,
       isRecurring: isRecurring ?? this.isRecurring,
       recurringParentId: recurringParentId ?? this.recurringParentId,
+      bookingId: bookingId ?? this.bookingId,
     );
   }
 
@@ -436,6 +450,10 @@ class Payment {
         return 'Tiền cọc';
       case PaymentType.penalty:
         return 'Tiền phạt';
+      case PaymentType.buildingRent:
+        return 'Tiền thuê tòa nhà';
+      case PaymentType.hourlyRent:
+        return 'Tiền thuê theo giờ';
       case PaymentType.other:
         return 'Khác';
     }

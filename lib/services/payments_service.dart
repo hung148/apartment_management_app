@@ -275,6 +275,46 @@ class PaymentService {
     }
   }
 
+    // ========================================
+  // CREATE - Add building rent payment (renter -> you, income)
+  // ========================================
+  Future<String?> addBuildingRentPayment({
+    required String organizationId,
+    required String buildingId,
+    required double amount,
+    required DateTime dueDate,
+    DateTime? startDate,
+    DateTime? endDate,
+    String? description,
+  }) async {
+    try {
+      final payment = Payment(
+        id: '',
+        organizationId: organizationId,
+        buildingId: buildingId,
+        roomId: '',          // sentinel: building-level, not tied to a room
+        tenantId: null,      // no tenant involved
+        tenantName: null,
+        type: PaymentType.buildingRent,
+        status: PaymentStatus.pending,
+        amount: amount,
+        dueDate: dueDate,
+        billingStartDate: startDate,
+        billingEndDate: endDate,
+        description: description ??
+            (startDate != null && endDate != null
+                ? 'Tiền thuê tòa nhà từ ${_formatDate(startDate)} đến ${_formatDate(endDate)}'
+                : 'Tiền thuê tòa nhà'),
+        createdAt: DateTime.now(),
+      );
+
+      return await addPayment(payment);
+    } catch (e) {
+      print('Error adding building rent payment: $e');
+      return null;
+    }
+  }
+
   // ========================================
   // READ - Get payment by ID
   // ========================================
@@ -499,6 +539,31 @@ class PaymentService {
   }
 
   // ========================================
+  // READ - Get building rent payments only (excludes tenant payments)
+  // ========================================
+  Future<List<Payment>> getBuildingRentPayments(
+    String organizationId,
+    String buildingId,
+  ) async {
+    try {
+      final snapshot = await _firestore
+          .collection('payments')
+          .where('organizationId', isEqualTo: organizationId)
+          .where('buildingId', isEqualTo: buildingId)
+          .where('type', isEqualTo: PaymentType.buildingRent.name)
+          .orderBy('dueDate', descending: true)
+          .get();
+
+      return snapshot.docs
+          .map((doc) => Payment.fromMap(doc.id, doc.data()))
+          .toList();
+    } catch (e) {
+      print('Error getting building rent payments: $e');
+      return [];
+    }
+  }
+
+  // ========================================
   // READ - Get last electricity reading for a room
   // ========================================
   Future<Map<String, dynamic>?> getLastElectricityReading(String organizationId, String roomId) async {
@@ -576,6 +641,22 @@ class PaymentService {
         .collection('payments')
         .where('organizationId', isEqualTo: organizationId)
         .where('buildingId', isEqualTo: buildingId)
+        .orderBy('dueDate', descending: true)
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => Payment.fromMap(doc.id, doc.data()))
+            .toList());
+  }
+
+  Stream<List<Payment>> streamBuildingRentPayments(
+    String organizationId,
+    String buildingId,
+  ) {
+    return _firestore
+        .collection('payments')
+        .where('organizationId', isEqualTo: organizationId)
+        .where('buildingId', isEqualTo: buildingId)
+        .where('type', isEqualTo: PaymentType.buildingRent.name)
         .orderBy('dueDate', descending: true)
         .snapshots()
         .map((snapshot) => snapshot.docs
@@ -745,9 +826,25 @@ class PaymentService {
     String paymentId,
     PaymentStatus status,
   ) async {
-    return updatePayment(paymentId, {
-      'status': status.name,
-    });
+    try {
+      final updates = <String, dynamic>{'status': status.name};
+
+      // Flipping to paid should also settle paidAmount, same as markAsPaid.
+      // Without this, callers that only toggle status (e.g. building rent's
+      // "mark as paid") leave paidAmount at 0 while status says paid.
+      if (status == PaymentStatus.paid) {
+        final payment = await getPaymentById(paymentId);
+        if (payment != null && payment.paidAmount == 0) {
+          updates['paidAmount'] = payment.totalWithAllFees;
+          updates['paidAt'] = Timestamp.now();
+        }
+      }
+
+      return updatePayment(paymentId, updates);
+    } catch (e) {
+      print('Error updating payment status: $e');
+      return false;
+    }
   }
 
   // ========================================

@@ -10,6 +10,7 @@ import 'package:phan_mem_quan_ly_can_ho/models/tenants_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/payment_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/rooms_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/building/building_dialog.dart';
+import 'package:phan_mem_quan_ly_can_ho/screens/building/building_rent_screen.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/payment/delete_payment_dialog.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/payment/payment_dialog.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/payment/view_edit_dialogs.dart';
@@ -22,6 +23,7 @@ import 'package:phan_mem_quan_ly_can_ho/services/payments_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/payments_notifier.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/room_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/app_router.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/shared.dart';
 import 'package:flutter/gestures.dart';
 import 'package:intl/intl.dart' hide TextDirection;
@@ -160,6 +162,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
 
   String? _selectedBuildingId;
   String? _selectedOccupancyBuildingId;
+  String? _selectedRevenueBuildingId;
 
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _filterChipsScrollController = ScrollController();
@@ -399,6 +402,15 @@ class _OrganizationScreenState extends State<OrganizationScreen>
         initialRoomArea: building.roomArea,
         initialFloorDetails: building.floorDetails,
         initialFloorRoomCounts: building.floorRoomCounts,
+
+        initialManagementType: building.managementType,
+        initialRenterName: building.renterName,
+        initialRenterPhone: building.renterPhone,
+        initialRentAmount: building.rentAmount,
+        initialRentDueDay: building.rentDueDay,
+        initialRentContractStart: building.rentContractStart,
+        initialRentContractEnd: building.rentContractEnd,
+        initialRenterNotes: building.renterNotes,
       ),
     );
 
@@ -1001,6 +1013,38 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                         if (isAdmin)
                           _buildAddBuildingButton(t),
 
+                        const SizedBox(height: 10),
+                        Material(
+                          color: const Color(0xFFEEEDFE),
+                          borderRadius: BorderRadius.circular(14),
+                          child: InkWell(
+                            onTap: () => Navigator.pushNamed(
+                              context,
+                              AppRouter.availabilityCalendarScreen,
+                              arguments: {'building': null, 'organization': widget.organization},
+                            ),
+                            borderRadius: BorderRadius.circular(14),
+                            hoverColor: const Color(0xFFDCD9F8),
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: const Color(0xFF534AB7), width: 1.5),
+                              ),
+                              child: const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.calendar_month_rounded, color: Color(0xFF534AB7), size: 20),
+                                  SizedBox(width: 6),
+                                  Text('Xem lịch tất cả toà nhà',
+                                      style: TextStyle(color: Color(0xFF534AB7), fontSize: 14, fontWeight: FontWeight.w600)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+
                         // ── Section header ───────────────────────────
                         if (buildings.isNotEmpty)
                           Padding(
@@ -1078,8 +1122,19 @@ class _OrganizationScreenState extends State<OrganizationScreen>
     return FutureBuilder<List<dynamic>>(
       future: _summaryBarFuture,
       builder: (context, snap) {
-        final rooms = snap.data?[0] as List<Room>? ?? [];
-        final tenants = snap.data?[1] as List<Tenant>? ?? [];
+        final allRooms = snap.data?[0] as List<Room>? ?? [];
+        final allTenants = snap.data?[1] as List<Tenant>? ?? [];
+
+        // Rented buildings aren't room-managed, so exclude their rooms/tenants
+        // from the room-count and occupancy stats (still counted in "buildings").
+        final managedBuildingIds =
+            buildings.where((b) => !b.isRented).map((b) => b.id).toSet();
+        final rooms =
+            allRooms.where((r) => managedBuildingIds.contains(r.buildingId)).toList();
+        final tenants = allTenants
+            .where((tn) => managedBuildingIds.contains(tn.buildingId))
+            .toList();
+
         final activeTenants = tenants.where((t) => t.status == TenantStatus.active).length;
         final occupancyPct = rooms.isNotEmpty
             ? (activeTenants / rooms.length * 100).round()
@@ -1320,69 +1375,114 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                             ),
                           ),
                         ),
+
+                        if (building.isRented) ...[
+                          const SizedBox(height: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFAEEDA),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.real_estate_agent_rounded,
+                                    size: 11, color: Color(0xFF854F0B)),
+                                const SizedBox(width: 4),
+                                Text(t['building_management_rented'],
+                                    style: const TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                        color: Color(0xFF854F0B))),
+                              ],
+                            ),
+                          ),
+                        ],
                       ],
                     ),
 
                     const SizedBox(height: 14),
 
-                    // Stats row
-                    Row(
-                      children: [
-                        _buildingStatChip(
-                          value: rooms.length.toString(),
-                          label: t['building_stat_total_rooms'],
-                          color: color,
-                        ),
-                        const SizedBox(width: 8),
-                        _buildingStatChip(
-                          value: occupied.toString(),
-                          label: t['building_stat_rented'],
-                          color: const Color(0xFF3B6D11),
-                        ),
-                        const SizedBox(width: 8),
-                        _buildingStatChip(
-                          value: vacant.toString(),
-                          label: t['building_stat_vacant'],
-                          color: vacant == 0
-                              ? Colors.grey
-                              : const Color(0xFF854F0B),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 14),
-
-                    // Occupancy bar
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          t['building_occupancy_label'],
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.grey.shade500,
+                    if (!building.isRented) ...[
+                      // Stats row
+                      Row(
+                        children: [
+                          _buildingStatChip(
+                            value: rooms.length.toString(),
+                            label: t['building_stat_total_rooms'],
+                            color: color,
                           ),
-                        ),
-                        Text(
-                          '${(pct * 100).round()}%',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: barColor,
+                          const SizedBox(width: 8),
+                          _buildingStatChip(
+                            value: occupied.toString(),
+                            label: t['building_stat_rented'],
+                            color: const Color(0xFF3B6D11),
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: LinearProgressIndicator(
-                        value: pct,
-                        backgroundColor: barColor.withValues(alpha: 0.12),
-                        color: barColor,
-                        minHeight: 7,
+                          const SizedBox(width: 8),
+                          _buildingStatChip(
+                            value: vacant.toString(),
+                            label: t['building_stat_vacant'],
+                            color: vacant == 0
+                                ? Colors.grey
+                                : const Color(0xFF854F0B),
+                          ),
+                        ],
                       ),
-                    ),
+
+                      const SizedBox(height: 14),
+
+                      // Occupancy bar
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            t['building_occupancy_label'],
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey.shade500,
+                            ),
+                          ),
+                          Text(
+                            '${(pct * 100).round()}%',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: barColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          value: pct,
+                          backgroundColor: barColor.withValues(alpha: 0.12),
+                          color: barColor,
+                          minHeight: 7,
+                        ),
+                      ),
+                    ] else ...[
+                      // Rent summary (replaces room stats for rented buildings)
+                      Row(
+                        children: [
+                          _buildingStatChip(
+                            value: building.rentAmount != null
+                                ? _formatCurrency(building.rentAmount!)
+                                : '—',
+                            label: t['building_rent_amount_label'],
+                            color: const Color(0xFF854F0B),
+                          ),
+                          const SizedBox(width: 8),
+                          _buildingStatChip(
+                            value: building.rentDueDay?.toString() ?? '—',
+                            label: t['building_rent_due_day_label'],
+                            color: const Color(0xFF854F0B),
+                          ),
+                        ],
+                      ),
+                    ],
 
                     // Created at
                     const SizedBox(height: 10),
@@ -1401,14 +1501,46 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   child: Row(
                     children: [
-                      _footerActionBtn(
-                        icon: Icons.meeting_room_rounded,
-                        label: t['manage_rooms'],
-                        color: color,
-                        bgColor: color.withValues(alpha: 0.08),
-                        onTap: () => _navigateToBuildingRooms(building),
-                      ),
-                      const SizedBox(width: 8),
+                      if (building.isRented) ...[
+                        _footerActionBtn(
+                          icon: Icons.real_estate_agent_rounded,
+                          label: t['building_rent_tab_label'],
+                          color: const Color(0xFF854F0B),
+                          bgColor: const Color(0xFFFAEEDA),
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => BuildingRentScreen(
+                                organization: widget.organization,
+                                building: building,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                      if (!building.isRented) ...[
+                        _footerActionBtn(
+                          icon: Icons.meeting_room_rounded,
+                          label: t['manage_rooms'],
+                          color: color,
+                          bgColor: color.withValues(alpha: 0.08),
+                          onTap: () => _navigateToBuildingRooms(building),
+                        ),
+                        const SizedBox(width: 8),
+                        _footerActionBtn(
+                          icon: Icons.calendar_month_rounded,
+                          label: 'Lịch theo giờ',
+                          color: const Color(0xFF534AB7),
+                          bgColor: const Color(0xFFEEEDFE),
+                          onTap: () => Navigator.pushNamed(
+                            context,
+                            AppRouter.availabilityCalendarScreen,
+                            arguments: {'building': building, 'organization': widget.organization},
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
                       _footerActionBtn(
                         icon: Icons.edit_rounded,
                         label: t['edit'],
@@ -1428,30 +1560,52 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                   ),
                 ),
               ] else
-                InkWell(
-                  onTap: () => _navigateToBuildingRooms(building),
-                  child: Padding(
+                if (!building.isRented) ...[
+                  InkWell(
+                    onTap: () => _navigateToBuildingRooms(building),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.meeting_room_rounded, size: 16, color: color),
+                          const SizedBox(width: 6),
+                          Text(
+                            t['building_action_view_rooms'],
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: color,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Icon(Icons.arrow_forward_ios_rounded,
+                              size: 12, color: color),
+                        ],
+                      ),
+                    ),
+                  ),
+                ] else ...[
+                  Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.meeting_room_rounded, size: 16, color: color),
+                        Icon(Icons.real_estate_agent_rounded,
+                            size: 15, color: const Color(0xFF854F0B).withValues(alpha: 0.7)),
                         const SizedBox(width: 6),
                         Text(
-                          t['building_action_view_rooms'],
+                          t['building_rented_footer_notice'],
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
-                            color: color,
+                            color: const Color(0xFF854F0B).withValues(alpha: 0.7),
                           ),
                         ),
-                        const SizedBox(width: 4),
-                        Icon(Icons.arrow_forward_ios_rounded,
-                            size: 12, color: color),
                       ],
                     ),
                   ),
-                ),
+                ],
             ],
           ),
         );
@@ -1552,6 +1706,8 @@ class _OrganizationScreenState extends State<OrganizationScreen>
     return ListenableBuilder(
       listenable: _paymentsNotifier,
       builder: (context, _) {
+        // Building-rent payments (income from a whole-building renter) count
+        // as revenue like any other payment, so no filtering needed here.
         final allPayments = _paymentsNotifier.payments;
 
         return FutureBuilder<Membership?>(
@@ -2396,7 +2552,14 @@ class _OrganizationScreenState extends State<OrganizationScreen>
         final buildings = snapshot.data![2] as List<Building>;
         final rooms = snapshot.data![3] as List<Room>;
 
-        final buildingOccupancy = _calculateBuildingOccupancy(buildings, rooms, tenants);
+        // Rented buildings aren't room-managed — exclude them from every
+        // room/occupancy-based stat below (KPI grid, occupancy chart, trend).
+        final managedBuildings = buildings.where((b) => !b.isRented).toList();
+        final managedBuildingIds = managedBuildings.map((b) => b.id).toSet();
+        final managedRooms =
+            rooms.where((r) => managedBuildingIds.contains(r.buildingId)).toList();
+
+        final buildingOccupancy = _calculateBuildingOccupancy(managedBuildings, managedRooms, tenants);
 
         // ✅ ListenableBuilder ONLY wraps the payment-derived section
         // Tenant/building/room charts are completely outside it
@@ -2413,9 +2576,16 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                 ListenableBuilder(
                   listenable: _paymentsNotifier,
                   builder: (context, _) {
+                    // Building-rent payments (income from a whole-building
+                    // renter) count toward revenue/payment stats like any
+                    // other payment, so no filtering needed here.
                     final payments = _paymentsNotifier.payments;
 
-                    final activeTenants = tenants.where((tn) => tn.status == TenantStatus.active).length;
+                    final activeTenants = tenants
+                        .where((tn) =>
+                            tn.status == TenantStatus.active &&
+                            managedBuildingIds.contains(tn.buildingId))
+                        .length;
                     final paidPayments = payments.where((p) => p.status == PaymentStatus.paid).length;
                     final pendingPayments = payments.where((p) => p.status == PaymentStatus.pending).length;
                     final overduePayments = payments.where((p) => p.isOverdue).length;
@@ -2431,6 +2601,21 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                     });
 
                     final monthlyRevenue = _calculateMonthlyRevenue(payments);
+
+                    // Building-rent income: derived from the same unfiltered
+                    // `payments` list now that Step 4 stopped excluding it.
+                    final buildingRentPayments =
+                        payments.where((p) => p.isBuildingLevelIncome).toList();
+                    final hasRentedBuildings = buildings.any((b) => b.isRented);
+                    final totalBuildingRentRevenue =
+                        buildingRentPayments.fold<double>(0, (sum, p) {
+                      if (p.status == PaymentStatus.paid && p.paidAmount == 0) {
+                        return sum + p.totalWithAllFees;
+                      }
+                      return sum + p.paidAmount;
+                    });
+                    final monthlyBuildingRentRevenue =
+                        _calculateMonthlyRevenue(buildingRentPayments);
 
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2495,7 +2680,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                           t: t,
                           buildings: buildings,
                           activeTenants: activeTenants,
-                          rooms: rooms,
+                          rooms: managedRooms,
                           paidPayments: paidPayments,
                           pendingPayments: pendingPayments,
                           overduePayments: overduePayments,
@@ -2529,6 +2714,37 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                           overdue: overduePayments,
                           total: totalPayments,
                         ),
+
+                        // ── Building-rent income: only shown for orgs that ──
+                        // actually have at least one rented-out building.
+                        if (hasRentedBuildings) ...[
+                          _statsSectionLabel(t['stat_building_rent_income']),
+                          Row(children: [
+                            Expanded(child: _buildRevenueCard(
+                              t: t, label: t['stat_building_rent_total'],
+                              amount: totalBuildingRentRevenue,
+                              count: buildingRentPayments
+                                  .where((p) => p.status == PaymentStatus.paid)
+                                  .length,
+                              color: const Color(0xFF185FA5),
+                              bgColor: const Color(0xFFE1EEFA),
+                              icon: Icons.real_estate_agent_outlined,
+                            )),
+                          ]),
+
+                          _statsSectionLabel(t['stat_building_rent_monthly']),
+                          _MonthlyRevenueChart(monthlyRevenue: monthlyBuildingRentRevenue),
+                        ],
+
+                        // ── Revenue by building — ALL buildings, not just rented ones ──────
+                        _statsSectionLabel(t['stat_revenue_by_building']),
+                        _buildRevenueByBuildingSection(
+                          _calculateRevenueByBuilding(payments, buildings),
+                          buildings,
+                        ),
+
+                        _statsSectionLabel(t['stat_revenue_distribution']),
+                        _buildRevenueByBuildingPieChart(_calculateRevenueByBuilding(payments, buildings)),
                       ],
                     );
                   },
@@ -2538,7 +2754,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                 // These only depend on tenants/buildings/rooms from _statsFuture
 
                 _statsSectionLabel(t['stat_occupancy_by_building']),
-                _buildBuildingOccupancyChart(buildingOccupancy, buildings),
+                _buildBuildingOccupancyChart(buildingOccupancy, managedBuildings),
 
                 _statsSectionLabel(t['stat_tenant_status']),
                 _buildTenantStatusCard(
@@ -2551,7 +2767,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                 ),
 
                 _statsSectionLabel(t['stat_occupancy_trend']),
-                _buildMonthlyOccupancyTrendChart(buildings, rooms, tenants),
+                _buildMonthlyOccupancyTrendChart(managedBuildings, managedRooms, tenants),
               ],
             ),
           ),
@@ -3056,7 +3272,9 @@ class _OrganizationScreenState extends State<OrganizationScreen>
       final monthlyRevenue = _calculateMonthlyRevenue(payments);
 
       final Map<String, _BuildingStats> statsByBuilding = {};
-      for (final b in buildings) {
+      // Rented buildings aren't room-managed — exclude them from the
+      // per-building room/occupancy breakdown table (same as on-screen stats).
+      for (final b in buildings.where((b) => !b.isRented)) {
         statsByBuilding[b.id] = _BuildingStats(
           buildingId: b.id,
           buildingName: b.name,
@@ -4125,7 +4343,9 @@ class _OrganizationScreenState extends State<OrganizationScreen>
       int grandRooms = 0;
       int grandOccupied = 0;
 
-      for (var b in buildings) {
+      // Rented buildings aren't room-managed — exclude them from the
+      // per-building room/occupancy breakdown sheet (same as on-screen stats).
+      for (var b in buildings.where((b) => !b.isRented)) {
         final bRooms =
             rooms.where((r) => r.buildingId == b.id).length;
         final bOccupied = rooms
@@ -4312,6 +4532,150 @@ class _OrganizationScreenState extends State<OrganizationScreen>
     return monthlyRevenue;
   }
 
+  Map<String, Map<String, dynamic>> _calculateRevenueByBuilding(
+    List<Payment> payments,
+    List<Building> buildings,
+  ) {
+    final Map<String, Map<String, dynamic>> breakdown = {
+      for (final b in buildings) b.id: {'name': b.name, 'collected': 0.0, 'pending': 0.0},
+    };
+
+    for (final p in payments) {
+      if (p.status == PaymentStatus.cancelled) continue;
+      if (!breakdown.containsKey(p.buildingId)) continue;
+
+      if (p.status == PaymentStatus.paid) {
+        // Same fallback the KPI cards already use — fixes the "0đ despite paid" bug.
+        final amount = p.paidAmount > 0 ? p.paidAmount : p.totalWithAllFees;
+        breakdown[p.buildingId]!['collected'] =
+            (breakdown[p.buildingId]!['collected'] as double) + amount;
+      } else {
+        breakdown[p.buildingId]!['pending'] =
+            (breakdown[p.buildingId]!['pending'] as double) + p.remainingAmount;
+      }
+    }
+
+    return breakdown;
+  }
+
+  Widget _buildRevenueByBuildingSection(
+    Map<String, Map<String, dynamic>> breakdown,
+    List<Building> buildings,
+  ) {
+    final t = AppTranslations.of(context);
+    if (breakdown.isEmpty) {
+      return _buildChartEmptyState(Icons.apartment_outlined, t['stat_no_building_data']);
+    }
+
+    final displayBreakdown = _selectedRevenueBuildingId == null
+        ? breakdown
+        : (breakdown.containsKey(_selectedRevenueBuildingId)
+            ? {_selectedRevenueBuildingId!: breakdown[_selectedRevenueBuildingId]!}
+            : <String, Map<String, dynamic>>{});
+
+    final maxCollected = breakdown.values
+        .map((d) => d['collected'] as double)
+        .fold<double>(0, (a, b) => a > b ? a : b);
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: _cardDecoration(),
+      child: Column(
+        mainAxisSize: MainAxisSize.min, // ← hug content, don't stretch
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Text(t['stat_filter_by_building'],
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  border: Border.all(color: Colors.grey.shade200),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String?>(
+                    isExpanded: true,
+                    value: _selectedRevenueBuildingId,
+                    hint: Text(t['stat_all_buildings'], style: const TextStyle(fontSize: 13)),
+                    style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurface),
+                    items: [
+                      DropdownMenuItem<String?>(value: null, child: Text(t['stat_all_buildings'])),
+                      ...buildings.map((b) => DropdownMenuItem<String?>(value: b.id, child: Text(b.name))),
+                    ],
+                    onChanged: (value) => setState(() => _selectedRevenueBuildingId = value),
+                  ),
+                ),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 16),
+
+          // ── Hug content, cap at 320, scroll beyond that ──
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 320),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: displayBreakdown.entries
+                    .map((e) => _revenueBuildingRow(e, maxCollected))
+                    .toList(),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _revenueBuildingRow(MapEntry<String, Map<String, dynamic>> entry, double maxCollected) {
+    final t = AppTranslations.of(context);
+    final data = entry.value;
+    final buildingName = data['name'] as String? ?? '';
+    final collected = data['collected'] as double;
+    final pending = data['pending'] as double;
+    final ratio = maxCollected > 0 ? collected / maxCollected : 0.0;
+    const barColor = Color(0xFF185FA5);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(child: Text(buildingName,
+                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13))),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                decoration: BoxDecoration(
+                    color: barColor.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(20)),
+                child: Text(_formatCurrency(collected),
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: barColor)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: LinearProgressIndicator(
+                value: ratio, backgroundColor: barColor.withValues(alpha: 0.1),
+                color: barColor, minHeight: 10),
+          ),
+          if (pending > 0) ...[
+            const SizedBox(height: 4),
+            Text(t.textWithParams('stat_pending_amount', {'amount': _formatCurrency(pending)}),
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+          ],
+        ],
+      ),
+    );
+  }
+
   Map<String, Map<String, dynamic>> _calculateBuildingOccupancy(
     List<Building> buildings,
     List<Room> rooms,
@@ -4351,6 +4715,73 @@ class _OrganizationScreenState extends State<OrganizationScreen>
       };
     }
     return occupancy;
+  }
+
+  Widget _buildRevenueByBuildingPieChart(Map<String, Map<String, dynamic>> breakdown) {
+    final t = AppTranslations.of(context);
+    final entries = breakdown.entries
+        .where((e) => (e.value['collected'] as double) > 0)
+        .toList();
+    final total = entries.fold<double>(0, (s, e) => s + (e.value['collected'] as double));
+
+    if (entries.isEmpty || total == 0) {
+      return _buildChartEmptyState(Icons.pie_chart_outline_rounded, t['stat_no_revenue_data']);
+    }
+
+    final sections = [
+      for (var i = 0; i < entries.length; i++)
+        _DonutSection(entries[i].value['collected'] as double, _buildingColors[i % _buildingColors.length]),
+    ];
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: _cardDecoration(),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 90,
+            height: 90,
+            child: CustomPaint(
+              painter: _DonutPainter(sections: sections, centerText: _formatCurrencyShort(total)),
+            ),
+          ),
+          const SizedBox(width: 24),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (var i = 0; i < entries.length; i++)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Row(children: [
+                      Container(width: 10, height: 10,
+                          decoration: BoxDecoration(
+                              color: _buildingColors[i % _buildingColors.length],
+                              borderRadius: BorderRadius.circular(3))),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text(entries[i].value['name'] as String? ?? '',
+                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                          overflow: TextOverflow.ellipsis)),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                            color: _buildingColors[i % _buildingColors.length].withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(20)),
+                        child: Text(
+                            '${((entries[i].value['collected'] as double) / total * 100).toStringAsFixed(0)}%',
+                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
+                                color: _buildingColors[i % _buildingColors.length])),
+                      ),
+                    ]),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Map<String, double> _calculateMonthlyOccupancyTrend(
@@ -5280,24 +5711,20 @@ class _OrganizationScreenState extends State<OrganizationScreen>
               child: Row(
                 children: [
                   if (member.role == 'member')
-                    Expanded(
-                      child: _footerActionBtn(
-                        icon: Icons.arrow_upward_rounded,
-                        label: t['promote_to_admin'],
-                        color: const Color(0xFF534AB7),
-                        bgColor: const Color(0xFFEEEDFE),
-                        onTap: () => _promoteMember(member, myMembership, t),
-                      ),
+                    _footerActionBtn(
+                      icon: Icons.arrow_upward_rounded,
+                      label: t['promote_to_admin'],
+                      color: const Color(0xFF534AB7),
+                      bgColor: const Color(0xFFEEEDFE),
+                      onTap: () => _promoteMember(member, myMembership, t),
                     ),
                   if (member.role == 'member') const SizedBox(width: 8),
-                  Expanded(
-                    child: _footerActionBtn(
+                  _footerActionBtn(
                       icon: Icons.person_remove_outlined,
                       label: t['remove_from_org'],
                       color: const Color(0xFFA32D2D),
                       bgColor: const Color(0xFFFCEBEB),
                       onTap: () => _removeMember(member, myMembership, displayName, t),
-                    ),
                   ),
                 ],
               ),

@@ -58,6 +58,7 @@ String _typeLabel(PaymentType type, AppTranslations t) {
     PaymentType.maintenance: 'payment_type_maintenance',
     PaymentType.deposit: 'payment_type_deposit',
     PaymentType.penalty: 'payment_type_penalty',
+    PaymentType.buildingRent: 'payment_type_building_rent', 
     PaymentType.other: 'payment_type_other',
   };
   final key = keyMap[type];

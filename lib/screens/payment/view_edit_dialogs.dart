@@ -31,6 +31,7 @@ Map<String, String> _typeLabels(AppTranslations t) => {
   'maintenance': t['payment_type_maintenance'],
   'deposit': t['payment_type_deposit'],
   'penalty': t['payment_type_penalty'],
+  'buildingRent': t['payment_type_building_rent'],
   'other': t['payment_type_other'],
 };
 
@@ -95,6 +96,10 @@ Color _typeColor(PaymentType type) {
       return const Color(0xFF3B82F6);
     case PaymentType.penalty:
       return const Color(0xFFDC2626);
+    case PaymentType.buildingRent:
+      return const Color(0xFF475569);
+    case PaymentType.hourlyRent:
+      return const Color(0xFF4F46E5);
     case PaymentType.other:
       return const Color(0xFF6B7280);
   }
@@ -1376,7 +1381,8 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                             decoration: _inputDec(
                                 dt['add_item_type_label'],
                                 Icons.category_rounded),
-                            items: PaymentType.values
+                             items: PaymentType.values
+                                .where((t) => t != PaymentType.buildingRent)
                                 .map((t) => DropdownMenuItem(
                                       value: t,
                                       child: Row(children: [

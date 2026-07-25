@@ -1,9 +1,11 @@
+import 'package:phan_mem_quan_ly_can_ho/models/buildings_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/building_room.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/dashboard_screen.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/login_screen.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/organization_screen.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/room_detail.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/splash_screen.dart';
+import 'package:phan_mem_quan_ly_can_ho/screens/availability_calendar_screen.dart';
 import 'package:flutter/material.dart';
 
 class AppRouter {
@@ -17,6 +19,7 @@ class AppRouter {
   static const String paymentScreen = '/payemts';
   static const String tenantScreen = '/tenants';
   static const String reportScreen = '/report';
+  static const String availabilityCalendarScreen = '/availability-calendar';
 
   /// Use this with [Navigator.pushReplacement] for a smooth fade transition.
   /// e.g. Navigator.pushReplacement(context, AppRouter.fadeRoute(const DashboardScreen()));
@@ -63,6 +66,15 @@ class AppRouter {
         return MaterialPageRoute(
           builder: (_) => RoomDetailScreen(
             room: args['room'],
+            organization: args['organization'],
+          ),
+          settings: settings,
+        );
+      case availabilityCalendarScreen:
+        final args = settings.arguments as Map<String, dynamic>;
+        return MaterialPageRoute(
+          builder: (_) => AvailabilityCalendarScreen(
+            initialBuilding: args['building'] as Building?,
             organization: args['organization'],
           ),
           settings: settings,

@@ -1,14 +1,11 @@
 add search to building tab
 add search for room
 
-add search to drop down menu
+Khong xac dinh nguoi thue building rent
 
-fix change every drop down to combobox
+add payment hourly
+  
 
-change apartment type input field to combobox and add option
-
-add thue toa nha
- 
 You should apply this same pattern to every Firestore method in your service classes, since any of them could be in-flight during logout:
 dart// Add this at the top of every Firestore method
 if (FirebaseAuth.instance.currentUser == null) return null; // or [] or false etc.
@@ -19,7 +16,7 @@ animation when log out and log in
 add ability to choose which one to display and counted
 for payment pdf export
 
-add app icon
+add app icon1
 
 add language support
 

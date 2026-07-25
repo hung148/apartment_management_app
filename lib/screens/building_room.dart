@@ -5,6 +5,7 @@ import 'package:phan_mem_quan_ly_can_ho/services/room_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/app_logger.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/shared.dart';
+import 'package:phan_mem_quan_ly_can_ho/models/booking_model.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
 
@@ -255,6 +256,26 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
     );
     bool isSaving = false;
 
+    RoomRentalMode rentalMode = room?.rentalMode ?? RoomRentalMode.monthly;
+    final hourlyPriceController = TextEditingController(
+      text: room?.hourlyPrice != null ? room!.hourlyPrice!.toStringAsFixed(0) : '',
+    );
+    final dailyPriceController = TextEditingController(
+      text: room?.dailyPrice != null ? room!.dailyPrice!.toStringAsFixed(0) : '',
+    );
+    final overnightPriceController = TextEditingController(
+      text: room?.overnightPrice != null ? room!.overnightPrice!.toStringAsFixed(0) : '',
+    );
+    final dailyThresholdController = TextEditingController(
+      text: room?.dailyPriceThresholdHours != null ? room!.dailyPriceThresholdHours!.toStringAsFixed(0) : '',
+    );
+    final minBookingHoursController = TextEditingController(
+      text: room?.minBookingHours?.toString() ?? '',
+    );
+    final cleaningBufferController = TextEditingController(
+      text: room?.cleaningBufferMinutes?.toString() ?? '',
+    );
+
     _showTrackedDialog(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
@@ -411,6 +432,130 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                               ],
                               accentColor: isEditing ? Colors.orange.shade700 : Colors.blue.shade700,
                             ),
+
+                            SizedBox(height: 14),
+
+                            Row(
+                              children: [
+                                Icon(Icons.schedule_rounded,
+                                    size: 16, color: isEditing ? Colors.orange.shade700 : Colors.blue.shade700),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'CHO THUÊ THEO GIỜ',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.8,
+                                    color: isEditing ? Colors.orange.shade700 : Colors.blue.shade700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            Wrap(
+                              spacing: 8,
+                              children: RoomRentalMode.values.map((mode) {
+                                final label = switch (mode) {
+                                  RoomRentalMode.monthly => 'Dài hạn',
+                                  RoomRentalMode.hourly => 'Theo giờ',
+                                  RoomRentalMode.both => 'Linh hoạt',
+                                };
+                                return ChoiceChip(
+                                  label: Text(label),
+                                  selected: rentalMode == mode,
+                                  onSelected: isSaving ? null : (_) => setDialogState(() => rentalMode = mode),
+                                  selectedColor: (isEditing ? Colors.orange.shade700 : Colors.blue.shade700).withValues(alpha: 0.15),
+                                  labelStyle: TextStyle(
+                                    color: rentalMode == mode
+                                        ? (isEditing ? Colors.orange.shade800 : Colors.blue.shade800)
+                                        : Colors.grey.shade700,
+                                    fontWeight: rentalMode == mode ? FontWeight.w700 : FontWeight.w400,
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                            if (rentalMode != RoomRentalMode.monthly) ...[
+                              const SizedBox(height: 14),
+                              _buildDialogField(
+                                controller: hourlyPriceController,
+                                label: 'Giá theo giờ (VND)',
+                                hint: '50000',
+                                icon: Icons.payments_rounded,
+                                enabled: !isSaving,
+                                keyboardType: TextInputType.number,
+                                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                                accentColor: isEditing ? Colors.orange.shade700 : Colors.blue.shade700,
+                              ),
+                              const SizedBox(height: 10),
+                              Row(children: [
+                                Expanded(
+                                  child: _buildDialogField(
+                                    controller: dailyPriceController,
+                                    label: 'Giá trọn ngày',
+                                    hint: '300000',
+                                    icon: Icons.today_rounded,
+                                    enabled: !isSaving,
+                                    keyboardType: TextInputType.number,
+                                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                                    accentColor: isEditing ? Colors.orange.shade700 : Colors.blue.shade700,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: _buildDialogField(
+                                    controller: dailyThresholdController,
+                                    label: 'Ngưỡng giờ',
+                                    hint: '8',
+                                    icon: Icons.hourglass_bottom_rounded,
+                                    suffixText: 'giờ',
+                                    enabled: !isSaving,
+                                    keyboardType: TextInputType.number,
+                                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                                    accentColor: isEditing ? Colors.orange.shade700 : Colors.blue.shade700,
+                                  ),
+                                ),
+                              ]),
+                              const SizedBox(height: 10),
+                              _buildDialogField(
+                                controller: overnightPriceController,
+                                label: 'Giá qua đêm (không bắt buộc)',
+                                hint: '250000',
+                                icon: Icons.nightlight_round,
+                                enabled: !isSaving,
+                                keyboardType: TextInputType.number,
+                                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                                accentColor: isEditing ? Colors.orange.shade700 : Colors.blue.shade700,
+                              ),
+                              const SizedBox(height: 10),
+                              Row(children: [
+                                Expanded(
+                                  child: _buildDialogField(
+                                    controller: minBookingHoursController,
+                                    label: 'Giờ đặt tối thiểu',
+                                    hint: '1',
+                                    icon: Icons.timer_rounded,
+                                    enabled: !isSaving,
+                                    keyboardType: TextInputType.number,
+                                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                                    accentColor: isEditing ? Colors.orange.shade700 : Colors.blue.shade700,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: _buildDialogField(
+                                    controller: cleaningBufferController,
+                                    label: 'Đệm dọn phòng',
+                                    hint: '30',
+                                    icon: Icons.cleaning_services_rounded,
+                                    suffixText: 'phút',
+                                    enabled: !isSaving,
+                                    keyboardType: TextInputType.number,
+                                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                                    accentColor: isEditing ? Colors.orange.shade700 : Colors.blue.shade700,
+                                  ),
+                                ),
+                              ]),
+                            ],
                           ],
                         ),
                       ),
@@ -457,6 +602,16 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
 
                                       setDialogState(() => isSaving = true);
 
+                                      final rentalFields = <String, dynamic>{
+                                        'rentalMode': rentalMode.name,
+                                        'hourlyPrice': double.tryParse(hourlyPriceController.text.trim()),
+                                        'dailyPrice': double.tryParse(dailyPriceController.text.trim()),
+                                        'overnightPrice': double.tryParse(overnightPriceController.text.trim()),
+                                        'dailyPriceThresholdHours': double.tryParse(dailyThresholdController.text.trim()),
+                                        'minBookingHours': int.tryParse(minBookingHoursController.text.trim()),
+                                        'cleaningBufferMinutes': int.tryParse(cleaningBufferController.text.trim()),
+                                      };
+
                                       try {
                                         if (!isEditing) {
                                           await _roomService.addRoom(Room(
@@ -467,12 +622,20 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                                             roomNumber: roomNumber,
                                             roomType: roomType.isEmpty ? 'Standard' : roomType,
                                             createdAt: DateTime.now(),
+                                            rentalMode: rentalMode,
+                                            hourlyPrice: rentalFields['hourlyPrice'] as double?,
+                                            dailyPrice: rentalFields['dailyPrice'] as double?,
+                                            overnightPrice: rentalFields['overnightPrice'] as double?,
+                                            dailyPriceThresholdHours: rentalFields['dailyPriceThresholdHours'] as double?,
+                                            minBookingHours: rentalFields['minBookingHours'] as int?,
+                                            cleaningBufferMinutes: rentalFields['cleaningBufferMinutes'] as int?,
                                           ));
                                         } else {
                                           await _roomService.updateRoom(room.id, {
                                             'roomNumber': roomNumber,
                                             'roomType': roomType.isEmpty ? 'Standard' : roomType,
                                             'area': area,
+                                            ...rentalFields,
                                           });
                                         }
 

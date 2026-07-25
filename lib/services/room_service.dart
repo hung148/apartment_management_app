@@ -354,7 +354,7 @@ class RoomService {
   // ========================================
   // UTILITY - Generate rooms with uniform distribution (same rooms per floor)
   // ========================================
-   Future<List<Room>> generateUniformRoomsForBuilding({
+  Future<List<Room>> generateUniformRoomsForBuilding({
     required String organizationId,
     required String buildingId,
     required int numberOfFloors,
@@ -362,11 +362,11 @@ class RoomService {
     required String prefix,
     required String roomType,
     required double area,
+    RoomRentalMode rentalMode = RoomRentalMode.monthly,
   }) async {
     final rooms = <Room>[];
     for (int floor = 1; floor <= numberOfFloors; floor++) {
       for (int roomNum = 1; roomNum <= roomsPerFloor; roomNum++) {
-        // Format: A101, A102...
         final roomNumber = '$prefix$floor${roomNum.toString().padLeft(2, '0')}';
         rooms.add(Room(
           id: '',
@@ -376,6 +376,7 @@ class RoomService {
           roomType: roomType,
           area: area,
           createdAt: DateTime.now(),
+          rentalMode: rentalMode,
         ));
       }
     }
@@ -390,31 +391,30 @@ class RoomService {
     required String buildingId,
     required List<Map<String, dynamic>> floorDetails,
     required String prefix,
+    RoomRentalMode rentalMode = RoomRentalMode.monthly,
   }) async {
     final rooms = <Room>[];
-    
+
     for (int i = 0; i < floorDetails.length; i++) {
       final floorNum = i + 1;
       final detail = floorDetails[i];
-      
+
       final int count = detail['count'] as int;
       final String type = detail['type'] ?? 'Standard';
       final double area = (detail['area'] as num?)?.toDouble() ?? 0.0;
-      
-      // ✅ NEW: Get custom names if available
-      final List<String> customNames = detail['customNames'] != null 
+
+      final List<String> customNames = detail['customNames'] != null
           ? List<String>.from(detail['customNames'])
           : [];
 
       for (int roomNum = 1; roomNum <= count; roomNum++) {
-        // ✅ NEW: Use custom name if provided, otherwise use auto-generated
         final String roomNumber;
         if (roomNum <= customNames.length && customNames[roomNum - 1].isNotEmpty) {
           roomNumber = customNames[roomNum - 1];
         } else {
           roomNumber = '$prefix$floorNum${roomNum.toString().padLeft(2, '0')}';
         }
-        
+
         rooms.add(Room(
           id: '',
           organizationId: organizationId,
@@ -423,6 +423,7 @@ class RoomService {
           roomType: type,
           area: area,
           createdAt: DateTime.now(),
+          rentalMode: rentalMode,
         ));
       }
     }
@@ -438,9 +439,10 @@ class RoomService {
     required Map<String, dynamic> config,
   }) async {
     final String prefix = config['roomPrefix'] ?? '';
+    final RoomRentalMode rentalMode =
+        config['defaultRentalMode'] as RoomRentalMode? ?? RoomRentalMode.monthly;
 
     if (config['uniformRooms'] == true) {
-      // Chế độ đồng đều
       return generateUniformRoomsForBuilding(
         organizationId: organizationId,
         buildingId: buildingId,
@@ -449,17 +451,18 @@ class RoomService {
         prefix: prefix,
         roomType: config['roomType'] ?? 'Tiêu chuẩn',
         area: (config['roomArea'] as num?)?.toDouble() ?? 0.0,
+        rentalMode: rentalMode,
       );
     } else {
-      // Chế độ tùy chỉnh
-      final List<Map<String, dynamic>> details = 
+      final List<Map<String, dynamic>> details =
           List<Map<String, dynamic>>.from(config['floorDetails'] ?? []);
-          
+
       return generateCustomRoomsForBuilding(
         organizationId: organizationId,
         buildingId: buildingId,
         floorDetails: details,
         prefix: prefix,
+        rentalMode: rentalMode,
       );
     }
   }

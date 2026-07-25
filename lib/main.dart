@@ -1,6 +1,9 @@
 import 'package:phan_mem_quan_ly_can_ho/services/ai_agent_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/auth_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/booking_notifier.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/booking_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/building_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/mitigation.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/organization_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/payments_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/payments_notifier.dart';
@@ -84,6 +87,8 @@ void setup() {
   getIt.registerLazySingleton(() => PaymentsNotifier(getIt<PaymentService>()));
   getIt.registerLazySingleton(() => UpdateService());
   getIt.registerLazySingleton(() => LocaleNotifier());
+  getIt.registerLazySingleton(() => BookingService());
+  getIt.registerLazySingleton(() => BookingsNotifier(getIt<BookingService>()));
 }
 
 void main() async {

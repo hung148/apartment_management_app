@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:phan_mem_quan_ly_can_ho/widgets/combo_box.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/buildings_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/organization_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/payment_model.dart';
@@ -114,10 +115,6 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
   late TextEditingController _taxAmountController;
   late TextEditingController _recurringParentIdController;
 
-  // ── Display-only controllers (fix: use controllers not initialValue) ────────
-  late TextEditingController _buildingDisplayController;
-  late TextEditingController _roomDisplayController;
-
   // ── Selection state ─────────────────────────────────────────────────────────
   String? _selectedBuildingId;
   String? _selectedRoomId;
@@ -153,6 +150,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
       'maintenance': 'payment_type_maintenance',
       'deposit': 'payment_type_deposit',
       'penalty': 'payment_type_penalty',
+      'buildingRent': 'payment_type_building_rent',
       'other': 'payment_type_other',
     };
     return t[keyMap[type.name] ?? type.name];
@@ -204,10 +202,6 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
     _taxAmountController = TextEditingController(text: '0.0');
     _recurringParentIdController = TextEditingController();
 
-    // Empty until _loadData populates the lists and calls _refreshDisplayControllers
-    _buildingDisplayController = TextEditingController();
-    _roomDisplayController = TextEditingController();
-
     _selectedPaymentStatus = PaymentStatus.pending;
     _dueDate = DateTime.now().add(const Duration(days: 30));
 
@@ -231,8 +225,6 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
     _lateFeeController.dispose();
     _taxAmountController.dispose();
     _recurringParentIdController.dispose();
-    _buildingDisplayController.dispose();
-    _roomDisplayController.dispose();
     super.dispose();
   }
 
@@ -251,9 +243,6 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
       setState(() {
         _buildings = results[0] as List<Building>;
         _rooms = results[1] as List<Room>;
-
-        // Populate display controllers now that lists are available
-        _refreshDisplayControllers();
 
         final allOrgTenants = (results[2] as List<Tenant>)
             .where((t) => t.status == TenantStatus.active)
@@ -277,45 +266,120 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
     }
   }
 
-  /// Syncs _buildingDisplayController and _roomDisplayController with
-  /// the current selected IDs. Must be called inside setState whenever
-  /// _selectedBuildingId, _selectedRoomId, _buildings, or _rooms change.
-  void _refreshDisplayControllers() {
-    if (_selectedBuildingId != null && _buildings.isNotEmpty) {
-      final building = _buildings.firstWhere(
-        (b) => b.id == _selectedBuildingId,
-        orElse: () => Building(
-            id: '',
-            address: '',
-            name: 'N/A',
-            organizationId: '',
-            createdAt: DateTime.now()),
-      );
-      _buildingDisplayController.text = building.name;
-    } else {
-      _buildingDisplayController.text = '';
-    }
+  // ─── Lookup helpers ───────────────────────────────────────────────────────
 
-    if (_selectedRoomId != null && _rooms.isNotEmpty) {
-      final room = _rooms.firstWhere(
-        (r) => r.id == _selectedRoomId,
-        orElse: () => Room(
-            id: '',
-            area: 0.0,
-            roomType: '',
-            organizationId: '',
-            buildingId: '',
-            roomNumber: 'N/A',
-            createdAt: DateTime.now()),
-      );
-      _roomDisplayController.text = room.roomNumber;
-    } else {
-      _roomDisplayController.text = '';
+  Building? _findBuilding(String? id) {
+    if (id == null) return null;
+    for (final b in _buildings) {
+      if (b.id == id) return b;
+    }
+    return null;
+  }
+
+  String _buildingNameForRoom(Room room) {
+    final b = _findBuilding(room.buildingId);
+    return b?.name ?? '';
+  }
+
+  Room? _findRoom(String? id) {
+    if (id == null) return null;
+    for (final r in _rooms) {
+      if (r.id == id) return r;
+    }
+    return null;
+  }
+
+  Tenant? _findTenant(String? id) {
+    if (id == null) return null;
+    for (final t in _allTenants) {
+      if (t.id == id) return t;
+    }
+    return null;
+  }
+
+  // ─── Filtered option lists (shrink based on current selection) ────────────
+
+  List<Room> get _roomsForCombo => _selectedBuildingId == null
+      ? _rooms
+      : _rooms.where((r) => r.buildingId == _selectedBuildingId).toList();
+
+  List<Tenant> get _tenantsForCombo => _allTenants.where((tn) {
+        if (_selectedBuildingId != null && tn.buildingId != _selectedBuildingId) {
+          return false;
+        }
+        if (_selectedRoomId != null && tn.roomId != _selectedRoomId) {
+          return false;
+        }
+        return true;
+      }).toList();
+
+  // ─── Cascade handlers ───────────────────────────────────────────────────────
+
+  /// If both building and room are selected and exactly one tenant matches,
+  /// auto-select that tenant. Call this after building/room state settles.
+  void _autoSelectSoleTenant() {
+    if (_selectedBuildingId == null || _selectedRoomId == null) return;
+    if (_selectedTenantId != null) return; // don't override an existing pick
+
+    final matches = _tenantsForCombo;
+    if (matches.length == 1) {
+      final tenant = matches.first;
+      _selectedTenantId = tenant.id;
+      _selectedTenantName = tenant.fullName;
     }
   }
 
-  // ─── Tenant selection ─────────────────────────────────────────────────────────
+  void _onBuildingSelected(Building? building) {
+    setState(() {
+      _selectedBuildingId = building?.id;
 
+      // Clear room if it no longer belongs to the selected building
+      final room = _findRoom(_selectedRoomId);
+      if (building != null && room != null && room.buildingId != building.id) {
+        _selectedRoomId = null;
+      }
+      if (building == null) _selectedRoomId = null;
+
+      // Clear tenant if it no longer belongs to the selected building
+      final tenant = _findTenant(_selectedTenantId);
+      if (building != null && tenant != null && tenant.buildingId != building.id) {
+        _selectedTenantId = null;
+        _selectedTenantName = null;
+      }
+      if (building == null) {
+        _selectedTenantId = null;
+        _selectedTenantName = null;
+      }
+
+      _autoSelectSoleTenant();
+    });
+  }
+
+  void _onRoomSelected(Room? room) {
+    setState(() {
+      _selectedRoomId = room?.id;
+
+      if (room != null) {
+        // Auto-fill building from the room
+        _selectedBuildingId = room.buildingId;
+      }
+
+      // Clear tenant if it no longer belongs to the selected room
+      final tenant = _findTenant(_selectedTenantId);
+      if (room != null && tenant != null && tenant.roomId != room.id) {
+        _selectedTenantId = null;
+        _selectedTenantName = null;
+      }
+      if (room == null) {
+        _selectedTenantId = null;
+        _selectedTenantName = null;
+      }
+
+      _autoSelectSoleTenant();
+    });
+  }
+
+  // ─── Tenant selection ─────────────────────────────────────────────────────────
   void _onTenantSelected(String? tenantId) {
     final t = AppTranslations.of(context);
 
@@ -326,13 +390,12 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
         if (widget.room == null) {
           _selectedBuildingId = null;
           _selectedRoomId = null;
-          _refreshDisplayControllers();
         }
       });
       return;
     }
 
-    final tenant = _allTenants.firstWhere((t) => t.id == tenantId);
+    final tenant = _allTenants.firstWhere((tn) => tn.id == tenantId);
 
     setState(() {
       _selectedTenantId = tenantId;
@@ -340,7 +403,6 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
       if (widget.room == null) {
         _selectedBuildingId = tenant.buildingId;
         _selectedRoomId = tenant.roomId;
-        _refreshDisplayControllers();
       }
     });
 
@@ -617,6 +679,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                                 dt['add_item_type_label'],
                                 Icons.category_rounded),
                             items: PaymentType.values
+                                .where((t) => t != PaymentType.buildingRent)
                                 .map((type) => DropdownMenuItem(
                                       value: type,
                                       child: Row(children: [
@@ -1530,143 +1593,52 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                           _sectionLabel(t['payment_section_tenant']),
 
                           if (isRoomMode)
-                            DropdownButtonFormField<String>(
-                              // Use value (not initialValue) so it re-renders
-                              // correctly when _availableTenants loads
-                              initialValue: _selectedTenantId,
-                              decoration: _inputDec(
-                                  t['payment_select_tenant'],
-                                  Icons.person_outline_rounded),
-                              items: _availableTenants
-                                  .map((tenant) =>
-                                      DropdownMenuItem<String>(
-                                        value: tenant.id,
-                                        child: Text(
-                                            '${tenant.fullName} (${tenant.phoneNumber})'),
-                                      ))
-                                  .toList(),
-                              onChanged: _onTenantSelected,
-                              validator: (v) => v == null
-                                  ? t['payment_err_tenant']
-                                  : null,
+                            ComboBoxField<Tenant>(
+                              options: _availableTenants,
+                              labelOf: (tn) => '${tn.fullName} (${tn.phoneNumber})',
+                              selected: _findTenant(_selectedTenantId),
+                              label: t['payment_select_tenant'],
+                              icon: Icons.person_outline_rounded,
+                              onSelected: (tn) => _onTenantSelected(tn?.id),
                             )
-                          else
-                            Autocomplete<Tenant>(
-                              displayStringForOption: (Tenant tn) =>
-                                  '${tn.fullName} (${tn.phoneNumber})',
-                              optionsBuilder:
-                                  (TextEditingValue value) {
-                                if (value.text.isEmpty) {
-                                  return const Iterable<Tenant>.empty();
-                                }
-                                return _availableTenants.where((tn) =>
-                                    tn.fullName.toLowerCase().contains(
-                                        value.text.toLowerCase()) ||
-                                    tn.phoneNumber
-                                        .contains(value.text));
-                              },
-                              onSelected: (Tenant selection) =>
-                                  _onTenantSelected(selection.id),
-                              fieldViewBuilder: (context, textCtrl,
-                                  focusNode, onFieldSubmitted) {
-                                return TextFormField(
-                                  controller: textCtrl,
-                                  focusNode: focusNode,
-                                  decoration: _inputDec(
-                                    t['payment_search_tenant'],
-                                    Icons.search_rounded,
-                                  ).copyWith(
-                                    suffixIcon:
-                                        textCtrl.text.isNotEmpty
-                                            ? IconButton(
-                                                icon: const Icon(
-                                                    Icons.clear),
-                                                onPressed: () {
-                                                  textCtrl.clear();
-                                                  _onTenantSelected(
-                                                      null);
-                                                },
-                                              )
-                                            : null,
-                                  ),
-                                  validator: (v) =>
-                                      _selectedTenantId == null
-                                          ? t['payment_err_tenant']
-                                          : null,
-                                );
-                              },
-                              optionsViewBuilder:
-                                  (context, onSelected, options) {
-                                return Align(
-                                  alignment: Alignment.topLeft,
-                                  child: Material(
-                                    elevation: 4.0,
-                                    borderRadius:
-                                        BorderRadius.circular(12),
-                                    child: ConstrainedBox(
-                                      constraints:
-                                          const BoxConstraints(
-                                              maxHeight: 200,
-                                              maxWidth: 400),
-                                      child: ListView.builder(
-                                        padding: EdgeInsets.zero,
-                                        shrinkWrap: true,
-                                        itemCount: options.length,
-                                        itemBuilder: (context, i) {
-                                          final Tenant opt =
-                                              options.elementAt(i);
-                                          return ListTile(
-                                            title: Text(opt.fullName),
-                                            subtitle: Text(
-                                                t.textWithParams(
-                                                    'payment_tenant_phone_prefix',
-                                                    {
-                                                      'phone':
-                                                          opt.phoneNumber
-                                                    })),
-                                            onTap: () =>
-                                                onSelected(opt),
-                                          );
-                                        },
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              },
+                          else ...[
+                            ComboBoxField<Tenant>(
+                              options: _tenantsForCombo,
+                              labelOf: (tn) => '${tn.fullName} (${tn.phoneNumber})',
+                              selected: _findTenant(_selectedTenantId),
+                              label: t['payment_search_tenant'],
+                              icon: Icons.search_rounded,
+                              onSelected: (tn) => _onTenantSelected(tn?.id),
                             ),
-
-                          const SizedBox(height: 12),
-
-                          // ── Building & Room (controller-based, no initialValue) ──
-                          Row(children: [
-                            Expanded(
-                              child: TextFormField(
-                                controller: _buildingDisplayController,
-                                readOnly: true,
-                                decoration: _inputDec(
-                                  t['payment_building_label'],
-                                  Icons.apartment_rounded,
-                                ).copyWith(
-                                  filled: true,
-                                  fillColor: Colors.grey.shade100,
+                            const SizedBox(height: 12),
+                            Row(children: [
+                              Expanded(
+                                child: ComboBoxField<Building>(
+                                  options: _buildings,
+                                  labelOf: (b) => b.name,
+                                  selected: _findBuilding(_selectedBuildingId),
+                                  label: t['payment_building_label'],
+                                  icon: Icons.apartment_rounded,
+                                  wrapInBottomPadding: false,
+                                  onSelected: _onBuildingSelected,
                                 ),
                               ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: TextFormField(
-                                controller: _roomDisplayController,
-                                readOnly: true,
-                                decoration: _inputDec(
-                                  t['payment_room_label'],
-                                  Icons.door_front_door_outlined,
-                                ).copyWith(
-                                  filled: true,
-                                  fillColor: Colors.grey.shade100,
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: ComboBoxField<Room>(
+                                  options: _roomsForCombo,
+                                  labelOf: (r) => _selectedBuildingId == null
+                                    ? '${r.roomNumber} · ${_buildingNameForRoom(r)}'
+                                    : r.roomNumber,
+                                  selected: _findRoom(_selectedRoomId),
+                                  label: t['payment_room_label'],
+                                  icon: Icons.door_front_door_outlined,
+                                  wrapInBottomPadding: false,
+                                  onSelected: _onRoomSelected,
                                 ),
                               ),
-                            ),
-                          ]),
+                            ]),
+                          ],
 
                           // ── Line items section ───────────────────────────
                           _sectionLabel(t['payment_section_items']),
@@ -1720,31 +1692,18 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                           ),
                           const SizedBox(height: 12),
 
-                          DropdownButtonFormField<PaymentStatus>(
-                            initialValue: _selectedPaymentStatus,
-                            decoration: _inputDec(
-                                t['payment_status_label'],
-                                Icons.flag_rounded),
-                            items: PaymentStatus.values.map((s) {
-                              final color = _statusColor(s);
-                              return DropdownMenuItem(
-                                value: s,
-                                child: Row(children: [
-                                  Container(
-                                    width: 10,
-                                    height: 10,
-                                    decoration: BoxDecoration(
-                                        color: color,
-                                        shape: BoxShape.circle),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(_statusLabel(t, s)),
-                                ]),
-                              );
-                            }).toList(),
-                            onChanged: (v) => setState(
-                                () => _selectedPaymentStatus = v),
+                          ComboBoxField<PaymentStatus>(
+                            options: PaymentStatus.values,
+                            labelOf: (s) => _statusLabel(t, s),
+                            selected: _selectedPaymentStatus,
+                            label: t['payment_status_label'],
+                            icon: Icons.flag_rounded,
+                            dotColorOf: _statusColor,
+                            leadingPadding: const EdgeInsets.only(left: 8, right: 6),
+                            fontWeight: FontWeight.w600,
+                            onSelected: (v) => setState(() => _selectedPaymentStatus = v),
                           ),
+
                           const SizedBox(height: 12),
 
                           // ── Additional section ───────────────────────────

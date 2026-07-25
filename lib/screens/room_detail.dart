@@ -3326,6 +3326,8 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
       case PaymentType.maintenance: return t['payment_type_maintenance'];
       case PaymentType.deposit:     return t['payment_type_deposit'];
       case PaymentType.penalty:     return t['payment_type_penalty'];
+      case PaymentType.buildingRent: return t['payment_type_building_rent'];
+      case PaymentType.hourlyRent: return t['payment_type_hourly_rent'];
       case PaymentType.other:       return t['payment_type_other'];
     }
   }
