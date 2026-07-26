@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:phan_mem_quan_ly_can_ho/main.dart';
@@ -64,11 +65,36 @@ class _AvailabilityCalendarScreenState extends State<AvailabilityCalendarScreen>
 
   static const int _startHour = 0;
   static const int _endHour = 24;
+  Timer? _nowTimer;
+  final ScrollController _headerHController = ScrollController();
+  final ScrollController _bodyHController = ScrollController();
+  double _pixelsPerHour = 60.0;
+
+  static const double _timeColWidth = 56.0;
+  static const double _roomColWidth = 170.0;
+
+  double get _dayGridHeight => _pixelsPerHour * (_endHour - _startHour);
 
   @override
   void initState() {
     super.initState();
     _loadBuildings();
+    _nowTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted && _viewMode == _ViewMode.day) setState(() {});
+    });
+    _bodyHController.addListener(() {
+      if (_headerHController.hasClients && _headerHController.offset != _bodyHController.offset) {
+        _headerHController.jumpTo(_bodyHController.offset);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _nowTimer?.cancel();
+    _headerHController.dispose();
+    _bodyHController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadBuildings() async {
@@ -304,125 +330,360 @@ class _AvailabilityCalendarScreenState extends State<AvailabilityCalendarScreen>
     );
   }
 
-  // ── DAY VIEW: hour grid ──────────────────────────────────────────
+  // ── DAY VIEW: Google-Calendar-style vertical timeline ──────────────
   Widget _buildDayView() {
-    const roomColWidth = 84.0;
-    const hourColWidth = 56.0;
-    final hours = List.generate(_endHour - _startHour, (i) => _startHour + i);
+    if (_hourlyRooms.isEmpty) return const SizedBox.shrink();
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(width: roomColWidth, height: 36),
-                ...hours.map((h) => Container(
-                      width: hourColWidth,
-                      height: 36,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade200)),
-                      child: Text('${h.toString().padLeft(2, '0')}h',
-                          style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
-                    )),
-              ],
-            ),
-            ...(_hourlyRooms.map((room) {
-              final bookings = _dayBookings[room.id] ?? [];
-              final tenantOccupied = _isTenantOccupiedOnDate(room.id, _selectedDate);
-              return Row(
-                children: [
-                  Container(
-                    width: roomColWidth,
-                    height: 52,
-                    alignment: Alignment.centerLeft,
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey.shade200),
-                      color: Colors.grey.shade50,
-                    ),
-                    child: Text(room.roomNumber,
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-                        overflow: TextOverflow.ellipsis),
-                  ),
-                  if (tenantOccupied)
-                    Container(
-                      width: hourColWidth * hours.length,
-                      height: 52,
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey.shade200),
-                        color: const Color(0xFFFCEBEB),
-                      ),
-                      alignment: Alignment.center,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.person_pin_circle_rounded, size: 14, color: Color(0xFFA32D2D)),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Đã có khách thuê dài hạn',
-                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFFA32D2D)),
-                          ),
-                        ],
-                      ),
-                    )
-                  else
-                    ...hours.map((h) {
-                      final cellStart = DateTime(
-                          _selectedDate.year, _selectedDate.month, _selectedDate.day, h);
-                      final cellEnd = cellStart.add(const Duration(hours: 1));
-                      final withinOperatingHours = _withinOperatingHours(room, h);
-                      final booking = bookings.cast<RoomBooking?>().firstWhere(
-                            (b) => b != null && b.startTime.isBefore(cellEnd) && b.endTime.isAfter(cellStart),
-                            orElse: () => null,
-                          );
-
-                      Color cellColor;
-                      if (!withinOperatingHours) {
-                        cellColor = Colors.grey.shade100;
-                      } else if (booking != null) {
-                        cellColor = _statusColor(booking.status);
-                      } else {
-                        cellColor = Colors.white;
-                      }
-
-                      return GestureDetector(
-                        onTap: !withinOperatingHours
-                            ? null
-                            : () => booking != null
-                                ? _openBookingDetail(booking)
-                                : _openBookingForm(room, cellStart, cellEnd),
-                        child: Container(
-                          width: hourColWidth,
-                          height: 52,
-                          decoration: BoxDecoration(
-                            border: Border.all(color: Colors.grey.shade200),
-                            color: cellColor,
-                          ),
-                          alignment: Alignment.center,
-                          child: booking != null
-                              ? Padding(
-                                  padding: const EdgeInsets.all(2),
-                                  child: Text(
-                                    booking.guestName,
-                                    style: const TextStyle(
-                                        fontSize: 9, color: Colors.white, fontWeight: FontWeight.w600),
-                                    maxLines: 2,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildLegend(),
+        _buildZoomControls(),
+        Expanded(
+          child: Column(
+            children: [
+              // Sticky header row: room names, synced horizontally with grid below
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  border: Border(bottom: BorderSide(color: Colors.grey.shade300)),
+                ),
+                child: Row(
+                  children: [
+                    SizedBox(width: _timeColWidth),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        controller: _headerHController,
+                        physics: const NeverScrollableScrollPhysics(),
+                        child: Row(
+                          children: _hourlyRooms.map((room) {
+                            final tenantOccupied = _isTenantOccupiedOnDate(room.id, _selectedDate);
+                            return Container(
+                              width: _roomColWidth,
+                              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+                              decoration: BoxDecoration(
+                                border: Border(left: BorderSide(color: Colors.grey.shade200)),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    room.roomNumber,
+                                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
                                     overflow: TextOverflow.ellipsis,
-                                    textAlign: TextAlign.center,
                                   ),
-                                )
-                              : null,
+                                  if (tenantOccupied)
+                                    Container(
+                                      margin: const EdgeInsets.only(top: 4),
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFFCEBEB),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: const Text(
+                                        'Khách dài hạn',
+                                        style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Color(0xFFA32D2D)),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            );
+                          }).toList(),
                         ),
-                      );
-                    }),
-                ],
-              );
-            })),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Scrollable grid body
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildTimeLabelsColumn(),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          controller: _bodyHController,
+                          child: SizedBox(
+                            width: _roomColWidth * _hourlyRooms.length,
+                            height: _dayGridHeight,
+                            child: Stack(
+                              children: [
+                                CustomPaint(
+                                  size: Size(_roomColWidth * _hourlyRooms.length, _dayGridHeight),
+                                  painter: _HourGridPainter(
+                                    pixelsPerHour: _pixelsPerHour,
+                                    hourCount: _endHour - _startHour,
+                                    columnWidth: _roomColWidth,
+                                    columnCount: _hourlyRooms.length,
+                                  ),
+                                ),
+                                ..._buildOutOfHoursOverlays(),
+                                ..._buildRoomEventColumns(),
+                                if (DateUtils.isSameDay(_selectedDate, DateTime.now())) _buildNowLine(),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTimeLabelsColumn() {
+    final hours = List.generate(_endHour - _startHour, (i) => _startHour + i);
+    return SizedBox(
+      width: _timeColWidth,
+      height: _dayGridHeight,
+      child: Stack(
+        children: hours.map((h) {
+          return Positioned(
+            top: (h - _startHour) * _pixelsPerHour - 6,
+            right: 8,
+            child: Text(
+              '${h.toString().padLeft(2, '0')}:00',
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  List<Widget> _buildOutOfHoursOverlays() {
+    final widgets = <Widget>[];
+    for (int i = 0; i < _hourlyRooms.length; i++) {
+      final room = _hourlyRooms[i];
+      if (room.operatingHoursStartMin == null || room.operatingHoursEndMin == null) continue;
+      final startMin = room.operatingHoursStartMin!;
+      final endMin = room.operatingHoursEndMin!;
+      final left = i * _roomColWidth;
+
+      if (startMin > _startHour * 60) {
+        widgets.add(Positioned(
+          left: left,
+          top: 0,
+          width: _roomColWidth,
+          height: (startMin - _startHour * 60) / 60 * _pixelsPerHour,
+          child: Container(color: Colors.grey.shade100.withValues(alpha: 0.7)),
+        ));
+      }
+      if (endMin < _endHour * 60) {
+        widgets.add(Positioned(
+          left: left,
+          top: (endMin - _startHour * 60) / 60 * _pixelsPerHour,
+          width: _roomColWidth,
+          height: (_endHour * 60 - endMin) / 60 * _pixelsPerHour,
+          child: Container(color: Colors.grey.shade100.withValues(alpha: 0.7)),
+        ));
+      }
+    }
+    return widgets;
+  }
+
+  List<Widget> _buildRoomEventColumns() {
+    final widgets = <Widget>[];
+    for (int i = 0; i < _hourlyRooms.length; i++) {
+      final room = _hourlyRooms[i];
+      final left = i * _roomColWidth;
+      final tenantOccupied = _isTenantOccupiedOnDate(room.id, _selectedDate);
+
+      if (tenantOccupied) {
+        widgets.add(Positioned(
+          left: left + 2,
+          top: 0,
+          width: _roomColWidth - 4,
+          height: _dayGridHeight,
+          child: Container(color: const Color(0xFFFCEBEB).withValues(alpha: 0.5)),
+        ));
+        continue;
+      }
+
+      // Tap-to-create layer (added first so events painted after sit on top and stay tappable)
+      widgets.add(Positioned(
+        left: left,
+        top: 0,
+        width: _roomColWidth,
+        height: _dayGridHeight,
+        child: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTapUp: (details) {
+            final minutesFromStart = (details.localPosition.dy / _pixelsPerHour * 60).round();
+            final snapped = (minutesFromStart ~/ 30) * 30;
+            final start = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day, _startHour)
+                .add(Duration(minutes: snapped));
+            if (!_withinOperatingHours(room, start.hour)) return;
+            _openBookingForm(room, start, start.add(const Duration(hours: 1)));
+          },
+        ),
+      ));
+
+      final bookings = (_dayBookings[room.id] ?? []).toList();
+      final columns = _layoutOverlapColumns(bookings);
+      final colCount = columns.isEmpty ? 1 : columns.length;
+
+      for (int c = 0; c < columns.length; c++) {
+        for (final booking in columns[c]) {
+          final dayStart = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day, _startHour);
+          final startMinutes = booking.startTime.difference(dayStart).inMinutes.clamp(0, (_endHour - _startHour) * 60);
+          final endMinutes = booking.endTime.difference(dayStart).inMinutes.clamp(0, (_endHour - _startHour) * 60);
+          if (endMinutes <= startMinutes) continue;
+
+          final top = startMinutes / 60 * _pixelsPerHour;
+          final height = (endMinutes - startMinutes) / 60 * _pixelsPerHour;
+          final eventWidth = (_roomColWidth - 4) / colCount;
+          final eventLeft = left + 2 + c * eventWidth;
+
+          widgets.add(Positioned(
+            left: eventLeft,
+            top: top,
+            width: eventWidth - 2,
+            height: height,
+            child: GestureDetector(
+              onTap: () => _openBookingDetail(booking),
+              child: Container(
+                margin: const EdgeInsets.symmetric(vertical: 1),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                decoration: BoxDecoration(
+                  color: _statusColor(booking.status),
+                  borderRadius: BorderRadius.circular(6),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 3, offset: const Offset(0, 1)),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      booking.guestName,
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (height > 30)
+                      Text(
+                        '${DateFormat('HH:mm').format(booking.startTime)}–${DateFormat('HH:mm').format(booking.endTime)}',
+                        style: const TextStyle(fontSize: 9, color: Colors.white70),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ));
+        }
+      }
+    }
+    return widgets;
+  }
+
+  List<List<RoomBooking>> _layoutOverlapColumns(List<RoomBooking> bookings) {
+    final sorted = [...bookings]..sort((a, b) => a.startTime.compareTo(b.startTime));
+    final columns = <List<RoomBooking>>[];
+    for (final b in sorted) {
+      var placed = false;
+      for (final col in columns) {
+        if (!col.last.endTime.isAfter(b.startTime)) {
+          col.add(b);
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) columns.add([b]);
+    }
+    return columns;
+  }
+
+  Widget _buildNowLine() {
+    final now = DateTime.now();
+    final dayStart = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day, _startHour);
+    final minutesFromStart = now.difference(dayStart).inMinutes;
+    final top = minutesFromStart / 60 * _pixelsPerHour;
+    return Positioned(
+      left: 0,
+      right: 0,
+      top: top,
+      child: IgnorePointer(
+        child: Row(
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              margin: const EdgeInsets.only(left: 2),
+              decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+            ),
+            Expanded(child: Container(height: 1.5, color: Colors.red)),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildLegend() {
+    final items = <MapEntry<String, Color>>[
+      const MapEntry('Chờ xác nhận', Color(0xFFEF9F27)),
+      const MapEntry('Đã xác nhận', Color(0xFF185FA5)),
+      const MapEntry('Đã nhận phòng', Color(0xFF3B6D11)),
+      MapEntry('Đã trả phòng', Colors.grey.shade400),
+      MapEntry('Đã huỷ / Không đến', Colors.grey.shade300),
+    ];
+    return Container(
+      width: double.infinity,
+      color: Colors.white,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      child: Wrap(
+        alignment: WrapAlignment.spaceEvenly,
+        runAlignment: WrapAlignment.center,
+        spacing: 12,
+        runSpacing: 6,
+        children: items.map((e) {
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(color: e.value, borderRadius: BorderRadius.circular(3)),
+              ),
+              const SizedBox(width: 4),
+              Text(e.key, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+            ],
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildZoomControls() {
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.only(right: 8, bottom: 4),
+      alignment: Alignment.centerRight,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.zoom_out, size: 18),
+            onPressed: () => setState(() => _pixelsPerHour = (_pixelsPerHour - 15).clamp(30, 150).toDouble()),
+          ),
+          IconButton(
+            icon: const Icon(Icons.zoom_in, size: 18),
+            onPressed: () => setState(() => _pixelsPerHour = (_pixelsPerHour + 15).clamp(30, 150).toDouble()),
+          ),
+        ],
       ),
     );
   }
@@ -533,7 +794,6 @@ class _AvailabilityCalendarScreenState extends State<AvailabilityCalendarScreen>
 
                 const maxChipsShown = 6;
                 final visible = statuses.take(maxChipsShown).toList();
-                final overflow = statuses.length - visible.length;
 
                 return InkWell(
                   onTap: () => _goToDay(date),
@@ -630,5 +890,53 @@ class _AvailabilityCalendarScreenState extends State<AvailabilityCalendarScreen>
       builder: (_) => BookingDetailDialog(booking: booking),
     );
     if (changed == true) _loadCurrentView();
+  }
+}
+
+class _HourGridPainter extends CustomPainter {
+  final double pixelsPerHour;
+  final int hourCount;
+  final double columnWidth;
+  final int columnCount;
+
+  _HourGridPainter({
+    required this.pixelsPerHour,
+    required this.hourCount,
+    required this.columnWidth,
+    required this.columnCount,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final hourPaint = Paint()
+      ..color = Colors.grey.shade300
+      ..strokeWidth = 1;
+    final halfHourPaint = Paint()
+      ..color = Colors.grey.shade100
+      ..strokeWidth = 1;
+    final colPaint = Paint()
+      ..color = Colors.grey.shade200
+      ..strokeWidth = 1;
+
+    for (int h = 0; h <= hourCount; h++) {
+      final y = h * pixelsPerHour;
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), hourPaint);
+      if (h < hourCount) {
+        final halfY = y + pixelsPerHour / 2;
+        canvas.drawLine(Offset(0, halfY), Offset(size.width, halfY), halfHourPaint);
+      }
+    }
+    for (int c = 0; c <= columnCount; c++) {
+      final x = c * columnWidth;
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), colPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _HourGridPainter oldDelegate) {
+    return oldDelegate.pixelsPerHour != pixelsPerHour ||
+        oldDelegate.hourCount != hourCount ||
+        oldDelegate.columnWidth != columnWidth ||
+        oldDelegate.columnCount != columnCount;
   }
 }
