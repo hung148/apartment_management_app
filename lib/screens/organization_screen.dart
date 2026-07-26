@@ -1499,10 +1499,11 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                 Divider(height: 1, color: Colors.grey.shade100),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  child: Row(
-                    children: [
-                      if (building.isRented) ...[
-                        _footerActionBtn(
+                  child: _buildCardFooterActions(
+                    context: context,
+                    actions: [
+                      if (building.isRented)
+                        (
                           icon: Icons.real_estate_agent_rounded,
                           label: t['building_rent_tab_label'],
                           color: const Color(0xFF854F0B),
@@ -1517,18 +1518,15 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                             ),
                           ),
                         ),
-                        const SizedBox(width: 8),
-                      ],
                       if (!building.isRented) ...[
-                        _footerActionBtn(
+                        (
                           icon: Icons.meeting_room_rounded,
                           label: t['manage_rooms'],
                           color: color,
                           bgColor: color.withValues(alpha: 0.08),
                           onTap: () => _navigateToBuildingRooms(building),
                         ),
-                        const SizedBox(width: 8),
-                        _footerActionBtn(
+                        (
                           icon: Icons.calendar_month_rounded,
                           label: 'Lịch theo giờ',
                           color: const Color(0xFF534AB7),
@@ -1539,17 +1537,15 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                             arguments: {'building': building, 'organization': widget.organization},
                           ),
                         ),
-                        const SizedBox(width: 8),
                       ],
-                      _footerActionBtn(
+                      (
                         icon: Icons.edit_rounded,
                         label: t['edit'],
                         color: Colors.grey.shade600,
                         bgColor: Colors.grey.shade100,
                         onTap: () => _showEditBuildingDialog(building),
                       ),
-                      const SizedBox(width: 8),
-                      _footerActionBtn(
+                      (
                         icon: Icons.delete_outline_rounded,
                         label: t['delete'],
                         color: const Color(0xFFA32D2D),
@@ -1655,35 +1651,95 @@ class _OrganizationScreenState extends State<OrganizationScreen>
     required Color bgColor,
     required VoidCallback onTap,
   }) {
-    return Expanded(
-      child: Material(
-        color: bgColor,
+    return Material(
+      color: bgColor,
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(8),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(8),
-          hoverColor: color.withValues(alpha: 0.15),
-          splashColor: color.withValues(alpha: 0.2),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon, size: 14, color: color),
-                const SizedBox(width: 4),
-                Text(
+        hoverColor: color.withValues(alpha: 0.15),
+        splashColor: color.withValues(alpha: 0.2),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 14, color: color),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
                   label,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: color,
-                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildCardFooterActions({
+    required BuildContext context,
+    required List<({IconData icon, String label, Color color, Color bgColor, VoidCallback onTap})> actions,
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final baseStyle = DefaultTextStyle.of(context).style
+            .merge(const TextStyle(fontSize: 11, fontWeight: FontWeight.w600));
+        final textScaler = MediaQuery.textScalerOf(context);
+
+        double naturalWidth(String label) {
+          final painter = TextPainter(
+            text: TextSpan(text: label, style: baseStyle),
+            maxLines: 1,
+            textDirection: TextDirection.ltr,
+            textScaler: textScaler,
+          )..layout();
+          return 14 + 4 + painter.width + 8 + 16; // icon + gap + text + padding + safety margin
+        }
+
+        Widget button(({IconData icon, String label, Color color, Color bgColor, VoidCallback onTap}) a) =>
+            _footerActionBtn(icon: a.icon, label: a.label, color: a.color, bgColor: a.bgColor, onTap: a.onTap);
+
+        final count = actions.length;
+        final gap = 8.0 * (count - 1);
+        final equalShare = (constraints.maxWidth - gap) / count;
+        final maxNatural = actions.map((a) => naturalWidth(a.label)).reduce((a, b) => a > b ? a : b);
+
+        if (maxNatural <= equalShare) {
+          return Row(
+            children: [
+              for (int i = 0; i < count; i++) ...[
+                if (i > 0) const SizedBox(width: 8),
+                Expanded(child: button(actions[i])),
+              ],
+            ],
+          );
+        }
+
+        final overflowAction =
+            actions.reduce((a, b) => naturalWidth(a.label) >= naturalWidth(b.label) ? a : b);
+        final rest = actions.where((a) => a != overflowAction).toList();
+
+        return Column(
+          children: [
+            SizedBox(width: double.infinity, child: button(overflowAction)),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                for (int i = 0; i < rest.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 8),
+                  Expanded(child: button(rest[i])),
+                ],
+              ],
+            ),
+          ],
+        );
+      },
     );
   }
 
