@@ -178,6 +178,7 @@ class PaymentsNotifier extends ChangeNotifier {
     DateTime? startDate,
     DateTime? endDate,
     String? description,
+    String? renterName,
   }) async {
     try {
       final paymentId = await _paymentService.addBuildingRentPayment(
@@ -188,6 +189,7 @@ class PaymentsNotifier extends ChangeNotifier {
         startDate: startDate,
         endDate: endDate,
         description: description,
+        renterName: renterName, 
       );
 
       if (paymentId != null) {

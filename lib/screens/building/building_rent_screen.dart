@@ -334,6 +334,7 @@ class _BuildingRentScreenState extends State<BuildingRentScreen> {
                     amount: amount,
                     dueDate: dueDate,
                     description: description,
+                    renterName: building.renterName, 
                   );
                   success = id != null;
                 }

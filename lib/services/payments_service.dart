@@ -286,6 +286,7 @@ class PaymentService {
     DateTime? startDate,
     DateTime? endDate,
     String? description,
+    String? renterName, 
   }) async {
     try {
       final payment = Payment(
@@ -294,7 +295,7 @@ class PaymentService {
         buildingId: buildingId,
         roomId: '',          // sentinel: building-level, not tied to a room
         tenantId: null,      // no tenant involved
-        tenantName: null,
+        tenantName: renterName, 
         type: PaymentType.buildingRent,
         status: PaymentStatus.pending,
         amount: amount,
