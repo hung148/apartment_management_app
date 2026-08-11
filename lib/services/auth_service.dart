@@ -168,6 +168,7 @@ class AuthService {
           .collection('memberships')
           .where('ownerId', isEqualTo: uid)
           .where('status', isEqualTo: 'active')
+          .limit(100)
           .get();
 
       for (final doc in membershipsSnap.docs) {
