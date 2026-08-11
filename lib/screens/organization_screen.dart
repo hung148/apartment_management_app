@@ -429,8 +429,11 @@ class _OrganizationScreenState extends State<OrganizationScreen>
           dialogResult: result,
         );
         if (!success) throw Exception('Failed to update building');
+        
+        final existingRooms = await _roomService.getBuildingRooms(
+          widget.organization.id, building.id);
 
-        if (result['autoGenerateRooms'] == true) {
+        if (result['autoGenerateRooms'] == true && existingRooms.isEmpty) {
           final rooms = await _roomService.generateRoomsFromConfig(
             organizationId: widget.organization.id,
             buildingId: building.id,
@@ -453,6 +456,8 @@ class _OrganizationScreenState extends State<OrganizationScreen>
             });
           }
         } else {
+          // Building metadata updated; existing rooms are left alone.
+          // Room-count/floor changes should be made via "Quản lý phòng".
           if (mounted) Navigator.of(context).pop();
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -462,7 +467,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
             _buildingCardFutures.remove(building.id);
             setState(() {
               _buildingsFuture = _getBuildings();
-              _tenantTabRefreshKey++; 
+              _tenantTabRefreshKey++;
             });
           }
         }

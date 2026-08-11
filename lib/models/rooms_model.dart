@@ -14,6 +14,7 @@ class Room {
   final String roomType;
   final double area; // Diện tích (m2)
   final DateTime createdAt;
+  final double? roomPrice; // Giá thuê mặc định của phòng (VND/tháng)
 
   // ---- Hourly rental config (all optional — backward compatible) ----
   final RoomRentalMode rentalMode;
@@ -34,6 +35,7 @@ class Room {
     required this.roomType,
     required this.area,
     required this.createdAt,
+    this.roomPrice,
     this.rentalMode = RoomRentalMode.monthly,
     this.hourlyPrice,
     this.dailyPrice,
@@ -59,6 +61,7 @@ class Room {
       'roomType': roomType,
       'area': area,
       'createdAt': Timestamp.fromDate(createdAt),
+      'roomPrice': roomPrice,
       'rentalMode': rentalMode.name,
       'hourlyPrice': hourlyPrice,
       'dailyPrice': dailyPrice,
@@ -80,6 +83,7 @@ class Room {
       roomType: map['roomType'] ?? 'Tiêu chuẩn',
       area: (map['area'] as num?)?.toDouble() ?? 0.0,
       createdAt: (map['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      roomPrice: (map['roomPrice'] as num?)?.toDouble(),
       rentalMode: RoomRentalMode.values.firstWhere(
         (e) => e.name == map['rentalMode'],
         orElse: () => RoomRentalMode.monthly,
@@ -103,6 +107,7 @@ class Room {
     String? roomType,
     double? area,
     DateTime? createdAt,
+    double? roomPrice,
     RoomRentalMode? rentalMode,
     double? hourlyPrice,
     double? dailyPrice,
@@ -121,6 +126,7 @@ class Room {
       roomType: roomType ?? this.roomType,
       area: area ?? this.area,
       createdAt: createdAt ?? this.createdAt,
+      roomPrice: roomPrice ?? this.roomPrice,
       rentalMode: rentalMode ?? this.rentalMode,
       hourlyPrice: hourlyPrice ?? this.hourlyPrice,
       dailyPrice: dailyPrice ?? this.dailyPrice,

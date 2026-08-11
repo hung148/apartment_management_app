@@ -78,7 +78,7 @@ flutter_launcher_icons:
     image_path: "assets/icon/apartment_management_app_icon.png"
   windows:
     generate: true
-    image_path: "assets/icon/apartment_management_app_icon.png"
+    image_path: "assets/icon/apartment_management_app_desktop_icon.png"
     icon_size: 256
   macos:
     generate: true

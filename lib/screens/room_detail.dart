@@ -949,7 +949,12 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
     final nationalIdController = TextEditingController(text: tenant?.nationalId ?? '');
     final occupationController = TextEditingController(text: tenant?.occupation ?? '');
     final workplaceController = TextEditingController(text: tenant?.workplace ?? '');
-    final rentController = TextEditingController(text: tenant?.monthlyRent?.toString() ?? '');
+    final rentController = TextEditingController(
+      text: tenant?.monthlyRent?.toString() ??
+          (widget.room.roomPrice != null && widget.room.roomPrice! > 0
+              ? widget.room.roomPrice!.toStringAsFixed(0)
+              : ''),
+    );
     final depositController = TextEditingController(text: tenant?.deposit?.toString() ?? '');
     final areaController = TextEditingController(text: tenant?.apartmentArea?.toString() ?? '');
     final typeController = TextEditingController(text: tenant?.apartmentType ?? '');

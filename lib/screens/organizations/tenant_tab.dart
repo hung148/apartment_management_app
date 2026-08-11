@@ -3888,6 +3888,15 @@ class _TenantsTabState extends State<TenantsTab>
                               selectedRoomId = room.id;
                               areaController.text = room.area.toString();
                               selectedAptType = normalizeAptType(room.roomType);
+                              // Prefill monthly rent from the room's default
+                              // price, but don't clobber a value the admin
+                              // already typed in.
+                              if (monthlyRentController.text.isEmpty &&
+                                  room.roomPrice != null &&
+                                  room.roomPrice! > 0) {
+                                monthlyRentController.text =
+                                    room.roomPrice!.toStringAsFixed(0);
+                              }
                             });
                           },
                         ),

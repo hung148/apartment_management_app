@@ -24,7 +24,7 @@ class PaymentPDFExporter {
   // LOCALIZATION HELPERS
   // ========================================
   static String _l(String key, ExportLanguage? lang) {
-    
+
     final langCode = lang?.name ?? 'bilingual';
 
     const labels = {
@@ -59,11 +59,29 @@ class PaymentPDFExporter {
       'bank_acc_owner': {'vi': 'Chủ TK: ', 'en': 'Owner: ', 'bilingual': 'Chủ TK/Owner: '},
       'bank_acc_num': {'vi': 'Số TK: ', 'en': 'Acc No: ', 'bilingual': 'Số TK/Acc No: '},
       'bank_name': {'vi': 'Ngân hàng: ', 'en': 'Bank: ', 'bilingual': 'Ngân hàng/Bank: '},
+      'rent_unit_price': {'vi': 'ĐƠN GIÁ THUÊ', 'en': 'RENT UNIT PRICE', 'bilingual': 'ĐƠN GIÁ THUÊ / RENT UNIT PRICE'},
+      'rent_qty': {'vi': 'SỐ LƯỢNG', 'en': 'QUANTITY', 'bilingual': 'SỐ LƯỢNG / QUANTITY'},
+      'unit_day': {'vi': 'ngày', 'en': 'day', 'bilingual': 'ngày/day'},
+      'unit_month': {'vi': 'tháng', 'en': 'month', 'bilingual': 'tháng/month'},
+      'unit_year': {'vi': 'năm', 'en': 'year', 'bilingual': 'năm/year'},
     };
-    
+
     final entry = labels[key];
     if (entry == null) return key;
     return entry[langCode] ?? entry['bilingual'] ?? key;
+  }
+
+  static String _rentUnitLabel(RentPriceMode mode, ExportLanguage? lang) {
+    switch (mode) {
+      case RentPriceMode.daily:
+        return _l('unit_day', lang);
+      case RentPriceMode.monthly:
+        return _l('unit_month', lang);
+      case RentPriceMode.yearly:
+        return _l('unit_year', lang);
+      case RentPriceMode.direct:
+        return '';
+    }
   }
 
   // ========================================
@@ -91,7 +109,7 @@ class PaymentPDFExporter {
   static String formatDate(DateTime? date) => date != null ? DateFormat('dd/MM/yyyy').format(date) : 'N/A';
   static String formatDateTime(DateTime dateTime) => DateFormat('dd/MM/yyyy HH:mm').format(dateTime);
   static int calculateDaysBetween(DateTime start, DateTime end) => end.difference(start).inDays + 1;
-  
+
   static int calculateMonthsBetween(DateTime start, DateTime end) {
     int months = (end.year - start.year) * 12 + end.month - start.month;
     if (end.day >= start.day) months++;
@@ -101,13 +119,13 @@ class PaymentPDFExporter {
   // ========================================
   // MAIN PDF GENERATION
   // ========================================
-  
+
   static Future<pw.Document> generateOwnerFeeReceipt({
     required ExportLanguage language,
     required Payment payment,
     required Organization organization,
-    Tenant? tenant, 
-    Room? room, 
+    Tenant? tenant,
+    Room? room,
     String? roomNumber,
     String? buildingName,
     String? apartmentTypeOverride,
@@ -122,7 +140,7 @@ class PaymentPDFExporter {
     String? remark,
   }) async {
     final pdf = pw.Document();
-    
+
     try {
       final regularFont = await _loadVietnameseFont();
       final boldFont = await _loadVietneseBoldFont();
@@ -140,14 +158,14 @@ class PaymentPDFExporter {
       }
 
       // 2. Loại căn hộ (Override > Tenant > Room)
-      String apartmentType = apartmentTypeOverride ?? 
-                             tenant?.apartmentType ?? 
-                             room?.roomType ?? 
+      String apartmentType = apartmentTypeOverride ??
+                             tenant?.apartmentType ??
+                             room?.roomType ??
                              'Tiêu chuẩn';
 
       // 3. Diện tích (Override > Tenant > Room)
-      double area = areaOverride ?? 
-                    tenant?.apartmentArea ?? 
+      double area = areaOverride ??
+                    tenant?.apartmentArea ??
                     (room?.area.toDouble() ?? 0.0);
 
       // 5. Email liên hệ
@@ -163,15 +181,15 @@ class PaymentPDFExporter {
       // 6. Xử lý ngày tháng hóa đơn
       DateTime? billingEnd = payment.billingEndDate ?? payment.electricityEndDate ?? payment.waterEndDate ?? payment.dueDate;
       DateTime? billingStart = payment.billingStartDate ?? payment.electricityStartDate ?? payment.waterStartDate;
-      
+
       // 4. Ngày bàn giao
       // Thứ tự ưu tiên: Ghi đè > Ngày dời vào của khách > Ngày bắt đầu hóa đơn > Ngày tạo hóa đơn
-      DateTime? handoverDate = handoverDateOverride ?? 
-                               tenant?.moveInDate ?? 
-                               billingStart ?? 
+      DateTime? handoverDate = handoverDateOverride ??
+                               tenant?.moveInDate ??
+                               billingStart ??
                                payment.createdAt;
 
-      final daysUsed = calculateDaysBetween(handoverDate, billingEnd); 
+      final daysUsed = calculateDaysBetween(handoverDate, billingEnd);
       final monthsUsed = calculateMonthsBetween(handoverDate, billingEnd);
 
       // --- TÍNH TOÁN CHI PHÍ ---
@@ -198,6 +216,22 @@ class PaymentPDFExporter {
       final grandTotal = subtotal + taxAmount;
 
       final billingPeriodStr = '${formatDate(handoverDate)} - ${formatDate(billingEnd)}';
+
+      // Rent unit-price rows (theo ngày/tháng/năm) — only shown when the rent
+      // payment was calculated via a unit price rather than entered directly.
+      final rentUnitRows = <pw.TableRow>[];
+      if (payment.hasRentUnitPricing) {
+        final unitLabel = _rentUnitLabel(payment.rentPriceMode!, language);
+        final qty = payment.rentUnitQuantity!;
+        final qtyText = payment.rentPriceMode == RentPriceMode.daily
+            ? qty.toStringAsFixed(0)
+            : qty.toStringAsFixed(2);
+        rentUnitRows.addAll([
+          _buildInfoRow(_l('rent_unit_price', language),
+              '${formatCurrency(payment.rentUnitPrice!)} / $unitLabel', regularFont, boldFont),
+          _buildInfoRow(_l('rent_qty', language), '$qtyText $unitLabel', regularFont, boldFont),
+        ]);
+      }
 
       pdf.addPage(
         pw.MultiPage(
@@ -226,7 +260,7 @@ class PaymentPDFExporter {
                   ],
                 ),
                 pw.SizedBox(height: 20),
-                
+
                 // TITLE
                 pw.Center(
                   child: pw.Column(children: [
@@ -237,7 +271,7 @@ class PaymentPDFExporter {
                   ]),
                 ),
                 pw.SizedBox(height: 20),
-                
+
                 // DATA TABLES
                 pw.Table(
                   border: pw.TableBorder.all(color: PdfColors.grey600, width: 0.5),
@@ -250,13 +284,14 @@ class PaymentPDFExporter {
                     _buildInfoRow(_l('days_used', language), '$daysUsed ${_l('days', language)}', regularFont, boldFont),
                     _buildInfoRow(_l('months_used', language), monthsUsed.toString(), regularFont, boldFont),
                     _buildInfoRow(_l('management_fee', language), formatCurrency(managementFee), regularFont, boldFont),
+                    ...rentUnitRows,
                     _buildInfoRow(_l('area', language), '${area.toStringAsFixed(2)} m²', regularFont, boldFont),
                     _buildInfoRow(_l('unit_price', language), (area > 0 && monthsUsed > 0) ? formatCurrency(managementFee / area / monthsUsed) : '0', regularFont, boldFont),
                   ],
                 ),
-                
+
                 pw.SizedBox(height: 10),
-                
+
                 pw.Table(
                   border: pw.TableBorder.all(color: PdfColors.grey600, width: 0.5),
                   children: [
@@ -280,7 +315,7 @@ class PaymentPDFExporter {
                 ),
 
                 pw.SizedBox(height: 10),
-                
+
                 // TOTALS
                 pw.Table(
                   border: pw.TableBorder.all(color: PdfColors.grey600, width: 0.5),
@@ -290,7 +325,7 @@ class PaymentPDFExporter {
                     _buildTotalRow(_l('total', language), formatCurrency(grandTotal), regularFont, boldFont, true),
                   ],
                 ),
-                
+
                 pw.SizedBox(height: 10),
 
                 // CONTACT & REMARK
@@ -304,7 +339,7 @@ class PaymentPDFExporter {
                 ),
 
                 pw.SizedBox(height: 20), // Replaced pw.Spacer() with fixed gap
-                
+
                 // BANK INFO
                 if (organization.hasBankInfo)
                   pw.Container(
@@ -321,7 +356,7 @@ class PaymentPDFExporter {
                       ],
                     ),
                   ),
-                
+
                 pw.SizedBox(height: 20),
                 pw.Divider(color: PdfColors.grey400),
                 pw.Row(
@@ -349,7 +384,7 @@ class PaymentPDFExporter {
       pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Text(value, textAlign: pw.TextAlign.right, style: pw.TextStyle(fontSize: 8, font: bold, color: isLink ? PdfColors.blue700 : PdfColors.black, decoration: isLink ? pw.TextDecoration.underline : null))),
     ]);
   }
-  
+
   static pw.TableRow _buildTotalRow(String label, String value, pw.Font reg, pw.Font bold, bool isGrand) {
     return pw.TableRow(
       decoration: isGrand ? const pw.BoxDecoration(color: PdfColors.blue50) : null,
@@ -595,7 +630,7 @@ class PaymentPDFExporter {
 
     // 1. Ask for language first
     final lang = await _showLanguageDialog(context);
-    
+
     // 2. Check if user cancelled or if the widget is no longer in the tree
     if (lang == null || !context.mounted) return;
 
@@ -682,7 +717,7 @@ class PaymentPDFExporter {
   static Future<void> _savePDF(BuildContext context, pw.Document pdf, Payment payment) async {
     final fileName = 'receipt_${payment.id.substring(0, min(8, payment.id.length))}.pdf';
     final bytes = await pdf.save();
-    
+
     if (Platform.isWindows || Platform.isMacOS) {
       final saveLocation = await getSaveLocation(suggestedName: fileName, acceptedTypeGroups: [const XTypeGroup(label: 'PDF', extensions: ['pdf'])]);
       if (saveLocation != null) {

@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 
 class BuildingRoomScreen extends StatefulWidget {
   final Organization organization; 
@@ -254,6 +255,9 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
     final areaController = TextEditingController(
       text: (room?.area ?? 0) > 0 ? room!.area.toString() : '',
     );
+    final roomPriceController = TextEditingController(
+      text: room?.roomPrice != null ? room!.roomPrice!.toStringAsFixed(0) : '',
+    );
     bool isSaving = false;
 
     RoomRentalMode rentalMode = room?.rentalMode ?? RoomRentalMode.monthly;
@@ -433,6 +437,21 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                               accentColor: isEditing ? Colors.orange.shade700 : Colors.blue.shade700,
                             ),
 
+                            const SizedBox(height: 14),
+
+                            // ── Room price (default monthly rent) ────────────
+                            _buildDialogField(
+                              controller: roomPriceController,
+                              label: t['room_field_price_label'],
+                              hint: t['room_field_price_hint'],
+                              icon: Icons.payments_rounded,
+                              suffixText: 'VND',
+                              enabled: !isSaving,
+                              keyboardType: TextInputType.number,
+                              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                              accentColor: isEditing ? Colors.orange.shade700 : Colors.blue.shade700,
+                            ),
+
                             SizedBox(height: 14),
 
                             Row(
@@ -602,6 +621,8 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
 
                                       setDialogState(() => isSaving = true);
 
+                                      final roomPrice = double.tryParse(roomPriceController.text.trim());
+
                                       final rentalFields = <String, dynamic>{
                                         'rentalMode': rentalMode.name,
                                         'hourlyPrice': double.tryParse(hourlyPriceController.text.trim()),
@@ -622,6 +643,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                                             roomNumber: roomNumber,
                                             roomType: roomType.isEmpty ? 'Standard' : roomType,
                                             createdAt: DateTime.now(),
+                                            roomPrice: roomPrice,
                                             rentalMode: rentalMode,
                                             hourlyPrice: rentalFields['hourlyPrice'] as double?,
                                             dailyPrice: rentalFields['dailyPrice'] as double?,
@@ -635,6 +657,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                                             'roomNumber': roomNumber,
                                             'roomType': roomType.isEmpty ? 'Standard' : roomType,
                                             'area': area,
+                                            'roomPrice': roomPrice,
                                             ...rentalFields,
                                           });
                                         }
@@ -1340,6 +1363,15 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                               color: Colors.blue.shade700,
                             ),
                           ],
+                          if (room.roomPrice != null && room.roomPrice! > 0) ...[
+                            _buildInfoDivider(),
+                            _buildInfoRow(
+                              icon: Icons.payments_rounded,
+                              label: t['room_field_price_label'],
+                              value: '${NumberFormat('#,###').format(room.roomPrice)} VND',
+                              color: Colors.blue.shade700,
+                            ),
+                          ],
                           _buildInfoDivider(),
                           _buildInfoRow(
                             icon: Icons.calendar_today_rounded,
@@ -1727,6 +1759,26 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                                         color: Colors.grey.shade500),
                                     const SizedBox(width: 4),
                                     Text('${room.area} m²',
+                                        style: TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.grey.shade600)),
+                                  ],
+                                  if (room.roomPrice != null &&
+                                      room.roomPrice! > 0) ...[
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 6),
+                                      child: Text('·',
+                                          style: TextStyle(
+                                              color:
+                                                  Colors.grey.shade400)),
+                                    ),
+                                    Icon(Icons.payments_rounded,
+                                        size: 12,
+                                        color: Colors.grey.shade500),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                        '${NumberFormat('#,###').format(room.roomPrice)} đ',
                                         style: TextStyle(
                                             fontSize: 12,
                                             color: Colors.grey.shade600)),

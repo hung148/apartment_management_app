@@ -120,6 +120,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   final AsyncLock _dialogLock    = AsyncLock();
   final AsyncLock _logoutLock    = AsyncLock();
   final AsyncLock _leaveOrgLock  = AsyncLock();
+  final AsyncLock _deleteAccountLock = AsyncLock();
 
   int  _overlayCount    = 0;
   bool _updateAvailable = false;
@@ -2454,6 +2455,288 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   // ─────────────────────────────────────────────────────────
+  // DELETE ACCOUNT
+  // ─────────────────────────────────────────────────────────
+
+  Future<void> _handleDeleteAccount() async {
+    final confirm = await _showTrackedDialog<bool>(
+      context: context,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        elevation: 0,
+        backgroundColor: Colors.white,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: _getDialogWidth(ctx)),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 28),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Color(0xFFEF4444), Color(0xFFB91C1C)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                ),
+                child: Column(children: [
+                  Container(
+                    width: 56, height: 56,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.delete_forever_rounded, color: Colors.white, size: 28),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    AppTranslations.of(ctx).text('confirm_delete_account'),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white, fontSize: 18,
+                      fontWeight: FontWeight.w800, letterSpacing: -0.3,
+                    ),
+                  ),
+                ]),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
+                child: Text(
+                  AppTranslations.of(ctx).text('confirm_delete_account_message'),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 14, color: _DS.textSecondary, height: 1.5),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+                child: Row(children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: _DS.textSecondary,
+                        side: BorderSide(color: Colors.grey.withValues(alpha: 0.3)),
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                      child: Text(AppTranslations.of(ctx).text('cancel'),
+                          style: const TextStyle(fontWeight: FontWeight.w600)),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      icon: const Icon(Icons.delete_forever_rounded, size: 16),
+                      label: Text(AppTranslations.of(ctx).text('delete_account_action'),
+                          style: const TextStyle(fontWeight: FontWeight.w600)),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFFB91C1C),
+                        padding: const EdgeInsets.symmetric(vertical: 13),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        elevation: 0,
+                      ),
+                    ),
+                  ),
+                ]),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (confirm == true && mounted) {
+      _deleteAccountLock.run(() => _performAccountDeletion());
+    }
+  }
+
+  /// Prompts the user for their password inside the given dialog context,
+  /// returning the entered password or null if cancelled.
+  Future<String?> _promptPasswordForReauth() {
+    final pwCtrl = TextEditingController();
+
+    return _showTrackedDialog<String?>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          elevation: 0,
+          backgroundColor: Colors.white,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: _getDialogWidth(ctx)),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    AppTranslations.of(ctx).text('delete_account_reauth_title'),
+                    style: const TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.w800,
+                      color: _DS.textPrimary, letterSpacing: -0.3,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    AppTranslations.of(ctx).text('delete_account_reauth_message'),
+                    style: const TextStyle(fontSize: 14, color: _DS.textSecondary, height: 1.4),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: pwCtrl,
+                    obscureText: true,
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      labelText: AppTranslations.of(ctx).text('password_hint'),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    onSubmitted: (_) => Navigator.pop(ctx, pwCtrl.text),
+                  ),
+                  const SizedBox(height: 20),
+                  Row(children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () {
+                          pwCtrl.dispose();
+                          Navigator.pop(ctx, null);
+                        },
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: _DS.textSecondary,
+                          side: BorderSide(color: Colors.grey.withValues(alpha: 0.3)),
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
+                        child: Text(AppTranslations.of(ctx).text('cancel'),
+                            style: const TextStyle(fontWeight: FontWeight.w600)),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: () => Navigator.pop(ctx, pwCtrl.text),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFFB91C1C),
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          elevation: 0,
+                        ),
+                        child: Text(AppTranslations.of(ctx).text('confirm_and_delete'),
+                            style: const TextStyle(fontWeight: FontWeight.w600)),
+                      ),
+                    ),
+                  ]),
+                ],
+              ),
+            ),
+          ),
+        ),
+    );
+  }
+
+  Future<void> _performAccountDeletion({String? password}) async {
+    if (!mounted) return;
+    final nav = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final successText = AppTranslations.of(context).text('account_deleted_success');
+    final failText = AppTranslations.of(context).text('account_deletion_failed');
+    final incorrectPwText = AppTranslations.of(context).text('incorrect_password');
+
+    if (password != null) {
+      final reauthed = await _authService.reauthenticateWithPassword(password);
+      if (!reauthed) {
+        if (!mounted) return;
+        messenger.showSnackBar(SnackBar(
+          content: Text(incorrectPwText),
+          backgroundColor: Colors.red,
+        ));
+        return;
+      }
+      if (!mounted) return;
+    }
+
+    final statusNotifier = ValueNotifier<String>(
+      AppTranslations.of(context).text('deleting_account'),
+    );
+    _showTrackedDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        elevation: 0,
+        backgroundColor: Colors.white,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(28, 32, 28, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(
+                width: 40, height: 40,
+                child: CircularProgressIndicator(strokeWidth: 3, color: Color(0xFFB91C1C)),
+              ),
+              const SizedBox(height: 16),
+              ValueListenableBuilder<String>(
+                valueListenable: statusNotifier,
+                builder: (ctx, status, _) => Text(
+                  status,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: _DS.textPrimary),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    bool success = false;
+    bool needsReauth = false;
+    try {
+      success = await _authService.deleteAccount(
+        onStatusUpdate: (s) => statusNotifier.value = s,
+      );
+    } on ReauthenticationRequiredException {
+      needsReauth = true;
+    } catch (_) {
+      success = false;
+    }
+
+    if (!mounted) return;
+    nav.pop(); // close loading dialog
+
+    if (needsReauth) {
+      final enteredPassword = await _promptPasswordForReauth();
+      if (enteredPassword != null && enteredPassword.isNotEmpty && mounted) {
+        await _performAccountDeletion(password: enteredPassword);
+      }
+      return;
+    }
+
+    if (success) {
+      if (mounted) {
+        setState(() {
+          _ownerFuture = null;
+          _orgsFuture  = null;
+          _membershipFutures.clear();
+        });
+      }
+      nav.pushReplacementNamed(AppRouter.loginScreen);
+      messenger.showSnackBar(SnackBar(
+        content: Text(successText),
+        backgroundColor: Colors.green,
+      ));
+    } else {
+      messenger.showSnackBar(SnackBar(
+        content: Text(failText),
+        backgroundColor: Colors.red,
+      ));
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────
   // BUILD
   // ─────────────────────────────────────────────────────────
 
@@ -2729,22 +3012,6 @@ class _DashboardScreenState extends State<DashboardScreen>
     )!;
     final langIcon = Color.lerp(Colors.white, _DS.textSecondary, textT)!;
 
-    final logoutBg = Color.lerp(
-      const Color(0xFF7F1D1D),        // solid dark red over photo
-      Colors.red.withValues(alpha: 0.08),
-      bgT,
-    )!;
-    final logoutBorder = Color.lerp(
-      const Color(0xFFEF4444).withValues(alpha: 0.6),
-      Colors.red.withValues(alpha: 0.25),
-      bgT,
-    )!;
-    final logoutIcon = Color.lerp(
-      const Color(0xFFFCA5A5),        // light red icon on dark red bg
-      Colors.red[400]!,
-      textT,
-    )!;
-
     // FIX: BackdropFilter always stays in the tree for both title and actions.
     // We zero the sigma when resizing or when fully scrolled (opacity == 1).
     // This prevents compositor layer destruction mid-frame.
@@ -2794,30 +3061,14 @@ class _DashboardScreenState extends State<DashboardScreen>
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (_updateAvailable && !_checkingUpdate)
-              _buildAppBarBtn(
-                icon: Icons.system_update_rounded,
-                onTap: _performUpdate,
-                tooltip: AppTranslations.of(context).text('update'),
-                bgColor: const Color(0xFF1A3D2A),
-                borderColor: Colors.green.withValues(alpha: 0.5),
-                iconColor: const Color(0xFF81C784),
-              ),
             _buildAppBarBtn(
-              icon: Icons.language_rounded,
-              onTap: _showLanguageDialog,
-              tooltip: AppTranslations.of(context).text('lang'),
+              icon: Icons.settings_rounded,
+              onTap: _showSettingsDialog,
+              tooltip: AppTranslations.of(context).text('settings'),
               bgColor: langBg,
               borderColor: langBorder,
               iconColor: langIcon,
-            ),
-            _buildAppBarBtn(
-              icon: Icons.logout_rounded,
-              onTap: _handleLogout,
-              tooltip: AppTranslations.of(context).text('logout'),
-              bgColor: logoutBg,
-              borderColor: logoutBorder,
-              iconColor: logoutIcon,
+              showBadge: _updateAvailable && !_checkingUpdate,
             ),
             const SizedBox(width: 10),
           ],
@@ -2833,22 +3084,176 @@ class _DashboardScreenState extends State<DashboardScreen>
     required Color bgColor,
     required Color borderColor,
     required Color iconColor,
+    bool showBadge = false,
   }) {
       return Container(
         margin: const EdgeInsets.symmetric(horizontal: 3, vertical: 9),
         width: 40, height: 40,
-        decoration: BoxDecoration(
-          color: bgColor,
-          shape: BoxShape.circle,
-          border: Border.all(color: borderColor, width: 1.8),
-        ),
-        child: IconButton(
-          onPressed: onTap,
-          tooltip: tooltip,
-          padding: EdgeInsets.zero,
-          icon: Icon(icon, color: iconColor, size: 19),
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Container(
+              width: 40, height: 40,
+              decoration: BoxDecoration(
+                color: bgColor,
+                shape: BoxShape.circle,
+                border: Border.all(color: borderColor, width: 1.8),
+              ),
+              child: IconButton(
+                onPressed: onTap,
+                tooltip: tooltip,
+                padding: EdgeInsets.zero,
+                icon: Icon(icon, color: iconColor, size: 19),
+              ),
+            ),
+            if (showBadge)
+              Positioned(
+                top: -1, right: -1,
+                child: Container(
+                  width: 12, height: 12,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF16A34A),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 2),
+                  ),
+                ),
+              ),
+          ],
         ),
       );
+  }
+
+  // ─────────────────────────────────────────────────────────
+  // SETTINGS DIALOG
+  // ─────────────────────────────────────────────────────────
+
+  void _showSettingsDialog() {
+    _showTrackedDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        elevation: 0,
+        backgroundColor: Colors.white,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: _getDialogWidth(ctx)),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [_DS.primaryMid, _DS.primaryDeep],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                ),
+                child: Row(children: [
+                  Container(
+                    width: 44, height: 44,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Icon(Icons.settings_rounded, color: Colors.white, size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    AppTranslations.of(ctx).text('settings'),
+                    style: const TextStyle(
+                      color: Colors.white, fontSize: 18,
+                      fontWeight: FontWeight.w800, letterSpacing: -0.3,
+                    ),
+                  ),
+                ]),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_updateAvailable && !_checkingUpdate)
+                      _buildSettingsTile(
+                        icon: Icons.system_update_rounded,
+                        iconBg: const Color(0xFFDCFCE7),
+                        iconColor: const Color(0xFF16A34A),
+                        label: AppTranslations.of(ctx).text('update'),
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          _performUpdate();
+                        },
+                      ),
+                    _buildSettingsTile(
+                      icon: Icons.language_rounded,
+                      iconBg: _DS.primaryLight,
+                      iconColor: _DS.primary,
+                      label: AppTranslations.of(ctx).text('lang'),
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _showLanguageDialog();
+                      },
+                    ),
+                    _buildSettingsTile(
+                      icon: Icons.logout_rounded,
+                      iconBg: const Color(0xFFFFEBEB),
+                      iconColor: Colors.red,
+                      label: AppTranslations.of(ctx).text('logout'),
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _handleLogout();
+                      },
+                    ),
+                    _buildSettingsTile(
+                      icon: Icons.delete_forever_rounded,
+                      iconBg: const Color(0xFFFFEBEB),
+                      iconColor: const Color(0xFFB91C1C),
+                      label: AppTranslations.of(ctx).text('delete_account'),
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _handleDeleteAccount();
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSettingsTile({
+    required IconData icon,
+    required Color iconBg,
+    required Color iconColor,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        child: Row(children: [
+          Container(
+            width: 40, height: 40,
+            decoration: BoxDecoration(color: iconBg, borderRadius: BorderRadius.circular(12)),
+            child: Icon(icon, color: iconColor, size: 20),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: _DS.textPrimary),
+            ),
+          ),
+          Icon(Icons.chevron_right_rounded, color: Colors.grey.withValues(alpha: 0.5)),
+        ]),
+      ),
+    );
     }
 
   // ─────────────────────────────────────────────────────────

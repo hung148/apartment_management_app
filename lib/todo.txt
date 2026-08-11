@@ -4,6 +4,12 @@ add search for room
 Khong xac dinh nguoi thue building rent
 
 add payment hourly
+phong cot 
+gio ngnag
+
+add don gia theo ngay and tung dong tinh
+add don gia theo thang and tung dong tinh
+add don gia theo nam and tung dong tinh
   
 
 You should apply this same pattern to every Firestore method in your service classes, since any of them could be in-flight during logout:

@@ -127,6 +127,11 @@ class InvoiceLineItem {
   DateTime? billingStartDate;
   DateTime? billingEndDate;
 
+  // Rent unit-price calculation (theo ngày / theo tháng / theo năm)
+  RentPriceMode? rentPriceMode;
+  double? rentUnitPrice;
+  double? rentUnitQuantity;
+
   InvoiceLineItem({
     required this.id,
     required this.type,
@@ -144,6 +149,9 @@ class InvoiceLineItem {
     this.waterPricePerUnit,
     this.billingStartDate,
     this.billingEndDate,
+    this.rentPriceMode,
+    this.rentUnitPrice,
+    this.rentUnitQuantity,
   });
 }
 
@@ -188,6 +196,9 @@ List<InvoiceLineItem> _parseLineItems(Payment payment) {
         description: payment.description,
         billingStartDate: payment.billingStartDate,
         billingEndDate: payment.billingEndDate,
+        rentPriceMode: payment.rentPriceMode,
+        rentUnitPrice: payment.rentUnitPrice,
+        rentUnitQuantity: payment.rentUnitQuantity,
       ),
     ];
   }
@@ -243,6 +254,9 @@ List<InvoiceLineItem> _parseLineItems(Payment payment) {
       description: description,
       billingStartDate: payment.billingStartDate,
       billingEndDate: payment.billingEndDate,
+      rentPriceMode: payment.rentPriceMode,
+      rentUnitPrice: payment.rentUnitPrice,
+      rentUnitQuantity: payment.rentUnitQuantity,
     ),
   ];
 }
@@ -296,6 +310,83 @@ Widget _infoRow(IconData icon, String label, String value,
           ),
         ),
       ],
+    ),
+  );
+}
+
+// ── Rent unit-price label helpers (theo ngày/tháng/năm) ────────────────────
+
+String _rentUnitPriceLabel(AppTranslations t, RentPriceMode mode) {
+  switch (mode) {
+    case RentPriceMode.daily:
+      return t['add_item_rent_price_daily'];
+    case RentPriceMode.monthly:
+      return t['add_item_rent_price_monthly'];
+    case RentPriceMode.yearly:
+      return t['add_item_rent_price_yearly'];
+    case RentPriceMode.direct:
+      return t['add_item_amount'];
+  }
+}
+
+String _rentQuantityLabel(AppTranslations t, RentPriceMode mode) {
+  switch (mode) {
+    case RentPriceMode.daily:
+      return t['add_item_rent_qty_daily'];
+    case RentPriceMode.monthly:
+      return t['add_item_rent_qty_monthly'];
+    case RentPriceMode.yearly:
+      return t['add_item_rent_qty_yearly'];
+    case RentPriceMode.direct:
+      return '';
+  }
+}
+
+String _rentUnitShort(AppTranslations t, RentPriceMode mode) {
+  switch (mode) {
+    case RentPriceMode.daily:
+      return t['unit_short_day'];
+    case RentPriceMode.monthly:
+      return t['unit_short_month'];
+    case RentPriceMode.yearly:
+      return t['unit_short_year'];
+    case RentPriceMode.direct:
+      return '';
+  }
+}
+
+Widget _rentModeChip({
+  required String label,
+  required IconData icon,
+  required bool selected,
+  required VoidCallback onTap,
+}) {
+  const color = Color(0xFF6366F1);
+  return GestureDetector(
+    onTap: onTap,
+    child: AnimatedContainer(
+      duration: const Duration(milliseconds: 150),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: selected ? color : Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: selected ? color : Colors.grey.shade300),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: selected ? Colors.white : Colors.grey.shade600),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              color: selected ? Colors.white : Colors.grey.shade700,
+            ),
+          ),
+        ],
+      ),
     ),
   );
 }
@@ -611,6 +702,27 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog>
             ),
           ],
 
+          // Rent unit-price breakdown (theo ngày/tháng/năm)
+          if (item.type == PaymentType.rent &&
+              item.rentPriceMode != null &&
+              item.rentPriceMode != RentPriceMode.direct &&
+              item.rentUnitPrice != null &&
+              item.rentUnitQuantity != null) ...[
+            Divider(height: 1, color: Colors.grey.shade100),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              child: _consumptionRow(
+                icon: Icons.calculate_rounded,
+                color: const Color(0xFF6366F1),
+                label: '',
+                value:
+                    '${item.rentPriceMode == RentPriceMode.daily ? item.rentUnitQuantity!.toStringAsFixed(0) : item.rentUnitQuantity!.toStringAsFixed(2)} ${_rentUnitShort(t, item.rentPriceMode!)}',
+                rate:
+                    '× ${NumberFormat('#,###').format(item.rentUnitPrice)} đ/${_rentUnitShort(t, item.rentPriceMode!)}',
+              ),
+            ),
+          ],
+
           if (item.description != null && item.description!.isNotEmpty) ...[
             Divider(height: 1, color: Colors.grey.shade100),
             Padding(
@@ -675,9 +787,11 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog>
           children: [
             Icon(icon, size: 14, color: color),
             const SizedBox(width: 6),
-            Text(label,
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-            const SizedBox(width: 6),
+            if (label.isNotEmpty) ...[
+              Text(label,
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+              const SizedBox(width: 6),
+            ],
             Text(value,
                 style: TextStyle(
                     fontSize: 12,
@@ -1086,6 +1200,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
   late DateTime _dueDate;
   List<Tenant> _tenants = [];
   List<InvoiceLineItem> _lineItems = [];
+  Room? _room;
 
   double get _totalAmount =>
       _lineItems.fold(0.0, (acc, item) => acc + item.amount);
@@ -1167,8 +1282,10 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
     try {
       final tenants = await widget.tenantService
           .getOrganizationTenants(widget.organization.id);
+      final room = await widget.roomService.getRoomById(widget.payment.roomId);
       setState(() {
         _tenants = tenants;
+        _room = room;
         if (_selectedTenantId != null &&
             !_tenants.any((t) => t.id == _selectedTenantId)) {
           _selectedTenantId = null;
@@ -1206,6 +1323,40 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
     DateTime? waterStartDate, waterEndDate;
     DateTime? billingStart, billingEnd;
 
+    // Rent unit-price (theo ngày/tháng/năm)
+    RentPriceMode rentPriceMode = RentPriceMode.direct;
+    final rentUnitPriceController = TextEditingController();
+    final rentUnitQuantityController = TextEditingController();
+    bool rentQuantityManuallyEdited = false;
+    bool rentPriceManuallyEdited = false;
+
+    // The selected tenant's on-file rent + contract period, used to auto-fill
+    // the rent unit price and billing dates instead of asking the admin to
+    // retype numbers that already exist on the tenant record. Falls back to
+    // the room's default price if the tenant has no monthlyRent set.
+    Tenant? tenant;
+    try {
+      tenant = _tenants.firstWhere((ten) => ten.id == _selectedTenantId);
+    } catch (_) {
+      tenant = null;
+    }
+    final room = _room;
+
+    double? autoRentUnitPrice(RentPriceMode mode) {
+      final monthly = tenant?.monthlyRent ?? room?.roomPrice;
+      if (monthly == null || monthly <= 0) return null;
+      switch (mode) {
+        case RentPriceMode.daily:
+          return monthly / 30;
+        case RentPriceMode.monthly:
+          return monthly;
+        case RentPriceMode.yearly:
+          return monthly * 12;
+        case RentPriceMode.direct:
+          return null;
+      }
+    }
+
     final result = await _showTrackedDialog<Map<String, dynamic>?>(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -1230,6 +1381,39 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
               if (e >= s && p > 0) {
                 amountController.text = ((e - s) * p).toStringAsFixed(0);
               }
+            }
+          }
+
+          double? autoRentQuantity() {
+            if (billingStart == null || billingEnd == null) return null;
+            final days = billingEnd!.difference(billingStart!).inDays + 1;
+            if (days <= 0) return null;
+            switch (rentPriceMode) {
+              case RentPriceMode.daily:
+                return days.toDouble();
+              case RentPriceMode.monthly:
+                return (days / 30).clamp(0.01, double.infinity);
+              case RentPriceMode.yearly:
+                return (days / 365).clamp(0.01, double.infinity);
+              case RentPriceMode.direct:
+                return null;
+            }
+          }
+
+          void recalcRentAmount() {
+            if (rentPriceMode == RentPriceMode.direct) return;
+            if (!rentQuantityManuallyEdited) {
+              final auto = autoRentQuantity();
+              if (auto != null) {
+                rentUnitQuantityController.text = rentPriceMode == RentPriceMode.daily
+                    ? auto.toStringAsFixed(0)
+                    : auto.toStringAsFixed(2);
+              }
+            }
+            final price = CurrencyParser.parse(rentUnitPriceController.text);
+            final qty = double.tryParse(rentUnitQuantityController.text) ?? 0;
+            if (price > 0 && qty > 0) {
+              amountController.text = (price * qty).toStringAsFixed(0);
             }
           }
 
@@ -1399,8 +1583,20 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                                       ]),
                                     ))
                                 .toList(),
-                            onChanged: (v) => setDialogState(
-                                () => selectedType = v),
+                            onChanged: (v) => setDialogState(() {
+                              selectedType = v;
+                              // Seed the billing period from the tenant's
+                              // contract the first time Rent is selected —
+                              // only if the admin hasn't already picked dates.
+                              if (v == PaymentType.rent &&
+                                  billingStart == null &&
+                                  billingEnd == null &&
+                                  tenant != null) {
+                                billingStart = tenant!.contractStartDate ??
+                                    tenant.moveInDate;
+                                billingEnd = tenant.contractEndDate;
+                              }
+                            }),
                           ),
                           const SizedBox(height: 16),
 
@@ -1599,19 +1795,151 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                                   child: CompactLocalizedDatePicker(
                                 labelText: dt['add_item_from_date'],
                                 initialDate: billingStart,
-                                onDateChanged: (d) =>
-                                    setDialogState(() => billingStart = d),
+                                onDateChanged: (d) => setDialogState(() {
+                                  billingStart = d;
+                                  if (selectedType == PaymentType.rent) {
+                                    recalcRentAmount();
+                                  }
+                                }),
                               )),
                               const SizedBox(width: 10),
                               Expanded(
                                   child: CompactLocalizedDatePicker(
                                 labelText: dt['add_item_to_date'],
                                 initialDate: billingEnd,
-                                onDateChanged: (d) =>
-                                    setDialogState(() => billingEnd = d),
+                                onDateChanged: (d) => setDialogState(() {
+                                  billingEnd = d;
+                                  if (selectedType == PaymentType.rent) {
+                                    recalcRentAmount();
+                                  }
+                                }),
                               )),
                             ]),
                             const SizedBox(height: 16),
+                          ],
+
+                          // --- Rent unit-price (theo ngày/tháng/năm) ---
+                          if (selectedType == PaymentType.rent) ...[
+                            _formSectionLabel(
+                                dt['add_item_rent_pricing_title'],
+                                Icons.calculate_rounded,
+                                const Color(0xFF6366F1)),
+                            const SizedBox(height: 10),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                _rentModeChip(
+                                  label: dt['add_item_mode_direct'],
+                                  icon: Icons.edit_rounded,
+                                  selected: rentPriceMode == RentPriceMode.direct,
+                                  onTap: () => setDialogState(() {
+                                    rentPriceMode = RentPriceMode.direct;
+                                  }),
+                                ),
+                                _rentModeChip(
+                                  label: dt['add_item_rent_daily'],
+                                  icon: Icons.today_rounded,
+                                  selected: rentPriceMode == RentPriceMode.daily,
+                                  onTap: () => setDialogState(() {
+                                    rentPriceMode = RentPriceMode.daily;
+                                    rentQuantityManuallyEdited = false;
+                                    if (!rentPriceManuallyEdited) {
+                                      final auto = autoRentUnitPrice(rentPriceMode);
+                                      if (auto != null) {
+                                        rentUnitPriceController.text =
+                                            auto.toStringAsFixed(0);
+                                      }
+                                    }
+                                    recalcRentAmount();
+                                  }),
+                                ),
+                                _rentModeChip(
+                                  label: dt['add_item_rent_monthly'],
+                                  icon: Icons.calendar_view_month_rounded,
+                                  selected: rentPriceMode == RentPriceMode.monthly,
+                                  onTap: () => setDialogState(() {
+                                    rentPriceMode = RentPriceMode.monthly;
+                                    rentQuantityManuallyEdited = false;
+                                    if (!rentPriceManuallyEdited) {
+                                      final auto = autoRentUnitPrice(rentPriceMode);
+                                      if (auto != null) {
+                                        rentUnitPriceController.text =
+                                            auto.toStringAsFixed(0);
+                                      }
+                                    }
+                                    recalcRentAmount();
+                                  }),
+                                ),
+                                _rentModeChip(
+                                  label: dt['add_item_rent_yearly'],
+                                  icon: Icons.event_repeat_rounded,
+                                  selected: rentPriceMode == RentPriceMode.yearly,
+                                  onTap: () => setDialogState(() {
+                                    rentPriceMode = RentPriceMode.yearly;
+                                    rentQuantityManuallyEdited = false;
+                                    if (!rentPriceManuallyEdited) {
+                                      final auto = autoRentUnitPrice(rentPriceMode);
+                                      if (auto != null) {
+                                        rentUnitPriceController.text =
+                                            auto.toStringAsFixed(0);
+                                      }
+                                    }
+                                    recalcRentAmount();
+                                  }),
+                                ),
+                              ],
+                            ),
+                            if (rentPriceMode != RentPriceMode.direct) ...[
+                              const SizedBox(height: 12),
+                              Row(children: [
+                                Expanded(
+                                  child: TextFormField(
+                                    controller: rentUnitPriceController,
+                                    inputFormatters: [CurrencyInputFormatter()],
+                                    decoration: _inputDec(
+                                        _rentUnitPriceLabel(dt, rentPriceMode),
+                                        Icons.price_change_rounded,
+                                        suffix: 'VND',
+                                        helper: (tenant?.monthlyRent ??
+                                                    room?.roomPrice) !=
+                                                null
+                                            ? dt['add_item_rent_price_auto_hint']
+                                            : null),
+                                    keyboardType: TextInputType.number,
+                                    onChanged: (_) => setDialogState(() {
+                                      rentPriceManuallyEdited = true;
+                                      recalcRentAmount();
+                                    }),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: TextFormField(
+                                    controller: rentUnitQuantityController,
+                                    decoration: _inputDec(
+                                        _rentQuantityLabel(dt, rentPriceMode),
+                                        Icons.numbers_rounded),
+                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                    onChanged: (_) => setDialogState(() {
+                                      rentQuantityManuallyEdited = true;
+                                      recalcRentAmount();
+                                    }),
+                                  ),
+                                ),
+                              ]),
+                              if (rentUnitPriceController.text.isNotEmpty &&
+                                  rentUnitQuantityController.text.isNotEmpty)
+                                _calcPreviewChip(
+                                  icon: Icons.calculate_rounded,
+                                  color: const Color(0xFF6366F1),
+                                  label: '',
+                                  usage:
+                                      '${rentUnitQuantityController.text} ${_rentUnitShort(dt, rentPriceMode)} × ${NumberFormat('#,###').format(CurrencyParser.parse(rentUnitPriceController.text))} đ',
+                                ),
+                              const SizedBox(height: 16),
+                            ] else
+                              const SizedBox(height: 16),
                           ],
 
                           // Amount
@@ -1626,7 +1954,9 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                                         PaymentType.electricity &&
                                     !electricityUseDirectAmount) ||
                                 (selectedType == PaymentType.water &&
-                                    !waterUseDirectAmount),
+                                    !waterUseDirectAmount) ||
+                                (selectedType == PaymentType.rent &&
+                                    rentPriceMode != RentPriceMode.direct),
                           ),
                           const SizedBox(height: 12),
 
@@ -1694,6 +2024,14 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                                     r['billingStartDate'] = billingStart;
                                     r['billingEndDate'] = billingEnd;
                                   }
+                                  if (selectedType == PaymentType.rent &&
+                                      rentPriceMode != RentPriceMode.direct) {
+                                    r['rentPriceMode'] = rentPriceMode;
+                                    r['rentUnitPrice'] = CurrencyParser
+                                        .parse(rentUnitPriceController.text);
+                                    r['rentUnitQuantity'] = double.tryParse(
+                                        rentUnitQuantityController.text);
+                                  }
                                   Navigator.pop(context, r);
                                 }
                               }
@@ -1731,6 +2069,9 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
           waterPricePerUnit: result['waterPricePerUnit'] as double?,
           billingStartDate: result['billingStartDate'] as DateTime?,
           billingEndDate: result['billingEndDate'] as DateTime?,
+          rentPriceMode: result['rentPriceMode'] as RentPriceMode?,
+          rentUnitPrice: result['rentUnitPrice'] as double?,
+          rentUnitQuantity: result['rentUnitQuantity'] as double?,
         ));
       });
     }
@@ -1790,6 +2131,18 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
               'end': item.waterEndReading,
               'usage': usage.toStringAsFixed(1),
             });
+          } else if (item.type == PaymentType.rent &&
+              item.rentPriceMode != null &&
+              item.rentPriceMode != RentPriceMode.direct &&
+              item.rentUnitPrice != null &&
+              item.rentUnitQuantity != null) {
+            final unitShort = _rentUnitShort(t, item.rentPriceMode!);
+            final qtyText = item.rentPriceMode == RentPriceMode.daily
+                ? item.rentUnitQuantity!.toStringAsFixed(0)
+                : item.rentUnitQuantity!.toStringAsFixed(2);
+            detail =
+                '$qtyText $unitShort × ${NumberFormat('#,###').format(item.rentUnitPrice)} đ/$unitShort'
+                '${item.billingStartDate != null && item.billingEndDate != null ? ' · ${DateFormat(dateFormat).format(item.billingStartDate!)} - ${DateFormat(dateFormat).format(item.billingEndDate!)}' : ''}';
           } else if (item.billingStartDate != null) {
             detail = t.textWithParams('billing_period', {
               'start':
@@ -1963,6 +2316,11 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
         if (item.billingStartDate != null) {
           updates['billingStartDate'] = item.billingStartDate;
           updates['billingEndDate'] = item.billingEndDate;
+        }
+        if (item.type == PaymentType.rent) {
+          updates['rentPriceMode'] = item.rentPriceMode?.name;
+          updates['rentUnitPrice'] = item.rentUnitPrice;
+          updates['rentUnitQuantity'] = item.rentUnitQuantity;
         }
       }
 
@@ -2364,8 +2722,11 @@ Widget _calcPreviewChip({
       child: Row(children: [
         Icon(icon, size: 14, color: color),
         const SizedBox(width: 6),
-        Text(label,
-            style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+        if (label.isNotEmpty) ...[
+          Text(label,
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+          const SizedBox(width: 4),
+        ],
         Text(usage,
             style: TextStyle(
                 fontSize: 12, fontWeight: FontWeight.w700, color: color)),

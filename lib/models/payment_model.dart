@@ -9,7 +9,7 @@ enum PaymentType {
   maintenance,    // Phí bảo trì
   deposit,        // Tiền cọc
   penalty,        // Tiền phạt
-  buildingRent, 
+  buildingRent,
   hourlyRent,
   other,          // Khác
 }
@@ -32,6 +32,17 @@ enum PaymentMethod {
   other,          // Khác
 }
 
+// How a Rent line's amount was produced. `direct` = staff typed the total
+// themselves (existing behavior). The other three multiply a unit price by
+// a quantity of days/months/years — normally derived from billingStartDate/
+// billingEndDate, but rentUnitQuantity can override that.
+enum RentPriceMode {
+  direct,   // Nhập trực tiếp
+  daily,    // Theo ngày
+  monthly,  // Theo tháng
+  yearly,   // Theo năm
+}
+
 class Payment {
   final String id;
   final String organizationId;
@@ -39,63 +50,69 @@ class Payment {
   final String roomId;
   final String? tenantId;
   final String? tenantName;
-  
+
   // Payment details
   final PaymentType type;
   final PaymentStatus status;
   final double amount;
   final double paidAmount;
   final String currency;
-  
+
   // Payment method
   final PaymentMethod? paymentMethod;
   final String? transactionId;
   final String? receiptNumber;
-  
+
   // Billing period (for recurring payments like rent)
   final DateTime? billingStartDate;   // Từ ngày (for rent, water)
   final DateTime? billingEndDate;     // Đến ngày (for rent, water)
   final DateTime dueDate;
-  
+
+  // Rent unit-price calculation (theo ngày / theo tháng / theo năm) —
+  // only meaningful when type == PaymentType.rent and rentPriceMode != direct.
+  final RentPriceMode? rentPriceMode;
+  final double? rentUnitPrice;      // Đơn giá / ngày, / tháng, hoặc / năm
+  final double? rentUnitQuantity;   // Số ngày/tháng/năm dùng để nhân (có thể override thủ công)
+
   // Electricity meter readings (chỉ số điện)
   final double? electricityStartReading;  // Chỉ số đầu
   final DateTime? electricityStartDate;   // Từ ngày (chỉ số đầu)
   final double? electricityEndReading;    // Chỉ số cuối
   final DateTime? electricityEndDate;     // Đến ngày (chỉ số cuối)
   final double? electricityPricePerUnit;  // Giá điện/kWh
-  
+
   // Water meter readings (chỉ số nước)
   final double? waterStartReading;        // Chỉ số đầu
   final DateTime? waterStartDate;         // Từ ngày (chỉ số đầu)
   final double? waterEndReading;          // Chỉ số cuối
   final DateTime? waterEndDate;           // Đến ngày (chỉ số cuối)
   final double? waterPricePerUnit;        // Giá nước/m³
-  
+
   // NEW: Additional Fees (for combined receipts)
   final double? internetFee;              // NEW: Phí internet
   final double? cableTVFee;               // NEW: Phí truyền hình cáp
-  final double? hotWaterFee;              // NEW: Phí nước nóng
+  final double? hotWaterFee;               // NEW: Phí nước nóng
   final double? hotWaterPercent;          // NEW: % tính phí nước nóng
   final double? managementFee;            // NEW: Phí quản lý (if different from rent)
-  
+
   // Tax
   final double? taxAmount;                // Tiền thuế / Tax amount
-  
+
   // Payment tracking
   final DateTime createdAt;
   final DateTime? paidAt;
   final String? paidBy;
-  
+
   // Additional info
   final String? description;
   final String? notes;
   final Map<String, dynamic>? metadata;
-  
+
   // Late fee tracking
   final double? lateFee;
   final bool isRecurring;
   final String? recurringParentId;
-  final String? bookingId; 
+  final String? bookingId;
 
   Payment({
     required this.id,
@@ -115,6 +132,10 @@ class Payment {
     this.billingStartDate,
     this.billingEndDate,
     required this.dueDate,
+    // Rent unit-price fields
+    this.rentPriceMode,
+    this.rentUnitPrice,
+    this.rentUnitQuantity,
     // Electricity fields
     this.electricityStartReading,
     this.electricityStartDate,
@@ -151,10 +172,10 @@ class Payment {
   // Helper getters
   bool get isPaid => status == PaymentStatus.paid;
   bool get isPending => status == PaymentStatus.pending;
-  bool get isOverdue => status == PaymentStatus.overdue || 
+  bool get isOverdue => status == PaymentStatus.overdue ||
                         (status == PaymentStatus.pending && DateTime.now().isAfter(dueDate));
   bool get isPartiallyPaid => status == PaymentStatus.partial;
-  
+
   // Building-level rent received FROM a renter leasing the whole building
   // (income), not a per-tenant payment. roomId will be empty and tenantId
   // will be null for this type.
@@ -163,12 +184,12 @@ class Payment {
 
   double get remainingAmount => amount - paidAmount + (lateFee ?? 0) + (taxAmount ?? 0);
   double get totalAmount => amount + (lateFee ?? 0) + (taxAmount ?? 0);
-  
+
   int get daysOverdue {
     if (!isOverdue) return 0;
     return DateTime.now().difference(dueDate).inDays;
   }
-  
+
   // Calculate electricity usage (số điện tiêu thụ)
   double? get electricityUsage {
     if (electricityStartReading != null && electricityEndReading != null) {
@@ -176,7 +197,7 @@ class Payment {
     }
     return null;
   }
-  
+
   // Calculate water usage (số nước tiêu thụ)
   double? get waterUsage {
     if (waterStartReading != null && waterEndReading != null) {
@@ -184,7 +205,31 @@ class Payment {
     }
     return null;
   }
-  
+
+  // True when this rent payment's amount was computed as unit price × quantity
+  // rather than typed directly.
+  bool get hasRentUnitPricing =>
+      type == PaymentType.rent &&
+      rentPriceMode != null &&
+      rentPriceMode != RentPriceMode.direct &&
+      rentUnitPrice != null &&
+      rentUnitQuantity != null;
+
+  String? getRentPriceModeDisplayName() {
+    switch (rentPriceMode) {
+      case RentPriceMode.direct:
+        return 'Nhập trực tiếp';
+      case RentPriceMode.daily:
+        return 'Theo ngày';
+      case RentPriceMode.monthly:
+        return 'Theo tháng';
+      case RentPriceMode.yearly:
+        return 'Theo năm';
+      case null:
+        return null;
+    }
+  }
+
   // NEW: Calculate total with all fees
   double get totalWithAllFees {
     double total = amount;
@@ -211,13 +256,17 @@ class Payment {
       'paymentMethod': paymentMethod?.name,
       'transactionId': transactionId,
       'receiptNumber': receiptNumber,
-      'billingStartDate': billingStartDate != null 
-          ? Timestamp.fromDate(billingStartDate!) 
+      'billingStartDate': billingStartDate != null
+          ? Timestamp.fromDate(billingStartDate!)
           : null,
-      'billingEndDate': billingEndDate != null 
-          ? Timestamp.fromDate(billingEndDate!) 
+      'billingEndDate': billingEndDate != null
+          ? Timestamp.fromDate(billingEndDate!)
           : null,
       'dueDate': Timestamp.fromDate(dueDate),
+      // Rent unit-price fields
+      'rentPriceMode': rentPriceMode?.name,
+      'rentUnitPrice': rentUnitPrice,
+      'rentUnitQuantity': rentUnitQuantity,
       // Electricity fields
       'electricityStartReading': electricityStartReading,
       'electricityStartDate': electricityStartDate != null
@@ -294,6 +343,15 @@ class Payment {
           ? (map['billingEndDate'] as Timestamp).toDate()
           : null,
       dueDate: (map['dueDate'] as Timestamp).toDate(),
+      // Rent unit-price fields
+      rentPriceMode: map['rentPriceMode'] != null
+          ? RentPriceMode.values.firstWhere(
+              (e) => e.name == map['rentPriceMode'],
+              orElse: () => RentPriceMode.direct,
+            )
+          : null,
+      rentUnitPrice: (map['rentUnitPrice'] as num?)?.toDouble(),
+      rentUnitQuantity: (map['rentUnitQuantity'] as num?)?.toDouble(),
       // Electricity fields
       electricityStartReading: (map['electricityStartReading'] as num?)?.toDouble(),
       electricityStartDate: map['electricityStartDate'] != null
@@ -324,8 +382,8 @@ class Payment {
       taxAmount: (map['taxAmount'] as num?)?.toDouble(),
       // Payment tracking
       createdAt: (map['createdAt'] as Timestamp).toDate(),
-      paidAt: map['paidAt'] != null 
-          ? (map['paidAt'] as Timestamp).toDate() 
+      paidAt: map['paidAt'] != null
+          ? (map['paidAt'] as Timestamp).toDate()
           : null,
       paidBy: map['paidBy'],
       description: map['description'],
@@ -357,6 +415,10 @@ class Payment {
     DateTime? billingStartDate,
     DateTime? billingEndDate,
     DateTime? dueDate,
+    RentPriceMode? rentPriceMode,
+    double? rentUnitPrice,
+    double? rentUnitQuantity,
+    bool clearRentPricing = false,
     double? electricityStartReading,
     DateTime? electricityStartDate,
     double? electricityEndReading,
@@ -402,6 +464,9 @@ class Payment {
       billingStartDate: billingStartDate ?? this.billingStartDate,
       billingEndDate: billingEndDate ?? this.billingEndDate,
       dueDate: dueDate ?? this.dueDate,
+      rentPriceMode: clearRentPricing ? null : (rentPriceMode ?? this.rentPriceMode),
+      rentUnitPrice: clearRentPricing ? null : (rentUnitPrice ?? this.rentUnitPrice),
+      rentUnitQuantity: clearRentPricing ? null : (rentUnitQuantity ?? this.rentUnitQuantity),
       electricityStartReading: electricityStartReading ?? this.electricityStartReading,
       electricityStartDate: electricityStartDate ?? this.electricityStartDate,
       electricityEndReading: electricityEndReading ?? this.electricityEndReading,
@@ -480,7 +545,7 @@ class Payment {
   // Helper method to get payment method display name in Vietnamese
   String? getPaymentMethodDisplayName() {
     if (paymentMethod == null) return null;
-    
+
     switch (paymentMethod!) {
       case PaymentMethod.cash:
         return 'Tiền mặt';

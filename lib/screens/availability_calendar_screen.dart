@@ -66,14 +66,20 @@ class _AvailabilityCalendarScreenState extends State<AvailabilityCalendarScreen>
   static const int _startHour = 0;
   static const int _endHour = 24;
   Timer? _nowTimer;
+
+  // Header (hour labels) scrolls horizontally in lockstep with the grid body.
   final ScrollController _headerHController = ScrollController();
   final ScrollController _bodyHController = ScrollController();
-  double _pixelsPerHour = 60.0;
+  double _pixelsPerHour = 80.0;
 
-  static const double _timeColWidth = 56.0;
-  static const double _roomColWidth = 170.0;
+  // Room labels are a sticky left column; rows scroll vertically together
+  // with the grid body via a single shared vertical scroll view.
+  static const double _roomLabelColWidth = 170.0;
+  static const double _timeHeaderHeight = 40.0;
+  static const double _roomRowHeight = 76.0;
 
-  double get _dayGridHeight => _pixelsPerHour * (_endHour - _startHour);
+  double get _dayGridWidth => _pixelsPerHour * (_endHour - _startHour);
+  double get _roomsGridHeight => _roomRowHeight * _hourlyRooms.length;
 
   @override
   void initState() {
@@ -330,7 +336,7 @@ class _AvailabilityCalendarScreenState extends State<AvailabilityCalendarScreen>
     );
   }
 
-  // ── DAY VIEW: Google-Calendar-style vertical timeline ──────────────
+  // ── DAY VIEW: room rows × horizontal time axis (hotel-chart style) ──
   Widget _buildDayView() {
     if (_hourlyRooms.isEmpty) return const SizedBox.shrink();
 
@@ -342,88 +348,57 @@ class _AvailabilityCalendarScreenState extends State<AvailabilityCalendarScreen>
         Expanded(
           child: Column(
             children: [
-              // Sticky header row: room names, synced horizontally with grid below
+              // Sticky top header: hour labels, synced horizontally with grid below
               Container(
                 decoration: BoxDecoration(
                   color: Colors.white,
                   border: Border(bottom: BorderSide(color: Colors.grey.shade300)),
                 ),
                 child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    SizedBox(width: _timeColWidth),
+                    SizedBox(width: _roomLabelColWidth, height: _timeHeaderHeight),
                     Expanded(
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        controller: _headerHController,
-                        physics: const NeverScrollableScrollPhysics(),
-                        child: Row(
-                          children: _hourlyRooms.map((room) {
-                            final tenantOccupied = _isTenantOccupiedOnDate(room.id, _selectedDate);
-                            return Container(
-                              width: _roomColWidth,
-                              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
-                              decoration: BoxDecoration(
-                                border: Border(left: BorderSide(color: Colors.grey.shade200)),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    room.roomNumber,
-                                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  if (tenantOccupied)
-                                    Container(
-                                      margin: const EdgeInsets.only(top: 4),
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFFCEBEB),
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                      child: const Text(
-                                        'Khách dài hạn',
-                                        style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Color(0xFFA32D2D)),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            );
-                          }).toList(),
+                      child: ClipRect(
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          controller: _headerHController,
+                          physics: const NeverScrollableScrollPhysics(),
+                          child: _buildTimeHeaderRow(),
                         ),
                       ),
                     ),
                   ],
                 ),
               ),
-              // Scrollable grid body
+              // Scrollable grid body: room labels (sticky left) + horizontally
+              // scrollable timeline, both inside one shared vertical scroll.
               Expanded(
                 child: SingleChildScrollView(
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildTimeLabelsColumn(),
+                      _buildRoomLabelsColumn(),
                       Expanded(
                         child: SingleChildScrollView(
                           scrollDirection: Axis.horizontal,
                           controller: _bodyHController,
                           child: SizedBox(
-                            width: _roomColWidth * _hourlyRooms.length,
-                            height: _dayGridHeight,
+                            width: _dayGridWidth,
+                            height: _roomsGridHeight,
                             child: Stack(
                               children: [
                                 CustomPaint(
-                                  size: Size(_roomColWidth * _hourlyRooms.length, _dayGridHeight),
-                                  painter: _HourGridPainter(
+                                  size: Size(_dayGridWidth, _roomsGridHeight),
+                                  painter: _TimeGridPainter(
                                     pixelsPerHour: _pixelsPerHour,
                                     hourCount: _endHour - _startHour,
-                                    columnWidth: _roomColWidth,
-                                    columnCount: _hourlyRooms.length,
+                                    rowHeight: _roomRowHeight,
+                                    rowCount: _hourlyRooms.length,
                                   ),
                                 ),
                                 ..._buildOutOfHoursOverlays(),
-                                ..._buildRoomEventColumns(),
+                                ..._buildRoomEventRows(),
                                 if (DateUtils.isSameDay(_selectedDate, DateTime.now())) _buildNowLine(),
                               ],
                             ),
@@ -441,19 +416,81 @@ class _AvailabilityCalendarScreenState extends State<AvailabilityCalendarScreen>
     );
   }
 
-  Widget _buildTimeLabelsColumn() {
+  Widget _buildTimeHeaderRow() {
     final hours = List.generate(_endHour - _startHour, (i) => _startHour + i);
     return SizedBox(
-      width: _timeColWidth,
-      height: _dayGridHeight,
+      width: _dayGridWidth,
+      height: _timeHeaderHeight,
       child: Stack(
         children: hours.map((h) {
           return Positioned(
-            top: (h - _startHour) * _pixelsPerHour - 6,
-            right: 8,
-            child: Text(
-              '${h.toString().padLeft(2, '0')}:00',
-              style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+            left: (h - _startHour) * _pixelsPerHour,
+            top: 0,
+            bottom: 0,
+            child: Container(
+              width: _pixelsPerHour,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                border: Border(left: BorderSide(color: Colors.grey.shade200)),
+              ),
+              child: Text(
+                '${h.toString().padLeft(2, '0')}:00',
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontWeight: FontWeight.w600),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildRoomLabelsColumn() {
+    return SizedBox(
+      width: _roomLabelColWidth,
+      height: _roomsGridHeight,
+      child: Column(
+        children: _hourlyRooms.map((room) {
+          final tenantOccupied = _isTenantOccupiedOnDate(room.id, _selectedDate);
+          return Container(
+            height: _roomRowHeight,
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border(
+                bottom: BorderSide(color: Colors.grey.shade200),
+                right: BorderSide(color: Colors.grey.shade300),
+              ),
+            ),
+            alignment: Alignment.centerLeft,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  room.roomNumber,
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (tenantOccupied)
+                  Container(
+                    margin: const EdgeInsets.only(top: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFA32D2D).withValues(alpha: 0.16),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: const Color(0xFFA32D2D).withValues(alpha: 0.35), width: 0.8),
+                    ),
+                    child: const Text(
+                      'Khách dài hạn',
+                      style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Color(0xFFA32D2D)),
+                    ),
+                  )
+                else if (room.hasHourlyPricing)
+                  Text(
+                    '${NumberFormat('#,###', 'vi_VN').format(room.hourlyPrice)} đ/giờ',
+                    style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+                  ),
+              ],
             ),
           );
         }).toList(),
@@ -468,23 +505,23 @@ class _AvailabilityCalendarScreenState extends State<AvailabilityCalendarScreen>
       if (room.operatingHoursStartMin == null || room.operatingHoursEndMin == null) continue;
       final startMin = room.operatingHoursStartMin!;
       final endMin = room.operatingHoursEndMin!;
-      final left = i * _roomColWidth;
+      final top = i * _roomRowHeight;
 
       if (startMin > _startHour * 60) {
         widgets.add(Positioned(
-          left: left,
-          top: 0,
-          width: _roomColWidth,
-          height: (startMin - _startHour * 60) / 60 * _pixelsPerHour,
+          top: top,
+          left: 0,
+          height: _roomRowHeight,
+          width: (startMin - _startHour * 60) / 60 * _pixelsPerHour,
           child: Container(color: Colors.grey.shade100.withValues(alpha: 0.7)),
         ));
       }
       if (endMin < _endHour * 60) {
         widgets.add(Positioned(
-          left: left,
-          top: (endMin - _startHour * 60) / 60 * _pixelsPerHour,
-          width: _roomColWidth,
-          height: (_endHour * 60 - endMin) / 60 * _pixelsPerHour,
+          top: top,
+          left: (endMin - _startHour * 60) / 60 * _pixelsPerHour,
+          height: _roomRowHeight,
+          width: (_endHour * 60 - endMin) / 60 * _pixelsPerHour,
           child: Container(color: Colors.grey.shade100.withValues(alpha: 0.7)),
         ));
       }
@@ -492,34 +529,40 @@ class _AvailabilityCalendarScreenState extends State<AvailabilityCalendarScreen>
     return widgets;
   }
 
-  List<Widget> _buildRoomEventColumns() {
+  List<Widget> _buildRoomEventRows() {
     final widgets = <Widget>[];
     for (int i = 0; i < _hourlyRooms.length; i++) {
       final room = _hourlyRooms[i];
-      final left = i * _roomColWidth;
+      final top = i * _roomRowHeight;
       final tenantOccupied = _isTenantOccupiedOnDate(room.id, _selectedDate);
 
       if (tenantOccupied) {
         widgets.add(Positioned(
-          left: left + 2,
-          top: 0,
-          width: _roomColWidth - 4,
-          height: _dayGridHeight,
-          child: Container(color: const Color(0xFFFCEBEB).withValues(alpha: 0.5)),
+          top: top + 2,
+          left: 0,
+          width: _dayGridWidth,
+          height: _roomRowHeight - 4,
+          child: Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFFA32D2D).withValues(alpha: 0.22),
+              border: Border.all(color: const Color(0xFFA32D2D).withValues(alpha: 0.45), width: 1),
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ),
         ));
         continue;
       }
 
       // Tap-to-create layer (added first so events painted after sit on top and stay tappable)
       widgets.add(Positioned(
-        left: left,
-        top: 0,
-        width: _roomColWidth,
-        height: _dayGridHeight,
+        top: top,
+        left: 0,
+        width: _dayGridWidth,
+        height: _roomRowHeight,
         child: GestureDetector(
           behavior: HitTestBehavior.translucent,
           onTapUp: (details) {
-            final minutesFromStart = (details.localPosition.dy / _pixelsPerHour * 60).round();
+            final minutesFromStart = (details.localPosition.dx / _pixelsPerHour * 60).round();
             final snapped = (minutesFromStart ~/ 30) * 30;
             final start = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day, _startHour)
                 .add(Duration(minutes: snapped));
@@ -530,30 +573,30 @@ class _AvailabilityCalendarScreenState extends State<AvailabilityCalendarScreen>
       ));
 
       final bookings = (_dayBookings[room.id] ?? []).toList();
-      final columns = _layoutOverlapColumns(bookings);
-      final colCount = columns.isEmpty ? 1 : columns.length;
+      final lanes = _layoutOverlapLanes(bookings);
+      final laneCount = lanes.isEmpty ? 1 : lanes.length;
 
-      for (int c = 0; c < columns.length; c++) {
-        for (final booking in columns[c]) {
+      for (int c = 0; c < lanes.length; c++) {
+        for (final booking in lanes[c]) {
           final dayStart = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day, _startHour);
           final startMinutes = booking.startTime.difference(dayStart).inMinutes.clamp(0, (_endHour - _startHour) * 60);
           final endMinutes = booking.endTime.difference(dayStart).inMinutes.clamp(0, (_endHour - _startHour) * 60);
           if (endMinutes <= startMinutes) continue;
 
-          final top = startMinutes / 60 * _pixelsPerHour;
-          final height = (endMinutes - startMinutes) / 60 * _pixelsPerHour;
-          final eventWidth = (_roomColWidth - 4) / colCount;
-          final eventLeft = left + 2 + c * eventWidth;
+          final left = startMinutes / 60 * _pixelsPerHour;
+          final width = (endMinutes - startMinutes) / 60 * _pixelsPerHour;
+          final eventHeight = (_roomRowHeight - 4) / laneCount;
+          final eventTop = top + 2 + c * eventHeight;
 
           widgets.add(Positioned(
-            left: eventLeft,
-            top: top,
-            width: eventWidth - 2,
-            height: height,
+            left: left,
+            top: eventTop,
+            width: width - 2,
+            height: eventHeight - 2,
             child: GestureDetector(
               onTap: () => _openBookingDetail(booking),
               child: Container(
-                margin: const EdgeInsets.symmetric(vertical: 1),
+                margin: const EdgeInsets.symmetric(horizontal: 1),
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
                 decoration: BoxDecoration(
                   color: _statusColor(booking.status),
@@ -562,23 +605,31 @@ class _AvailabilityCalendarScreenState extends State<AvailabilityCalendarScreen>
                     BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 3, offset: const Offset(0, 1)),
                   ],
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      booking.guestName,
-                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (height > 30)
-                      Text(
-                        '${DateFormat('HH:mm').format(booking.startTime)}–${DateFormat('HH:mm').format(booking.endTime)}',
-                        style: const TextStyle(fontSize: 9, color: Colors.white70),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                    Flexible(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            booking.guestName,
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          if (width > 70)
+                            Text(
+                              '${DateFormat('HH:mm').format(booking.startTime)}–${DateFormat('HH:mm').format(booking.endTime)}',
+                              style: const TextStyle(fontSize: 9, color: Colors.white70),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                        ],
                       ),
+                    ),
                   ],
                 ),
               ),
@@ -590,42 +641,44 @@ class _AvailabilityCalendarScreenState extends State<AvailabilityCalendarScreen>
     return widgets;
   }
 
-  List<List<RoomBooking>> _layoutOverlapColumns(List<RoomBooking> bookings) {
+  /// Assigns overlapping bookings within a room's row into stacked lanes
+  /// (sub-rows). Non-overlapping bookings share the same lane.
+  List<List<RoomBooking>> _layoutOverlapLanes(List<RoomBooking> bookings) {
     final sorted = [...bookings]..sort((a, b) => a.startTime.compareTo(b.startTime));
-    final columns = <List<RoomBooking>>[];
+    final lanes = <List<RoomBooking>>[];
     for (final b in sorted) {
       var placed = false;
-      for (final col in columns) {
-        if (!col.last.endTime.isAfter(b.startTime)) {
-          col.add(b);
+      for (final lane in lanes) {
+        if (!lane.last.endTime.isAfter(b.startTime)) {
+          lane.add(b);
           placed = true;
           break;
         }
       }
-      if (!placed) columns.add([b]);
+      if (!placed) lanes.add([b]);
     }
-    return columns;
+    return lanes;
   }
 
   Widget _buildNowLine() {
     final now = DateTime.now();
     final dayStart = DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day, _startHour);
     final minutesFromStart = now.difference(dayStart).inMinutes;
-    final top = minutesFromStart / 60 * _pixelsPerHour;
+    final left = minutesFromStart / 60 * _pixelsPerHour;
     return Positioned(
-      left: 0,
-      right: 0,
-      top: top,
+      top: 0,
+      bottom: 0,
+      left: left,
       child: IgnorePointer(
-        child: Row(
+        child: Column(
           children: [
             Container(
               width: 8,
               height: 8,
-              margin: const EdgeInsets.only(left: 2),
+              margin: const EdgeInsets.only(top: 2),
               decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
             ),
-            Expanded(child: Container(height: 1.5, color: Colors.red)),
+            Expanded(child: Container(width: 1.5, color: Colors.red)),
           ],
         ),
       ),
@@ -677,11 +730,11 @@ class _AvailabilityCalendarScreenState extends State<AvailabilityCalendarScreen>
         children: [
           IconButton(
             icon: const Icon(Icons.zoom_out, size: 18),
-            onPressed: () => setState(() => _pixelsPerHour = (_pixelsPerHour - 15).clamp(30, 150).toDouble()),
+            onPressed: () => setState(() => _pixelsPerHour = (_pixelsPerHour - 15).clamp(40, 200).toDouble()),
           ),
           IconButton(
             icon: const Icon(Icons.zoom_in, size: 18),
-            onPressed: () => setState(() => _pixelsPerHour = (_pixelsPerHour + 15).clamp(30, 150).toDouble()),
+            onPressed: () => setState(() => _pixelsPerHour = (_pixelsPerHour + 15).clamp(40, 200).toDouble()),
           ),
         ],
       ),
@@ -830,9 +883,9 @@ class _AvailabilityCalendarScreenState extends State<AvailabilityCalendarScreen>
                                       margin: const EdgeInsets.only(bottom: 3),
                                       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
                                       decoration: BoxDecoration(
-                                        color: s.color!.withValues(alpha: 0.15),
+                                        color: s.color!.withValues(alpha: 0.28),
                                         borderRadius: BorderRadius.circular(5),
-                                        border: Border.all(color: s.color!, width: 0.8),
+                                        border: Border.all(color: s.color!, width: 1),
                                       ),
                                       child: Text(
                                         s.room.roomNumber,
@@ -893,17 +946,17 @@ class _AvailabilityCalendarScreenState extends State<AvailabilityCalendarScreen>
   }
 }
 
-class _HourGridPainter extends CustomPainter {
+class _TimeGridPainter extends CustomPainter {
   final double pixelsPerHour;
   final int hourCount;
-  final double columnWidth;
-  final int columnCount;
+  final double rowHeight;
+  final int rowCount;
 
-  _HourGridPainter({
+  _TimeGridPainter({
     required this.pixelsPerHour,
     required this.hourCount,
-    required this.columnWidth,
-    required this.columnCount,
+    required this.rowHeight,
+    required this.rowCount,
   });
 
   @override
@@ -914,29 +967,31 @@ class _HourGridPainter extends CustomPainter {
     final halfHourPaint = Paint()
       ..color = Colors.grey.shade100
       ..strokeWidth = 1;
-    final colPaint = Paint()
+    final rowPaint = Paint()
       ..color = Colors.grey.shade200
       ..strokeWidth = 1;
 
+    // Vertical lines: one per hour (darker) + one per half-hour (lighter).
     for (int h = 0; h <= hourCount; h++) {
-      final y = h * pixelsPerHour;
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), hourPaint);
+      final x = h * pixelsPerHour;
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), hourPaint);
       if (h < hourCount) {
-        final halfY = y + pixelsPerHour / 2;
-        canvas.drawLine(Offset(0, halfY), Offset(size.width, halfY), halfHourPaint);
+        final halfX = x + pixelsPerHour / 2;
+        canvas.drawLine(Offset(halfX, 0), Offset(halfX, size.height), halfHourPaint);
       }
     }
-    for (int c = 0; c <= columnCount; c++) {
-      final x = c * columnWidth;
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), colPaint);
+    // Horizontal lines: one per room row.
+    for (int r = 0; r <= rowCount; r++) {
+      final y = r * rowHeight;
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), rowPaint);
     }
   }
 
   @override
-  bool shouldRepaint(covariant _HourGridPainter oldDelegate) {
+  bool shouldRepaint(covariant _TimeGridPainter oldDelegate) {
     return oldDelegate.pixelsPerHour != pixelsPerHour ||
         oldDelegate.hourCount != hourCount ||
-        oldDelegate.columnWidth != columnWidth ||
-        oldDelegate.columnCount != columnCount;
+        oldDelegate.rowHeight != rowHeight ||
+        oldDelegate.rowCount != rowCount;
   }
 }
