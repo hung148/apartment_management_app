@@ -68,12 +68,12 @@ class DefaultFirebaseOptions {
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyDc9DUl3lM7KSSpxGXMWOmH-fHjujIhYRs',
-    appId: '1:595994118808:ios:8f5c55f4acff4471271eed',
+    apiKey: 'AIzaSyATphuPRJgxcVwk5eaIcq336Vr02WgMo6o',
+    appId: '1:595994118808:ios:0581199a4341bcb8271eed',
     messagingSenderId: '595994118808',
     projectId: 'apartment-management-app-776b9',
     storageBucket: 'apartment-management-app-776b9.firebasestorage.app',
-    iosBundleId: 'com.tom.apartmentmanagement.mac',
+    iosBundleId: 'com.tom.apartmentmanagement',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(

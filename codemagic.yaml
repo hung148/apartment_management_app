@@ -85,7 +85,7 @@ workflows:
         - ios_signing_credentials
         - app_secrets
       vars:
-        BUNDLE_ID: "com.tom.apartmentmanagement.mac"
+        BUNDLE_ID: "com.tom.apartmentmanagement"
         XCODE_WORKSPACE: "macos/Runner.xcworkspace"
         XCODE_SCHEME: "Runner"
       flutter: stable
