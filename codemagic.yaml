@@ -75,3 +75,91 @@ workflows:
         # beta_groups:
         #   - Internal Testers   # TODO: uncomment once you've created this group in App Store Connect
         # submit_to_app_store: false   # flip to true when ready for full App Store review
+
+  macos-workflow:
+    name: macOS Build and TestFlight
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+    environment:
+      groups:
+        - ios_signing_credentials
+        - app_secrets
+      vars:
+        BUNDLE_ID: "com.tom.apartmentmanagement.mac"
+        XCODE_WORKSPACE: "macos/Runner.xcworkspace"
+        XCODE_SCHEME: "Runner"
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+    integrations:
+      app_store_connect: codemagic_app_store_connection
+
+    scripts:
+      - name: Get Flutter packages
+        script: |
+          flutter packages pub get
+
+      - name: Recreate .env file
+        script: |
+          echo "$ENV_FILE_CONTENTS" > .env
+
+      - name: Install pods
+        script: |
+          find . -name "Podfile" -execdir pod install \;
+
+      - name: Set up keychain
+        script: |
+          keychain initialize
+
+      - name: Fetch signing files
+        script: |
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --platform MAC_OS \
+            --type MAC_APP_STORE \
+            --create
+
+      - name: Fetch Mac Installer Distribution certificate
+        script: |
+          app-store-connect certificates list --type MAC_INSTALLER_DISTRIBUTION --save || \
+          app-store-connect certificates create --type MAC_INSTALLER_DISTRIBUTION --save
+
+      - name: Add certificates to keychain
+        script: |
+          keychain add-certificates
+
+      - name: Set up code signing settings on Xcode project
+        script: |
+          xcode-project use-profiles
+
+      - name: Build Flutter macOS
+        script: |
+          flutter config --enable-macos-desktop
+          flutter build macos --release
+
+      - name: Package application (.pkg)
+        script: |
+          set -x
+          APP_NAME=$(find $(pwd)/build/macos -name "*.app")
+          cd "$(dirname "$APP_NAME")"
+          PACKAGE_NAME="$(basename "$APP_NAME" .app).pkg"
+          xcrun productbuild --component "$APP_NAME" /Applications/ unsigned.pkg
+          INSTALLER_CERT_NAME=$(keychain list-certificates \
+            | jq '.[] | select(.common_name | contains("Mac Developer Installer")) | .common_name' \
+            | xargs)
+          xcrun productsign --sign "$INSTALLER_CERT_NAME" unsigned.pkg "$PACKAGE_NAME"
+          rm -f unsigned.pkg
+
+    artifacts:
+      - build/macos/**/*.pkg
+      - /tmp/xcodebuild_logs/*.log
+
+    publishing:
+      email:
+        recipients:
+          - trinhhungqt2004@gmail.com
+        notify:
+          success: true
+          failure: true
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
