@@ -120,8 +120,15 @@ workflows:
 
       - name: Fetch Mac Installer Distribution certificate
         script: |
-          app-store-connect certificates list --type MAC_INSTALLER_DISTRIBUTION --save || \
-          app-store-connect certificates create --type MAC_INSTALLER_DISTRIBUTION --save
+          set -e
+          EXISTING=$(app-store-connect certificates list --type MAC_INSTALLER_DISTRIBUTION --json | jq 'length')
+          if [ "$EXISTING" -eq 0 ]; then
+            echo "No Mac Installer Distribution certificate found — creating one."
+            app-store-connect certificates create --type MAC_INSTALLER_DISTRIBUTION --save
+          else
+            echo "Found $EXISTING existing Mac Installer Distribution certificate(s) — fetching."
+            app-store-connect certificates list --type MAC_INSTALLER_DISTRIBUTION --save
+          fi
 
       - name: Add certificates to keychain
         script: |
@@ -138,6 +145,7 @@ workflows:
 
       - name: Package application (.pkg)
         script: |
+          set -e
           set -x
           APP_NAME=$(find $(pwd)/build/macos -name "*.app")
           cd "$(dirname "$APP_NAME")"
