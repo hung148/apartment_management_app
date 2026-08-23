@@ -291,8 +291,20 @@ class ChatOverlayManager {
   }
 
   static void uninstall() {
+    dismissKeyboard();
     _visible.value = false;
     _panelOpen.value = false;
+  }
+
+  /// Closes the panel and makes sure the soft keyboard goes with it.
+  static void closePanel() {
+    dismissKeyboard();
+    _panelOpen.value = false;
+  }
+
+  static void dismissKeyboard() {
+    final focus = FocusManager.instance.primaryFocus;
+    if (focus != null && focus.hasFocus) focus.unfocus();
   }
 
   static void _reinsertOnTop() {
@@ -312,6 +324,7 @@ class ChatOverlayManager {
   }
 
   static void dispose() {
+    dismissKeyboard();
     _entry?.remove();
     _entry = null;
     _visible.value = false;
@@ -352,7 +365,7 @@ class _ChatOverlay extends StatelessWidget {
                         : const Offset(1.0, 0),
                 duration: const Duration(milliseconds: 280),
                 curve: Curves.easeInOut,
-                child: _ChatPanel(onClose: () => panelOpen.value = false),
+                child: _ChatPanel(onClose: ChatOverlayManager.closePanel),
               ),
             ),
             if (!isOpen)
@@ -494,6 +507,7 @@ class _ChatPanelState extends State<_ChatPanel> {
   bool _loading = false;
   bool _isStreaming = false;
   bool _scrollPending = false;
+  double _lastKeyboardInset = 0;
 
   String get _systemPrompt {
     final isVi = getIt<LocaleNotifier>().locale.languageCode == 'vi';
@@ -517,6 +531,7 @@ class _ChatPanelState extends State<_ChatPanel> {
 
   @override
   void dispose() {
+    ChatOverlayManager.dismissKeyboard();
     _controller.dispose();
     _scrollController.dispose();
     _streamingText.dispose();
@@ -808,8 +823,15 @@ class _ChatPanelState extends State<_ChatPanel> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final screenWidth = MediaQuery.of(context).size.width;
+    final media = MediaQuery.of(context);
+    final screenWidth = media.size.width;
     final isSmall = screenWidth < 600;
+
+    // Keep the newest message in view while the keyboard slides in or out.
+    if (media.viewInsets.bottom != _lastKeyboardInset) {
+      _lastKeyboardInset = media.viewInsets.bottom;
+      _scrollToBottom();
+    }
 
     final panel = Material(
       elevation: 8,
@@ -917,6 +939,7 @@ class _ChatPanelState extends State<_ChatPanel> {
 
     return ListView.builder(
       controller: _scrollController,
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: const EdgeInsets.all(12),
       itemCount: itemCount,
       itemBuilder: (context, index) {
@@ -940,9 +963,18 @@ class _ChatPanelState extends State<_ChatPanel> {
   }
 
   Widget _buildInputBar(ThemeData theme) {
-    return Container(
-      padding: const EdgeInsets.all(10),
+    final media = MediaQuery.of(context);
+    // Height the soft keyboard is covering right now (0 when it is closed).
+    final keyboardInset = media.viewInsets.bottom;
+    // When the keyboard is closed, keep clear of the home indicator instead.
+    final bottomPad = keyboardInset > 0 ? keyboardInset + 10 : media.padding.bottom + 10;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 150),
+      curve: Curves.easeOut,
+      padding: EdgeInsets.fromLTRB(10, 10, 10, bottomPad),
       decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
         border: Border(top: BorderSide(color: theme.dividerColor, width: 0.5)),
       ),
       child: Row(

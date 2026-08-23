@@ -112,7 +112,7 @@ void main() async {
     await windowManager.ensureInitialized();
     const WindowOptions windowOptions = WindowOptions(
       minimumSize: Size(480, 600),
-      size: Size(516, 688),
+      size: Size(1200, 800),
       center: true,
       title: 'Phần Mền Quản Lý Căn Hộ',
     );

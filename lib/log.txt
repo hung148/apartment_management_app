@@ -1,0 +1,2 @@
+v1.0.2+0
+Fix phone keyboard overlap input field in chat manager
