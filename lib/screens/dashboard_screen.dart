@@ -128,11 +128,9 @@ class _DashboardScreenState extends State<DashboardScreen>
   bool _isDisposed      = false;
   Timer? _updateCheckTimer;
   Timer? _resizeDebounceTimer;
-  bool  _isDismissing   = false;
   bool  _isResizing     = false;
   Size  _lastSize       = Size.zero;
   
-  bool get _hasOpenOverlay => _overlayCount > 0;
 
   final ScrollController _scrollCtrl = ScrollController();
   double _appBarOpacity = 0.0;
@@ -207,11 +205,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     _resizeDebounceTimer = Timer(const Duration(milliseconds: 500), () {
       if (!mounted) return;
       setState(() => _isResizing = false);
-      final w = MediaQuery.sizeOf(context).width;
-      final h = MediaQuery.sizeOf(context).height;
-      if (w < 360 || h < 600) {
-        if (_hasOpenOverlay) _dismissAllOverlays();
-      }
+
     });
   }
 
@@ -229,20 +223,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     });
   }
 
-  Future<void> _dismissAllOverlays() async {
-    if (!mounted || _isDismissing) return;
-    _isDismissing = true;
-    try {
-      final nav = Navigator.of(context);
-      while (nav.canPop()) {
-        nav.pop();
-        await Future.delayed(const Duration(milliseconds: 50));
-        if (!mounted) break;
-      }
-    } finally {
-      _isDismissing = false;
-    }
-  }
+
 
   Future<T?> _showTrackedDialog<T>({
     required BuildContext context,
@@ -836,7 +817,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                             helper: AppTranslations.of(ctx).text('optional_on_invoice'),
                             validator: (v) {
                               if (v != null && v.isNotEmpty && !_organizationService.isValidTaxCode(v)) {
-                                return 'Invalid tax code format';
+                                return AppTranslations.of(ctx)['invalid_tax_code'];
                               }
                               return null;
                             }),
@@ -1664,10 +1645,10 @@ class _DashboardScreenState extends State<DashboardScreen>
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Row(children: [
+                                Row(children: [
                                   Icon(Icons.preview_rounded, size: 15, color: Color(0xFF16A34A)),
                                   SizedBox(width: 6),
-                                  Text('Preview',
+                                  Text(AppTranslations.of(ctx)['preview'],
                                       style: TextStyle(
                                         fontWeight: FontWeight.w700,
                                         fontSize: 12, color: Color(0xFF16A34A),
@@ -1969,7 +1950,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                             validator: (v) {
                               if (v != null && v.isNotEmpty &&
                                   !_organizationService.isValidTaxCode(v)) {
-                                return 'Invalid tax code format';
+                                return AppTranslations.of(ctx)['invalid_tax_code'];
                               }
                               return null;
                             }),

@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../utils/app_localizations.dart';
 
 enum RoomRentalMode {
   monthly,  // Cho thuê dài hạn (mặc định, như hiện tại)
@@ -7,6 +8,7 @@ enum RoomRentalMode {
 }
 
 class Room {
+  final String currency;
   final String id;
   final String organizationId;
   final String buildingId;
@@ -28,6 +30,7 @@ class Room {
   final int? operatingHoursEndMin;        // Phút tính từ nửa đêm, null = mở 24h
 
   Room({
+    this.currency = 'VND',
     required this.id,
     required this.organizationId,
     required this.buildingId,
@@ -55,6 +58,7 @@ class Room {
 
   Map<String, dynamic> toMap() {
     return {
+      'currency': currency,
       'organizationId': organizationId,
       'buildingId': buildingId,
       'roomNumber': roomNumber,
@@ -76,6 +80,7 @@ class Room {
 
   factory Room.fromMap(String id, Map<String, dynamic> map) {
     return Room(
+      currency: map['currency'] as String? ?? 'VND',
       id: id,
       organizationId: map['organizationId'] ?? '',
       buildingId: map['buildingId'] ?? '',
@@ -139,14 +144,14 @@ class Room {
     );
   }
 
-  String getRentalModeDisplayName() {
+  String getRentalModeDisplayName(AppTranslations t) {
     switch (rentalMode) {
       case RoomRentalMode.monthly:
-        return 'Dài hạn (tháng)';
+        return t['room_rental_mode_monthly'];
       case RoomRentalMode.hourly:
-        return 'Theo giờ';
+        return t['room_rental_mode_hourly'];
       case RoomRentalMode.both:
-        return 'Linh hoạt (tháng & giờ)';
+        return t['room_rental_mode_both'];
     }
   }
 }

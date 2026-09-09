@@ -9,6 +9,8 @@ import 'package:phan_mem_quan_ly_can_ho/models/organization_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/tenants_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/payment_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/rooms_model.dart';
+import 'package:phan_mem_quan_ly_can_ho/screens/availability_calendar_screen.dart'
+    show AvailabilityCalendarScreen;
 import 'package:phan_mem_quan_ly_can_ho/screens/building/building_dialog.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/building/building_rent_screen.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/payment/delete_payment_dialog.dart';
@@ -22,6 +24,7 @@ import 'package:phan_mem_quan_ly_can_ho/services/tenants_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/payments_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/payments_notifier.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/room_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_router.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/shared.dart';
@@ -102,6 +105,45 @@ class _OrganizationScreenState extends State<OrganizationScreen>
   bool _isResizing = false;
 
   int _tenantTabRefreshKey = 0;
+
+  /// When true, the gradient header and the tab row are hidden so the tab
+  /// content gets the full screen. Persisted across launches.
+  bool _chromeHidden = false;
+  static const String _kChromeHiddenKey = 'org_screen_chrome_hidden';
+
+  Future<void> _loadChromePref() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final hidden = prefs.getBool(_kChromeHiddenKey) ?? false;
+      if (mounted && hidden != _chromeHidden) {
+        setState(() => _chromeHidden = hidden);
+      }
+    } catch (_) {
+      // Preferences unavailable — fall back to showing the header.
+    }
+  }
+
+  Future<void> _toggleChrome() async {
+    final next = !_chromeHidden;
+    // Nothing is visible on screen while hidden, so say how to get back.
+    if (next) {
+      final t = AppTranslations.of(context);
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+          content: Text(t['swipe_down_to_show_header']),
+          duration: const Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
+        ));
+    }
+    setState(() => _chromeHidden = next);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_kChromeHiddenKey, next);
+    } catch (_) {
+      // Non-fatal: the toggle still works for this session.
+    }
+  }
 
   bool _isSmallScreen(BuildContext context) =>
       MediaQuery.of(context).size.width < 600;
@@ -205,6 +247,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
     WidgetsBinding.instance.addObserver(this);
     _paymentsNotifier.loadPayments(widget.organization.id);
     _refreshAll();
+    _loadChromePref();
   }
 
   @override
@@ -217,7 +260,6 @@ class _OrganizationScreenState extends State<OrganizationScreen>
   }
 
   Timer? _resizeDebounceTimer;
-  bool _isDismissing = false;
 
   @override
   void didChangeMetrics() {
@@ -232,28 +274,11 @@ class _OrganizationScreenState extends State<OrganizationScreen>
       if (!mounted) return;
       setState(() => _isResizing = false);
       
-      final screenWidth = MediaQuery.sizeOf(context).width;
-      final screenHeight = MediaQuery.sizeOf(context).height;
-      if (screenWidth < 360 || screenHeight < 600) {
-        _dismissAllOverlays();
-      }
+
     });
   }
 
-  Future<void> _dismissAllOverlays() async {
-    if (!mounted || _isDismissing) return;
-    _isDismissing = true;
-    try {
-      final nav = Navigator.of(context);
-      while (nav.canPop()) {
-        nav.pop();
-        await Future.delayed(const Duration(milliseconds: 50));
-        if (!mounted) break;
-      }
-    } finally {
-      _isDismissing = false;
-    }
-  }
+
 
   Future<T?> _showTrackedDialog<T>({
     required BuildContext context,
@@ -407,6 +432,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
         initialRenterName: building.renterName,
         initialRenterPhone: building.renterPhone,
         initialRentAmount: building.rentAmount,
+          initialCurrency: building.currency,
         initialRentDueDay: building.rentDueDay,
         initialRentContractStart: building.rentContractStart,
         initialRentContractEnd: building.rentContractEnd,
@@ -746,7 +772,9 @@ class _OrganizationScreenState extends State<OrganizationScreen>
   Widget build(BuildContext context) {
     final t = AppTranslations.of(context);
     return DefaultTabController(
-      length: 5,
+      length: 6,
+      initialIndex: 0, // Calendar is the landing tab
+
       child: LayoutBuilder(
         builder: (context, constraints) {
           if (constraints.maxWidth < minWidth ||
@@ -757,7 +785,9 @@ class _OrganizationScreenState extends State<OrganizationScreen>
           }
           return Scaffold(
             backgroundColor: kBgColor,
-            appBar: AppBar(
+            appBar: _chromeHidden
+                ? null
+                : AppBar(
               backgroundColor: Colors.transparent,
               elevation: 6,
               shadowColor: Colors.black.withValues(alpha: 0.4),
@@ -922,6 +952,15 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                   ),
                 ],
               ),
+              actions: [
+                IconButton(
+                  onPressed: _toggleChrome,
+                  tooltip: t['hide_header'],
+                  icon: const Icon(Icons.unfold_less_rounded,
+                      color: Colors.white, size: 22),
+                ),
+                const SizedBox(width: 4),
+              ],
               bottom: PreferredSize(
                 preferredSize: const Size.fromHeight(52),
                 child: TabBar(
@@ -935,6 +974,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                   unselectedLabelColor: Colors.white.withValues(alpha: 0.55),
                   indicatorColor: Colors.white,
                   tabs: [
+                    _CompactTab(icon: Icons.calendar_month_rounded, label: t['calendar_tab']),
                     _CompactTab(icon: Icons.apartment_rounded,   label: t['buildings_tab']),
                     _CompactTab(icon: Icons.people_alt_rounded,   label: t['tenants_tab']),
                     _CompactTab(icon: Icons.receipt_long_rounded, label: t['payments_tab']),
@@ -944,10 +984,59 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                 ),
               ),
             ),
-           body: _isResizing
-          ? const SizedBox.expand() // or a lightweight placeholder
-          : TabBarView(
+           body: SafeArea(
+            // The AppBar normally handles the status bar / notch. When it is
+            // hidden we have to keep the content clear of it ourselves.
+            top: _chromeHidden,
+            bottom: false,
+            child: Stack(
               children: [
+                Positioned.fill(child: _buildTabContent()),
+                if (_chromeHidden) ...[
+                  // Touch: swipe down from the top edge to bring the header back.
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    child: _TopEdgeSwipeZone(onRevealed: _toggleChrome),
+                  ),
+                  // Mouse: the button fades in when the pointer enters this
+                  // corner — the same corner the collapse button was in, so the
+                  // pointer is already there. The calendar tab reserves room
+                  // for it via _kRestoreCornerInset.
+                  Positioned(
+                    top: 0,
+                    right: 0,
+                    child: _HoverRestoreButton(
+                      onTap: _toggleChrome,
+                      tooltip: t['show_header'],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildTabContent() {
+    return _isResizing
+        ? const SizedBox.expand() // or a lightweight placeholder
+        : TabBarView(
+              children: [
+                _StableTab(
+                  key: const ValueKey('calendar'),
+                  builder: (_) => AvailabilityCalendarScreen(
+                    organization: widget.organization,
+                    embedded: true,
+                    // Keep the Ngày/Tháng switch out from under the restore
+                    // button's hot zone while the header is hidden.
+                    trailingInset: _chromeHidden ? _kRestoreCornerInset : 0,
+                  ),
+                ),
                 _StableTab(
                   key: const ValueKey('buildings'),
                   builder: (_) => _buildBuildingsTab(),
@@ -978,11 +1067,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                   builder: (_) => _buildMembersTab(),
                 ),
               ],
-            ),
-          );
-        },
-      ),
-    );
+            );
   }
 
   // ========================================
@@ -1037,13 +1122,13 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                                 borderRadius: BorderRadius.circular(14),
                                 border: Border.all(color: const Color(0xFF534AB7), width: 1.5),
                               ),
-                              child: const Row(
+                              child: Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Icon(Icons.calendar_month_rounded, color: Color(0xFF534AB7), size: 20),
-                                  SizedBox(width: 6),
-                                  Text('Xem lịch tất cả toà nhà',
-                                      style: TextStyle(color: Color(0xFF534AB7), fontSize: 14, fontWeight: FontWeight.w600)),
+                                  const Icon(Icons.calendar_month_rounded, color: Color(0xFF534AB7), size: 20),
+                                  const SizedBox(width: 6),
+                                  Text(t['view_all_buildings_calendar'],
+                                      style: const TextStyle(color: Color(0xFF534AB7), fontSize: 14, fontWeight: FontWeight.w600)),
                                 ],
                               ),
                             ),
@@ -1533,7 +1618,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                         ),
                         (
                           icon: Icons.calendar_month_rounded,
-                          label: 'Lịch theo giờ',
+                          label: t['hourly_calendar'],
                           color: const Color(0xFF534AB7),
                           bgColor: const Color(0xFFEEEDFE),
                           onTap: () => Navigator.pushNamed(
@@ -2246,7 +2331,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: Text(
-                                payment.getStatusDisplayName(),
+                                payment.getStatusDisplayName(t),
                                 style: TextStyle(
                                     fontSize: 10,
                                     fontWeight: FontWeight.w600,
@@ -2292,7 +2377,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                               ),
                             _infoChip(
                               icon: Icons.calendar_today_outlined,
-                              text: DateFormat('dd/MM/yy').format(payment.dueDate),
+                              text: DateFormat(t.dateFormatCompact).format(payment.dueDate),
                               color: payment.isOverdue
                                   ? const Color(0xFFA32D2D)
                                   : Colors.grey.shade600,
@@ -2300,7 +2385,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                             if (payment.paidAt != null)
                               _infoChip(
                                 icon: Icons.check_circle_outline_rounded,
-                                text: DateFormat('dd/MM/yy').format(payment.paidAt!),
+                                text: DateFormat(t.dateFormatCompact).format(payment.paidAt!),
                                 color: const Color(0xFF3B6D11),
                               ),
                             if (isPartial && remaining > 0)
@@ -2374,7 +2459,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
       if (payment.totalAmount.toString().contains(searchTerm))
         {return true;}
       if (payment
-          .getTypeDisplayName()
+          .getTypeDisplayName(t)
           .toLowerCase()
           .contains(searchTerm)) {return true;}
       final description = payment.description;
@@ -2469,7 +2554,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
     }
 
     final key = typeKeys[payment.type.name];
-    return key != null ? t[key] : payment.getTypeDisplayName();
+    return key != null ? t[key] : payment.getTypeDisplayName(t);
   }
 
   void _showPaymentMenu(
@@ -3142,7 +3227,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
   }) {
     if (total == 0) {
       return _buildChartEmptyState(
-          Icons.people_outline, 'No tenant data yet');
+          Icons.people_outline, t['chart_no_tenant_data']);
     }
   
     return Container(
@@ -3169,7 +3254,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
         if (suspended > 0) ...[
           const SizedBox(height: 18),
           _tenantStatusRow(
-              label: 'Suspended',
+              label: t['tenant_status_suspended'],
               count: suspended,
               total: total,
               color: const Color(0xFFE24B4A)),
@@ -3278,7 +3363,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
       final currencyFormatter = NumberFormat.currency(
           locale: 'vi_VN', symbol: '₫', decimalDigits: 0);
       final dateFormatter =
-          DateFormat('dd/MM/yyyy – HH:mm');
+          DateFormat('${t.dateFormat} – HH:mm');
 
       final totalBuildings = buildings.length;
       final totalRooms = rooms.length;
@@ -4122,7 +4207,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
     try {
       final currencyFormat = '#,##0 "₫"';
       final dateFormatter =
-          DateFormat('dd/MM/yyyy – HH:mm');
+          DateFormat('${t.dateFormat} – HH:mm');
 
       final activeTenants = tenants
           .where((tn) => tn.status == TenantStatus.active)
@@ -4505,12 +4590,12 @@ class _OrganizationScreenState extends State<OrganizationScreen>
         amtRange.numberFormat = currencyFormat;
         pSheet
             .getRangeByIndex(pRow, 4)
-            .setText(pm.getStatusDisplayName());
+            .setText(pm.getStatusDisplayName(t));
         pSheet.getRangeByIndex(pRow, 5).setText(pm.paidAt != null
-            ? DateFormat('dd/MM/yyyy').format(pm.paidAt!)
+            ? DateFormat(t.dateFormat).format(pm.paidAt!)
             : '-');
         pSheet.getRangeByIndex(pRow, 6).setText(
-            DateFormat('dd/MM/yyyy').format(pm.dueDate));
+            DateFormat(t.dateFormat).format(pm.dueDate));
         pRow++;
       }
 
@@ -6076,10 +6161,11 @@ class _MonthlyRevenueChart extends StatefulWidget {
 class _MonthlyRevenueChartState extends State<_MonthlyRevenueChart> {
   @override
   Widget build(BuildContext context) {
+    final t = AppTranslations.of(context);
     // move _buildMonthlyRevenueChart body here, replace widget refs
     final monthlyRevenue = widget.monthlyRevenue;
     if (monthlyRevenue.isEmpty || monthlyRevenue.values.every((v) => v == 0)) {
-      return _buildChartEmptyState(Icons.bar_chart_rounded, 'No revenue data');
+      return _buildChartEmptyState(Icons.bar_chart_rounded, t['chart_no_revenue_data']);
     }
     final maxVal = monthlyRevenue.values.reduce((a, b) => a > b ? a : b);
     return Container(
@@ -6196,7 +6282,7 @@ class _PaymentBreakdownChartState extends State<_PaymentBreakdownChart> {
       return Container(
         height: 100,
         decoration: _cardDecoration(),
-        child: Center(child: Text('No payment data yet',
+        child: Center(child: Text(t['chart_no_payment_data'],
             style: TextStyle(fontSize: 12, color: Colors.grey.shade400))),
       );
     }
@@ -6264,6 +6350,109 @@ class _PaymentBreakdownChartState extends State<_PaymentBreakdownChart> {
         child: Text(value, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color)),
       ),
     ]);
+  }
+}
+
+/// Width the restore button's hot zone occupies in the top-right corner. Tab
+/// content that puts controls up there should inset itself by this much while
+/// the header is hidden.
+const double _kRestoreCornerInset = 48;
+
+/// Invisible until the mouse enters its corner, then fades in. While hidden it
+/// ignores pointers entirely so taps fall through to the tab content — which is
+/// what makes it harmless on touch devices, where it never appears at all.
+class _HoverRestoreButton extends StatefulWidget {
+  final VoidCallback onTap;
+  final String tooltip;
+  const _HoverRestoreButton({required this.onTap, required this.tooltip});
+
+  @override
+  State<_HoverRestoreButton> createState() => _HoverRestoreButtonState();
+}
+
+class _HoverRestoreButtonState extends State<_HoverRestoreButton> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      // Hot zone is larger than the button so it is easy to find, but the
+      // button itself hugs the corner so the reserved inset stays small.
+      child: SizedBox(
+        width: 72,
+        height: 72,
+        child: Align(
+          alignment: Alignment.topRight,
+          child: Padding(
+            padding: const EdgeInsets.all(6),
+            child: IgnorePointer(
+              ignoring: !_hovered,
+              child: AnimatedOpacity(
+                opacity: _hovered ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 160),
+                curve: Curves.easeOut,
+                child: Tooltip(
+                  message: widget.tooltip,
+                  child: Material(
+                    color: const Color(0xFF185FA5),
+                    shape: const CircleBorder(),
+                    elevation: 3,
+                    child: InkWell(
+                      customBorder: const CircleBorder(),
+                      onTap: widget.onTap,
+                      child: const Padding(
+                        padding: EdgeInsets.all(8),
+                        child: Icon(Icons.unfold_more_rounded,
+                            color: Colors.white, size: 20),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Thin strip along the top edge. A deliberate downward drag here restores the
+/// header — the touch equivalent of hovering the corner button.
+class _TopEdgeSwipeZone extends StatefulWidget {
+  final VoidCallback onRevealed;
+  const _TopEdgeSwipeZone({required this.onRevealed});
+
+  @override
+  State<_TopEdgeSwipeZone> createState() => _TopEdgeSwipeZoneState();
+}
+
+class _TopEdgeSwipeZoneState extends State<_TopEdgeSwipeZone> {
+  static const double _triggerDistance = 56;
+  double _accumulated = 0;
+  bool _fired = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      // Translucent so ordinary taps still reach whatever is underneath.
+      behavior: HitTestBehavior.translucent,
+      onVerticalDragStart: (_) {
+        _accumulated = 0;
+        _fired = false;
+      },
+      onVerticalDragUpdate: (details) {
+        if (_fired) return;
+        _accumulated += details.delta.dy;
+        if (_accumulated >= _triggerDistance) {
+          _fired = true;
+          widget.onRevealed();
+        }
+      },
+      child: const SizedBox(width: double.infinity, height: 24),
+    );
   }
 }
 

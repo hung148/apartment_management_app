@@ -6,6 +6,7 @@ enum BuildingManagementType {
 }
 
 class Building {
+  final String currency;
   final String id;
   final String organizationId;
   final String name;
@@ -35,6 +36,7 @@ class Building {
   final String? renterNotes;
 
   Building({
+    this.currency = 'VND',
     required this.id,
     required this.organizationId,
     required this.name,
@@ -61,6 +63,7 @@ class Building {
   // Đừng quên cập nhật toMap và fromMap để lưu/đọc 2 trường này từ Firestore
   Map<String, dynamic> toMap() {
     return {
+      'currency': currency,
       'organizationId': organizationId,
       'name': name,
       'address': address,
@@ -90,6 +93,7 @@ class Building {
 
   factory Building.fromMap(String id, Map<String, dynamic> map) {
     return Building(
+      currency: map['currency'] as String? ?? 'VND',
       id: id,
       organizationId: map['organizationId'] ?? '',
       name: map['name'] ?? '',

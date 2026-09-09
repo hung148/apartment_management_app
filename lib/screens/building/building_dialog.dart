@@ -1,3 +1,5 @@
+import 'package:phan_mem_quan_ly_can_ho/widgets/responsive_form_row.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/currency_formatter.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/combo_box.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/constants.dart';
@@ -23,6 +25,7 @@ class _DS {
 // BUILDING DIALOG
 // ─────────────────────────────────────────────────────────────
 class BuildingDialog extends StatefulWidget {
+  final String? initialCurrency;
   final bool isEditMode;
   final String? initialName;
   final String? initialAddress;
@@ -45,6 +48,7 @@ class BuildingDialog extends StatefulWidget {
 
   const BuildingDialog({
     super.key,
+    this.initialCurrency,
     this.isEditMode = false,
     this.initialName,
     this.initialAddress,
@@ -138,7 +142,7 @@ class _BuildingDialogState extends State<BuildingDialog>
       managementType = widget.initialManagementType ?? BuildingManagementType.selfManaged;
       renterNameController.text  = widget.initialRenterName ?? '';
       renterPhoneController.text = widget.initialRenterPhone ?? '';
-      rentAmountController.text    = widget.initialRentAmount?.toString() ?? '';
+      rentAmountController.text    = widget.initialRentAmount == null ? '' : CurrencyParser.format(widget.initialRentAmount!);
       rentDueDayController.text    = widget.initialRentDueDay?.toString() ?? '';
       renterNotesController.text = widget.initialRenterNotes ?? '';
       rentContractStart = widget.initialRentContractStart;
@@ -268,7 +272,7 @@ class _BuildingDialogState extends State<BuildingDialog>
       if (renterNameController.text.trim().isEmpty) {
         return t['building_error_renter_name_required'];
       }
-      final rent = double.tryParse(rentAmountController.text.trim());
+      final rent = CurrencyParser.tryParse(rentAmountController.text);
       if (rent == null || rent <= 0) {
         return t['building_error_rent_amount_invalid'];
       }
@@ -286,6 +290,7 @@ class _BuildingDialogState extends State<BuildingDialog>
 
   Map<String, dynamic>? _validateAndGetResult() {
     final baseData = {
+      'currency': widget.initialCurrency ?? AppTranslations.of(context).defaultCurrency,
       'name': nameController.text.trim(),
       'address': addressController.text.trim(),
       'autoGenerateRooms': autoGenerateRooms,
@@ -296,7 +301,7 @@ class _BuildingDialogState extends State<BuildingDialog>
         'renterPhone': renterPhoneController.text.trim().isEmpty
             ? null
             : renterPhoneController.text.trim(),
-        'rentAmount': double.tryParse(rentAmountController.text.trim()) ?? 0.0,
+        'rentAmount': CurrencyParser.tryParse(rentAmountController.text) ?? 0.0,
         'rentDueDay': int.tryParse(rentDueDayController.text.trim()),
         'rentContractStart': rentContractStart,
         'rentContractEnd': rentContractEnd,
@@ -753,11 +758,13 @@ class _BuildingDialogState extends State<BuildingDialog>
       controller: controller,
       maxLength: maxLength,
       maxLines: maxLines,
-      keyboardType: keyboardType,
+      inputFormatters: [if (controller == rentAmountController) CurrencyInputFormatter(decimalDigits: 2)],
+      keyboardType: controller == rentAmountController ? const TextInputType.numberWithOptions(decimal: true) : keyboardType,
       onChanged: onChanged,
       validator: validator,
       decoration: InputDecoration(
         counterText: '',
+        suffixText: controller == rentAmountController ? (widget.initialCurrency ?? AppTranslations.of(context).defaultCurrency) : null,
         labelText: label,
         hintText: hint,
         prefixIcon: Icon(icon, size: 18, color: _DS.textSecondary),
@@ -1089,7 +1096,7 @@ class _BuildingDialogState extends State<BuildingDialog>
             keyboardType: TextInputType.phone,
           ),
           const SizedBox(height: 12),
-          Row(children: [
+          ResponsiveFormRow(children: [
             Expanded(
               child: _styledField(
                 controller: rentAmountController,
@@ -1102,7 +1109,7 @@ class _BuildingDialogState extends State<BuildingDialog>
                   if (managementType != BuildingManagementType.rented) {
                     return null;
                   }
-                  final amount = double.tryParse((v ?? '').trim());
+                  final amount = CurrencyParser.tryParse((v ?? '').trim());
                   if (amount == null || amount <= 0) {
                     return t['building_error_rent_amount_invalid'];
                   }

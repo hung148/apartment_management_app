@@ -436,6 +436,7 @@ class BookingService {
         type: PaymentType.hourlyRent,
         status: PaymentStatus.paid,
         amount: booking.totalPrice,
+        currency: booking.currency,
         paidAmount: booking.totalPrice,
         paymentMethod: paymentMethod,
         dueDate: booking.endTime,

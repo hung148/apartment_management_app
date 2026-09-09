@@ -1,3 +1,4 @@
+import 'package:phan_mem_quan_ly_can_ho/widgets/responsive_form_row.dart';
 import 'dart:async';
 
 import 'package:phan_mem_quan_ly_can_ho/models/buildings_model.dart';
@@ -208,7 +209,7 @@ List<InvoiceLineItem> _parseLineItems(Payment payment) {
     final lines = description.split('\n');
     final items = <InvoiceLineItem>[];
     for (var line in lines) {
-      final match = RegExp(r'^([^:]+):\s*([\d,]+)\s*VND(?:\s*\((.+)\))?$')
+      final match = RegExp(r'^([^:]+):\s*([\d,.]+)\s*(?:VND|USD)(?:\s*\((.+)\))?$')
           .firstMatch(line.trim());
       if (match != null) {
         final typeLabel = match.group(1)?.trim() ?? '';
@@ -429,7 +430,6 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog>
   Tenant? _tenant;
   bool _isLoadingRoomData = true;
   Timer? _resizeDebounceTimer;
-  bool _isDismissing = false;
 
   @override
   void initState() {
@@ -451,25 +451,11 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog>
     _resizeDebounceTimer?.cancel();
     _resizeDebounceTimer = Timer(const Duration(milliseconds: 300), () {
       if (!mounted) return;
-      final sz = MediaQuery.sizeOf(context);
-      if (sz.width < 360 || sz.height < 600) _dismissAllOverlays();
+
     });
   }
 
-  Future<void> _dismissAllOverlays() async {
-    if (!mounted || _isDismissing) return;
-    _isDismissing = true;
-    try {
-      final nav = Navigator.of(context);
-      while (nav.canPop()) {
-        nav.pop();
-        await Future.delayed(const Duration(milliseconds: 50));
-        if (!mounted) break;
-      }
-    } finally {
-      _isDismissing = false;
-    }
-  }
+
 
   Future<T?> _showTrackedDialog<T>({
     required BuildContext context,
@@ -604,7 +590,7 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog>
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
-                    '${NumberFormat('#,###').format(item.amount)} đ',
+                    '${NumberFormat('#,##0.##', 'en_US').format(item.amount)} ${widget.payment.currency}',
                     style: TextStyle(
                       fontWeight: FontWeight.w700,
                       fontSize: 14,
@@ -651,7 +637,7 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog>
                           .toStringAsFixed(1),
                     }),
                     rate: item.electricityPricePerUnit != null
-                        ? '× ${NumberFormat('#,###').format(item.electricityPricePerUnit)} đ/kWh'
+                        ? '× ${NumberFormat('#,##0.##', 'en_US').format(item.electricityPricePerUnit)} ${widget.payment.currency}/kWh'
                         : null,
                   ),
                 ],
@@ -694,7 +680,7 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog>
                           .toStringAsFixed(1),
                     }),
                     rate: item.waterPricePerUnit != null
-                        ? '× ${NumberFormat('#,###').format(item.waterPricePerUnit)} đ/m³'
+                        ? '× ${NumberFormat('#,##0.##', 'en_US').format(item.waterPricePerUnit)} ${widget.payment.currency}/m³'
                         : null,
                   ),
                 ],
@@ -718,7 +704,7 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog>
                 value:
                     '${item.rentPriceMode == RentPriceMode.daily ? item.rentUnitQuantity!.toStringAsFixed(0) : item.rentUnitQuantity!.toStringAsFixed(2)} ${_rentUnitShort(t, item.rentPriceMode!)}',
                 rate:
-                    '× ${NumberFormat('#,###').format(item.rentUnitPrice)} đ/${_rentUnitShort(t, item.rentPriceMode!)}',
+                    '× ${NumberFormat('#,##0.##', 'en_US').format(item.rentUnitPrice)} ${widget.payment.currency}/${_rentUnitShort(t, item.rentPriceMode!)}',
               ),
             ),
           ],
@@ -822,7 +808,7 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog>
                   color: color ?? Colors.grey.shade700,
                 )),
             Text(
-              '${NumberFormat('#,###').format(amount)} VND',
+              '${NumberFormat('#,##0.##', 'en_US').format(amount)} ${widget.payment.currency}',
               style: TextStyle(
                 fontSize: large ? 17 : 14,
                 fontWeight: FontWeight.w700,
@@ -902,7 +888,7 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog>
                               ),
                               child: Text(
                                 _statusLabels(t)[payment.status.name] ??
-                                    payment.getStatusDisplayName(),
+                                    payment.getStatusDisplayName(t),
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 11,
@@ -1206,7 +1192,6 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
       _lineItems.fold(0.0, (acc, item) => acc + item.amount);
 
   Timer? _resizeDebounceTimer;
-  bool _isDismissing = false;
 
   @override
   void initState() {
@@ -1214,10 +1199,10 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
     WidgetsBinding.instance.addObserver(this);
     _notesController = TextEditingController(text: widget.payment.notes);
     _taxAmountController = TextEditingController(
-      text: widget.payment.taxAmount?.toString() ?? '0.0',
+      text: CurrencyParser.format(widget.payment.taxAmount ?? 0),
     );
     _paidAmountController = TextEditingController(
-      text: widget.payment.paidAmount.toStringAsFixed(0),
+      text: CurrencyParser.format(widget.payment.paidAmount),
     );
     _selectedTenantId = widget.payment.tenantId;
     _selectedTenantName = widget.payment.tenantName;
@@ -1243,25 +1228,11 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
     _resizeDebounceTimer?.cancel();
     _resizeDebounceTimer = Timer(const Duration(milliseconds: 300), () {
       if (!mounted) return;
-      final sz = MediaQuery.sizeOf(context);
-      if (sz.width < 360 || sz.height < 600) _dismissAllOverlays();
+
     });
   }
 
-  Future<void> _dismissAllOverlays() async {
-    if (!mounted || _isDismissing) return;
-    _isDismissing = true;
-    try {
-      final nav = Navigator.of(context);
-      while (nav.canPop()) {
-        nav.pop();
-        await Future.delayed(const Duration(milliseconds: 50));
-        if (!mounted) break;
-      }
-    } finally {
-      _isDismissing = false;
-    }
-  }
+
 
   Future<T?> _showTrackedDialog<T>({
     required BuildContext context,
@@ -1371,7 +1342,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
               final e = double.tryParse(elecEndCtrl.text) ?? 0;
               final p = CurrencyParser.parse(elecPriceCtrl.text);
               if (e >= s && p > 0) {
-                amountController.text = ((e - s) * p).toStringAsFixed(0);
+                amountController.text = CurrencyParser.format((e - s) * p);
               }
             } else if (selectedType == PaymentType.water &&
                 !waterUseDirectAmount) {
@@ -1379,7 +1350,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
               final e = double.tryParse(waterEndCtrl.text) ?? 0;
               final p = CurrencyParser.parse(waterPriceCtrl.text);
               if (e >= s && p > 0) {
-                amountController.text = ((e - s) * p).toStringAsFixed(0);
+                amountController.text = CurrencyParser.format((e - s) * p);
               }
             }
           }
@@ -1413,7 +1384,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
             final price = CurrencyParser.parse(rentUnitPriceController.text);
             final qty = double.tryParse(rentUnitQuantityController.text) ?? 0;
             if (price > 0 && qty > 0) {
-              amountController.text = (price * qty).toStringAsFixed(0);
+              amountController.text = CurrencyParser.format(price * qty);
             }
           }
 
@@ -1624,7 +1595,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                                   decoration: _inputDec(
                                       dt['add_item_start_reading'], null,
                                       suffix: 'kWh'),
-                                  keyboardType: TextInputType.number,
+                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                   onChanged: (_) {
                                     setDialogState(() {});
                                     calcAmount();
@@ -1647,7 +1618,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                                   decoration: _inputDec(
                                       dt['add_item_end_reading'], null,
                                       suffix: 'kWh'),
-                                  keyboardType: TextInputType.number,
+                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                   onChanged: (_) {
                                     setDialogState(() {});
                                     calcAmount();
@@ -1667,12 +1638,12 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                               const SizedBox(height: 10),
                               TextFormField(
                                 controller: elecPriceCtrl,
-                                inputFormatters: [CurrencyInputFormatter()],
+                                inputFormatters: [CurrencyInputFormatter(decimalDigits: widget.payment.currency == 'USD' ? 2 : 0)],
                                 decoration: _inputDec(
                                     dt['add_item_elec_price'],
                                     Icons.price_change_rounded,
-                                    suffix: 'đ/kWh'),
-                                keyboardType: TextInputType.number,
+                                    suffix: '${widget.payment.currency}/kWh'),
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                 onChanged: (_) {
                                   setDialogState(() {});
                                   calcAmount();
@@ -1715,7 +1686,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                                   decoration: _inputDec(
                                       dt['add_item_start_reading'], null,
                                       suffix: 'm³'),
-                                  keyboardType: TextInputType.number,
+                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                   onChanged: (_) {
                                     setDialogState(() {});
                                     calcAmount();
@@ -1738,7 +1709,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                                   decoration: _inputDec(
                                       dt['add_item_end_reading'], null,
                                       suffix: 'm³'),
-                                  keyboardType: TextInputType.number,
+                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                   onChanged: (_) {
                                     setDialogState(() {});
                                     calcAmount();
@@ -1758,12 +1729,12 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                               const SizedBox(height: 10),
                               TextFormField(
                                 controller: waterPriceCtrl,
-                                inputFormatters: [CurrencyInputFormatter()],
+                                inputFormatters: [CurrencyInputFormatter(decimalDigits: widget.payment.currency == 'USD' ? 2 : 0)],
                                 decoration: _inputDec(
                                     dt['add_item_water_price'],
                                     Icons.price_change_rounded,
-                                    suffix: 'đ/m³'),
-                                keyboardType: TextInputType.number,
+                                    suffix: '${widget.payment.currency}/m³'),
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                 onChanged: (_) {
                                   setDialogState(() {});
                                   calcAmount();
@@ -1848,7 +1819,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                                       final auto = autoRentUnitPrice(rentPriceMode);
                                       if (auto != null) {
                                         rentUnitPriceController.text =
-                                            auto.toStringAsFixed(0);
+                                            CurrencyParser.format(auto);
                                       }
                                     }
                                     recalcRentAmount();
@@ -1865,7 +1836,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                                       final auto = autoRentUnitPrice(rentPriceMode);
                                       if (auto != null) {
                                         rentUnitPriceController.text =
-                                            auto.toStringAsFixed(0);
+                                            CurrencyParser.format(auto);
                                       }
                                     }
                                     recalcRentAmount();
@@ -1882,7 +1853,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                                       final auto = autoRentUnitPrice(rentPriceMode);
                                       if (auto != null) {
                                         rentUnitPriceController.text =
-                                            auto.toStringAsFixed(0);
+                                            CurrencyParser.format(auto);
                                       }
                                     }
                                     recalcRentAmount();
@@ -1892,21 +1863,21 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                             ),
                             if (rentPriceMode != RentPriceMode.direct) ...[
                               const SizedBox(height: 12),
-                              Row(children: [
+                              ResponsiveFormRow(children: [
                                 Expanded(
                                   child: TextFormField(
                                     controller: rentUnitPriceController,
-                                    inputFormatters: [CurrencyInputFormatter()],
+                                    inputFormatters: [CurrencyInputFormatter(decimalDigits: widget.payment.currency == 'USD' ? 2 : 0)],
                                     decoration: _inputDec(
                                         _rentUnitPriceLabel(dt, rentPriceMode),
                                         Icons.price_change_rounded,
-                                        suffix: 'VND',
+                                        suffix: widget.payment.currency,
                                         helper: (tenant?.monthlyRent ??
                                                     room?.roomPrice) !=
                                                 null
                                             ? dt['add_item_rent_price_auto_hint']
                                             : null),
-                                    keyboardType: TextInputType.number,
+                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                     onChanged: (_) => setDialogState(() {
                                       rentPriceManuallyEdited = true;
                                       recalcRentAmount();
@@ -1935,7 +1906,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                                   color: const Color(0xFF6366F1),
                                   label: '',
                                   usage:
-                                      '${rentUnitQuantityController.text} ${_rentUnitShort(dt, rentPriceMode)} × ${NumberFormat('#,###').format(CurrencyParser.parse(rentUnitPriceController.text))} đ',
+                                      '${rentUnitQuantityController.text} ${_rentUnitShort(dt, rentPriceMode)} × ${NumberFormat('#,##0.##', 'en_US').format(CurrencyParser.parse(rentUnitPriceController.text))} ${widget.payment.currency}',
                                 ),
                               const SizedBox(height: 16),
                             ] else
@@ -1945,11 +1916,11 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                           // Amount
                           TextFormField(
                             controller: amountController,
-                            inputFormatters: [CurrencyInputFormatter()],
+                            inputFormatters: [CurrencyInputFormatter(decimalDigits: widget.payment.currency == 'USD' ? 2 : 0)],
                             decoration: _inputDec(dt['add_item_amount'],
                                 Icons.payments_rounded,
-                                suffix: 'VND'),
-                            keyboardType: TextInputType.number,
+                                suffix: widget.payment.currency),
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
                             readOnly: (selectedType ==
                                         PaymentType.electricity &&
                                     !electricityUseDirectAmount) ||
@@ -2141,7 +2112,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                 ? item.rentUnitQuantity!.toStringAsFixed(0)
                 : item.rentUnitQuantity!.toStringAsFixed(2);
             detail =
-                '$qtyText $unitShort × ${NumberFormat('#,###').format(item.rentUnitPrice)} đ/$unitShort'
+                '$qtyText $unitShort × ${NumberFormat('#,##0.##', 'en_US').format(item.rentUnitPrice)} ${widget.payment.currency}/$unitShort'
                 '${item.billingStartDate != null && item.billingEndDate != null ? ' · ${DateFormat(dateFormat).format(item.billingStartDate!)} - ${DateFormat(dateFormat).format(item.billingEndDate!)}' : ''}';
           } else if (item.billingStartDate != null) {
             detail = t.textWithParams('billing_period', {
@@ -2196,7 +2167,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
-                      '${NumberFormat('#,###').format(item.amount)} đ',
+                      '${NumberFormat('#,##0.##', 'en_US').format(item.amount)} ${widget.payment.currency}',
                       style: TextStyle(
                           color: color,
                           fontWeight: FontWeight.w700,
@@ -2232,7 +2203,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                       color: Colors.grey.shade700,
                       letterSpacing: 0.5)),
               Text(
-                '${NumberFormat('#,###').format(_totalAmount)} VND',
+                '${NumberFormat('#,##0.##', 'en_US').format(_totalAmount)} ${widget.payment.currency}',
                 style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
@@ -2259,7 +2230,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
         final typeLabel = _typeLabels(t)[item.type.name] ?? item.type.name;
         final desc =
             item.description != null ? ' (${item.description})' : '';
-        return '$typeLabel: ${NumberFormat('#,###').format(item.amount)} VND$desc';
+        return '$typeLabel: ${NumberFormat('#,##0.##', 'en_US').format(item.amount)} ${widget.payment.currency}$desc';
       }).join('\n');
 
       final double tax = _taxAmountController.text.isEmpty
@@ -2533,15 +2504,15 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                             TextFormField(
                               controller: _paidAmountController,
                               maxLength: 20,
-                              inputFormatters: [CurrencyInputFormatter()],
+                              inputFormatters: [CurrencyInputFormatter(decimalDigits: widget.payment.currency == 'USD' ? 2 : 0)],
                               decoration: _inputDec(
                                 t['del_payment_total'],
                                 Icons.payments_outlined,
-                                suffix: 'VND',
+                                suffix: widget.payment.currency,
                                 helper:
-                                    '${t['payment_total_label']} ${NumberFormat('#,###').format(_totalAmount)} VND',
+                                    '${t['payment_total_label']} ${NumberFormat('#,##0.##', 'en_US').format(_totalAmount)} ${widget.payment.currency}',
                               ),
-                              keyboardType: TextInputType.number,
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
                               validator: (v) {
                                 final val = double.tryParse(
                                     v?.replaceAll(',', '') ?? '');
@@ -2570,16 +2541,16 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                           TextFormField(
                             controller: _taxAmountController,
                             maxLength: 20,
-                            inputFormatters: [CurrencyInputFormatter()],
+                            inputFormatters: [CurrencyInputFormatter(decimalDigits: widget.payment.currency == 'USD' ? 2 : 0)],
                             decoration: _inputDec(t['payment_tax_label'],
                                 Icons.receipt_rounded,
-                                suffix: 'VND'),
+                                suffix: widget.payment.currency),
                             keyboardType:
                                 const TextInputType.numberWithOptions(
                                     decimal: true),
                             validator: (v) {
                               if (v != null && v.isNotEmpty) {
-                                if (double.tryParse(v) == null) {
+                                if (CurrencyParser.tryParse(v) == null) {
                                   return t['payment_err_number'];
                                 }
                               }
@@ -2618,7 +2589,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                                     fontSize: 13,
                                     color: Colors.grey.shade600)),
                             Text(
-                              '${NumberFormat('#,###').format(_totalAmount)} VND',
+                              '${NumberFormat('#,##0.##', 'en_US').format(_totalAmount)} ${widget.payment.currency}',
                               style: TextStyle(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w800,

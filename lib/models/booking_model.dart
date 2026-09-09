@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../utils/app_localizations.dart';
 
 enum BookingStatus {
   pending,      // Chờ xác nhận
@@ -26,6 +27,7 @@ enum BookingPricingType {
 }
 
 class RoomBooking {
+  final String currency;
   final String id;
   final String organizationId;
   final String buildingId;
@@ -62,6 +64,7 @@ class RoomBooking {
   final DateTime? checkedOutAt;
 
   RoomBooking({
+    this.currency = 'VND',
     required this.id,
     required this.organizationId,
     required this.buildingId,
@@ -126,6 +129,7 @@ class RoomBooking {
 
   Map<String, dynamic> toMap() {
     return {
+      'currency': currency,
       'organizationId': organizationId,
       'buildingId': buildingId,
       'roomId': roomId,
@@ -158,6 +162,7 @@ class RoomBooking {
 
   factory RoomBooking.fromMap(String id, Map<String, dynamic> map) {
     return RoomBooking(
+      currency: map['currency'] as String? ?? 'VND',
       id: id,
       organizationId: map['organizationId'] ?? '',
       buildingId: map['buildingId'] ?? '',
@@ -242,6 +247,7 @@ class RoomBooking {
       status: status ?? this.status,
       source: source ?? this.source,
       pricingType: pricingType ?? this.pricingType,
+      currency: currency,
       totalPrice: totalPrice ?? this.totalPrice,
       paidAmount: paidAmount ?? this.paidAmount,
       depositAmount: depositAmount ?? this.depositAmount,
@@ -260,35 +266,35 @@ class RoomBooking {
     );
   }
 
-  String getStatusDisplayName() {
+  String getStatusDisplayName(AppTranslations t) {
     switch (status) {
       case BookingStatus.pending:
-        return 'Chờ xác nhận';
+        return t['booking_status_pending'];
       case BookingStatus.confirmed:
-        return 'Đã xác nhận';
+        return t['booking_status_confirmed'];
       case BookingStatus.checkedIn:
-        return 'Đã nhận phòng';
+        return t['booking_status_checked_in'];
       case BookingStatus.checkedOut:
-        return 'Đã trả phòng';
+        return t['booking_status_checked_out'];
       case BookingStatus.cancelled:
-        return 'Đã hủy';
+        return t['booking_status_cancelled'];
       case BookingStatus.noShow:
-        return 'Không đến';
+        return t['booking_status_no_show'];
     }
   }
 
-  String getSourceDisplayName() {
+  String getSourceDisplayName(AppTranslations t) {
     switch (source) {
       case BookingSource.walkIn:
-        return 'Khách vãng lai';
+        return t['booking_source_walk_in'];
       case BookingSource.phone:
-        return 'Điện thoại';
+        return t['booking_source_phone'];
       case BookingSource.app:
-        return 'Ứng dụng';
+        return t['booking_source_app'];
       case BookingSource.online:
-        return 'Đặt online';
+        return t['booking_source_online'];
       case BookingSource.other:
-        return 'Khác';
+        return t['booking_source_other'];
     }
   }
 }

@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../utils/app_localizations.dart';
 
 enum PaymentType {
   rent,           // Tiền thuê
@@ -215,16 +216,16 @@ class Payment {
       rentUnitPrice != null &&
       rentUnitQuantity != null;
 
-  String? getRentPriceModeDisplayName() {
+  String? getRentPriceModeDisplayName(AppTranslations t) {
     switch (rentPriceMode) {
       case RentPriceMode.direct:
-        return 'Nhập trực tiếp';
+        return t['rent_price_mode_direct'];
       case RentPriceMode.daily:
-        return 'Theo ngày';
+        return t['rent_price_mode_daily'];
       case RentPriceMode.monthly:
-        return 'Theo tháng';
+        return t['rent_price_mode_monthly'];
       case RentPriceMode.yearly:
-        return 'Theo năm';
+        return t['rent_price_mode_yearly'];
       case null:
         return null;
     }
@@ -496,69 +497,69 @@ class Payment {
     );
   }
 
-  // Helper method to get payment type display name in Vietnamese
-  String getTypeDisplayName() {
+  // Localized payment type label.
+  String getTypeDisplayName(AppTranslations t) {
     switch (type) {
       case PaymentType.rent:
-        return 'Tiền thuê';
+        return t['payment_type_rent'];
       case PaymentType.electricity:
-        return 'Tiền điện';
+        return t['payment_type_electricity'];
       case PaymentType.water:
-        return 'Tiền nước';
+        return t['payment_type_water'];
       case PaymentType.internet:
-        return 'Tiền internet';
+        return t['payment_type_internet'];
       case PaymentType.parking:
-        return 'Tiền gửi xe';
+        return t['payment_type_parking'];
       case PaymentType.maintenance:
-        return 'Phí bảo trì';
+        return t['payment_type_maintenance'];
       case PaymentType.deposit:
-        return 'Tiền cọc';
+        return t['payment_type_deposit'];
       case PaymentType.penalty:
-        return 'Tiền phạt';
+        return t['payment_type_penalty'];
       case PaymentType.buildingRent:
-        return 'Tiền thuê tòa nhà';
+        return t['payment_type_building_rent'];
       case PaymentType.hourlyRent:
-        return 'Tiền thuê theo giờ';
+        return t['payment_type_hourly_rent'];
       case PaymentType.other:
-        return 'Khác';
+        return t['payment_type_other'];
     }
   }
 
-  // Helper method to get status display name in Vietnamese
-  String getStatusDisplayName() {
+  // Localized payment status label.
+  String getStatusDisplayName(AppTranslations t) {
     switch (status) {
       case PaymentStatus.pending:
-        return 'Chờ thanh toán';
+        return t['payment_status_pending'];
       case PaymentStatus.paid:
-        return 'Đã thanh toán';
+        return t['payment_status_paid'];
       case PaymentStatus.overdue:
-        return 'Quá hạn';
+        return t['payment_status_overdue'];
       case PaymentStatus.cancelled:
-        return 'Đã hủy';
+        return t['payment_status_cancelled'];
       case PaymentStatus.refunded:
-        return 'Đã hoàn tiền';
+        return t['payment_status_refunded'];
       case PaymentStatus.partial:
-        return 'Thanh toán một phần';
+        return t['payment_status_partial'];
     }
   }
 
-  // Helper method to get payment method display name in Vietnamese
-  String? getPaymentMethodDisplayName() {
+  // Localized payment method label.
+  String? getPaymentMethodDisplayName(AppTranslations t) {
     if (paymentMethod == null) return null;
 
     switch (paymentMethod!) {
       case PaymentMethod.cash:
-        return 'Tiền mặt';
+        return t['payment_method_cash'];
       case PaymentMethod.bankTransfer:
-        return 'Chuyển khoản';
+        return t['payment_method_bank_transfer'];
       case PaymentMethod.momo:
-        return 'Ví MoMo';
+        return t['payment_method_momo'];
       case PaymentMethod.zalopay:
-        return 'Ví ZaloPay';
+        return t['payment_method_zalopay'];
       case PaymentMethod.creditCard:
-        return 'Thẻ tín dụng';
+        return t['payment_method_credit_card'];
       case PaymentMethod.other:
-        return 'Khác';
+        return t['payment_method_other'];
     }
   }
 }

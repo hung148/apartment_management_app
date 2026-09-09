@@ -8,6 +8,7 @@ import 'package:phan_mem_quan_ly_can_ho/models/rooms_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/booking_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/room_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/booking_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/building_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/booking/booking_form_dialog.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/booking/booking_detail_dialog.dart';
@@ -24,9 +25,20 @@ class AvailabilityCalendarScreen extends StatefulWidget {
   final Building? initialBuilding;
   final Organization organization;
 
+  /// When true the screen is hosted inside another screen's tab bar, so it
+  /// skips its own AppBar (and back button) and shows a compact toolbar with
+  /// the building picker and day/month switch instead.
+  final bool embedded;
+
+  /// Extra right-hand padding for the embedded toolbar, so the host screen can
+  /// reserve the top-right corner for a control of its own.
+  final double trailingInset;
+
   const AvailabilityCalendarScreen({
     this.initialBuilding,
     required this.organization,
+    this.embedded = false,
+    this.trailingInset = 0,
     super.key,
   });
 
@@ -62,6 +74,7 @@ class _AvailabilityCalendarScreenState extends State<AvailabilityCalendarScreen>
   List<RoomBooking> _monthBookings = [];
   Map<String, Tenant> _activeTenantByRoomId = {};
   bool _loading = true;
+  int _viewRequest = 0;
 
   static const int _startHour = 0;
   static const int _endHour = 24;
@@ -74,7 +87,7 @@ class _AvailabilityCalendarScreenState extends State<AvailabilityCalendarScreen>
 
   // Room labels are a sticky left column; rows scroll vertically together
   // with the grid body via a single shared vertical scroll view.
-  static const double _roomLabelColWidth = 170.0;
+  double get _roomLabelColWidth => MediaQuery.sizeOf(context).width < 600 ? 110 : 170;
   static const double _timeHeaderHeight = 40.0;
   static const double _roomRowHeight = 76.0;
 
@@ -161,6 +174,7 @@ class _AvailabilityCalendarScreenState extends State<AvailabilityCalendarScreen>
 
   Future<void> _loadCurrentView() async {
     if (_selectedBuilding == null) return;
+    final request = ++_viewRequest;
     setState(() => _loading = true);
     if (_viewMode == _ViewMode.day) {
       final data = await _bookingService.getBuildingBookingsForDay(
@@ -168,16 +182,16 @@ class _AvailabilityCalendarScreenState extends State<AvailabilityCalendarScreen>
         _selectedBuilding!.id,
         _selectedDate,
       );
-      if (mounted) setState(() => _dayBookings = data);
+      if (mounted && request == _viewRequest) setState(() => _dayBookings = data);
     } else {
       final bookings = await _bookingService.getBuildingBookingsForMonth(
         widget.organization.id,
         _selectedBuilding!.id,
         _selectedDate,
       );
-      if (mounted) setState(() => _monthBookings = bookings);
+      if (mounted && request == _viewRequest) setState(() => _monthBookings = bookings);
     }
-    if (mounted) setState(() => _loading = false);
+    if (mounted && request == _viewRequest) setState(() => _loading = false);
   }
 
   void _goToDay(DateTime date) {
@@ -200,78 +214,118 @@ class _AvailabilityCalendarScreenState extends State<AvailabilityCalendarScreen>
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTranslations.of(context);
     return Scaffold(
       backgroundColor: kBgColor,
-      appBar: AppBar(
-        backgroundColor: kPrimaryColor,
-        foregroundColor: Colors.white,
-        titleSpacing: 0,
-        title: _loadingBuildings || _buildings.isEmpty
-            ? const Text('Lịch phòng theo giờ', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700))
-            : _buildBuildingDropdown(),
-        actions: [
-          if (!_loadingBuildings && _buildings.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(right: 12),
-              child: Center(
-                child: SegmentedButton<_ViewMode>(
-                  style: SegmentedButton.styleFrom(
-                    backgroundColor: Colors.white.withValues(alpha: 0.12),
-                    foregroundColor: Colors.white,
-                    selectedBackgroundColor: Colors.white,
-                    selectedForegroundColor: kPrimaryColor,
+      appBar: widget.embedded
+          ? null
+          : AppBar(
+              backgroundColor: kPrimaryColor,
+              foregroundColor: Colors.white,
+              titleSpacing: 0,
+              title: _loadingBuildings || _buildings.isEmpty
+                  ? Text(t['calendar_title'], style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700))
+                  : _buildBuildingDropdown(),
+              actions: [
+                if (!_loadingBuildings && _buildings.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 12),
+                    child: Center(child: _buildViewModeSelector()),
                   ),
-                  segments: const [
-                    ButtonSegment(value: _ViewMode.day, label: Text('Ngày')),
-                    ButtonSegment(value: _ViewMode.month, label: Text('Tháng')),
-                  ],
-                  selected: {_viewMode},
-                  onSelectionChanged: (s) {
-                    setState(() => _viewMode = s.first);
-                    _loadCurrentView();
-                  },
-                ),
-              ),
+              ],
             ),
+      body: widget.embedded
+          ? Column(
+              children: [
+                _buildEmbeddedToolbar(),
+                Expanded(child: _buildCalendarBody()),
+              ],
+            )
+          : _buildCalendarBody(),
+    );
+  }
+
+  /// Compact replacement for the AppBar contents when hosted inside a tab.
+  Widget _buildEmbeddedToolbar() {
+    if (_loadingBuildings || _buildings.isEmpty) return const SizedBox.shrink();
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 160),
+      curve: Curves.easeOut,
+      color: kPrimaryColor,
+      padding: EdgeInsets.fromLTRB(12, 4, 12 + widget.trailingInset, 8),
+      child: Row(
+        children: [
+          Expanded(child: _buildBuildingDropdown()),
+          const SizedBox(width: 8),
+          _buildViewModeSelector(),
         ],
       ),
-      body: _loadingBuildings
-          ? const Center(child: CircularProgressIndicator())
-          : _buildings.isEmpty
-              ? Center(
-                  child: Text(
-                    'Tổ chức chưa có toà nhà nào có thể quản lý phòng.',
-                    style: TextStyle(color: Colors.grey.shade500),
-                  ),
-                )
-              : Column(
-                  children: [
-                    _buildDateNav(),
-                    if (_hourlyRooms.isEmpty && !_loading)
-                      Expanded(
-                        child: Center(
-                          child: Text(
-                            'Toà nhà này chưa có phòng nào bật chế độ cho thuê theo giờ.\nVào Sửa phòng để bật.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(color: Colors.grey.shade500),
-                          ),
-                        ),
-                      )
-                    else
-                      Expanded(
-                        child: _loading
-                            ? const Center(child: CircularProgressIndicator())
-                            : (_viewMode == _ViewMode.day ? _buildDayView() : _buildMonthView()),
-                      ),
-                  ],
-                ),
     );
+  }
+
+  Widget _buildViewModeSelector() {
+    final t = AppTranslations.of(context);
+    return SegmentedButton<_ViewMode>(
+      style: SegmentedButton.styleFrom(
+        backgroundColor: Colors.white.withValues(alpha: 0.12),
+        foregroundColor: Colors.white,
+        selectedBackgroundColor: Colors.white,
+        selectedForegroundColor: kPrimaryColor,
+        visualDensity: VisualDensity.compact,
+      ),
+      showSelectedIcon: false,
+      segments: [
+        ButtonSegment(value: _ViewMode.day, label: Text(t['calendar_view_day'])),
+        ButtonSegment(value: _ViewMode.month, label: Text(t['calendar_view_month'])),
+      ],
+      selected: {_viewMode},
+      onSelectionChanged: (s) {
+        setState(() => _viewMode = s.first);
+        _loadCurrentView();
+      },
+    );
+  }
+
+  Widget _buildCalendarBody() {
+    final t = AppTranslations.of(context);
+    return _loadingBuildings
+        ? const Center(child: CircularProgressIndicator())
+        : _buildings.isEmpty
+            ? Center(
+                child: Text(
+                  t['calendar_no_buildings'],
+                  style: TextStyle(color: Colors.grey.shade500),
+                ),
+              )
+            : Column(
+                children: [
+                  _buildDateNav(),
+                  if (_hourlyRooms.isEmpty && !_loading)
+                    Expanded(
+                      child: Center(
+                        child: Text(
+                          t['calendar_no_hourly_rooms'],
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.grey.shade500),
+                        ),
+                      ),
+                    )
+                  else
+                    Expanded(
+                      child: _loading
+                          ? const Center(child: CircularProgressIndicator())
+                          : (_viewMode == _ViewMode.day ? _buildDayView() : _buildMonthView()),
+                    ),
+                ],
+              );
   }
 
   // ── Building dropdown (in app bar) ──────────────────────────────────
   Widget _buildBuildingDropdown() {
+    final t = AppTranslations.of(context);
     return DropdownButtonHideUnderline(
       child: DropdownButton<Building>(
+        isExpanded: true,
         value: _selectedBuilding,
         dropdownColor: kPrimaryColor,
         iconEnabledColor: Colors.white,
@@ -282,8 +336,8 @@ class _AvailabilityCalendarScreenState extends State<AvailabilityCalendarScreen>
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Lịch phòng theo giờ',
-                          style: TextStyle(fontSize: 11, color: Colors.white70)),
+                      Text(t['calendar_title'], maxLines: 1, overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 11, color: Colors.white70)),
                       Text(b.name,
                           style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white),
                           overflow: TextOverflow.ellipsis),
@@ -304,8 +358,9 @@ class _AvailabilityCalendarScreenState extends State<AvailabilityCalendarScreen>
 
   // ── Date nav bar ──────────────────────────────────────────────────
   Widget _buildDateNav() {
+    final t = AppTranslations.of(context);
     final label = _viewMode == _ViewMode.day
-        ? DateFormat('EEEE, dd/MM/yyyy', 'vi_VN').format(_selectedDate)
+        ? '${t.weekdayName(_selectedDate)}, ${DateFormat(t.dateFormat).format(_selectedDate)}'
         : DateFormat('MM/yyyy').format(_selectedDate);
 
     return Container(
@@ -314,22 +369,33 @@ class _AvailabilityCalendarScreenState extends State<AvailabilityCalendarScreen>
       child: Row(
         children: [
           IconButton(
+            tooltip: t['calendar_previous'],
             icon: const Icon(Icons.chevron_left_rounded),
             onPressed: () => _viewMode == _ViewMode.day ? _shiftDay(-1) : _shiftMonth(-1),
           ),
           Expanded(
             child: Center(
-              child: Text(label,
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+              child: TextButton(
+                onPressed: () async {
+                  final date = await showDatePicker(context: context, locale: t.locale,
+                    initialDate: _selectedDate, firstDate: DateTime(1900), lastDate: DateTime(2100));
+                  if (date != null && mounted) {
+                    setState(() => _selectedDate = date);
+                    _loadCurrentView();
+                  }
+                },
+                child: Text(label, textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700))),
             ),
           ),
           IconButton(
+            tooltip: t['calendar_next'],
             icon: const Icon(Icons.chevron_right_rounded),
             onPressed: () => _viewMode == _ViewMode.day ? _shiftDay(1) : _shiftMonth(1),
           ),
           TextButton(
             onPressed: () => _goToDay(DateTime.now()),
-            child: const Text('Hôm nay'),
+            child: Text(t['calendar_today']),
           ),
         ],
       ),
@@ -445,6 +511,7 @@ class _AvailabilityCalendarScreenState extends State<AvailabilityCalendarScreen>
   }
 
   Widget _buildRoomLabelsColumn() {
+    final t = AppTranslations.of(context);
     return SizedBox(
       width: _roomLabelColWidth,
       height: _roomsGridHeight,
@@ -480,14 +547,15 @@ class _AvailabilityCalendarScreenState extends State<AvailabilityCalendarScreen>
                       borderRadius: BorderRadius.circular(4),
                       border: Border.all(color: const Color(0xFFA32D2D).withValues(alpha: 0.35), width: 0.8),
                     ),
-                    child: const Text(
-                      'Khách dài hạn',
-                      style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Color(0xFFA32D2D)),
+                    child: Text(
+                      t['calendar_long_term_guest'],
+                      style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Color(0xFFA32D2D)),
                     ),
                   )
                 else if (room.hasHourlyPricing)
                   Text(
-                    '${NumberFormat('#,###', 'vi_VN').format(room.hourlyPrice)} đ/giờ',
+                    t.textWithParams('calendar_price_per_hour',
+                        {'price': NumberFormat('#,###', 'vi_VN').format(room.hourlyPrice)}),
                     style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
                   ),
               ],
@@ -686,12 +754,13 @@ class _AvailabilityCalendarScreenState extends State<AvailabilityCalendarScreen>
   }
 
   Widget _buildLegend() {
+    final t = AppTranslations.of(context);
     final items = <MapEntry<String, Color>>[
-      const MapEntry('Chờ xác nhận', Color(0xFFEF9F27)),
-      const MapEntry('Đã xác nhận', Color(0xFF185FA5)),
-      const MapEntry('Đã nhận phòng', Color(0xFF3B6D11)),
-      MapEntry('Đã trả phòng', Colors.grey.shade400),
-      MapEntry('Đã huỷ / Không đến', Colors.grey.shade300),
+      MapEntry(t['booking_status_pending'], const Color(0xFFEF9F27)),
+      MapEntry(t['booking_status_confirmed'], const Color(0xFF185FA5)),
+      MapEntry(t['booking_status_checked_in'], const Color(0xFF3B6D11)),
+      MapEntry(t['booking_status_checked_out'], Colors.grey.shade400),
+      MapEntry(t['booking_status_cancelled_or_no_show'], Colors.grey.shade300),
     ];
     return Container(
       width: double.infinity,
@@ -729,10 +798,12 @@ class _AvailabilityCalendarScreenState extends State<AvailabilityCalendarScreen>
         mainAxisSize: MainAxisSize.min,
         children: [
           IconButton(
+            tooltip: AppTranslations.of(context)['calendar_zoom_out'],
             icon: const Icon(Icons.zoom_out, size: 18),
             onPressed: () => setState(() => _pixelsPerHour = (_pixelsPerHour - 15).clamp(40, 200).toDouble()),
           ),
           IconButton(
+            tooltip: AppTranslations.of(context)['calendar_zoom_in'],
             icon: const Icon(Icons.zoom_in, size: 18),
             onPressed: () => setState(() => _pixelsPerHour = (_pixelsPerHour + 15).clamp(40, 200).toDouble()),
           ),
@@ -809,119 +880,65 @@ class _AvailabilityCalendarScreenState extends State<AvailabilityCalendarScreen>
 
   // ── MONTH VIEW: occupancy heatmap ────────────────────────────────
   Widget _buildMonthView() {
-    final monthStart = DateTime(_selectedDate.year, _selectedDate.month, 1);
-    final daysInMonth = DateTime(_selectedDate.year, _selectedDate.month + 1, 0).day;
-    final leadingBlanks = monthStart.weekday % 7;
-
-    return Padding(
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        children: [
-          Row(
-            children: ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7']
-                .map((d) => Expanded(
-                      child: Center(
-                        child: Text(d,
-                            style: TextStyle(
-                                fontSize: 11, fontWeight: FontWeight.w700, color: Colors.grey.shade500)),
-                      ),
-                    ))
-                .toList(),
-          ),
-          const SizedBox(height: 6),
-          Expanded(
-            child: GridView.builder(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 7,
-                childAspectRatio: 0.55,
-                crossAxisSpacing: 4,
-                mainAxisSpacing: 4,
+    final t = AppTranslations.of(context);
+    final material = MaterialLocalizations.of(context);
+    final firstWeekday = material.firstDayOfWeekIndex;
+    final monthStart = DateTime(_selectedDate.year, _selectedDate.month);
+    final days = DateTime(_selectedDate.year, _selectedDate.month + 1, 0).day;
+    final blanks = (monthStart.weekday % 7 - firstWeekday + 7) % 7;
+    final compact = MediaQuery.sizeOf(context).width < 600;
+    return Column(children: [
+      Padding(padding: const EdgeInsets.all(12), child: Text(t['calendar_day_hint'])),
+      Padding(padding: const EdgeInsets.symmetric(horizontal: 8), child: Row(
+        children: List.generate(7, (i) => Expanded(child: Center(child: Text(
+          t.shortWeekdayName(DateTime(2026, 9, 6 + (i + firstWeekday) % 7)),
+          style: const TextStyle(fontWeight: FontWeight.w600),
+        )))),
+      )),
+      const SizedBox(height: 8),
+      Expanded(child: GridView.builder(
+        padding: const EdgeInsets.all(8),
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 7, mainAxisExtent: compact ? 100 : 155,
+          crossAxisSpacing: 4, mainAxisSpacing: 4),
+        itemCount: ((blanks + days + 6) ~/ 7) * 7,
+        itemBuilder: (context, index) {
+          final day = index - blanks + 1;
+          if (day < 1 || day > days) return const SizedBox.shrink();
+          final date = DateTime(_selectedDate.year, _selectedDate.month, day);
+          final statuses = _roomStatusesForDay(date);
+          final occupied = statuses.where((s) => s.occupied).length;
+          final free = statuses.length - occupied;
+          final today = DateUtils.isSameDay(date, DateTime.now());
+          final occupiedLabel = t.textWithParams('calendar_occupied_count', {'count': '$occupied'});
+          final freeLabel = t.textWithParams('calendar_free_count', {'count': '$free'});
+          return Semantics(
+            button: true, label: '${t.formatLongDate(date)}, $occupiedLabel, $freeLabel',
+            child: Tooltip(message: '$occupiedLabel\n$freeLabel', child: Material(
+              color: today ? const Color(0xFFEEF2FF) : Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8),
+                side: BorderSide(color: today ? kPrimaryColor : const Color(0xFFE2E8F0))),
+              child: InkWell(borderRadius: BorderRadius.circular(8), onTap: () => _goToDay(date),
+                child: Padding(padding: const EdgeInsets.all(6), child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('$day', style: TextStyle(fontWeight: FontWeight.w700,
+                      color: today ? kPrimaryColor : Colors.black87)),
+                    const SizedBox(height: 8),
+                    LinearProgressIndicator(value: statuses.isEmpty ? 0 : occupied / statuses.length,
+                      color: kPrimaryColor, backgroundColor: const Color(0xFFE2E8F0),
+                      minHeight: 5, borderRadius: BorderRadius.circular(4)),
+                    const SizedBox(height: 6),
+                    Expanded(child: Text(compact ? '$occupied/${statuses.length}' : '$occupiedLabel\n$freeLabel',
+                      style: TextStyle(fontSize: compact ? 10 : 12), maxLines: 4)),
+                  ])),
               ),
-              itemCount: leadingBlanks + daysInMonth,
-              itemBuilder: (context, index) {
-                if (index < leadingBlanks) return const SizedBox.shrink();
-                final day = index - leadingBlanks + 1;
-                final date = DateTime(_selectedDate.year, _selectedDate.month, day);
-                final isToday = DateUtils.isSameDay(date, DateTime.now());
-                final statuses = _roomStatusesForDay(date);
-
-                const maxChipsShown = 6;
-                final visible = statuses.take(maxChipsShown).toList();
-
-                return InkWell(
-                  onTap: () => _goToDay(date),
-                  borderRadius: BorderRadius.circular(8),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: isToday ? kPrimaryColor : Colors.grey.shade200,
-                        width: isToday ? 1.6 : 1,
-                      ),
-                    ),
-                    padding: const EdgeInsets.all(6),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('$day',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: isToday ? kPrimaryColor : Colors.black87,
-                            )),
-                        const SizedBox(height: 4),
-                        Expanded(
-                          child: SingleChildScrollView(
-                            physics: const NeverScrollableScrollPhysics(),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                ...visible.map((s) {
-                                  if (s.occupied && s.color != null) {
-                                    return Container(
-                                      margin: const EdgeInsets.only(bottom: 3),
-                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
-                                      decoration: BoxDecoration(
-                                        color: s.color!.withValues(alpha: 0.28),
-                                        borderRadius: BorderRadius.circular(5),
-                                        border: Border.all(color: s.color!, width: 1),
-                                      ),
-                                      child: Text(
-                                        s.room.roomNumber,
-                                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: s.color),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    );
-                                  }
-                                  return Padding(
-                                    padding: const EdgeInsets.only(bottom: 3),
-                                    child: Text(
-                                      s.room.roomNumber,
-                                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: Colors.grey.shade400),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  );
-                                }),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
+            )),
+          );
+        },
+      )),
+    ]);
   }
 
-  // ── Actions ───────────────────────────────────────────────────────
   Future<void> _openBookingForm(Room room, DateTime start, DateTime end) async {
     if (_selectedBuilding == null) return;
     final created = await showDialog<bool>(

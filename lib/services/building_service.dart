@@ -36,6 +36,7 @@ class BuildingService {
     
     try {
       final building = Building(
+        currency: dialogResult['currency'] as String? ?? 'VND',
         id: '', 
         organizationId: organizationId,
         name: dialogResult['name'],

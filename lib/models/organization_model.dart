@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../utils/app_localizations.dart';
 
 class Organization {
   final String id;
@@ -109,12 +110,12 @@ class Organization {
   }
 
   // Format bank info for display
-  String get formattedBankInfo {
-    if (!hasBankInfo) return 'Chưa có thông tin ngân hàng';
+  String formattedBankInfo(AppTranslations t) {
+    if (!hasBankInfo) return t['bank_info_missing'];
     return '''
-      Account Name: $bankAccountName
-      Account Number: $bankAccountNumber
-      Bank: $bankName
+      ${t['bank_account_name_label']}: $bankAccountName
+      ${t['bank_account_number_label']}: $bankAccountNumber
+      ${t['bank_name_label']}: $bankName
       ''';
   }
 }

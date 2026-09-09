@@ -222,7 +222,7 @@ class DeletePaymentDialog extends StatelessWidget {
   }
 
   Widget _buildLineItemCard(InvoiceLineItem item, int index, AppTranslations t) {
-    final dateFormat = DateFormat('dd/MM/yyyy');
+    final dateFormat = DateFormat(t.dateFormat);
     final label = _typeLabel(item.type, t);
 
     return Container(
@@ -399,7 +399,7 @@ class DeletePaymentDialog extends StatelessWidget {
     final t = AppTranslations.of(context);
     final lineItems = _parseLineItems(payment);
     final isMultiLine = lineItems.length > 1;
-    final dateFormat = DateFormat('dd/MM/yyyy');
+    final dateFormat = DateFormat(t.dateFormat);
 
     return AlertDialog(
       title: Row(
@@ -444,7 +444,7 @@ class DeletePaymentDialog extends StatelessWidget {
                   const SizedBox(height: 8),
                   _buildDetailRow(
                     t['del_payment_status'],
-                    payment.getStatusDisplayName(),
+                    payment.getStatusDisplayName(t),
                   ),
 
                   // ── Line items ───────────────────────────────────────────

@@ -5,6 +5,7 @@ import 'package:phan_mem_quan_ly_can_ho/models/booking_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/payment_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/booking_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/payments_notifier.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
 
 // ─────────────────────────────────────────────────────────────
 // DESIGN TOKENS (mirrors the calendar's indigo kPrimaryColor)
@@ -43,8 +44,8 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
   }
 
   String _formatCurrency(double amount) {
-    final formatter = NumberFormat('#,###', 'vi_VN');
-    return '${formatter.format(amount)} ₫';
+    final formatter = NumberFormat('#,##0.##', 'en_US');
+    return '${formatter.format(amount)} ${widget.booking.currency}';
   }
 
   Color _statusColor(BookingStatus status) {
@@ -109,6 +110,7 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
   }
 
   Future<PaymentMethod?> _showPaymentMethodDialog() {
+    final t = AppTranslations.of(context);
     IconData iconFor(PaymentMethod m) {
       final name = m.name.toLowerCase();
       if (name.contains('cash') || name.contains('tien_mat')) return Icons.payments_rounded;
@@ -151,10 +153,10 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
                     child: const Icon(Icons.wallet_rounded, color: Colors.white, size: 22),
                   ),
                   const SizedBox(width: 14),
-                  const Expanded(
+                  Expanded(
                     child: Text(
-                      'Phương thức thanh toán',
-                      style: TextStyle(
+                      t['booking_detail_payment_method'],
+                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 16,
                         fontWeight: FontWeight.w800,
@@ -207,7 +209,7 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
                               const SizedBox(width: 12),
                               Expanded(
                                 child: Text(
-                                  m.name,
+                                  t[{'cash': 'payment_method_cash', 'bankTransfer': 'payment_method_bank_transfer', 'momo': 'payment_method_momo', 'zalopay': 'payment_method_zalopay', 'creditCard': 'payment_method_credit_card', 'other': 'payment_method_other'}[m.name]!],
                                   style: const TextStyle(
                                       fontSize: 13, fontWeight: FontWeight.w600, color: _DS.textPrimary),
                                 ),
@@ -229,6 +231,7 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
   }
 
   Future<void> _cancel() async {
+    final t = AppTranslations.of(context);
     final controller = TextEditingController();
     final reason = await showDialog<String>(
       context: context,
@@ -264,9 +267,9 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
                       child: const Icon(Icons.event_busy_rounded, color: Colors.white, size: 24),
                     ),
                     const SizedBox(height: 10),
-                    const Text(
-                      'Hủy đặt phòng',
-                      style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800),
+                    Text(
+                      t['booking_detail_cancel_title'],
+                      style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800),
                     ),
                   ],
                 ),
@@ -280,7 +283,7 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
                       controller: controller,
                       maxLines: 2,
                       decoration: InputDecoration(
-                        labelText: 'Lý do (không bắt buộc)',
+                        labelText: t['booking_detail_cancel_reason'],
                         prefixIcon: const Icon(Icons.notes_rounded, size: 18, color: _DS.textSecondary),
                         filled: true,
                         fillColor: _DS.surface,
@@ -306,7 +309,7 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
                             padding: const EdgeInsets.symmetric(vertical: 13),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           ),
-                          child: const Text('Đóng', style: TextStyle(fontWeight: FontWeight.w600)),
+                          child: Text(t['close'], style: const TextStyle(fontWeight: FontWeight.w600)),
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -319,8 +322,8 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                             elevation: 0,
                           ),
-                          child: const Text('Xác nhận hủy',
-                              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                          child: Text(t['booking_detail_cancel_confirm'],
+                              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
                         ),
                       ),
                     ]),
@@ -338,7 +341,8 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final fmt = DateFormat('dd/MM/yyyy HH:mm');
+    final t = AppTranslations.of(context);
+    final fmt = DateFormat(t.dateTimeFormat);
     final statusColor = _statusColor(_booking.status);
     final statusColorDeep = _statusColorDeep(_booking.status);
     final isSmall = MediaQuery.of(context).size.width < 600;
@@ -412,7 +416,7 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: Text(
-                            _booking.getStatusDisplayName(),
+                            _booking.getStatusDisplayName(t),
                             style: const TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w700,
@@ -451,19 +455,20 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
                   ),
                   child: Column(
                     children: [
-                      _detailRow(Icons.login_rounded, 'Nhận phòng', fmt.format(_booking.startTime)),
-                      _detailRow(Icons.logout_rounded, 'Trả phòng', fmt.format(_booking.endTime)),
-                      _detailRow(Icons.schedule_rounded, 'Thời lượng',
-                          '${_booking.durationHours.toStringAsFixed(1)} giờ'),
-                      _detailRow(Icons.payments_rounded, 'Tổng tiền', _formatCurrency(_booking.totalPrice),
+                      _detailRow(Icons.login_rounded, t['booking_check_in'], fmt.format(_booking.startTime)),
+                      _detailRow(Icons.logout_rounded, t['booking_check_out'], fmt.format(_booking.endTime)),
+                      _detailRow(Icons.schedule_rounded, t['booking_detail_duration'],
+                          t.textWithParams('booking_form_duration_hours',
+                              {'count': _booking.durationHours.toStringAsFixed(1)})),
+                      _detailRow(Icons.payments_rounded, t['booking_detail_total'], _formatCurrency(_booking.totalPrice),
                           valueColor: _DS.primary, bold: true),
-                      _detailRow(Icons.check_circle_outline_rounded, 'Đã thanh toán',
+                      _detailRow(Icons.check_circle_outline_rounded, t['payment_status_paid'],
                           _formatCurrency(_booking.paidAmount)),
                       if (_booking.depositAmount != null)
-                        _detailRow(Icons.savings_rounded, 'Tiền cọc',
+                        _detailRow(Icons.savings_rounded, t['payment_type_deposit'],
                             _formatCurrency(_booking.depositAmount!)),
                       if (_booking.notes != null && _booking.notes!.isNotEmpty)
-                        _detailRow(Icons.notes_rounded, 'Ghi chú', _booking.notes!, isLast: true),
+                        _detailRow(Icons.notes_rounded, t['booking_form_notes'], _booking.notes!, isLast: true),
                     ],
                   ),
                 ),
@@ -493,7 +498,7 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
                           FilledButton.icon(
                             onPressed: _checkIn,
                             icon: const Icon(Icons.login_rounded, size: 16),
-                            label: const Text('Nhận phòng'),
+                            label: Text(t['booking_check_in']),
                             style: FilledButton.styleFrom(
                               backgroundColor: const Color(0xFF3B6D11),
                               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -505,7 +510,7 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
                           FilledButton.icon(
                             onPressed: _checkOut,
                             icon: const Icon(Icons.logout_rounded, size: 16),
-                            label: const Text('Trả phòng'),
+                            label: Text(t['booking_check_out']),
                             style: FilledButton.styleFrom(
                               backgroundColor: _DS.primary,
                               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -523,7 +528,7 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                             ),
                             icon: const Icon(Icons.close_rounded, size: 16),
-                            label: const Text('Hủy'),
+                            label: Text(t['cancel']),
                           ),
                         OutlinedButton(
                           onPressed: () => Navigator.of(context).pop(true),
@@ -533,7 +538,7 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
                             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           ),
-                          child: const Text('Đóng', style: TextStyle(fontWeight: FontWeight.w600)),
+                          child: Text(t['close'], style: const TextStyle(fontWeight: FontWeight.w600)),
                         ),
                       ],
                     ),

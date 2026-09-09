@@ -2,6 +2,7 @@ import 'dart:ui';
 
 import 'package:phan_mem_quan_ly_can_ho/main.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/auth_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_router.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/responsive.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/loading.dart';
@@ -116,7 +117,7 @@ class LoginScreen extends StatelessWidget {
                                       Icon(Icons.apartment_rounded, size: iconSize, color: Colors.white70),
                                       SizedBox(height: 4),
                                       Text(
-                                        "Phần Mền Quản Lý Căn Hộ",
+                                        AppTranslations.of(context)['app_title'],
                                         style: TextStyle(
                                           fontSize: titleSize,
                                           fontWeight: FontWeight.w700,
@@ -213,6 +214,9 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
   Future<void> _handleLogin() async {
     if(!_formKey1.currentState!.validate()) return;
 
+    // Captured before the awaits below so no BuildContext is used across an async gap.
+    final t = AppTranslations.of(context);
+
     setState(() {
       loading = true;
       login_error = null;
@@ -238,12 +242,12 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
       } else {
         // login fail
         setState(() {
-          login_error = "Đăng nhập thất bại. Kiểm tra email và mật khẩu.";
+          login_error = t['auth_login_failed'];
         });
       }
     } catch(e) {
       setState(() {
-        login_error = "Lỗi: ${e.toString()}";
+        login_error = t.textWithParams('error', {'error': e.toString()});
       });
     } finally {
       if (mounted) {
@@ -257,6 +261,9 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
   // Register function
   Future<void> _handleRegister() async {
     if (!_formKey2.currentState!.validate()) return;
+
+    // Captured before the awaits below so no BuildContext is used across an async gap.
+    final t = AppTranslations.of(context);
 
     setState(() {
       loading = true;
@@ -281,12 +288,12 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
       } else {
         // Registration failed
         setState(() {
-          register_error = 'Đăng ký thất bại. Email có thể đã được sử dụng.';
+          register_error = t['auth_register_failed'];
         },);
       }
     } catch (e) {
       setState(() {
-        register_error = 'Lỗi: ${e.toString()}';
+        register_error = t.textWithParams('error', {'error': e.toString()});
       });
     } finally {
       if (mounted) {
@@ -339,10 +346,11 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
   }
 
   Widget _buildLogin(double titleSize) {
+    final t = AppTranslations.of(context);
     return Column(
       children: [
         Text(
-          "Đăng nhập",
+          t['auth_login_title'],
           style: TextStyle(
             fontSize: titleSize - 5,
             fontWeight: FontWeight.w500,  // lighter than the app title
@@ -355,22 +363,22 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
           child: Column(
             children: [
               inputField(
-                label: "Email", 
+                label: t['email'], 
                 controller: loginEmailController,
                 labelColor: Colors.white,
                 maxLength: 100,
                 maxLengthEnforcement: MaxLengthEnforcement.enforced,
                 validator: (val) {
-                  if (val!.isEmpty) return "Điền Email!";
-                  if (val.length > 254) return "Email không hợp lệ!";  // RFC 5321 max
+                  if (val!.isEmpty) return t['auth_email_required'];
+                  if (val.length > 254) return t['auth_email_invalid'];  // RFC 5321 max
                   return null;
                 },
               ),
               inputField(
-                label: "Mật khẩu", 
+                label: t['auth_field_password'], 
                 controller: loginPasswordController,
                 labelColor: Colors.white, 
-                validator: (val) => val!.length < 6 ? val.isEmpty ? "Điền mật khẩu!" : "Mật khẩu quá đơn giản!" : null,
+                validator: (val) => val!.length < 6 ? val.isEmpty ? t['auth_password_required'] : t['auth_password_too_weak'] : null,
                 obscureText: true, 
               ),
             ],
@@ -424,7 +432,7 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
                       ),
                     ),
                     child: Text(
-                      "Đăng nhập",  
+                      t['auth_login_button'],  
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: widget.textSize + 5,
@@ -453,10 +461,11 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
   }
 
   Widget _buildRegister(double titleSize) {
+    final t = AppTranslations.of(context);
     return Column(
       children: [
         Text(
-          "Đăng ký",
+          t['auth_register_title'],
           style: TextStyle(
             fontSize: titleSize - 5,
             fontWeight: FontWeight.w500,  // lighter than the app title
@@ -470,42 +479,42 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
           child: Column(
             children: [
               inputField(
-                label: "Tên", 
+                label: t['auth_field_name'], 
                 controller: registerNameController,
                 labelColor: Colors.white, 
                 validator: (val) {
-                  if (val!.isEmpty) return "Điền tên!";
-                  if (val.length > 100) return "Tên quá dài!";
+                  if (val!.isEmpty) return t['auth_name_required'];
+                  if (val.length > 100) return t['auth_name_too_long'];
                   return null;
                 },
               ),
               inputField(
-                label: "Email", 
+                label: t['email'], 
                 controller: registerEmailController,
                 labelColor: Colors.white, 
                 validator: (val) {
-                  if (val!.isEmpty) return "Điền Email!";
-                  if (val.length > 254) return "Email không hợp lệ!";  // RFC 5321 max
+                  if (val!.isEmpty) return t['auth_email_required'];
+                  if (val.length > 254) return t['auth_email_invalid'];  // RFC 5321 max
                   return null;
                 },
               ),
               inputField(
-                label: "Mật khẩu", 
+                label: t['auth_field_password'], 
                 controller: registerPasswordController,
                 labelColor: Colors.white, 
                 validator: (val) {
-                  if (val!.isEmpty) return "Điền mật khẩu!";
-                  if (val.length < 6) return "Mật khẩu quá đơn giản!";
-                  if (val.length > 128) return "Mật khẩu quá dài!";
+                  if (val!.isEmpty) return t['auth_password_required'];
+                  if (val.length < 6) return t['auth_password_too_weak'];
+                  if (val.length > 128) return t['auth_password_too_long'];
                   return null;
                 },
                 obscureText: true, 
               ),
               inputField(
-                label: "Xác Nhận Mật khẩu", 
+                label: t['auth_field_confirm_password'], 
                 labelColor: Colors.white, 
                 controller: registerComfirmedPassController,
-                validator: (val) => val != registerPasswordController.text ? "Mật khẩu không khớp!" : null,
+                validator: (val) => val != registerPasswordController.text ? t['auth_password_mismatch'] : null,
                 obscureText: true, 
               ),
             ],
@@ -559,7 +568,7 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
                       ),
                     ),
                     child: Text(
-                      "Đăng ký",  // or "Đăng ký"
+                      t['auth_register_button'],
                       textAlign: TextAlign.center,  
                       style: TextStyle(
                         fontSize: 18,
@@ -622,6 +631,7 @@ class _SwitchAuthLinkState extends State<SwitchAuthLink> {
 
   @override
   Widget build(BuildContext context) {
+    final t = AppTranslations.of(context);
     final isLogin = widget.current == Choices.login;
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -633,7 +643,7 @@ class _SwitchAuthLinkState extends State<SwitchAuthLink> {
         ),
         child: RichText(
           text: TextSpan(
-            text: isLogin ? "Chưa có tài khoản? " : "Đã có tài khoản? ",
+            text: isLogin ? t['auth_no_account'] : t['auth_have_account'],
             style: TextStyle(
               color: Colors.white70, fontSize: widget.textSize + 2,
               shadows: [
@@ -646,7 +656,7 @@ class _SwitchAuthLinkState extends State<SwitchAuthLink> {
             ),
             children: [
               TextSpan(
-                text: isLogin ? "Đăng ký" : "Đăng nhập",
+                text: isLogin ? t['auth_register_title'] : t['auth_login_title'],
                 style: TextStyle(
                   color: _hovered ? Colors.blue : Colors.white70,
                   fontSize: widget.textSize + 2,

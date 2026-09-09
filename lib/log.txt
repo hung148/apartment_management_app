@@ -1,2 +1,6 @@
 v1.0.2+0
 Fix phone keyboard overlap input field in chat manager
+v1.0.2+1
+Make calender default tab in dashboard 
+Hide tabbar if user want
+Fix some texts not translated from vietnamese to English

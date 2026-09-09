@@ -1,3 +1,5 @@
+import 'package:phan_mem_quan_ly_can_ho/widgets/responsive_form_row.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/currency_formatter.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:phan_mem_quan_ly_can_ho/main.dart';
@@ -6,6 +8,7 @@ import 'package:phan_mem_quan_ly_can_ho/models/organization_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/rooms_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/booking_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/booking_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
 
 // ─────────────────────────────────────────────────────────────
 // DESIGN TOKENS (mirrors the calendar's indigo kPrimaryColor)
@@ -72,7 +75,7 @@ class _BookingFormDialogState extends State<BookingFormDialog> {
     // otherwise fall back to manual entry so staff aren't stuck with a 0đ field.
     _priceMode = widget.room.hasHourlyPricing ? _PriceMode.hourlyRate : _PriceMode.manual;
     _rateController.text = widget.room.hourlyPrice != null
-        ? widget.room.hourlyPrice!.toStringAsFixed(0)
+        ? CurrencyParser.format(widget.room.hourlyPrice!)
         : '';
     _recalculatePrice();
   }
@@ -100,7 +103,7 @@ class _BookingFormDialogState extends State<BookingFormDialog> {
           end: _end,
           isOvernightPreset: true,
         );
-        _priceController.text = result.price.toStringAsFixed(0);
+        _priceController.text = CurrencyParser.format(result.price);
       } catch (_) {
         _priceController.text = '0';
       }
@@ -109,10 +112,10 @@ class _BookingFormDialogState extends State<BookingFormDialog> {
 
     if (_priceMode == _PriceMode.manual) return;
 
-    final rate = double.tryParse(_rateController.text) ?? widget.room.hourlyPrice ?? 0;
+    final rate = CurrencyParser.tryParse(_rateController.text) ?? widget.room.hourlyPrice ?? 0;
     final hours = _end.difference(_start).inMinutes / 60.0;
     final total = hours > 0 ? rate * hours : 0.0;
-    _priceController.text = total.toStringAsFixed(0);
+    _priceController.text = CurrencyParser.format(total);
   }
 
   bool _isDurationSelected(Duration duration) =>
@@ -164,9 +167,10 @@ class _BookingFormDialogState extends State<BookingFormDialog> {
     final initial = isStart ? _start : _end;
     final date = await showDatePicker(
       context: context,
+      locale: AppTranslations.of(context).locale,
       initialDate: initial,
-      firstDate: DateTime.now().subtract(const Duration(days: 1)),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
+      firstDate: DateTime(1900),
+      lastDate: DateTime(2100),
     );
     if (date == null || !mounted) return;
     _applyPicked(isStart, DateTime(date.year, date.month, date.day, initial.hour, initial.minute));
@@ -181,13 +185,16 @@ class _BookingFormDialogState extends State<BookingFormDialog> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+    // Captured before the awaits below so no BuildContext is used across an async gap.
+    final t = AppTranslations.of(context);
     if (!_end.isAfter(_start)) {
-      setState(() => _error = 'Giờ kết thúc phải sau giờ bắt đầu');
+      setState(() => _error = t['booking_form_end_after_start']);
       return;
     }
     final minHours = widget.room.minBookingHours ?? 0;
     if (_end.difference(_start).inMinutes / 60.0 < minHours) {
-      setState(() => _error = 'Thời gian đặt tối thiểu là $minHours giờ');
+      setState(() => _error =
+          t.textWithParams('booking_form_min_hours', {'hours': minHours}));
       return;
     }
 
@@ -207,8 +214,9 @@ class _BookingFormDialogState extends State<BookingFormDialog> {
         startTime: _start,
         endTime: _end,
         pricingType: _isOvernight ? BookingPricingType.overnight : BookingPricingType.hourly,
-        totalPrice: double.tryParse(_priceController.text) ?? 0,
-        depositAmount: _depositController.text.isEmpty ? null : double.tryParse(_depositController.text),
+        currency: widget.room.currency,
+        totalPrice: CurrencyParser.tryParse(_priceController.text) ?? 0,
+        depositAmount: _depositController.text.isEmpty ? null : CurrencyParser.tryParse(_depositController.text),
         notes: _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
         createdAt: DateTime.now(),
       );
@@ -218,7 +226,7 @@ class _BookingFormDialogState extends State<BookingFormDialog> {
     } on BookingConflictException catch (e) {
       setState(() => _error = e.message);
     } catch (e) {
-      setState(() => _error = 'Lỗi: $e');
+      setState(() => _error = t.textWithParams('error', {'error': e}));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -226,7 +234,8 @@ class _BookingFormDialogState extends State<BookingFormDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final fmt = DateFormat('dd/MM/yyyy HH:mm');
+    final t = AppTranslations.of(context);
+    final fmt = DateFormat(t.dateTimeFormat);
     final isSmall = MediaQuery.of(context).size.width < 600;
     final hours = _end.difference(_start).inMinutes / 60.0;
 
@@ -252,38 +261,41 @@ class _BookingFormDialogState extends State<BookingFormDialog> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _sectionLabel(Icons.person_rounded, 'THÔNG TIN KHÁCH'),
+                      _sectionLabel(Icons.person_rounded, t['booking_form_guest_section']),
                       const SizedBox(height: 10),
                       _styledField(
                         controller: _nameController,
-                        label: 'Tên khách',
+                        label: t['booking_form_guest_name'],
                         icon: Icons.person_outline_rounded,
-                        validator: (v) => (v == null || v.trim().isEmpty) ? 'Bắt buộc' : null,
+                        validator: (v) => (v == null || v.trim().isEmpty) ? t['booking_form_required'] : null,
                       ),
                       const SizedBox(height: 12),
                       _styledField(
                         controller: _phoneController,
-                        label: 'Số điện thoại',
+                        label: t['phone'],
                         icon: Icons.phone_rounded,
                         keyboardType: TextInputType.phone,
-                        validator: (v) => (v == null || v.trim().isEmpty) ? 'Bắt buộc' : null,
+                        validator: (v) => (v == null || v.trim().isEmpty) ? t['booking_form_required'] : null,
                       ),
 
                       const SizedBox(height: 20),
-                      _sectionLabel(Icons.schedule_rounded, 'THỜI GIAN'),
+                      _sectionLabel(Icons.schedule_rounded, t['booking_form_time_section']),
                       const SizedBox(height: 10),
                       Wrap(
                         spacing: 8,
                         runSpacing: 8,
                         children: [
-                          _durationChip('1 giờ', _isDurationSelected(const Duration(hours: 1)),
+                          _durationChip(t.textWithParams('booking_form_duration_hours', {'count': 1}),
+                              _isDurationSelected(const Duration(hours: 1)),
                               () => _applyDurationPreset(const Duration(hours: 1))),
-                          _durationChip('2 giờ', _isDurationSelected(const Duration(hours: 2)),
+                          _durationChip(t.textWithParams('booking_form_duration_hours', {'count': 2}),
+                              _isDurationSelected(const Duration(hours: 2)),
                               () => _applyDurationPreset(const Duration(hours: 2))),
-                          _durationChip('3 giờ', _isDurationSelected(const Duration(hours: 3)),
+                          _durationChip(t.textWithParams('booking_form_duration_hours', {'count': 3}),
+                              _isDurationSelected(const Duration(hours: 3)),
                               () => _applyDurationPreset(const Duration(hours: 3))),
                           if (widget.room.overnightPrice != null)
-                            _durationChip('Qua đêm', _isOvernight, _applyOvernightPreset,
+                            _durationChip(t['booking_form_overnight'], _isOvernight, _applyOvernightPreset,
                                 icon: Icons.nightlight_round),
                         ],
                       ),
@@ -291,12 +303,12 @@ class _BookingFormDialogState extends State<BookingFormDialog> {
                       Padding(
                         padding: const EdgeInsets.only(left: 2, bottom: 8),
                         child: Text(
-                          'Hoặc chọn ngày và giờ riêng bên dưới — nhận và trả phòng có thể khác ngày.',
+                          t['booking_form_custom_range_hint'],
                           style: TextStyle(fontSize: 10.5, color: Colors.grey.shade500),
                         ),
                       ),
                       _dateTimeCard(
-                        label: 'Nhận phòng',
+                        label: t['booking_check_in'],
                         icon: Icons.login_rounded,
                         value: _start,
                         onTapDate: () => _pickDate(true),
@@ -304,7 +316,7 @@ class _BookingFormDialogState extends State<BookingFormDialog> {
                       ),
                       const SizedBox(height: 10),
                       _dateTimeCard(
-                        label: 'Trả phòng',
+                        label: t['booking_check_out'],
                         icon: Icons.logout_rounded,
                         value: _end,
                         onTapDate: () => _pickDate(false),
@@ -324,8 +336,12 @@ class _BookingFormDialogState extends State<BookingFormDialog> {
                             Expanded(
                               child: Text(
                                 hours > 0
-                                    ? 'Thời lượng thực tế: ${hours.toStringAsFixed(1)} giờ (${fmt.format(_start)} → ${fmt.format(_end)})'
-                                    : 'Giờ trả phòng phải sau giờ nhận phòng',
+                                    ? t.textWithParams('booking_form_actual_duration', {
+                                        'hours': hours.toStringAsFixed(1),
+                                      'currency': widget.room.currency,
+                                        'range': '${fmt.format(_start)} → ${fmt.format(_end)}',
+                                      })
+                                    : t['booking_form_end_after_start'],
                                 style: TextStyle(
                                   fontSize: 11.5,
                                   fontWeight: FontWeight.w600,
@@ -338,7 +354,7 @@ class _BookingFormDialogState extends State<BookingFormDialog> {
                       ),
 
                       const SizedBox(height: 20),
-                      _sectionLabel(Icons.payments_rounded, 'THANH TOÁN'),
+                      _sectionLabel(Icons.payments_rounded, t['booking_form_payment_section']),
                       const SizedBox(height: 10),
 
                       if (!_isOvernight) ...[
@@ -346,10 +362,10 @@ class _BookingFormDialogState extends State<BookingFormDialog> {
                           spacing: 8,
                           runSpacing: 8,
                           children: [
-                            _durationChip('Nhập tay', _priceMode == _PriceMode.manual,
+                            _durationChip(t['booking_form_price_manual'], _priceMode == _PriceMode.manual,
                                 () => _setPriceMode(_PriceMode.manual),
                                 icon: Icons.edit_rounded),
-                            _durationChip('Theo giờ', _priceMode == _PriceMode.hourlyRate,
+                            _durationChip(t['room_rental_mode_hourly'], _priceMode == _PriceMode.hourlyRate,
                                 () => _setPriceMode(_PriceMode.hourlyRate),
                                 icon: Icons.calculate_rounded),
                           ],
@@ -358,15 +374,15 @@ class _BookingFormDialogState extends State<BookingFormDialog> {
                         if (_priceMode == _PriceMode.hourlyRate) ...[
                           _styledField(
                             controller: _rateController,
-                            label: 'Đơn giá / giờ',
+                            label: t['booking_form_hourly_rate'],
                             icon: Icons.sell_rounded,
                             keyboardType: TextInputType.number,
-                            suffixText: 'VND/giờ',
+                            suffixText: '${widget.room.currency}/${t['unit_hours']}',
                             onChanged: (_) => setState(_recalculatePrice),
                             validator: (v) {
                               if (_priceMode != _PriceMode.hourlyRate) return null;
-                              final r = double.tryParse(v ?? '');
-                              if (r == null || r <= 0) return 'Không hợp lệ';
+                              final r = CurrencyParser.tryParse(v ?? '');
+                              if (r == null || r <= 0) return t['booking_form_invalid'];
                               return null;
                             },
                           ),
@@ -374,8 +390,13 @@ class _BookingFormDialogState extends State<BookingFormDialog> {
                             padding: const EdgeInsets.only(top: 6, left: 4, bottom: 4),
                             child: Text(
                               hours > 0
-                                  ? '${hours.toStringAsFixed(1)} giờ × ${NumberFormat('#,###', 'vi_VN').format(double.tryParse(_rateController.text) ?? 0)} đ/giờ'
-                                  : 'Chọn giờ nhận/trả phòng hợp lệ để tính giá',
+                                  ? t.textWithParams('booking_form_price_breakdown', {
+                                      'hours': hours.toStringAsFixed(1),
+                                      'currency': widget.room.currency,
+                                      'rate': NumberFormat('#,##0.##', 'en_US')
+                                          .format(CurrencyParser.tryParse(_rateController.text) ?? 0),
+                                    })
+                                  : t['booking_form_price_hint'],
                               style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
                             ),
                           ),
@@ -383,28 +404,28 @@ class _BookingFormDialogState extends State<BookingFormDialog> {
                         ],
                       ],
 
-                      Row(
+                      ResponsiveFormRow(
                         children: [
                           Expanded(
                             child: _styledField(
                               controller: _priceController,
-                              label: 'Giá',
+                              label: t['booking_form_price'],
                               icon: Icons.sell_rounded,
                               keyboardType: TextInputType.number,
-                              suffixText: 'VND',
+                              suffixText: widget.room.currency,
                               readOnly: !_isOvernight && _priceMode == _PriceMode.hourlyRate,
                               validator: (v) =>
-                                  (v == null || double.tryParse(v) == null) ? 'Không hợp lệ' : null,
+                                  (v == null || CurrencyParser.tryParse(v) == null) ? t['booking_form_invalid'] : null,
                             ),
                           ),
                           const SizedBox(width: 10),
                           Expanded(
                             child: _styledField(
                               controller: _depositController,
-                              label: 'Tiền cọc',
+                              label: t['payment_type_deposit'],
                               icon: Icons.savings_rounded,
                               keyboardType: TextInputType.number,
-                              suffixText: 'VND',
+                              suffixText: widget.room.currency,
                             ),
                           ),
                         ],
@@ -412,7 +433,7 @@ class _BookingFormDialogState extends State<BookingFormDialog> {
                       const SizedBox(height: 12),
                       _styledField(
                         controller: _notesController,
-                        label: 'Ghi chú',
+                        label: t['booking_form_notes'],
                         icon: Icons.notes_rounded,
                         maxLines: 2,
                       ),
@@ -436,6 +457,7 @@ class _BookingFormDialogState extends State<BookingFormDialog> {
 
   // ── HEADER ───────────────────────────────────────────────────
   Widget _buildHeader() {
+    final t = AppTranslations.of(context);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(20, 20, 16, 20),
@@ -462,7 +484,7 @@ class _BookingFormDialogState extends State<BookingFormDialog> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Đặt phòng ${widget.room.roomNumber}',
+                t.textWithParams('booking_form_title', {'room': widget.room.roomNumber}),
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 18,
@@ -534,7 +556,8 @@ class _BookingFormDialogState extends State<BookingFormDialog> {
     return TextFormField(
       controller: controller,
       maxLines: maxLines,
-      keyboardType: keyboardType,
+      inputFormatters: [if (controller == _priceController || controller == _rateController || controller == _depositController) CurrencyInputFormatter(decimalDigits: 2)],
+      keyboardType: suffixText != null ? const TextInputType.numberWithOptions(decimal: true) : keyboardType,
       validator: validator,
       readOnly: readOnly,
       onChanged: onChanged,
@@ -611,7 +634,7 @@ class _BookingFormDialogState extends State<BookingFormDialog> {
     required VoidCallback onTapDate,
     required VoidCallback onTapTime,
   }) {
-    final dateFmt = DateFormat('dd/MM/yyyy');
+    final dateFmt = DateFormat(AppTranslations.of(context).dateFormat);
     final timeFmt = DateFormat('HH:mm');
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -714,6 +737,7 @@ class _BookingFormDialogState extends State<BookingFormDialog> {
 
   // ── ACTIONS ──────────────────────────────────────────────────
   Widget _buildActions() {
+    final t = AppTranslations.of(context);
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
       decoration: BoxDecoration(
@@ -731,7 +755,7 @@ class _BookingFormDialogState extends State<BookingFormDialog> {
               padding: const EdgeInsets.symmetric(vertical: 13),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
-            child: const Text('Hủy', style: TextStyle(fontWeight: FontWeight.w600)),
+            child: Text(t['cancel'], style: const TextStyle(fontWeight: FontWeight.w600)),
           ),
         ),
         const SizedBox(width: 10),
@@ -746,7 +770,7 @@ class _BookingFormDialogState extends State<BookingFormDialog> {
                     child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                   )
                 : const Icon(Icons.check_rounded, size: 17),
-            label: Text(_saving ? 'Đang lưu...' : 'Đặt phòng',
+            label: Text(_saving ? t['booking_form_saving'] : t['booking_form_submit'],
                 style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
             style: FilledButton.styleFrom(
               backgroundColor: _DS.primary,

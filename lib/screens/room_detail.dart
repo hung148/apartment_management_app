@@ -1,3 +1,5 @@
+import 'package:phan_mem_quan_ly_can_ho/widgets/responsive_form_row.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/currency_formatter.dart';
 import 'package:phan_mem_quan_ly_can_ho/main.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/membership_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/rooms_model.dart';
@@ -592,8 +594,9 @@ Widget _inputField(
     padding: const EdgeInsets.only(bottom: 12),
     child: TextField(
       controller: controller,
-      keyboardType: keyboardType,
-      maxLength: maxLength,
+      keyboardType: suffix == 'VND' || suffix == 'USD' ? const TextInputType.numberWithOptions(decimal: true) : keyboardType,
+      maxLength: suffix == 'VND' || suffix == 'USD' ? 24 : maxLength,
+      inputFormatters: [if (suffix == 'VND' || suffix == 'USD') CurrencyInputFormatter(decimalDigits: suffix == 'USD' ? 2 : 0)],
       decoration: InputDecoration(
         labelText: label,
         labelStyle: TextStyle(color: Colors.grey.shade500, fontSize: 14),
@@ -614,7 +617,7 @@ Widget _inputField(
         ),
         filled: true,
         fillColor: Colors.grey.shade50,
-        isDense: true,
+        isDense: false,
         counterText: '',
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
@@ -651,7 +654,7 @@ Widget _dropdownField<T>({
         ),
         filled: true,
         fillColor: Colors.grey.shade50,
-        isDense: true,
+        isDense: false,
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       ),
@@ -788,7 +791,6 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
   }
 
   Timer? _resizeDebounceTimer;
-  bool _isDismissing = false;
 
   @override
   void didChangeMetrics() {
@@ -796,26 +798,11 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
     _resizeDebounceTimer?.cancel();
     _resizeDebounceTimer = Timer(const Duration(milliseconds: 300), () {
       if (!mounted) return;
-      final w = MediaQuery.sizeOf(context).width;
-      final h = MediaQuery.sizeOf(context).height;
-      if (w < 360 || h < 600) _dismissAllOverlays();
+
     });
   }
 
-  Future<void> _dismissAllOverlays() async {
-    if (!mounted || _isDismissing) return;
-    _isDismissing = true;
-    try {
-      final nav = Navigator.of(context);
-      while (nav.canPop()) {
-        nav.pop();
-        await Future.delayed(const Duration(milliseconds: 50));
-        if (!mounted) break;
-      }
-    } finally {
-      _isDismissing = false;
-    }
-  }
+
 
   Future<T?> _showTrackedDialog<T>({
     required BuildContext context,
@@ -852,7 +839,8 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
   }
 
   // ─── Format helpers ───────────────────────────────────────────────────────
-  String _formatDate(DateTime date) => DateFormat('dd/MM/yyyy').format(date);
+  String _formatDate(DateTime date) =>
+      DateFormat(AppTranslations.of(context).dateFormat).format(date);
 
   String _formatCurrency(double amount) {
     final f = NumberFormat('#,###', 'vi_VN');
@@ -950,12 +938,12 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
     final occupationController = TextEditingController(text: tenant?.occupation ?? '');
     final workplaceController = TextEditingController(text: tenant?.workplace ?? '');
     final rentController = TextEditingController(
-      text: tenant?.monthlyRent?.toString() ??
+      text: (tenant?.monthlyRent == null ? null : CurrencyParser.format(tenant!.monthlyRent!)) ??
           (widget.room.roomPrice != null && widget.room.roomPrice! > 0
-              ? widget.room.roomPrice!.toStringAsFixed(0)
+              ? CurrencyParser.format(widget.room.roomPrice!)
               : ''),
     );
-    final depositController = TextEditingController(text: tenant?.deposit?.toString() ?? '');
+    final depositController = TextEditingController(text: tenant?.deposit == null ? '' : CurrencyParser.format(tenant!.deposit!));
     final areaController = TextEditingController(text: tenant?.apartmentArea?.toString() ?? '');
     final typeController = TextEditingController(text: tenant?.apartmentType ?? '');
 
@@ -1010,7 +998,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
                             keyboardType: TextInputType.phone, maxLength: 20),
                         _inputField(rentController, t['room_detail_field_rent'],
                             Icons.payments_rounded,
-                            suffix: '₫',
+                            suffix: tenant?.currency ?? widget.room.currency,
                             keyboardType: TextInputType.number,
                             maxLength: 20),
                         const SizedBox(height: 4),
@@ -1027,7 +1015,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
                         const _ContentDivider(),
                         _SectionLabel(t['room_detail_section_apartment'],
                             icon: Icons.apartment_rounded),
-                        Row(children: [
+                        ResponsiveFormRow(children: [
                           Expanded(
                               child: _inputField(typeController,
                                   t['room_detail_field_apt_type'],
@@ -1075,7 +1063,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
                         _inputField(depositController,
                             t['room_detail_field_deposit'],
                             Icons.account_balance_wallet_rounded,
-                            suffix: '₫',
+                            suffix: tenant?.currency ?? widget.room.currency,
                             keyboardType: TextInputType.number,
                             maxLength: 20),
                         Container(
@@ -1174,6 +1162,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
                             final msgErrTpl = t['room_detail_err_generic'];
                             try {
                               final newTenant = Tenant(
+                                currency: tenant?.currency ?? widget.room.currency,
                                 id: tenant?.id ?? '',
                                 organizationId: widget.room.organizationId,
                                 buildingId: widget.room.buildingId,
@@ -1195,10 +1184,10 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
                                 gender: selectedGender,
                                 isMainTenant: isMainTenant,
                                 monthlyRent: rentController.text.isNotEmpty
-                                    ? double.tryParse(rentController.text)
+                                    ? CurrencyParser.tryParse(rentController.text)
                                     : null,
                                 deposit: depositController.text.isNotEmpty
-                                    ? double.tryParse(depositController.text)
+                                    ? CurrencyParser.tryParse(depositController.text)
                                     : null,
                                 apartmentArea: areaController.text.isNotEmpty
                                     ? double.tryParse(areaController.text)
@@ -1216,6 +1205,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
                               if (isEditing) {
                                 await widget.tenantService.updateTenant(
                                     tenant!.id, {
+                                  'currency': newTenant.currency,
                                   'fullName': newTenant.fullName,
                                   'phoneNumber': newTenant.phoneNumber,
                                   'email': newTenant.email,
@@ -1379,7 +1369,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
                       _DetailCard(rows: [
                         if (tenant.gender != null)
                           _DetailRow(t['tenant_detail_gender'],
-                              tenant.getGenderDisplayName()!),
+                              tenant.getGenderDisplayName(t)!),
                         if (tenant.nationalId != null)
                           _DetailRow(t['tenant_detail_national_id'],
                               tenant.nationalId!),
@@ -1462,7 +1452,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
                                 _formatDate(tenant.contractEndDate!)),
                           if (isMovedOut) ...[
                             _DetailRow(t['tenant_detail_contract_status'],
-                                tenant.getContractStatusDisplayName()),
+                                tenant.getContractStatusDisplayName(t)),
                             if (tenant.moveOutDate != null &&
                                 tenant.contractEndDate != null)
                               _DetailRow(
@@ -1539,7 +1529,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
                       const _ContentDivider(),
                       _DetailRow(
                         t['tenant_detail_status'],
-                        tenant.getStatusDisplayName(),
+                        tenant.getStatusDisplayName(t),
                         valueColor: _getTenantStatusColor(tenant.status),
                       ),
                     ],
@@ -2893,7 +2883,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
                                 color: statusColor.withOpacity(0.1),
                                 borderRadius: BorderRadius.circular(20),
                               ),
-                              child: Text(tenant.getStatusDisplayName(),
+                              child: Text(tenant.getStatusDisplayName(t),
                                   style: TextStyle(
                                       fontSize: 10,
                                       fontWeight: FontWeight.w600,
@@ -3166,7 +3156,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
                               color: statusColor.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(20),
                             ),
-                            child: Text(payment.getStatusDisplayName(),
+                            child: Text(payment.getStatusDisplayName(t),
                                 style: TextStyle(
                                     fontSize: 10,
                                     fontWeight: FontWeight.w600,

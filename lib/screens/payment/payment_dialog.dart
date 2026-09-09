@@ -1,3 +1,5 @@
+import 'package:phan_mem_quan_ly_can_ho/widgets/responsive_form_row.dart';
+import 'package:phan_mem_quan_ly_can_ho/main.dart' show getIt, LocaleNotifier;
 import 'dart:async';
 
 import 'package:phan_mem_quan_ly_can_ho/widgets/combo_box.dart';
@@ -201,14 +203,14 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    _paidAmountController = TextEditingController(text: '0.0');
-    _currencyController = TextEditingController(text: 'VND');
+    _paidAmountController = TextEditingController(text: '0');
+    _currencyController = TextEditingController(text: widget.room?.currency ?? (getIt<LocaleNotifier>().locale.languageCode == 'vi' ? 'VND' : 'USD'));
     _transactionIdController = TextEditingController();
     _receiptNumberController = TextEditingController();
     _descriptionController = TextEditingController();
     _notesController = TextEditingController();
-    _lateFeeController = TextEditingController(text: '0.0');
-    _taxAmountController = TextEditingController(text: '0.0');
+    _lateFeeController = TextEditingController(text: '0');
+    _taxAmountController = TextEditingController(text: '0');
     _recurringParentIdController = TextEditingController();
 
     _selectedPaymentStatus = PaymentStatus.pending;
@@ -335,6 +337,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
       final tenant = matches.first;
       _selectedTenantId = tenant.id;
       _selectedTenantName = tenant.fullName;
+      if (_lineItems.isEmpty) _currencyController.text = tenant.currency;
     }
   }
 
@@ -405,10 +408,16 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
     }
 
     final tenant = _allTenants.firstWhere((tn) => tn.id == tenantId);
+    if (_lineItems.isNotEmpty && tenant.currency != _currencyController.text) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(t['invoice_currency_mismatch'])));
+      return;
+    }
 
     setState(() {
       _selectedTenantId = tenantId;
       _selectedTenantName = tenant.fullName;
+      if (_lineItems.isEmpty) _currencyController.text = tenant.currency;
       if (widget.room == null) {
         _selectedBuildingId = tenant.buildingId;
         _selectedRoomId = tenant.roomId;
@@ -420,7 +429,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
         SnackBar(
           duration: const Duration(seconds: 5),
           content: Text(t.textWithParams('payment_rent_suggestion',
-              {'amount': NumberFormat('#,###').format(tenant.monthlyRent)})),
+              {'amount': NumberFormat('#,##0.##', 'en_US').format(tenant.monthlyRent)})),
           action: SnackBarAction(
             label: t['payment_suggestion_add'],
             onPressed: () {
@@ -540,7 +549,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                   CurrencyParser.parse(electricityPriceController.text);
               final usage = end - start;
               if (usage > 0 && price > 0) {
-                amountController.text = (usage * price).toStringAsFixed(0);
+                amountController.text = CurrencyParser.format(usage * price);
               }
             } else if (selectedType == PaymentType.water &&
                 !waterUseDirectAmount) {
@@ -551,7 +560,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
               final price = CurrencyParser.parse(waterPriceController.text);
               final usage = end - start;
               if (usage > 0 && price > 0) {
-                amountController.text = (usage * price).toStringAsFixed(0);
+                amountController.text = CurrencyParser.format(usage * price);
               }
             }
           }
@@ -589,7 +598,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
             final price = CurrencyParser.parse(rentUnitPriceController.text);
             final qty = double.tryParse(rentUnitQuantityController.text) ?? 0;
             if (price > 0 && qty > 0) {
-              amountController.text = (price * qty).toStringAsFixed(0);
+              amountController.text = CurrencyParser.format(price * qty);
             }
           }
 
@@ -815,7 +824,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                                     decoration: _inputDec(
                                         dt['add_item_start_reading'], null,
                                         suffix: 'kWh'),
-                                    keyboardType: TextInputType.number,
+                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                     onChanged: (_) {
                                       setDialogState(() {});
                                       calculateAmount();
@@ -844,7 +853,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                                     decoration: _inputDec(
                                         dt['add_item_end_reading'], null,
                                         suffix: 'kWh'),
-                                    keyboardType: TextInputType.number,
+                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                     onChanged: (_) {
                                       setDialogState(() {});
                                       calculateAmount();
@@ -870,12 +879,12 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                               TextFormField(
                                 controller: electricityPriceController,
                                 maxLength: 15,
-                                inputFormatters: [CurrencyInputFormatter()],
+                                inputFormatters: [CurrencyInputFormatter(decimalDigits: _currencyController.text == 'USD' ? 2 : 0)],
                                 decoration: _inputDec(
                                     dt['add_item_elec_price'],
                                     Icons.price_change_rounded,
-                                    suffix: 'đ/kWh'),
-                                keyboardType: TextInputType.number,
+                                    suffix: '${_currencyController.text}/kWh'),
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                 onChanged: (_) {
                                   setDialogState(() {});
                                   calculateAmount();
@@ -922,7 +931,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                                     decoration: _inputDec(
                                         dt['add_item_start_reading'], null,
                                         suffix: 'm³'),
-                                    keyboardType: TextInputType.number,
+                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                     onChanged: (_) {
                                       setDialogState(() {});
                                       calculateAmount();
@@ -950,7 +959,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                                     decoration: _inputDec(
                                         dt['add_item_end_reading'], null,
                                         suffix: 'm³'),
-                                    keyboardType: TextInputType.number,
+                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                     onChanged: (_) {
                                       setDialogState(() {});
                                       calculateAmount();
@@ -976,12 +985,12 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                               TextFormField(
                                 controller: waterPriceController,
                                 maxLength: 15,
-                                inputFormatters: [CurrencyInputFormatter()],
+                                inputFormatters: [CurrencyInputFormatter(decimalDigits: _currencyController.text == 'USD' ? 2 : 0)],
                                 decoration: _inputDec(
                                     dt['add_item_water_price'],
                                     Icons.price_change_rounded,
-                                    suffix: 'đ/m³'),
-                                keyboardType: TextInputType.number,
+                                    suffix: '${_currencyController.text}/m³'),
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                 onChanged: (_) {
                                   setDialogState(() {});
                                   calculateAmount();
@@ -1073,7 +1082,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                                       final auto = autoRentUnitPrice(rentPriceMode);
                                       if (auto != null) {
                                         rentUnitPriceController.text =
-                                            auto.toStringAsFixed(0);
+                                            CurrencyParser.format(auto);
                                       }
                                     }
                                     recalcRentAmount();
@@ -1090,7 +1099,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                                       final auto = autoRentUnitPrice(rentPriceMode);
                                       if (auto != null) {
                                         rentUnitPriceController.text =
-                                            auto.toStringAsFixed(0);
+                                            CurrencyParser.format(auto);
                                       }
                                     }
                                     recalcRentAmount();
@@ -1107,7 +1116,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                                       final auto = autoRentUnitPrice(rentPriceMode);
                                       if (auto != null) {
                                         rentUnitPriceController.text =
-                                            auto.toStringAsFixed(0);
+                                            CurrencyParser.format(auto);
                                       }
                                     }
                                     recalcRentAmount();
@@ -1117,22 +1126,22 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                             ),
                             if (rentPriceMode != RentPriceMode.direct) ...[
                               const SizedBox(height: 12),
-                              Row(children: [
+                              ResponsiveFormRow(children: [
                                 Expanded(
                                   child: TextFormField(
                                     controller: rentUnitPriceController,
                                     maxLength: 15,
-                                    inputFormatters: [CurrencyInputFormatter()],
+                                    inputFormatters: [CurrencyInputFormatter(decimalDigits: _currencyController.text == 'USD' ? 2 : 0)],
                                     decoration: _inputDec(
                                         _rentUnitPriceLabel(dt, rentPriceMode),
                                         Icons.price_change_rounded,
-                                        suffix: 'VND',
+                                        suffix: _currencyController.text,
                                         helper: (tenant?.monthlyRent ??
                                                     room?.roomPrice) !=
                                                 null
                                             ? dt['add_item_rent_price_auto_hint']
                                             : null),
-                                    keyboardType: TextInputType.number,
+                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                     onChanged: (_) => setDialogState(() {
                                       rentPriceManuallyEdited = true;
                                       recalcRentAmount();
@@ -1160,8 +1169,8 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                                   padding: const EdgeInsets.only(top: 6, left: 4),
                                   child: Text(
                                     dt.textWithParams('add_item_rent_period_hint', {
-                                      'from': DateFormat('dd/MM/yyyy').format(billingStart!),
-                                      'to': DateFormat('dd/MM/yyyy').format(billingEnd!),
+                                      'from': DateFormat(dt.dateFormat).format(billingStart!),
+                                      'to': DateFormat(dt.dateFormat).format(billingEnd!),
                                     }),
                                     style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
                                   ),
@@ -1173,7 +1182,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                                   icon: Icons.calculate_rounded,
                                   color: const Color(0xFF6366F1),
                                   usage:
-                                      '${rentUnitQuantityController.text} ${_rentUnitShort(dt, rentPriceMode)} × ${NumberFormat('#,###').format(CurrencyParser.parse(rentUnitPriceController.text))} đ',
+                                      '${rentUnitQuantityController.text} ${_rentUnitShort(dt, rentPriceMode)} × ${NumberFormat('#,##0.##', 'en_US').format(CurrencyParser.parse(rentUnitPriceController.text))} ${_currencyController.text}',
                                 ),
                               const SizedBox(height: 16),
                             ] else
@@ -1184,11 +1193,11 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                           TextFormField(
                             controller: amountController,
                             maxLength: 20,
-                            inputFormatters: [CurrencyInputFormatter()],
+                            inputFormatters: [CurrencyInputFormatter(decimalDigits: _currencyController.text == 'USD' ? 2 : 0)],
                             decoration: _inputDec(dt['add_item_amount'],
                                 Icons.payments_rounded,
-                                suffix: 'VND'),
-                            keyboardType: TextInputType.number,
+                                suffix: _currencyController.text),
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
                             readOnly: (selectedType ==
                                         PaymentType.electricity &&
                                     !electricityUseDirectAmount) ||
@@ -1438,13 +1447,13 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                 ? item.rentUnitQuantity!.toStringAsFixed(0)
                 : item.rentUnitQuantity!.toStringAsFixed(2);
             detailText =
-                '$qtyText $unitShort × ${NumberFormat('#,###').format(item.rentUnitPrice)} đ/$unitShort'
-                '${item.billingStartDate != null && item.billingEndDate != null ? ' · ${DateFormat('dd/MM').format(item.billingStartDate!)} - ${DateFormat('dd/MM/yyyy').format(item.billingEndDate!)}' : ''}';
+                '$qtyText $unitShort × ${NumberFormat('#,##0.##', 'en_US').format(item.rentUnitPrice)} ${_currencyController.text}/$unitShort'
+                '${item.billingStartDate != null && item.billingEndDate != null ? ' · ${DateFormat(t.dateFormatShort).format(item.billingStartDate!)} - ${DateFormat(t.dateFormat).format(item.billingEndDate!)}' : ''}';
           } else if (item.billingStartDate != null &&
               item.billingEndDate != null) {
             detailText =
-                '${DateFormat('dd/MM').format(item.billingStartDate!)} - '
-                '${DateFormat('dd/MM/yyyy').format(item.billingEndDate!)}';
+                '${DateFormat(t.dateFormatShort).format(item.billingStartDate!)} - '
+                '${DateFormat(t.dateFormat).format(item.billingEndDate!)}';
           } else if (item.description != null) {
             detailText = item.description!;
           }
@@ -1502,7 +1511,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
-                      '${NumberFormat('#,###').format(item.amount)} đ',
+                      '${NumberFormat('#,##0.##', 'en_US').format(item.amount)} ${_currencyController.text}',
                       style: TextStyle(
                         color: color,
                         fontWeight: FontWeight.w700,
@@ -1543,7 +1552,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                 ),
               ),
               Text(
-                '${NumberFormat('#,###').format(_totalAmount)} VND',
+                '${NumberFormat('#,##0.##', 'en_US').format(_totalAmount)} ${_currencyController.text}',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w800,
@@ -1652,7 +1661,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
           final label = _typeLabel(t, item.type);
           final desc =
               item.description != null ? ' (${item.description})' : '';
-          return '$label: ${NumberFormat('#,###').format(item.amount)} VND$desc';
+          return '$label: ${NumberFormat('#,##0.##', 'en_US').format(item.amount)} ${_currencyController.text}$desc';
         }).join('\n');
 
         final uniqueTypes = _lineItems.map((e) => e.type).toSet();
@@ -1721,7 +1730,6 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
   // ─── Resize / overlay helpers ─────────────────────────────────────────────────
 
   Timer? _resizeDebounceTimer;
-  bool _isDismissing = false;
 
   @override
   void didChangeMetrics() {
@@ -1730,26 +1738,11 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
     _resizeDebounceTimer =
         Timer(const Duration(milliseconds: 300), () {
       if (!mounted) return;
-      final w = MediaQuery.sizeOf(context).width;
-      final h = MediaQuery.sizeOf(context).height;
-      if (w < 360 || h < 600) _dismissAllOverlays();
+
     });
   }
 
-  Future<void> _dismissAllOverlays() async {
-    if (!mounted || _isDismissing) return;
-    _isDismissing = true;
-    try {
-      final nav = Navigator.of(context);
-      while (nav.canPop()) {
-        nav.pop();
-        await Future.delayed(const Duration(milliseconds: 50));
-        if (!mounted) break;
-      }
-    } finally {
-      _isDismissing = false;
-    }
-  }
+
 
   Future<T?> _showTrackedDialog<T>({
     required BuildContext context,
@@ -1983,10 +1976,10 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                           TextFormField(
                             controller: _taxAmountController,
                             maxLength: 20,
-                            inputFormatters: [CurrencyInputFormatter()],
+                            inputFormatters: [CurrencyInputFormatter(decimalDigits: _currencyController.text == 'USD' ? 2 : 0)],
                             decoration: _inputDec(t['payment_tax_label'],
                                 Icons.receipt_rounded,
-                                suffix: 'VND'),
+                                suffix: _currencyController.text),
                             keyboardType:
                                 const TextInputType.numberWithOptions(
                                     decimal: true),
@@ -2034,7 +2027,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                                       fontSize: 13,
                                       color: Colors.grey.shade600)),
                               Text(
-                                '${NumberFormat('#,###').format(_totalAmount)} VND',
+                                '${NumberFormat('#,##0.##', 'en_US').format(_totalAmount)} ${_currencyController.text}',
                                 style: TextStyle(
                                   fontSize: 15,
                                   fontWeight: FontWeight.w800,

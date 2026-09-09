@@ -363,6 +363,7 @@ class RoomService {
     required String roomType,
     required double area,
     RoomRentalMode rentalMode = RoomRentalMode.monthly,
+    String currency = 'VND',
   }) async {
     final rooms = <Room>[];
     for (int floor = 1; floor <= numberOfFloors; floor++) {
@@ -377,6 +378,7 @@ class RoomService {
           area: area,
           createdAt: DateTime.now(),
           rentalMode: rentalMode,
+          currency: currency,
         ));
       }
     }
@@ -392,6 +394,7 @@ class RoomService {
     required List<Map<String, dynamic>> floorDetails,
     required String prefix,
     RoomRentalMode rentalMode = RoomRentalMode.monthly,
+    String currency = 'VND',
   }) async {
     final rooms = <Room>[];
 
@@ -424,6 +427,7 @@ class RoomService {
           area: area,
           createdAt: DateTime.now(),
           rentalMode: rentalMode,
+          currency: currency,
         ));
       }
     }
@@ -452,6 +456,7 @@ class RoomService {
         roomType: config['roomType'] ?? 'Tiêu chuẩn',
         area: (config['roomArea'] as num?)?.toDouble() ?? 0.0,
         rentalMode: rentalMode,
+        currency: config['currency'] as String? ?? 'VND',
       );
     } else {
       final List<Map<String, dynamic>> details =
@@ -463,6 +468,7 @@ class RoomService {
         floorDetails: details,
         prefix: prefix,
         rentalMode: rentalMode,
+        currency: config['currency'] as String? ?? 'VND',
       );
     }
   }

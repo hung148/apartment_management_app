@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 class AppTranslations {
+  String get defaultCurrency => isVietnamese ? 'VND' : 'USD';
   final Locale locale;
   AppTranslations(this.locale);
 
@@ -10,6 +11,27 @@ class AppTranslations {
 
   static final Map<String, Map<String, String>> _values = {
     'vi': {
+      'invoice_currency_mismatch': 'Không thể gộp các loại tiền tệ trong một hóa đơn. Vui lòng tạo hóa đơn riêng.',
+      'invalid_tax_code': 'Mã số thuế không hợp lệ',
+      'rental_setup': 'CHO THUÊ THEO GIỜ',
+      'rental_monthly': 'Dài hạn',
+      'rental_hourly': 'Theo giờ',
+      'rental_flexible': 'Linh hoạt',
+      'hourly_rate': 'Giá theo giờ',
+      'daily_rate': 'Giá trọn ngày',
+      'hour_threshold': 'Ngưỡng giờ',
+      'overnight_rate': 'Giá qua đêm (không bắt buộc)',
+      'minimum_hours': 'Giờ đặt tối thiểu',
+      'cleaning_buffer': 'Đệm dọn phòng',
+      'unit_hours': 'giờ',
+      'unit_minutes': 'phút',
+      'calendar_occupied_count': '{{count}} phòng có đặt chỗ',
+      'calendar_free_count': '{{count}} phòng trống cả ngày',
+      'calendar_day_hint': 'Chạm ngày để xem phòng và đặt chỗ',
+      'calendar_previous': 'Trước',
+      'calendar_next': 'Tiếp',
+      'calendar_zoom_in': 'Phóng to',
+      'calendar_zoom_out': 'Thu nhỏ',
       // ── Existing keys (unchanged) ──────────────────────────────────────────
       'lang': 'ngôn ngữ',
       'select_language': 'Chọn ngôn ngữ',
@@ -158,6 +180,10 @@ class AppTranslations {
       'select_from_calendar': 'Chọn từ lịch',
       'please_enter_date': 'Vui lòng nhập ngày',
       'date_must_be_between': 'Ngày phải từ {{first}} đến {{last}}',
+      'calendar_tab': 'Lịch',
+      'hide_header': 'Ẩn thanh tiêu đề',
+      'show_header': 'Hiện thanh tiêu đề',
+      'swipe_down_to_show_header': 'Vuốt xuống từ mép trên để hiện lại thanh tiêu đề',
       'buildings_tab': 'Toà nhà',
       'tenants_tab': 'Người thuê',
       'payments_tab': 'Hóa đơn',
@@ -594,7 +620,7 @@ class AppTranslations {
       'payment_due_date_label': 'Hạn thanh toán',
       'payment_status_label': 'Trạng thái *',
       'payment_notes_label': 'Ghi chú',
-      'payment_tax_label': 'Tiền thuế (VND)',
+      'payment_tax_label': 'Tiền thuế',
 
       'payment_btn_cancel': 'Hủy',
       'payment_btn_save': 'Lưu',
@@ -634,8 +660,8 @@ class AppTranslations {
       'add_item_to_date': 'Đến ngày',
       'add_item_billing_period': 'Kỳ thanh toán',
 
-      'add_item_elec_price': 'Giá điện (VND/kWh) *',
-      'add_item_water_price': 'Giá nước (VND/m³) *',
+      'add_item_elec_price': 'Giá điện *',
+      'add_item_water_price': 'Giá nước *',
 
       'add_item_amount': 'Số tiền *',
       'add_item_description': 'Mô tả',
@@ -935,7 +961,7 @@ class AppTranslations {
       'back': 'Quay lại',
 
       'title': 'Quản lý chung cư',
-      'app_title': 'Phần Mền Quản Lý Căn Hộ',
+      'app_title': 'Phần Mềm Quản Lý Căn Hộ',
 
       'apt_type_standard': 'Tiêu chuẩn',
       'apt_type_deluxe': 'Cao cấp',
@@ -976,9 +1002,167 @@ class AppTranslations {
       'stat_revenue_distribution': 'Tỷ trọng doanh thu theo tòa nhà',
 
       'payment_type_hourly_rent': 'Tiền thuê theo giờ',
+
+      // ── Enum display labels (added by localization pass) ──────────────────
+      'payment_status_pending': 'Chờ thanh toán',
+      'payment_status_paid': 'Đã thanh toán',
+      'payment_status_overdue': 'Quá hạn',
+      'payment_status_cancelled': 'Đã hủy',
+      'payment_status_refunded': 'Đã hoàn tiền',
+      'payment_status_partial': 'Thanh toán một phần',
+
+      'payment_method_cash': 'Tiền mặt',
+      'payment_method_bank_transfer': 'Chuyển khoản',
+      'payment_method_momo': 'Ví MoMo',
+      'payment_method_zalopay': 'Ví ZaloPay',
+      'payment_method_credit_card': 'Thẻ tín dụng',
+      'payment_method_other': 'Khác',
+
+      'rent_price_mode_direct': 'Nhập trực tiếp',
+      'rent_price_mode_daily': 'Theo ngày',
+      'rent_price_mode_monthly': 'Theo tháng',
+      'rent_price_mode_yearly': 'Theo năm',
+
+      'tenant_status_renting': 'Đang thuê',
+      'tenant_status_not_active': 'Không hoạt động',
+      'tenant_status_moved_out_long': 'Đã chuyển đi',
+      'tenant_status_paused': 'Tạm dừng',
+
+      'contract_status_unknown': 'Không xác định',
+      'contract_status_active': 'Đang hiệu lực',
+      'contract_status_terminated': 'Đã chấm dứt',
+      'contract_status_expired': 'Đã hết hạn',
+
+      'booking_status_pending': 'Chờ xác nhận',
+      'booking_status_confirmed': 'Đã xác nhận',
+      'booking_status_checked_in': 'Đã nhận phòng',
+      'booking_status_checked_out': 'Đã trả phòng',
+      'booking_status_cancelled': 'Đã hủy',
+      'booking_status_no_show': 'Không đến',
+      'booking_status_cancelled_or_no_show': 'Đã huỷ / Không đến',
+
+      'booking_source_walk_in': 'Khách vãng lai',
+      'booking_source_phone': 'Điện thoại',
+      'booking_source_app': 'Ứng dụng',
+      'booking_source_online': 'Đặt online',
+      'booking_source_other': 'Khác',
+
+      'room_rental_mode_monthly': 'Dài hạn (tháng)',
+      'room_rental_mode_hourly': 'Theo giờ',
+      'room_rental_mode_both': 'Linh hoạt (tháng & giờ)',
+      'room_rental_mode_monthly_short': 'Dài hạn',
+      'room_rental_mode_both_short': 'Linh hoạt',
+
+      'bank_info_missing': 'Chưa có thông tin ngân hàng',
+      'bank_account_name_label': 'Tên tài khoản',
+      'bank_account_number_label': 'Số tài khoản',
+      'bank_name_label': 'Ngân hàng',
+
+      // ── Authentication (login_screen) ──
+      'auth_login_title': 'Đăng nhập',
+      'auth_register_title': 'Đăng ký',
+      'auth_login_button': 'Đăng nhập',
+      'auth_register_button': 'Đăng ký',
+
+      'auth_field_name': 'Tên',
+      'auth_field_password': 'Mật khẩu',
+      'auth_field_confirm_password': 'Xác nhận mật khẩu',
+
+      'auth_name_required': 'Điền tên!',
+      'auth_name_too_long': 'Tên quá dài!',
+      'auth_email_required': 'Điền Email!',
+      'auth_email_invalid': 'Email không hợp lệ!',
+      'auth_password_required': 'Điền mật khẩu!',
+      'auth_password_too_weak': 'Mật khẩu quá đơn giản!',
+      'auth_password_too_long': 'Mật khẩu quá dài!',
+      'auth_password_mismatch': 'Mật khẩu không khớp!',
+
+      'auth_login_failed': 'Đăng nhập thất bại. Kiểm tra email và mật khẩu.',
+      'auth_register_failed': 'Đăng ký thất bại. Email có thể đã được sử dụng.',
+
+      'auth_no_account': 'Chưa có tài khoản? ',
+      'auth_have_account': 'Đã có tài khoản? ',
+
+      // ── Hourly booking form (booking_form_dialog) ──
+      'booking_form_title': 'Đặt phòng {{room}}',
+      'booking_form_guest_section': 'THÔNG TIN KHÁCH',
+      'booking_form_guest_name': 'Tên khách',
+      'booking_form_required': 'Bắt buộc',
+
+      'booking_form_time_section': 'THỜI GIAN',
+      'booking_form_duration_hours': '{{count}} giờ',
+      'booking_form_overnight': 'Qua đêm',
+      'booking_form_custom_range_hint': 'Hoặc chọn ngày và giờ riêng bên dưới — nhận và trả phòng có thể khác ngày.',
+      'booking_check_in': 'Nhận phòng',
+      'booking_check_out': 'Trả phòng',
+      'booking_form_actual_duration': 'Thời lượng thực tế: {{hours}} giờ ({{range}})',
+      'booking_form_end_after_start': 'Giờ trả phòng phải sau giờ nhận phòng',
+      'booking_form_min_hours': 'Thời gian đặt tối thiểu là {{hours}} giờ',
+
+      'booking_form_payment_section': 'THANH TOÁN',
+      'booking_form_price_manual': 'Nhập tay',
+      'booking_form_hourly_rate': 'Đơn giá / giờ',
+      'booking_form_vnd_per_hour': 'VND/giờ',
+      'booking_form_invalid': 'Không hợp lệ',
+      'booking_form_price_breakdown': '{{hours}} giờ × {{rate}} {{currency}}/giờ',
+      'booking_form_price_hint': 'Chọn giờ nhận/trả phòng hợp lệ để tính giá',
+      'booking_form_price': 'Giá',
+      'booking_form_notes': 'Ghi chú',
+
+      'booking_form_saving': 'Đang lưu...',
+      'booking_form_submit': 'Đặt phòng',
+
+      // ── Booking detail dialog ──
+      'booking_detail_payment_method': 'Phương thức thanh toán',
+      'booking_detail_cancel_title': 'Hủy đặt phòng',
+      'booking_detail_cancel_reason': 'Lý do (không bắt buộc)',
+      'booking_detail_cancel_confirm': 'Xác nhận hủy',
+      'booking_detail_duration': 'Thời lượng',
+      'booking_detail_total': 'Tổng tiền',
+
+      // ── Availability calendar ──
+      'calendar_title': 'Lịch phòng theo giờ',
+      'calendar_view_day': 'Ngày',
+      'calendar_view_month': 'Tháng',
+      'calendar_today': 'Hôm nay',
+      'calendar_no_buildings': 'Tổ chức chưa có toà nhà nào có thể quản lý phòng.',
+      'calendar_no_hourly_rooms': 'Toà nhà này chưa có phòng nào bật chế độ cho thuê theo giờ.\nVào Sửa phòng để bật.',
+      'calendar_long_term_guest': 'Khách dài hạn',
+      'calendar_price_per_hour': '{{price}} đ/giờ',
+
+      // ── Buildings tab & chart empty states ──
+      'view_all_buildings_calendar': 'Xem lịch tất cả toà nhà',
+      'hourly_calendar': 'Lịch theo giờ',
+      'chart_no_tenant_data': 'Chưa có dữ liệu người thuê',
+      'chart_no_revenue_data': 'Chưa có dữ liệu doanh thu',
+      'chart_no_payment_data': 'Chưa có dữ liệu thanh toán',
+
+      // ── Router ──
+      'page_not_found': 'Không tìm thấy trang',
     },
 
     'en': {
+      'invoice_currency_mismatch': 'Different currencies need separate invoices. Please create another invoice.',
+      'invalid_tax_code': 'Invalid tax code format',
+      'rental_setup': 'Hourly rental',
+      'rental_monthly': 'Monthly',
+      'rental_hourly': 'Hourly',
+      'rental_flexible': 'Flexible',
+      'hourly_rate': 'Hourly rate',
+      'daily_rate': 'Daily rate',
+      'hour_threshold': 'Daily rate threshold',
+      'overnight_rate': 'Overnight rate (optional)',
+      'minimum_hours': 'Minimum booking hours',
+      'cleaning_buffer': 'Cleaning buffer',
+      'unit_hours': 'hours',
+      'unit_minutes': 'minutes',
+      'calendar_occupied_count': '{{count}} rooms with bookings',
+      'calendar_free_count': '{{count}} rooms free all day',
+      'calendar_day_hint': 'Tap a day to view rooms and bookings',
+      'calendar_previous': 'Previous',
+      'calendar_next': 'Next',
+      'calendar_zoom_in': 'Zoom in',
+      'calendar_zoom_out': 'Zoom out',
       // ── Existing keys (unchanged) ──────────────────────────────────────────
       'lang': 'language',
       'select_language': 'Select Language',
@@ -1127,6 +1311,10 @@ class AppTranslations {
       'select_from_calendar': 'Pick from calendar',
       'please_enter_date': 'Please enter a date',
       'date_must_be_between': 'Date must be between {{first}} and {{last}}',
+      'calendar_tab': 'Calendar',
+      'hide_header': 'Hide header',
+      'show_header': 'Show header',
+      'swipe_down_to_show_header': 'Swipe down from the top edge to show the header again',
       'buildings_tab': 'Buildings',
       'tenants_tab': 'Tenants',
       'payments_tab': 'Payments',
@@ -1563,7 +1751,7 @@ class AppTranslations {
       'payment_due_date_label': 'Due date',
       'payment_status_label': 'Status *',
       'payment_notes_label': 'Notes',
-      'payment_tax_label': 'Tax amount (VND)',
+      'payment_tax_label': 'Tax amount',
 
       'payment_btn_cancel': 'Cancel',
       'payment_btn_save': 'Save',
@@ -1603,8 +1791,8 @@ class AppTranslations {
       'add_item_to_date': 'To date',
       'add_item_billing_period': 'Billing period',
 
-      'add_item_elec_price': 'Electricity price (VND/kWh) *',
-      'add_item_water_price': 'Water price (VND/m³) *',
+      'add_item_elec_price': 'Electricity price *',
+      'add_item_water_price': 'Water price *',
 
       'add_item_amount': 'Amount *',
       'add_item_description': 'Description',
@@ -1943,6 +2131,143 @@ class AppTranslations {
       'stat_revenue_by_building': 'Revenue by Building',
       'stat_revenue_distribution': 'Revenue Distribution by Building',
       'payment_type_hourly_rent': 'Hourly rental',
+
+      // ── Enum display labels (added by localization pass) ──────────────────
+      'payment_status_pending': 'Pending',
+      'payment_status_paid': 'Paid',
+      'payment_status_overdue': 'Overdue',
+      'payment_status_cancelled': 'Cancelled',
+      'payment_status_refunded': 'Refunded',
+      'payment_status_partial': 'Partially paid',
+
+      'payment_method_cash': 'Cash',
+      'payment_method_bank_transfer': 'Bank transfer',
+      'payment_method_momo': 'MoMo wallet',
+      'payment_method_zalopay': 'ZaloPay wallet',
+      'payment_method_credit_card': 'Credit card',
+      'payment_method_other': 'Other',
+
+      'rent_price_mode_direct': 'Direct entry',
+      'rent_price_mode_daily': 'Per day',
+      'rent_price_mode_monthly': 'Per month',
+      'rent_price_mode_yearly': 'Per year',
+
+      'tenant_status_renting': 'Renting',
+      'tenant_status_not_active': 'Not active',
+      'tenant_status_moved_out_long': 'Moved out',
+      'tenant_status_paused': 'Paused',
+
+      'contract_status_unknown': 'Unknown',
+      'contract_status_active': 'Active',
+      'contract_status_terminated': 'Terminated',
+      'contract_status_expired': 'Expired',
+
+      'booking_status_pending': 'Awaiting confirmation',
+      'booking_status_confirmed': 'Confirmed',
+      'booking_status_checked_in': 'Checked in',
+      'booking_status_checked_out': 'Checked out',
+      'booking_status_cancelled': 'Cancelled',
+      'booking_status_no_show': 'No show',
+      'booking_status_cancelled_or_no_show': 'Cancelled / No show',
+
+      'booking_source_walk_in': 'Walk-in',
+      'booking_source_phone': 'Phone',
+      'booking_source_app': 'App',
+      'booking_source_online': 'Online',
+      'booking_source_other': 'Other',
+
+      'room_rental_mode_monthly': 'Long term (monthly)',
+      'room_rental_mode_hourly': 'Hourly',
+      'room_rental_mode_both': 'Flexible (monthly & hourly)',
+      'room_rental_mode_monthly_short': 'Long term',
+      'room_rental_mode_both_short': 'Flexible',
+
+      'bank_info_missing': 'No bank details on file',
+      'bank_account_name_label': 'Account name',
+      'bank_account_number_label': 'Account number',
+      'bank_name_label': 'Bank',
+
+      // ── Authentication (login_screen) ──
+      'auth_login_title': 'Sign in',
+      'auth_register_title': 'Sign up',
+      'auth_login_button': 'Sign in',
+      'auth_register_button': 'Sign up',
+
+      'auth_field_name': 'Name',
+      'auth_field_password': 'Password',
+      'auth_field_confirm_password': 'Confirm password',
+
+      'auth_name_required': 'Enter your name!',
+      'auth_name_too_long': 'Name is too long!',
+      'auth_email_required': 'Enter your email!',
+      'auth_email_invalid': 'That email is not valid!',
+      'auth_password_required': 'Enter your password!',
+      'auth_password_too_weak': 'Password is too simple!',
+      'auth_password_too_long': 'Password is too long!',
+      'auth_password_mismatch': 'Passwords do not match!',
+
+      'auth_login_failed': 'Sign-in failed. Check your email and password.',
+      'auth_register_failed': 'Sign-up failed. That email may already be in use.',
+
+      'auth_no_account': 'Don\'t have an account? ',
+      'auth_have_account': 'Already have an account? ',
+
+      // ── Hourly booking form (booking_form_dialog) ──
+      'booking_form_title': 'Book room {{room}}',
+      'booking_form_guest_section': 'GUEST DETAILS',
+      'booking_form_guest_name': 'Guest name',
+      'booking_form_required': 'Required',
+
+      'booking_form_time_section': 'TIME',
+      'booking_form_duration_hours': '{{count}} h',
+      'booking_form_overnight': 'Overnight',
+      'booking_form_custom_range_hint': 'Or pick your own dates and times below — check-in and check-out can fall on different days.',
+      'booking_check_in': 'Check-in',
+      'booking_check_out': 'Check-out',
+      'booking_form_actual_duration': 'Actual duration: {{hours}} h ({{range}})',
+      'booking_form_end_after_start': 'Check-out must be after check-in',
+      'booking_form_min_hours': 'Minimum booking is {{hours}} hours',
+
+      'booking_form_payment_section': 'PAYMENT',
+      'booking_form_price_manual': 'Enter manually',
+      'booking_form_hourly_rate': 'Rate per hour',
+      'booking_form_vnd_per_hour': 'VND/hour',
+      'booking_form_invalid': 'Not valid',
+      'booking_form_price_breakdown': '{{hours}} h × {{rate}} {{currency}}/hour',
+      'booking_form_price_hint': 'Pick a valid check-in and check-out to calculate the price',
+      'booking_form_price': 'Price',
+      'booking_form_notes': 'Notes',
+
+      'booking_form_saving': 'Saving...',
+      'booking_form_submit': 'Book room',
+
+      // ── Booking detail dialog ──
+      'booking_detail_payment_method': 'Payment method',
+      'booking_detail_cancel_title': 'Cancel booking',
+      'booking_detail_cancel_reason': 'Reason (optional)',
+      'booking_detail_cancel_confirm': 'Confirm cancellation',
+      'booking_detail_duration': 'Duration',
+      'booking_detail_total': 'Total',
+
+      // ── Availability calendar ──
+      'calendar_title': 'Hourly room calendar',
+      'calendar_view_day': 'Day',
+      'calendar_view_month': 'Month',
+      'calendar_today': 'Today',
+      'calendar_no_buildings': 'This organization has no buildings with manageable rooms yet.',
+      'calendar_no_hourly_rooms': 'No room in this building has hourly rental turned on.\nEnable it from Edit room.',
+      'calendar_long_term_guest': 'Long-term tenant',
+      'calendar_price_per_hour': '{{price}} đ/hour',
+
+      // ── Buildings tab & chart empty states ──
+      'view_all_buildings_calendar': 'View all buildings calendar',
+      'hourly_calendar': 'Hourly calendar',
+      'chart_no_tenant_data': 'No tenant data yet',
+      'chart_no_revenue_data': 'No revenue data',
+      'chart_no_payment_data': 'No payment data yet',
+
+      // ── Router ──
+      'page_not_found': 'Page not found',
     },
   };
 
@@ -1974,6 +2299,29 @@ class AppTranslationsDelegate extends LocalizationsDelegate<AppTranslations> {
 extension DatePickerFormatting on AppTranslations {
   bool get isVietnamese => locale.languageCode == 'vi';
   String get dateFormat => isVietnamese ? 'dd/MM/yyyy' : 'MM/dd/yyyy';
+
+  /// Day-and-month only, for compact ranges like "01/03 - 31/03/2026".
+  String get dateFormatShort => isVietnamese ? 'dd/MM' : 'MM/dd';
+
+  /// Two-digit year, for space-constrained chips and table cells.
+  String get dateFormatCompact => isVietnamese ? 'dd/MM/yy' : 'MM/dd/yy';
+
+  /// Date plus 24-hour time.
+  String get dateTimeFormat => '$dateFormat HH:mm';
+
+  /// Localized weekday name — use with [dateFormat] for a short header,
+  /// or call [formatLongDate] for the full written-out form.
+  String shortWeekdayName(DateTime date) {
+    const vi = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+    const en = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    return (isVietnamese ? vi : en)[date.weekday % 7];
+  }
+
+  String weekdayName(DateTime date) {
+    const vi = ['Chủ nhật', 'Thứ hai', 'Thứ ba', 'Thứ tư', 'Thứ năm', 'Thứ sáu', 'Thứ bảy'];
+    const en = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    return (isVietnamese ? vi : en)[date.weekday % 7];
+  }
 
   String formatLongDate(DateTime date) {
     if (isVietnamese) return _formatVietnameseDate(date);

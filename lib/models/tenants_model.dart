@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../utils/app_localizations.dart';
 
 enum TenantStatus {
   active,       // Đang thuê
@@ -20,6 +21,7 @@ enum ContractStatus {
 }
 
 class Tenant {
+  final String currency;
   final String id;
   final String organizationId;
   final String buildingId;
@@ -91,6 +93,7 @@ class Tenant {
   final String? updatedBy;               // User ID who last updated
 
   Tenant({
+    this.currency = 'VND',
     required this.id,
     required this.organizationId,
     required this.buildingId,
@@ -193,6 +196,7 @@ class Tenant {
 
   Map<String, dynamic> toMap() {
     return {
+      'currency': currency,
       'organizationId': organizationId,
       'buildingId': buildingId,
       'roomId': roomId,
@@ -258,6 +262,7 @@ class Tenant {
 
   factory Tenant.fromMap(String id, Map<String, dynamic> map) {
     return Tenant(
+      currency: map['currency'] as String? ?? 'VND',
       id: id,
       organizationId: map['organizationId'] ?? '',
       buildingId: map['buildingId'] ?? '',
@@ -396,6 +401,7 @@ class Tenant {
     String? updatedBy,
   }) {
     return Tenant(
+      currency: currency,
       id: id ?? this.id,
       organizationId: organizationId ?? this.organizationId,
       buildingId: buildingId ?? this.buildingId,
@@ -446,41 +452,41 @@ class Tenant {
     );
   }
 
-  // Helper methods for display names
-  String getStatusDisplayName() {
+  // Localized display names.
+  String getStatusDisplayName(AppTranslations t) {
     switch (status) {
       case TenantStatus.active:
-        return 'Đang thuê';
+        return t['tenant_status_renting'];
       case TenantStatus.inactive:
-        return 'Không hoạt động';
+        return t['tenant_status_not_active'];
       case TenantStatus.moveOut:
-        return 'Đã chuyển đi';
+        return t['tenant_status_moved_out_long'];
       case TenantStatus.suspended:
-        return 'Tạm dừng';
+        return t['tenant_status_paused'];
     }
   }
 
-  String? getGenderDisplayName() {
+  String? getGenderDisplayName(AppTranslations t) {
     if (gender == null) return null;
     switch (gender!) {
       case Gender.male:
-        return 'Nam';
+        return t['gender_male'];
       case Gender.female:
-        return 'Nữ';
+        return t['gender_female'];
       case Gender.other:
-        return 'Khác';
+        return t['gender_other'];
     }
   }
 
-  String getContractStatusDisplayName() {
-    if (contractStatus == null) return 'Không xác định';
+  String getContractStatusDisplayName(AppTranslations t) {
+    if (contractStatus == null) return t['contract_status_unknown'];
     switch (contractStatus!) {
       case ContractStatus.active:
-        return 'Đang hiệu lực';
+        return t['contract_status_active'];
       case ContractStatus.terminated:
-        return 'Đã chấm dứt';
+        return t['contract_status_terminated'];
       case ContractStatus.expired:
-        return 'Đã hết hạn';
+        return t['contract_status_expired'];
     }
   }
 }
@@ -605,18 +611,18 @@ class VehicleInfo {
     );
   }
 
-  String getTypeDisplayName() {
+  String getTypeDisplayName(AppTranslations t) {
     switch (type) {
       case VehicleType.motorcycle:
-        return 'Xe máy';
+        return t['tenant_vehicle_motorcycle'];
       case VehicleType.car:
-        return 'Ô tô';
+        return t['tenant_vehicle_car'];
       case VehicleType.bicycle:
-        return 'Xe đạp';
+        return t['tenant_vehicle_bicycle'];
       case VehicleType.electricBike:
-        return 'Xe đạp điện';
+        return t['tenant_vehicle_electric_bike'];
       case VehicleType.other:
-        return 'Khác';
+        return t['tenant_vehicle_other'];
     }
   }
 }

@@ -1,3 +1,4 @@
+import 'package:phan_mem_quan_ly_can_ho/utils/currency_formatter.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' hide TextDirection;
@@ -301,9 +302,9 @@ class _BuildingRentScreenState extends State<BuildingRentScreen> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            '${building.rentContractStart != null ? DateFormat('dd/MM/yyyy').format(building.rentContractStart!) : '—'}'
+                            '${building.rentContractStart != null ? DateFormat(t.dateFormat).format(building.rentContractStart!) : '—'}'
                             '  →  '
-                            '${building.rentContractEnd != null ? DateFormat('dd/MM/yyyy').format(building.rentContractEnd!) : '—'}',
+                            '${building.rentContractEnd != null ? DateFormat(t.dateFormat).format(building.rentContractEnd!) : '—'}',
                             style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w600,
@@ -474,7 +475,7 @@ class _BuildingRentScreenState extends State<BuildingRentScreen> {
                           color: _DS.textPrimary)),
                   const SizedBox(height: 2),
                   Text(
-                    '${t['due_date_label']}: ${DateFormat('dd/MM/yyyy').format(p.dueDate)}',
+                    '${t['due_date_label']}: ${DateFormat(t.dateFormat).format(p.dueDate)}',
                     style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
                   ),
                 ],
@@ -486,7 +487,7 @@ class _BuildingRentScreenState extends State<BuildingRentScreen> {
                 color: statusColor.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: Text(p.getStatusDisplayName(),
+              child: Text(p.getStatusDisplayName(t),
                   style: TextStyle(
                       fontSize: 10, fontWeight: FontWeight.w700, color: statusColor)),
             ),
@@ -586,7 +587,7 @@ class _BuildingRentScreenState extends State<BuildingRentScreen> {
     final t = AppTranslations.of(context);
     final isEditing = existing != null;
     final amountController = TextEditingController(
-        text: isEditing ? existing.amount.toStringAsFixed(0) : '');
+        text: isEditing ? CurrencyParser.format(existing.amount) : '');
     final descController = TextEditingController(text: existing?.description ?? '');
     DateTime dueDate = existing?.dueDate ?? DateTime.now().add(const Duration(days: 7));
     String? amountError;
@@ -672,7 +673,7 @@ class _BuildingRentScreenState extends State<BuildingRentScreen> {
                             label: t['building_rent_amount_label'],
                             icon: Icons.payments_rounded,
                             keyboardType: TextInputType.number,
-                            suffixText: 'VND',
+                            suffixText: existing?.currency ?? building.currency,
                             errorText: amountError,
                             onChanged: (_) {
                               if (amountError != null) {
@@ -730,7 +731,7 @@ class _BuildingRentScreenState extends State<BuildingRentScreen> {
                         flex: 2,
                         child: FilledButton.icon(
                           onPressed: () async {
-                            final amount = double.tryParse(amountController.text.trim());
+                            final amount = CurrencyParser.tryParse(amountController.text);
                             if (amount == null || amount <= 0) {
                               setDialogState(
                                   () => amountError = t['add_item_err_amount']);
@@ -756,6 +757,7 @@ class _BuildingRentScreenState extends State<BuildingRentScreen> {
                                 organizationId: widget.organization.id,
                                 buildingId: building.id,
                                 amount: amount,
+                                currency: building.currency,
                                 dueDate: dueDate,
                                 description: description,
                                 renterName: building.renterName,
@@ -810,7 +812,8 @@ class _BuildingRentScreenState extends State<BuildingRentScreen> {
     return TextField(
       controller: controller,
       maxLines: maxLines,
-      keyboardType: keyboardType,
+      inputFormatters: [if (suffixText != null) CurrencyInputFormatter(decimalDigits: 2)],
+      keyboardType: suffixText != null ? const TextInputType.numberWithOptions(decimal: true) : keyboardType,
       onChanged: onChanged,
       decoration: InputDecoration(
         labelText: label,

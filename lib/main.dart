@@ -114,7 +114,7 @@ void main() async {
       minimumSize: Size(480, 600),
       size: Size(1200, 800),
       center: true,
-      title: 'Phần Mền Quản Lý Căn Hộ',
+      title: 'Phần Mềm Quản Lý Căn Hộ',
     );
     await windowManager.waitUntilReadyToShow(windowOptions);
     await windowManager.show();
@@ -174,9 +174,16 @@ class MyApp extends StatelessWidget {
             Locale('vi', 'VN'),
             Locale('en', 'US'),
           ],
-          title: 'Flutter Demo',
+          onGenerateTitle: (context) => AppTranslations.of(context)['app_title'],
           theme: ThemeData(
             colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+            inputDecorationTheme: const InputDecorationTheme(
+              isDense: false,
+              contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+              floatingLabelBehavior: FloatingLabelBehavior.always,
+              errorMaxLines: 3,
+              helperMaxLines: 3,
+            ),
           ),
           debugShowCheckedModeBanner: false,
           initialRoute: '/',

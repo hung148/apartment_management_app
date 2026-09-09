@@ -1,3 +1,5 @@
+import 'package:phan_mem_quan_ly_can_ho/widgets/responsive_form_row.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/currency_formatter.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/buildings_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/organization_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/rooms_model.dart';
@@ -175,7 +177,6 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
   }
 
   Timer? _resizeDebounceTimer;
-  bool _isDismissing = false;
 
   @override
   void didChangeMetrics() {
@@ -187,37 +188,11 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
       final view = WidgetsBinding.instance.platformDispatcher.views.first;
       final size = view.physicalSize / view.devicePixelRatio;
       logger.d('📐 [didChangeMetrics] size=${size.width}x${size.height}');
-      if (size.width < 360 || size.height < 600) {
-        logger.d('📐 [didChangeMetrics] Below minimum, dismissing overlays');
-        _dismissAllOverlays();
-      }
+
     });
   }
 
-  Future<void> _dismissAllOverlays() async {
-    logger.d('🔔 [_dismissAllOverlays] START — _isDismissing=$_isDismissing, mounted=$mounted');
-    if (!mounted || _isDismissing) return;
-    _isDismissing = true;
 
-    try {
-      final nav = Navigator.of(context);
-      int popCount = 0;
-      while (nav.canPop()) {
-        nav.pop();
-        popCount++;
-        logger.d('🔔 [_dismissAllOverlays] Popped overlay #$popCount');
-        await Future.delayed(const Duration(milliseconds: 50));
-        if (!mounted) {
-          logger.d('🔔 [_dismissAllOverlays] Unmounted during pop loop, breaking');
-          break;
-        }
-      }
-      logger.d('🔔 [_dismissAllOverlays] Done — total pops=$popCount');
-    } finally {
-      _isDismissing = false;
-      logger.d('🔔 [_dismissAllOverlays] END');
-    }
-  }
 
   Future<T?> _showTrackedDialog<T>({
     required BuildContext context,
@@ -256,19 +231,19 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
       text: (room?.area ?? 0) > 0 ? room!.area.toString() : '',
     );
     final roomPriceController = TextEditingController(
-      text: room?.roomPrice != null ? room!.roomPrice!.toStringAsFixed(0) : '',
+      text: room?.roomPrice != null ? CurrencyParser.format(room!.roomPrice!) : '',
     );
     bool isSaving = false;
 
     RoomRentalMode rentalMode = room?.rentalMode ?? RoomRentalMode.monthly;
     final hourlyPriceController = TextEditingController(
-      text: room?.hourlyPrice != null ? room!.hourlyPrice!.toStringAsFixed(0) : '',
+      text: room?.hourlyPrice != null ? CurrencyParser.format(room!.hourlyPrice!) : '',
     );
     final dailyPriceController = TextEditingController(
-      text: room?.dailyPrice != null ? room!.dailyPrice!.toStringAsFixed(0) : '',
+      text: room?.dailyPrice != null ? CurrencyParser.format(room!.dailyPrice!) : '',
     );
     final overnightPriceController = TextEditingController(
-      text: room?.overnightPrice != null ? room!.overnightPrice!.toStringAsFixed(0) : '',
+      text: room?.overnightPrice != null ? CurrencyParser.format(room!.overnightPrice!) : '',
     );
     final dailyThresholdController = TextEditingController(
       text: room?.dailyPriceThresholdHours != null ? room!.dailyPriceThresholdHours!.toStringAsFixed(0) : '',
@@ -445,10 +420,10 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                               label: t['room_field_price_label'],
                               hint: t['room_field_price_hint'],
                               icon: Icons.payments_rounded,
-                              suffixText: 'VND',
+                              suffixText: room?.currency ?? t.defaultCurrency,
                               enabled: !isSaving,
                               keyboardType: TextInputType.number,
-                              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                              inputFormatters: [CurrencyInputFormatter(decimalDigits: 2)],
                               accentColor: isEditing ? Colors.orange.shade700 : Colors.blue.shade700,
                             ),
 
@@ -460,7 +435,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                                     size: 16, color: isEditing ? Colors.orange.shade700 : Colors.blue.shade700),
                                 const SizedBox(width: 6),
                                 Text(
-                                  'CHO THUÊ THEO GIỜ',
+                                  t['rental_setup'],
                                   style: TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.w700,
@@ -475,9 +450,9 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                               spacing: 8,
                               children: RoomRentalMode.values.map((mode) {
                                 final label = switch (mode) {
-                                  RoomRentalMode.monthly => 'Dài hạn',
-                                  RoomRentalMode.hourly => 'Theo giờ',
-                                  RoomRentalMode.both => 'Linh hoạt',
+                                  RoomRentalMode.monthly => t['rental_monthly'],
+                                  RoomRentalMode.hourly => t['rental_hourly'],
+                                  RoomRentalMode.both => t['rental_flexible'],
                                 };
                                 return ChoiceChip(
                                   label: Text(label),
@@ -497,25 +472,27 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                               const SizedBox(height: 14),
                               _buildDialogField(
                                 controller: hourlyPriceController,
-                                label: 'Giá theo giờ (VND)',
+                                label: t['hourly_rate'],
                                 hint: '50000',
                                 icon: Icons.payments_rounded,
                                 enabled: !isSaving,
+                                suffixText: room?.currency ?? t.defaultCurrency,
                                 keyboardType: TextInputType.number,
-                                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                                inputFormatters: [CurrencyInputFormatter(decimalDigits: 2)],
                                 accentColor: isEditing ? Colors.orange.shade700 : Colors.blue.shade700,
                               ),
                               const SizedBox(height: 10),
-                              Row(children: [
+                              ResponsiveFormRow(children: [
                                 Expanded(
                                   child: _buildDialogField(
                                     controller: dailyPriceController,
-                                    label: 'Giá trọn ngày',
+                                    label: t['daily_rate'],
                                     hint: '300000',
                                     icon: Icons.today_rounded,
                                     enabled: !isSaving,
-                                    keyboardType: TextInputType.number,
-                                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                                    suffixText: room?.currency ?? t.defaultCurrency,
+                                keyboardType: TextInputType.number,
+                                    inputFormatters: [CurrencyInputFormatter(decimalDigits: 2)],
                                     accentColor: isEditing ? Colors.orange.shade700 : Colors.blue.shade700,
                                   ),
                                 ),
@@ -523,10 +500,10 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                                 Expanded(
                                   child: _buildDialogField(
                                     controller: dailyThresholdController,
-                                    label: 'Ngưỡng giờ',
+                                    label: t['hour_threshold'],
                                     hint: '8',
                                     icon: Icons.hourglass_bottom_rounded,
-                                    suffixText: 'giờ',
+                                    suffixText: t['unit_hours'],
                                     enabled: !isSaving,
                                     keyboardType: TextInputType.number,
                                     inputFormatters: [FilteringTextInputFormatter.digitsOnly],
@@ -537,20 +514,21 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                               const SizedBox(height: 10),
                               _buildDialogField(
                                 controller: overnightPriceController,
-                                label: 'Giá qua đêm (không bắt buộc)',
+                                label: t['overnight_rate'],
                                 hint: '250000',
                                 icon: Icons.nightlight_round,
                                 enabled: !isSaving,
+                                suffixText: room?.currency ?? t.defaultCurrency,
                                 keyboardType: TextInputType.number,
-                                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                                inputFormatters: [CurrencyInputFormatter(decimalDigits: 2)],
                                 accentColor: isEditing ? Colors.orange.shade700 : Colors.blue.shade700,
                               ),
                               const SizedBox(height: 10),
-                              Row(children: [
+                              ResponsiveFormRow(children: [
                                 Expanded(
                                   child: _buildDialogField(
                                     controller: minBookingHoursController,
-                                    label: 'Giờ đặt tối thiểu',
+                                    label: t['minimum_hours'],
                                     hint: '1',
                                     icon: Icons.timer_rounded,
                                     enabled: !isSaving,
@@ -563,10 +541,10 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                                 Expanded(
                                   child: _buildDialogField(
                                     controller: cleaningBufferController,
-                                    label: 'Đệm dọn phòng',
+                                    label: t['cleaning_buffer'],
                                     hint: '30',
                                     icon: Icons.cleaning_services_rounded,
-                                    suffixText: 'phút',
+                                    suffixText: t['unit_minutes'],
                                     enabled: !isSaving,
                                     keyboardType: TextInputType.number,
                                     inputFormatters: [FilteringTextInputFormatter.digitsOnly],
@@ -621,13 +599,13 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
 
                                       setDialogState(() => isSaving = true);
 
-                                      final roomPrice = double.tryParse(roomPriceController.text.trim());
+                                      final roomPrice = CurrencyParser.tryParse(roomPriceController.text);
 
                                       final rentalFields = <String, dynamic>{
                                         'rentalMode': rentalMode.name,
-                                        'hourlyPrice': double.tryParse(hourlyPriceController.text.trim()),
-                                        'dailyPrice': double.tryParse(dailyPriceController.text.trim()),
-                                        'overnightPrice': double.tryParse(overnightPriceController.text.trim()),
+                                        'hourlyPrice': CurrencyParser.tryParse(hourlyPriceController.text),
+                                        'dailyPrice': CurrencyParser.tryParse(dailyPriceController.text),
+                                        'overnightPrice': CurrencyParser.tryParse(overnightPriceController.text),
                                         'dailyPriceThresholdHours': double.tryParse(dailyThresholdController.text.trim()),
                                         'minBookingHours': int.tryParse(minBookingHoursController.text.trim()),
                                         'cleaningBufferMinutes': int.tryParse(cleaningBufferController.text.trim()),
@@ -644,6 +622,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                                             roomType: roomType.isEmpty ? 'Standard' : roomType,
                                             createdAt: DateTime.now(),
                                             roomPrice: roomPrice,
+                                            currency: t.defaultCurrency,
                                             rentalMode: rentalMode,
                                             hourlyPrice: rentalFields['hourlyPrice'] as double?,
                                             dailyPrice: rentalFields['dailyPrice'] as double?,
@@ -680,7 +659,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                                         if (mounted) {
                                           ScaffoldMessenger.of(context).showSnackBar(
                                             SnackBar(
-                                              content: Text('Lỗi: $e'),
+                                              content: Text(t.textWithParams('error', {'error': '$e'})),
                                               backgroundColor: Colors.red,
                                             ),
                                           );
@@ -755,7 +734,8 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
       enabled: enabled,
       autofocus: autofocus,
       maxLength: maxLength,
-      keyboardType: keyboardType,
+      keyboardType: inputFormatters?.any((f) => f is CurrencyInputFormatter) == true
+          ? const TextInputType.numberWithOptions(decimal: true) : keyboardType,
       textCapitalization: textCapitalization,
       inputFormatters: inputFormatters,
       decoration: InputDecoration(
@@ -973,7 +953,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                                         if (mounted) {
                                           ScaffoldMessenger.of(context)
                                               .showSnackBar(SnackBar(
-                                            content: Text('Lỗi: $e'),
+                                            content: Text(t.textWithParams('error', {'error': '$e'})),
                                             backgroundColor: Colors.red,
                                           ));
                                         }
@@ -1214,7 +1194,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                                         if (mounted) {
                                           ScaffoldMessenger.of(context)
                                               .showSnackBar(SnackBar(
-                                            content: Text('Lỗi: $e'),
+                                            content: Text(t.textWithParams('error', {'error': '$e'})),
                                             backgroundColor: Colors.red,
                                           ));
                                         }

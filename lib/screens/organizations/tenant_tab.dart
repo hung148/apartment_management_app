@@ -1,3 +1,4 @@
+import 'package:phan_mem_quan_ly_can_ho/utils/currency_formatter.dart';
 import 'dart:async';
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
@@ -452,8 +453,9 @@ Widget _inputField(
     padding: const EdgeInsets.only(bottom: 12),
     child: TextField(
       controller: controller,
-      keyboardType: keyboardType,
-      maxLength: maxLength,
+      keyboardType: suffix == 'VND' || suffix == 'USD' ? const TextInputType.numberWithOptions(decimal: true) : keyboardType,
+      inputFormatters: [if (suffix == 'VND' || suffix == 'USD') CurrencyInputFormatter(decimalDigits: suffix == 'USD' ? 2 : 0)],
+      maxLength: suffix == 'VND' || suffix == 'USD' ? 24 : maxLength,
       decoration: InputDecoration(
         labelText: label,
         labelStyle: TextStyle(color: Colors.grey.shade500, fontSize: 14),
@@ -474,7 +476,7 @@ Widget _inputField(
         ),
         filled: true,
         fillColor: Colors.grey.shade50,
-        isDense: true,
+        isDense: false,
         counterText: '',
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
@@ -511,7 +513,7 @@ Widget _dropdownField<T>({
         ),
         filled: true,
         fillColor: Colors.grey.shade50,
-        isDense: true,
+        isDense: false,
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       ),
@@ -792,7 +794,6 @@ class _TenantsTabState extends State<TenantsTab>
   }
 
   Timer? _resizeDebounceTimer;
-  bool _isDismissing = false;
 
   @override
   void didChangeMetrics() {
@@ -800,28 +801,11 @@ class _TenantsTabState extends State<TenantsTab>
     _resizeDebounceTimer?.cancel();
     _resizeDebounceTimer = Timer(const Duration(milliseconds: 300), () {
       if (!mounted) return;
-      final screenWidth = MediaQuery.sizeOf(context).width;
-      final screenHeight = MediaQuery.sizeOf(context).height;
-      if (screenWidth < 360 || screenHeight < 600) {
-        _dismissAllOverlays();
-      }
+
     });
   }
 
-  Future<void> _dismissAllOverlays() async {
-    if (!mounted || _isDismissing) return;
-    _isDismissing = true;
-    try {
-      final nav = Navigator.of(context);
-      while (nav.canPop()) {
-        nav.pop();
-        await Future.delayed(const Duration(milliseconds: 50));
-        if (!mounted) break;
-      }
-    } finally {
-      _isDismissing = false;
-    }
-  }
+
 
   Future<T?> _showTrackedDialog<T>({
     required BuildContext context,
@@ -899,7 +883,8 @@ class _TenantsTabState extends State<TenantsTab>
     return f.format(value);
   }
 
-  String _formatDate(DateTime date) => DateFormat('dd/MM/yyyy').format(date);
+  String _formatDate(DateTime date) =>
+      DateFormat(AppTranslations.of(context).dateFormat).format(date);
 
   String _getVehicleTypeDisplayName(VehicleType type) {
     final t = AppTranslations.of(context);
@@ -1856,7 +1841,7 @@ class _TenantsTabState extends State<TenantsTab>
                         rows: [
                           if (tenant.gender != null)
                             _DetailRow(t['tenant_detail_gender'],
-                                tenant.getGenderDisplayName()!),
+                                tenant.getGenderDisplayName(t)!),
                           if (tenant.nationalId != null)
                             _DetailRow(t['tenant_detail_national_id'],
                                 tenant.nationalId!),
@@ -1975,7 +1960,7 @@ class _TenantsTabState extends State<TenantsTab>
                               _DetailRow(
                                   t['tenant_detail_contract_status'],
                                   tenant
-                                      .getContractStatusDisplayName()),
+                                      .getContractStatusDisplayName(t)),
                               if (tenant.moveOutDate != null &&
                                   tenant.contractEndDate != null)
                                 _DetailRow(
@@ -2072,7 +2057,7 @@ class _TenantsTabState extends State<TenantsTab>
                       const _ContentDivider(),
                       _DetailRow(
                         t['tenant_detail_status'],
-                        tenant.getStatusDisplayName(),
+                        tenant.getStatusDisplayName(t),
                         valueColor: _getTenantStatusColor(tenant.status),
                       ),
                     ],
@@ -3043,7 +3028,7 @@ class _TenantsTabState extends State<TenantsTab>
     final workplaceController =
         TextEditingController(text: tenant.workplace);
     final monthlyRentController = TextEditingController(
-        text: tenant.monthlyRent?.toString() ?? '');
+        text: tenant.monthlyRent == null ? '' : CurrencyParser.format(tenant.monthlyRent!));
     final areaController =
         TextEditingController(text: tenant.apartmentArea?.toString() ?? '');
     // Normalize once, up front — keys only from here on out.
@@ -3118,9 +3103,9 @@ class _TenantsTabState extends State<TenantsTab>
                             monthlyRentController,
                             t['tenant_field_rent'],
                             Icons.payments_rounded,
-                            suffix: '₫',
+                            suffix: tenant.currency,
                             keyboardType: TextInputType.number,
-                            maxLength: 12),
+                            maxLength: 24),
                         const SizedBox(height: 4),
                         LocalizedDatePicker(
                           labelText: t['tenant_field_move_in_date'],
@@ -3178,6 +3163,7 @@ class _TenantsTabState extends State<TenantsTab>
                             if (room == null) return;
                             setDialogState(() {
                               selectedRoomId = room.id;
+
                               areaController.text = room.area.toString();
                               // Normalize here too — room.roomType may
                               // also be legacy free text.
@@ -3226,7 +3212,7 @@ class _TenantsTabState extends State<TenantsTab>
                             nationalIdController,
                             t['tenant_field_national_id'],
                             Icons.badge_rounded,
-                            maxLength: 12),
+                            maxLength: 24),
                         _inputField(
                             occupationController,
                             t['tenant_field_occupation'],
@@ -3274,14 +3260,14 @@ class _TenantsTabState extends State<TenantsTab>
                                     workplaceController.text.trim().isEmpty
                                         ? null
                                         : workplaceController.text.trim(),
-                                'monthlyRent': double.tryParse(
-                                    monthlyRentController.text.trim()),
+                                'monthlyRent': CurrencyParser.tryParse(monthlyRentController.text),
                                 'apartmentArea': double.tryParse(
                                     areaController.text.trim()),
                                 'apartmentType': selectedAptType,
                                 'moveInDate': editedMoveInDate,
                                 'buildingId': selectedBuildingId,
                                 'roomId': selectedRoomId,
+                          'currency': tenant.currency,
                               });
                             },
                     ),
@@ -3793,6 +3779,7 @@ class _TenantsTabState extends State<TenantsTab>
     String? selectedBuildingId =
         buildings.isNotEmpty ? buildings.first.id : null;
     String? selectedRoomId;
+    String selectedCurrency = AppTranslations.of(context).defaultCurrency;
     TenantStatus selectedStatus = TenantStatus.active;
     bool isMainTenant = true;
     DateTime moveInDate = DateTime.now();
@@ -3886,6 +3873,7 @@ class _TenantsTabState extends State<TenantsTab>
                             if (room == null) return;
                             setDialogState(() {
                               selectedRoomId = room.id;
+                              selectedCurrency = room.currency;
                               areaController.text = room.area.toString();
                               selectedAptType = normalizeAptType(room.roomType);
                               // Prefill monthly rent from the room's default
@@ -3895,7 +3883,7 @@ class _TenantsTabState extends State<TenantsTab>
                                   room.roomPrice != null &&
                                   room.roomPrice! > 0) {
                                 monthlyRentController.text =
-                                    room.roomPrice!.toStringAsFixed(0);
+                                    CurrencyParser.format(room.roomPrice!);
                               }
                             });
                           },
@@ -3959,9 +3947,9 @@ class _TenantsTabState extends State<TenantsTab>
                             monthlyRentController,
                             t['tenant_field_rent_required'],
                             Icons.payments_rounded,
-                            suffix: '₫',
+                            suffix: selectedCurrency,
                             keyboardType: TextInputType.number,
-                            maxLength: 12),
+                            maxLength: 24),
                         const SizedBox(height: 4),
                         LocalizedDatePicker(
                           labelText: t['tenant_field_move_in_date'],
@@ -4018,7 +4006,7 @@ class _TenantsTabState extends State<TenantsTab>
                             nationalIdController,
                             t['tenant_field_national_id'],
                             Icons.badge_rounded,
-                            maxLength: 12),
+                            maxLength: 24),
                         _inputField(
                             occupationController,
                             t['tenant_field_occupation'],
@@ -4055,9 +4043,9 @@ class _TenantsTabState extends State<TenantsTab>
                           'workplace': workplaceController.text.trim(),
                           'buildingId': selectedBuildingId,
                           'roomId': selectedRoomId,
+                          'currency': selectedCurrency,
                           'monthlyRent':
-                              double.tryParse(
-                                  monthlyRentController.text) ??
+                              CurrencyParser.tryParse(monthlyRentController.text) ??
                               0,
                           'apartmentArea':
                               double.tryParse(areaController.text) ?? 0,
@@ -4100,6 +4088,7 @@ class _TenantsTabState extends State<TenantsTab>
         workplace: result['workplace'],
         isMainTenant: result['isMainTenant'],
         monthlyRent: result['monthlyRent'],
+        currency: result['currency'] as String? ?? 'VND',
         apartmentArea: result['apartmentArea'],
         apartmentType: result['apartmentType'],
         status: result['status'],

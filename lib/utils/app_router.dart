@@ -7,6 +7,7 @@ import 'package:phan_mem_quan_ly_can_ho/screens/room_detail.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/splash_screen.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/availability_calendar_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
 
 class AppRouter {
   // address
@@ -81,10 +82,10 @@ class AppRouter {
         );
       default:
         // If the route doesn't exist, show an error
-        return MaterialPageRoute(builder: (_) => Scaffold(
+        return MaterialPageRoute(builder: (context) => Scaffold(
           body: Center(child: Text(
-            'Page not found',
-            style: TextStyle(
+            AppTranslations.of(context)['page_not_found'],
+            style: const TextStyle(
               color: Colors.redAccent,
             ),
           )),
