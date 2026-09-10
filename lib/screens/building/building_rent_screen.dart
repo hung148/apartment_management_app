@@ -1,3 +1,5 @@
+import 'package:phan_mem_quan_ly_can_ho/widgets/app_dialog.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/app_money.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/currency_formatter.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -273,7 +275,7 @@ class _BuildingRentScreenState extends State<BuildingRentScreen> {
                   children: [
                     _statChip(
                       value: building.rentAmount != null
-                          ? _formatCurrency(building.rentAmount!)
+                          ? _formatCurrency(building.rentAmount!,building.currency)
                           : '—',
                       label: t['building_rent_amount_label'],
                     ),
@@ -468,7 +470,7 @@ class _BuildingRentScreenState extends State<BuildingRentScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(_formatCurrency(p.amount),
+                  Text(_formatCurrency(p.amount,p.currency),
                       style: const TextStyle(
                           fontWeight: FontWeight.w700,
                           fontSize: 14,
@@ -597,7 +599,7 @@ class _BuildingRentScreenState extends State<BuildingRentScreen> {
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) {
           final isSmall = MediaQuery.of(dialogContext).size.width < 600;
-          return Dialog(
+          return AppDialog(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
             elevation: 0,
             backgroundColor: Colors.white,
@@ -883,7 +885,7 @@ class _BuildingRentScreenState extends State<BuildingRentScreen> {
     final t = AppTranslations.of(context);
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (ctx) => Dialog(
+      builder: (ctx) => AppDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         elevation: 0,
         backgroundColor: Colors.white,
@@ -999,10 +1001,7 @@ class _BuildingRentScreenState extends State<BuildingRentScreen> {
     }
   }
 
-  String _formatCurrency(double amount) {
-    final formatter = NumberFormat('#,###', 'vi_VN');
-    return '${formatter.format(amount)} ₫';
-  }
+  String _formatCurrency(double amount, [String currency = 'VND']) => AppMoney.format(amount,currency);
 
   Color _getPaymentStatusColor(PaymentStatus status) {
     switch (status) {

@@ -1,3 +1,4 @@
+import 'package:phan_mem_quan_ly_can_ho/widgets/app_dialog.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/responsive_form_row.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/currency_formatter.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
@@ -360,7 +361,7 @@ class _BuildingDialogState extends State<BuildingDialog>
       context: context,
       builder: (context) {
         final t = AppTranslations.of(context);
-        return Dialog(
+        return AppDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           elevation: 0,
           backgroundColor: Colors.white,
@@ -518,7 +519,7 @@ class _BuildingDialogState extends State<BuildingDialog>
 
     return FadeTransition(
       opacity: _fadeAnim,
-      child: Dialog(
+      child: AppDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         elevation: 0,
         backgroundColor: Colors.white,

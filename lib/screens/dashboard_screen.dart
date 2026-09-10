@@ -1,3 +1,4 @@
+import 'package:phan_mem_quan_ly_can_ho/widgets/app_dialog.dart';
 import 'dart:ui';
 
 import 'package:phan_mem_quan_ly_can_ho/main.dart';
@@ -323,7 +324,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     if (!kIsWeb && Platform.isWindows) {
       final confirm = await _showTrackedDialog<bool>(
         context: context,
-        builder: (ctx) => Dialog(
+        builder: (ctx) => AppDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
           elevation: 0,
           backgroundColor: Colors.white,
@@ -482,7 +483,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     final bgColor = isGreen ? const Color(0xFFDCFCE7) : const Color(0xFFFFEBEB);
     final icon = isGreen ? Icons.download_rounded : Icons.delete_forever_rounded;
 
-    return Dialog(
+    return AppDialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       elevation: 0,
       backgroundColor: Colors.white,
@@ -558,7 +559,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     _showTrackedDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => Dialog(
+        builder: (ctx, setDialogState) => AppDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
           elevation: 0,
           backgroundColor: Colors.white,
@@ -732,7 +733,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     await _showTrackedDialog(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => Dialog(
+      builder: (ctx) => AppDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: ConstrainedBox(
           constraints: BoxConstraints(
@@ -924,7 +925,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     await _showTrackedDialog(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => Dialog(
+      builder: (ctx) => AppDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: ConstrainedBox(
           constraints: BoxConstraints(maxWidth: _getDialogWidth(ctx) * 0.7),
@@ -1062,7 +1063,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   Future<void> _showLeaveOrganizationDialog(Organization org, String ownerId) async {
     final confirm = await _showTrackedDialog<bool>(
       context: context,
-      builder: (ctx) => Dialog(
+      builder: (ctx) => AppDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         elevation: 0,
         backgroundColor: Colors.white,
@@ -1182,7 +1183,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 
     final confirm = await _showTrackedDialog<bool>(
       context: context,
-      builder: (ctx) => Dialog(
+      builder: (ctx) => AppDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: ConstrainedBox(
           constraints: BoxConstraints(
@@ -1330,7 +1331,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   void _showOrganizationInfo(Organization org) {
     _showTrackedDialog(
       context: context,
-      builder: (ctx) => Dialog(
+      builder: (ctx) => AppDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         elevation: 0,
         backgroundColor: Colors.white,
@@ -1522,7 +1523,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       context: context,
       barrierDismissible: !started,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => Dialog(
+        builder: (ctx, setDialogState) => AppDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
           elevation: 0,
           backgroundColor: Colors.white,
@@ -1861,7 +1862,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     await _showTrackedDialog(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => Dialog(
+      builder: (ctx) => AppDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: ConstrainedBox(
           constraints: BoxConstraints(
@@ -2256,7 +2257,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     if (isLarge) {
       _showTrackedDialog(
         context: context,
-        builder: (ctx) => Dialog(
+        builder: (ctx) => AppDialog(
           insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           child: SizedBox(
@@ -2332,7 +2333,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   Future<void> _handleLogout() async {
     final confirm = await _showTrackedDialog<bool>(
       context: context,
-      builder: (ctx) => Dialog(
+      builder: (ctx) => AppDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         elevation: 0,
         backgroundColor: Colors.white,
@@ -2442,7 +2443,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   Future<void> _handleDeleteAccount() async {
     final confirm = await _showTrackedDialog<bool>(
       context: context,
-      builder: (ctx) => Dialog(
+      builder: (ctx) => AppDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         elevation: 0,
         backgroundColor: Colors.white,
@@ -2542,7 +2543,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     return _showTrackedDialog<String?>(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => Dialog(
+      builder: (ctx) => AppDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
           elevation: 0,
           backgroundColor: Colors.white,
@@ -2645,7 +2646,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     _showTrackedDialog(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => Dialog(
+      builder: (ctx) => AppDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         elevation: 0,
         backgroundColor: Colors.white,
@@ -3111,7 +3112,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   void _showSettingsDialog() {
     _showTrackedDialog(
       context: context,
-      builder: (ctx) => Dialog(
+      builder: (ctx) => AppDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         elevation: 0,
         backgroundColor: Colors.white,
@@ -3610,7 +3611,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   Widget _buildLoadingDialog(String message) {
-    return Dialog(
+    return AppDialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       elevation: 0,
       backgroundColor: Colors.white,

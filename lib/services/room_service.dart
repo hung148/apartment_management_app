@@ -42,20 +42,21 @@ class RoomService {
   // ========================================
   // READ - Get all rooms in a building
   // ========================================
-  Future<List<Room>> getBuildingRooms(String organizationId, String buildingId) async {
+  Future<List<Room>> getBuildingRooms(String organizationId, String buildingId, {bool requireServer = false}) async {
     try {
       final snapshot = await _firestore
           .collection('rooms')
           .where('organizationId', isEqualTo: organizationId)
           .where('buildingId', isEqualTo: buildingId)
           .orderBy('roomNumber', descending: false)
-          .get();
+          .get(GetOptions(source: requireServer ? Source.server : Source.serverAndCache));
 
       return snapshot.docs
           .map((doc) => Room.fromMap(doc.id, doc.data()))
           .toList();
     } catch (e) {
       print('Error getting building rooms: $e');
+      if (requireServer) rethrow;
       return [];
     }
   }

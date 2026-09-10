@@ -1,3 +1,5 @@
+import 'package:phan_mem_quan_ly_can_ho/widgets/app_dialog.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/app_money.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/currency_formatter.dart';
 import 'dart:async';
 import 'package:collection/collection.dart';
@@ -52,7 +54,7 @@ class _DialogShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
-    return Dialog(
+    return AppDialog(
       backgroundColor: Colors.transparent,
       insetPadding: EdgeInsets.symmetric(
         horizontal: size.width < 600 ? 12 : 32,
@@ -877,11 +879,7 @@ class _TenantsTabState extends State<TenantsTab>
     });
   }
 
-  String _formatCurrency(double value) {
-    final f = NumberFormat.currency(
-        locale: 'vi_VN', symbol: '₫', decimalDigits: 0);
-    return f.format(value);
-  }
+  String _formatCurrency(double amount, [String currency = 'VND']) => AppMoney.format(amount,currency);
 
   String _formatDate(DateTime date) =>
       DateFormat(AppTranslations.of(context).dateFormat).format(date);
@@ -1484,7 +1482,7 @@ class _TenantsTabState extends State<TenantsTab>
                         _tenantStatChip(
                           icon: Icons.payments_rounded,
                           label: t['tenant_detail_monthly_rent'],
-                          value: _formatCurrency(tenant.monthlyRent!),
+                          value: _formatCurrency(tenant.monthlyRent!,tenant.currency),
                           color: const Color(0xFF3B6D11),
                         ),
                       ],
@@ -1874,12 +1872,12 @@ class _TenantsTabState extends State<TenantsTab>
                             if (tenant.monthlyRent != null)
                               _DetailRow(
                                   t['tenant_detail_monthly_rent'],
-                                  _formatCurrency(tenant.monthlyRent!),
+                                  _formatCurrency(tenant.monthlyRent!,tenant.currency),
                                   valueColor: const Color(0xFF3B6D11)),
                             if (tenant.deposit != null)
                               _DetailRow(
                                   t['tenant_detail_deposit'],
-                                  _formatCurrency(tenant.deposit!)),
+                                  _formatCurrency(tenant.deposit!,tenant.currency)),
                             if (tenant.apartmentType != null &&
                                 tenant.apartmentType!.isNotEmpty)
                               _DetailRow(

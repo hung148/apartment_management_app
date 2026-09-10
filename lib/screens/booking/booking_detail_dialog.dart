@@ -1,3 +1,6 @@
+import 'package:phan_mem_quan_ly_can_ho/widgets/app_dialog.dart';
+import 'package:uuid/uuid.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/currency_formatter.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:phan_mem_quan_ly_can_ho/main.dart';
@@ -11,20 +14,21 @@ import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
 // DESIGN TOKENS (mirrors the calendar's indigo kPrimaryColor)
 // ─────────────────────────────────────────────────────────────
 class _DS {
-  static const primary       = Color(0xFF4F46E5);
-  static const primaryDeep   = Color(0xFF3730A3);
-  static const primaryMid    = Color(0xFF6366F1);
-  static const primaryLight  = Color(0xFFEEF2FF);
-  static const surface       = Color(0xFFF8FAFC);
-  static const textPrimary   = Color(0xFF1E1B4B);
+  static const primary = Color(0xFF4F46E5);
+  static const primaryDeep = Color(0xFF3730A3);
+  static const primaryMid = Color(0xFF6366F1);
+  static const primaryLight = Color(0xFFEEF2FF);
+  static const surface = Color(0xFFF8FAFC);
+  static const textPrimary = Color(0xFF1E1B4B);
   static const textSecondary = Color(0xFF64748B);
-  static const danger        = Color(0xFFA32D2D);
-  static const dangerDeep    = Color(0xFF7A1F1F);
+  static const danger = Color(0xFFA32D2D);
+  static const dangerDeep = Color(0xFF7A1F1F);
 }
 
 class BookingDetailDialog extends StatefulWidget {
+  final Future<void> Function()? onEdit;
   final RoomBooking booking;
-  const BookingDetailDialog({required this.booking, super.key});
+  const BookingDetailDialog({required this.booking, this.onEdit, super.key});
 
   @override
   State<BookingDetailDialog> createState() => _BookingDetailDialogState();
@@ -85,27 +89,136 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
     if (updated != null && mounted) setState(() => _booking = updated);
   }
 
-  Future<void> _runAction(Future<bool> Function() action, {VoidCallback? onSuccess}) async {
+  Future<void> _runAction(
+    Future<bool> Function() action, {
+    VoidCallback? onSuccess,
+  }) async {
     setState(() => _busy = true);
     try {
       final success = await action();
       if (success) {
         await _refresh();
         onSuccess?.call();
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              AppTranslations.of(context)['booking_operation_failed'],
+            ),
+          ),
+        );
       }
+    } catch (error) {
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              AppTranslations.of(context)[error is BookingConflictException
+                  ? error.message
+                  : 'booking_operation_failed'],
+            ),
+          ),
+        );
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
-  Future<void> _checkIn() => _runAction(() => _bookingService.checkIn(_booking.id));
+  final Map<String, String> _pendingPaymentOperations = {};
+
+  Future<void> _collect({bool deposit = false, bool refund = false}) async {
+    final t = AppTranslations.of(context);
+    final max = refund
+        ? _booking.depositPaidAmount - (_booking.depositRefundedAmount ?? 0)
+        : deposit
+        ? (_booking.depositAmount ?? 0) - _booking.depositPaidAmount
+        : _booking.remainingAmount;
+    final controller = TextEditingController(text: CurrencyParser.format(max));
+    final form = GlobalKey<FormState>();
+    final value = await showDialog<double>(
+      context: context,
+      builder: (ctx) => AppAlertDialog(
+        title: Text(
+          t[refund
+              ? 'booking_refund_deposit'
+              : deposit
+              ? 'booking_collect_deposit'
+              : 'booking_collect_payment'],
+        ),
+        content: Form(
+          key: form,
+          child: TextFormField(
+            controller: controller,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [
+              CurrencyInputFormatter(
+                decimalDigits: _booking.currency == 'USD' ? 2 : 0,
+              ),
+            ],
+            decoration: InputDecoration(
+              labelText: t['booking_amount'],
+              suffixText: _booking.currency,
+            ),
+            validator: (v) {
+              final amount = CurrencyParser.tryParse(v ?? '');
+              return amount == null || amount <= 0 || amount > max
+                  ? t['booking_invalid_amount']
+                  : null;
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(t['cancel']),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (form.currentState!.validate())
+                Navigator.pop(ctx, CurrencyParser.parse(controller.text));
+            },
+            child: Text(t['confirm']),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (value == null || !mounted) return;
+    final method = await _showPaymentMethodDialog();
+    if (method == null || !mounted) return;
+    final signature = '$deposit:$refund:$value:${method.name}';
+    final operationId = _pendingPaymentOperations.putIfAbsent(
+      signature,
+      () => const Uuid().v4(),
+    );
+    await _runAction(
+      () async {
+        final success = await _bookingService.recordPayment(
+          _booking.id,
+          value,
+          method,
+          operationId: operationId,
+          deposit: deposit,
+          refund: refund,
+        );
+        if (success) _pendingPaymentOperations.remove(signature);
+        return success;
+      },
+      onSuccess: () =>
+          _paymentsNotifier.refreshPayments(_booking.organizationId),
+    );
+  }
+
+  Future<void> _checkIn() =>
+      _runAction(() => _bookingService.checkIn(_booking.id));
 
   Future<void> _checkOut() async {
     final method = await _showPaymentMethodDialog();
     if (method == null) return;
     await _runAction(
       () => _bookingService.checkOut(_booking.id, paymentMethod: method),
-      onSuccess: () => _paymentsNotifier.refreshPayments(_booking.organizationId),
+      onSuccess: () =>
+          _paymentsNotifier.refreshPayments(_booking.organizationId),
     );
   }
 
@@ -113,9 +226,13 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
     final t = AppTranslations.of(context);
     IconData iconFor(PaymentMethod m) {
       final name = m.name.toLowerCase();
-      if (name.contains('cash') || name.contains('tien_mat')) return Icons.payments_rounded;
-      if (name.contains('card') || name.contains('the')) return Icons.credit_card_rounded;
-      if (name.contains('bank') || name.contains('transfer') || name.contains('chuyen_khoan')) {
+      if (name.contains('cash') || name.contains('tien_mat'))
+        return Icons.payments_rounded;
+      if (name.contains('card') || name.contains('the'))
+        return Icons.credit_card_rounded;
+      if (name.contains('bank') ||
+          name.contains('transfer') ||
+          name.contains('chuyen_khoan')) {
         return Icons.account_balance_rounded;
       }
       return Icons.account_balance_wallet_rounded;
@@ -123,7 +240,8 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
 
     return showDialog<PaymentMethod>(
       context: context,
-      builder: (ctx) => Dialog(
+      builder: (ctx) => AppDialog(
+        scrollable: true,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         elevation: 0,
         backgroundColor: Colors.white,
@@ -143,39 +261,49 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
                   ),
                   borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
                 ),
-                child: Row(children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(Icons.wallet_rounded, color: Colors.white, size: 22),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Text(
-                      t['booking_detail_payment_method'],
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    icon: Container(
-                      padding: const EdgeInsets.all(4),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(8),
+                        color: Colors.white.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      child: const Icon(Icons.close_rounded, color: Colors.white, size: 18),
+                      child: const Icon(
+                        Icons.wallet_rounded,
+                        color: Colors.white,
+                        size: 22,
+                      ),
                     ),
-                    padding: EdgeInsets.zero,
-                  ),
-                ]),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Text(
+                        t['booking_detail_payment_method'],
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      icon: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(
+                          Icons.close_rounded,
+                          color: Colors.white,
+                          size: 18,
+                        ),
+                      ),
+                      padding: EdgeInsets.zero,
+                    ),
+                  ],
+                ),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
@@ -191,31 +319,58 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
                           borderRadius: BorderRadius.circular(12),
                           onTap: () => Navigator.pop(ctx, m),
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 12,
+                            ),
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Colors.grey.withValues(alpha: 0.18)),
+                              border: Border.all(
+                                color: Colors.grey.withValues(alpha: 0.18),
+                              ),
                             ),
-                            child: Row(children: [
-                              Container(
-                                width: 34,
-                                height: 34,
-                                decoration: BoxDecoration(
-                                  color: _DS.primaryLight,
-                                  borderRadius: BorderRadius.circular(9),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 34,
+                                  height: 34,
+                                  decoration: BoxDecoration(
+                                    color: _DS.primaryLight,
+                                    borderRadius: BorderRadius.circular(9),
+                                  ),
+                                  child: Icon(
+                                    iconFor(m),
+                                    size: 17,
+                                    color: _DS.primary,
+                                  ),
                                 ),
-                                child: Icon(iconFor(m), size: 17, color: _DS.primary),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  t[{'cash': 'payment_method_cash', 'bankTransfer': 'payment_method_bank_transfer', 'momo': 'payment_method_momo', 'zalopay': 'payment_method_zalopay', 'creditCard': 'payment_method_credit_card', 'other': 'payment_method_other'}[m.name]!],
-                                  style: const TextStyle(
-                                      fontSize: 13, fontWeight: FontWeight.w600, color: _DS.textPrimary),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    t[{
+                                      'cash': 'payment_method_cash',
+                                      'bankTransfer':
+                                          'payment_method_bank_transfer',
+                                      'momo': 'payment_method_momo',
+                                      'zalopay': 'payment_method_zalopay',
+                                      'creditCard':
+                                          'payment_method_credit_card',
+                                      'other': 'payment_method_other',
+                                    }[m.name]!],
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: _DS.textPrimary,
+                                    ),
+                                  ),
                                 ),
-                              ),
-                              Icon(Icons.chevron_right_rounded, size: 18, color: Colors.grey.shade400),
-                            ]),
+                                Icon(
+                                  Icons.chevron_right_rounded,
+                                  size: 18,
+                                  color: Colors.grey.shade400,
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
@@ -235,7 +390,8 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
     final controller = TextEditingController();
     final reason = await showDialog<String>(
       context: context,
-      builder: (ctx) => Dialog(
+      builder: (ctx) => AppDialog(
+        scrollable: true,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         elevation: 0,
         backgroundColor: Colors.white,
@@ -264,12 +420,20 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
                         color: Colors.white.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(14),
                       ),
-                      child: const Icon(Icons.event_busy_rounded, color: Colors.white, size: 24),
+                      child: const Icon(
+                        Icons.event_busy_rounded,
+                        color: Colors.white,
+                        size: 24,
+                      ),
                     ),
                     const SizedBox(height: 10),
                     Text(
                       t['booking_detail_cancel_title'],
-                      style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ],
                 ),
@@ -284,49 +448,79 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
                       maxLines: 2,
                       decoration: InputDecoration(
                         labelText: t['booking_detail_cancel_reason'],
-                        prefixIcon: const Icon(Icons.notes_rounded, size: 18, color: _DS.textSecondary),
+                        prefixIcon: const Icon(
+                          Icons.notes_rounded,
+                          size: 18,
+                          color: _DS.textSecondary,
+                        ),
                         filled: true,
                         fillColor: _DS.surface,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                         enabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.22)),
+                          borderSide: BorderSide(
+                            color: Colors.grey.withValues(alpha: 0.22),
+                          ),
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: _DS.danger, width: 1.8),
+                          borderSide: const BorderSide(
+                            color: _DS.danger,
+                            width: 1.8,
+                          ),
                         ),
                       ),
                     ),
                     const SizedBox(height: 18),
-                    Row(children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () => Navigator.pop(ctx),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: _DS.textSecondary,
-                            side: BorderSide(color: Colors.grey.withValues(alpha: 0.3)),
-                            padding: const EdgeInsets.symmetric(vertical: 13),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: _DS.textSecondary,
+                              side: BorderSide(
+                                color: Colors.grey.withValues(alpha: 0.3),
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 13),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: Text(
+                              t['close'],
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                           ),
-                          child: Text(t['close'], style: const TextStyle(fontWeight: FontWeight.w600)),
                         ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: FilledButton(
-                          onPressed: () => Navigator.pop(ctx, controller.text),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: _DS.danger,
-                            padding: const EdgeInsets.symmetric(vertical: 13),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            elevation: 0,
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: () =>
+                                Navigator.pop(ctx, controller.text),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: _DS.danger,
+                              padding: const EdgeInsets.symmetric(vertical: 13),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              elevation: 0,
+                            ),
+                            child: Text(
+                              t['booking_detail_cancel_confirm'],
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13,
+                              ),
+                            ),
                           ),
-                          child: Text(t['booking_detail_cancel_confirm'],
-                              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
                         ),
-                      ),
-                    ]),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -336,7 +530,9 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
       ),
     );
     if (reason == null) return;
-    await _runAction(() => _bookingService.cancelBooking(_booking.id, reason: reason));
+    await _runAction(
+      () => _bookingService.cancelBooking(_booking.id, reason: reason),
+    );
   }
 
   @override
@@ -347,7 +543,7 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
     final statusColorDeep = _statusColorDeep(_booking.status);
     final isSmall = MediaQuery.of(context).size.width < 600;
 
-    return Dialog(
+    return AppDialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       elevation: 0,
       backgroundColor: Colors.white,
@@ -370,7 +566,9 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(24),
+                ),
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -381,7 +579,11 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
                       color: Colors.white.withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(Icons.person_rounded, color: Colors.white, size: 22),
+                    child: const Icon(
+                      Icons.person_rounded,
+                      color: Colors.white,
+                      size: 22,
+                    ),
                   ),
                   const SizedBox(width: 14),
                   Expanded(
@@ -410,7 +612,10 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
                         ),
                         const SizedBox(height: 8),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.white.withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(20),
@@ -428,14 +633,20 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
                     ),
                   ),
                   IconButton(
-                    onPressed: _busy ? null : () => Navigator.of(context).pop(true),
+                    onPressed: _busy
+                        ? null
+                        : () => Navigator.of(context).pop(true),
                     icon: Container(
                       padding: const EdgeInsets.all(4),
                       decoration: BoxDecoration(
                         color: Colors.white.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: const Icon(Icons.close_rounded, color: Colors.white, size: 18),
+                      child: const Icon(
+                        Icons.close_rounded,
+                        color: Colors.white,
+                        size: 18,
+                      ),
                     ),
                     padding: EdgeInsets.zero,
                   ),
@@ -451,24 +662,65 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
                   decoration: BoxDecoration(
                     color: _DS.surface,
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: Colors.grey.withValues(alpha: 0.15)),
+                    border: Border.all(
+                      color: Colors.grey.withValues(alpha: 0.15),
+                    ),
                   ),
                   child: Column(
                     children: [
-                      _detailRow(Icons.login_rounded, t['booking_check_in'], fmt.format(_booking.startTime)),
-                      _detailRow(Icons.logout_rounded, t['booking_check_out'], fmt.format(_booking.endTime)),
-                      _detailRow(Icons.schedule_rounded, t['booking_detail_duration'],
-                          t.textWithParams('booking_form_duration_hours',
-                              {'count': _booking.durationHours.toStringAsFixed(1)})),
-                      _detailRow(Icons.payments_rounded, t['booking_detail_total'], _formatCurrency(_booking.totalPrice),
-                          valueColor: _DS.primary, bold: true),
-                      _detailRow(Icons.check_circle_outline_rounded, t['payment_status_paid'],
-                          _formatCurrency(_booking.paidAmount)),
+                      _detailRow(
+                        Icons.login_rounded,
+                        t['booking_check_in'],
+                        fmt.format(_booking.startTime),
+                      ),
+                      _detailRow(
+                        Icons.logout_rounded,
+                        t['booking_check_out'],
+                        fmt.format(_booking.endTime),
+                      ),
+                      _detailRow(
+                        Icons.schedule_rounded,
+                        t['booking_detail_duration'],
+                        t.textWithParams('booking_form_duration_hours', {
+                          'count': _booking.durationHours.toStringAsFixed(1),
+                        }),
+                      ),
+                      _detailRow(
+                        Icons.payments_rounded,
+                        t['booking_detail_total'],
+                        _formatCurrency(_booking.totalPrice),
+                        valueColor: _DS.primary,
+                        bold: true,
+                      ),
+                      _detailRow(
+                        Icons.check_circle_outline_rounded,
+                        t['payment_status_paid'],
+                        _formatCurrency(_booking.paidAmount),
+                      ),
+                      _detailRow(
+                        Icons.savings,
+                        t['booking_deposit_collected'],
+                        _formatCurrency(_booking.depositPaidAmount),
+                      ),
+                      if ((_booking.depositRefundedAmount ?? 0) > 0)
+                        _detailRow(
+                          Icons.undo,
+                          t['booking_deposit_refunded'],
+                          _formatCurrency(_booking.depositRefundedAmount!),
+                        ),
                       if (_booking.depositAmount != null)
-                        _detailRow(Icons.savings_rounded, t['payment_type_deposit'],
-                            _formatCurrency(_booking.depositAmount!)),
+                        _detailRow(
+                          Icons.savings_rounded,
+                          t['payment_type_deposit'],
+                          _formatCurrency(_booking.depositAmount!),
+                        ),
                       if (_booking.notes != null && _booking.notes!.isNotEmpty)
-                        _detailRow(Icons.notes_rounded, t['booking_form_notes'], _booking.notes!, isLast: true),
+                        _detailRow(
+                          Icons.notes_rounded,
+                          t['booking_form_notes'],
+                          _booking.notes!,
+                          isLast: true,
+                        ),
                     ],
                   ),
                 ),
@@ -479,20 +731,62 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
               decoration: BoxDecoration(
                 color: Colors.white,
-                border: Border(top: BorderSide(color: Colors.grey.withValues(alpha: 0.1))),
-                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(24)),
+                border: Border(
+                  top: BorderSide(color: Colors.grey.withValues(alpha: 0.1)),
+                ),
+                borderRadius: const BorderRadius.vertical(
+                  bottom: Radius.circular(24),
+                ),
               ),
               child: _busy
                   ? const Padding(
                       padding: EdgeInsets.symmetric(vertical: 4),
                       child: Center(
-                          child: CircularProgressIndicator(strokeWidth: 2.4, color: _DS.primary)),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.4,
+                          color: _DS.primary,
+                        ),
+                      ),
                     )
                   : Wrap(
                       alignment: WrapAlignment.end,
                       spacing: 8,
                       runSpacing: 8,
                       children: [
+                        if (_booking.isActive && widget.onEdit != null)
+                          OutlinedButton.icon(
+                            onPressed: () async {
+                              await widget.onEdit!();
+                              if (mounted) await _refresh();
+                            },
+                            icon: const Icon(Icons.edit),
+                            label: Text(t['booking_edit']),
+                          ),
+                        if (_booking.isActive && _booking.remainingAmount > 0)
+                          OutlinedButton(
+                            onPressed: () => _collect(),
+                            child: Text(t['booking_collect_payment']),
+                          ),
+                        if (_booking.isActive &&
+                            (_booking.depositAmount ?? 0) >
+                                _booking.depositPaidAmount)
+                          OutlinedButton(
+                            onPressed: () => _collect(deposit: true),
+                            child: Text(t['booking_collect_deposit']),
+                          ),
+                        if (_booking.depositPaidAmount >
+                            (_booking.depositRefundedAmount ?? 0))
+                          OutlinedButton(
+                            onPressed: () => _collect(refund: true),
+                            child: Text(t['booking_refund_deposit']),
+                          ),
+                        if (_booking.status == BookingStatus.pending)
+                          OutlinedButton(
+                            onPressed: () => _runAction(
+                              () => _bookingService.confirmBooking(_booking.id),
+                            ),
+                            child: Text(t['confirm']),
+                          ),
                         if (_booking.status == BookingStatus.pending ||
                             _booking.status == BookingStatus.confirmed)
                           FilledButton.icon(
@@ -501,8 +795,13 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
                             label: Text(t['booking_check_in']),
                             style: FilledButton.styleFrom(
                               backgroundColor: const Color(0xFF3B6D11),
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
                               elevation: 0,
                             ),
                           ),
@@ -513,8 +812,13 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
                             label: Text(t['booking_check_out']),
                             style: FilledButton.styleFrom(
                               backgroundColor: _DS.primary,
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
                               elevation: 0,
                             ),
                           ),
@@ -523,9 +827,16 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
                             onPressed: _cancel,
                             style: OutlinedButton.styleFrom(
                               foregroundColor: _DS.danger,
-                              side: BorderSide(color: _DS.danger.withValues(alpha: 0.4)),
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              side: BorderSide(
+                                color: _DS.danger.withValues(alpha: 0.4),
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
                             ),
                             icon: const Icon(Icons.close_rounded, size: 16),
                             label: Text(t['cancel']),
@@ -534,11 +845,21 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
                           onPressed: () => Navigator.of(context).pop(true),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: _DS.textSecondary,
-                            side: BorderSide(color: Colors.grey.withValues(alpha: 0.3)),
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            side: BorderSide(
+                              color: Colors.grey.withValues(alpha: 0.3),
+                            ),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
-                          child: Text(t['close'], style: const TextStyle(fontWeight: FontWeight.w600)),
+                          child: Text(
+                            t['close'],
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
                         ),
                       ],
                     ),
@@ -566,7 +887,10 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
           const SizedBox(width: 8),
           SizedBox(
             width: 96,
-            child: Text(label, style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+            child: Text(
+              label,
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+            ),
           ),
           Expanded(
             child: Text(

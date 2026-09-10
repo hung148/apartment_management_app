@@ -1,3 +1,5 @@
+import 'package:phan_mem_quan_ly_can_ho/widgets/app_dialog.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/app_money.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/responsive_form_row.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/currency_formatter.dart';
 import 'package:phan_mem_quan_ly_can_ho/main.dart';
@@ -50,7 +52,7 @@ class _DialogShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
-    return Dialog(
+    return AppDialog(
       backgroundColor: Colors.transparent,
       insetPadding: EdgeInsets.symmetric(
         horizontal: size.width < 600 ? 12 : 32,
@@ -842,10 +844,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
   String _formatDate(DateTime date) =>
       DateFormat(AppTranslations.of(context).dateFormat).format(date);
 
-  String _formatCurrency(double amount) {
-    final f = NumberFormat('#,###', 'vi_VN');
-    return '${f.format(amount)} ₫';
-  }
+  String _formatCurrency(double amount, [String currency = 'VND']) => AppMoney.format(amount,currency);
 
   String _formatCurrencyShort(double amount) {
     if (amount >= 1000000000) return '${(amount / 1000000000).toStringAsFixed(1)}B';
@@ -1392,11 +1391,11 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
                                   {'days': tenant.daysLiving})),
                           if (tenant.monthlyRent != null)
                             _DetailRow(t['tenant_detail_monthly_rent'],
-                                _formatCurrency(tenant.monthlyRent!),
+                                _formatCurrency(tenant.monthlyRent!,tenant.currency),
                                 valueColor: const Color(0xFF3B6D11)),
                           if (tenant.deposit != null)
                             _DetailRow(t['tenant_detail_deposit'],
-                                _formatCurrency(tenant.deposit!)),
+                                _formatCurrency(tenant.deposit!,tenant.currency)),
                           if (tenant.apartmentType != null &&
                               tenant.apartmentType!.isNotEmpty)
                             _DetailRow(t['tenant_detail_apartment_type'],
@@ -2896,7 +2895,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
                             if (tenant.monthlyRent != null)
                               _tenantInfoChip(
                                   Icons.payments_rounded,
-                                  _formatCurrency(tenant.monthlyRent!),
+                                  _formatCurrency(tenant.monthlyRent!,tenant.currency),
                                   Colors.green.shade700),
                             if (tenant.vehicles != null &&
                                 tenant.vehicles!.isNotEmpty)
@@ -3164,7 +3163,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
                           ),
                         ]),
                         const SizedBox(height: 4),
-                        Text(_formatCurrency(payment.totalAmount),
+                        Text(_formatCurrency(payment.totalAmount,payment.currency),
                             style: TextStyle(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w800,

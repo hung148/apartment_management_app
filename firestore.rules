@@ -1,0 +1,94 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function member(orgId) {
+      return signedIn() && exists(/databases/$(database)/documents/memberships/$(request.auth.uid + '_' + orgId)) &&
+        get(/databases/$(database)/documents/memberships/$(request.auth.uid + '_' + orgId)).data.status == 'active';
+    }
+    function admin(orgId) {
+      return member(orgId) && get(/databases/$(database)/documents/memberships/$(request.auth.uid + '_' + orgId)).data.role == 'admin';
+    }
+    function sameOrganization() {
+      return request.resource.data.organizationId == resource.data.organizationId;
+    }
+    function bookingPayment(data) {
+      return data.get('bookingId', null) != null;
+    }
+    // AI quotas, drafts, provider requests and paid entitlements are server-only.
+    match /aiUsage/{id} { allow read, write: if false; }
+    match /aiRequests/{id} { allow read, write: if false; }
+    match /aiDrafts/{id} { allow read, write: if false; }
+    match /aiEntitlements/{id} { allow read, write: if false; }
+    match /owners/{ownerId} {
+      allow read, write: if signedIn() && request.auth.uid == ownerId;
+    }
+    match /organizations/{orgId} {
+      allow read: if member(orgId);
+      allow create: if signedIn() && request.resource.data.createdBy == request.auth.uid;
+      allow update: if admin(orgId) && request.resource.data.createdBy == resource.data.createdBy;
+      allow delete: if admin(orgId);
+    }
+    match /invite_codes/{code} {
+      allow get: if signedIn();
+      // Codes can be looked up, but cannot be enumerated.
+      allow list: if false;
+      allow create: if signedIn() && (
+        admin(request.resource.data.orgId) ||
+        getAfter(/databases/$(database)/documents/organizations/$(request.resource.data.orgId)).data.createdBy == request.auth.uid
+      );
+      allow delete: if admin(resource.data.orgId);
+    }
+    match /memberships/{membershipId} {
+      allow get: if signedIn() && (!exists(/databases/$(database)/documents/memberships/$(membershipId)) ||
+        resource.data.ownerId == request.auth.uid || admin(resource.data.organizationId));
+      allow list: if signedIn() && (resource.data.ownerId == request.auth.uid || admin(resource.data.organizationId));
+      allow create: if signedIn() && request.resource.data.ownerId == request.auth.uid &&
+        membershipId == request.auth.uid + '_' + request.resource.data.organizationId &&
+        request.resource.data.status == 'active' && (
+          (request.resource.data.role == 'admin' &&
+            getAfter(/databases/$(database)/documents/organizations/$(request.resource.data.organizationId)).data.createdBy == request.auth.uid) ||
+          (request.resource.data.role == 'member' &&
+            get(/databases/$(database)/documents/invite_codes/$(request.resource.data.inviteCode)).data.orgId == request.resource.data.organizationId)
+        );
+      allow update: if signedIn() && sameOrganization() && request.resource.data.ownerId == resource.data.ownerId && (
+        admin(resource.data.organizationId) ||
+        (resource.data.ownerId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'email']))
+      );
+      allow delete: if signedIn() && (resource.data.ownerId == request.auth.uid || admin(resource.data.organizationId));
+    }
+    match /buildings/{buildingId} {
+      allow read: if member(resource.data.organizationId);
+      allow create: if member(request.resource.data.organizationId);
+      allow update: if member(resource.data.organizationId) && sameOrganization();
+      allow delete: if member(resource.data.organizationId);
+    }
+    match /rooms/{roomId} {
+      allow read: if member(resource.data.organizationId);
+      allow create: if member(request.resource.data.organizationId) && !request.resource.data.keys().hasAny(['bookingRevision']);
+      allow update: if member(resource.data.organizationId) && sameOrganization() &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['bookingRevision']);
+      allow delete: if member(resource.data.organizationId);
+    }
+    match /bookings/{bookingId} {
+      allow read: if member(resource.data.organizationId);
+      // Admin SDK in authenticated callable functions owns all booking writes.
+      allow write: if false;
+    }
+    match /payments/{paymentId} {
+      allow read: if member(resource.data.organizationId);
+      allow create: if member(request.resource.data.organizationId) && !bookingPayment(request.resource.data) && !paymentId.matches('^booking_.*');
+      allow update: if member(resource.data.organizationId) && sameOrganization() &&
+        !bookingPayment(resource.data) && !bookingPayment(request.resource.data) && !paymentId.matches('^booking_.*');
+      allow delete: if member(resource.data.organizationId) && !bookingPayment(resource.data) && !paymentId.matches('^booking_.*');
+    }
+    match /tenants/{tenantId} {
+      allow read: if member(resource.data.organizationId);
+      // Lease creation and occupancy changes must acquire the room lock on the server.
+      allow create: if false;
+      allow update: if member(resource.data.organizationId) && sameOrganization() &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['roomId', 'buildingId', 'status', 'moveInDate', 'moveOutDate', 'currency']);
+      allow delete: if admin(resource.data.organizationId);
+    }
+  }
+}

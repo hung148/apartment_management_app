@@ -1,3 +1,4 @@
+import 'package:phan_mem_quan_ly_can_ho/utils/app_theme.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/ai_agent_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/auth_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/booking_notifier.dart';
@@ -24,7 +25,6 @@ import 'firebase_options.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:get_it/get_it.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:window_manager/window_manager.dart';
@@ -33,18 +33,19 @@ final navigatorKey = GlobalKey<NavigatorState>();
 final _chatRouteObserver = _ChatRouteObserver();
 
 // In _ChatRouteObserver, override didPop for ALL route types:
-class _ChatRouteObserver extends NavigatorObserver {  // ← change from RouteObserver<PageRoute>
-   static const _allowedRoutes = {
+class _ChatRouteObserver extends NavigatorObserver {
+  // ← change from RouteObserver<PageRoute>
+  static const _allowedRoutes = {
     AppRouter.dashboardScreen,
     AppRouter.oranizationScreen,
-    AppRouter.buildingRoomScreen, 
-    AppRouter.roomDetailScreen,   
+    AppRouter.buildingRoomScreen,
+    AppRouter.roomDetailScreen,
   };
 
   void _update(Route? route) {
     final name = route?.settings.name;
     if (name != null && _allowedRoutes.contains(name)) {
-      ChatOverlayManager.install();  // re-inserts on top every time
+      ChatOverlayManager.install(); // re-inserts on top every time
     } else if (route is PageRoute) {
       ChatOverlayManager.uninstall();
     }
@@ -52,7 +53,8 @@ class _ChatRouteObserver extends NavigatorObserver {  // ← change from RouteOb
   }
 
   @override
-  void didPush(Route route, Route? previousRoute) => _update(route is PageRoute ? route : previousRoute);
+  void didPush(Route route, Route? previousRoute) =>
+      _update(route is PageRoute ? route : previousRoute);
 
   @override
   void didPop(Route route, Route? previousRoute) => _update(previousRoute);
@@ -101,7 +103,8 @@ void main() async {
   };
 
   PlatformDispatcher.instance.onError = (error, stack) {
-    if (error is PlatformException && error.code == 'permission-denied') return true;
+    if (error is PlatformException && error.code == 'permission-denied')
+      return true;
     if (error.toString().contains('permission-denied')) return true;
     return false;
   };
@@ -120,9 +123,7 @@ void main() async {
     await windowManager.show();
   }
 
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   try {
     if (!kIsWeb) {
@@ -137,15 +138,15 @@ void main() async {
 
   await FirebaseAuth.instance.authStateChanges().first;
 
-  await dotenv.load(fileName: '.env');
-  
+
+
   setup();
 
   final prefs = await SharedPreferences.getInstance();
   final savedLang = prefs.getString('language_code') ?? 'vi';
   final savedCountry = savedLang == 'vi' ? 'VN' : 'US';
   getIt<LocaleNotifier>().setLocale(Locale(savedLang, savedCountry));
-  
+
   runApp(const MyApp());
 }
 
@@ -170,21 +171,10 @@ class MyApp extends StatelessWidget {
             GlobalWidgetsLocalizations.delegate,
             GlobalCupertinoLocalizations.delegate,
           ],
-          supportedLocales: const [
-            Locale('vi', 'VN'),
-            Locale('en', 'US'),
-          ],
-          onGenerateTitle: (context) => AppTranslations.of(context)['app_title'],
-          theme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
-            inputDecorationTheme: const InputDecorationTheme(
-              isDense: false,
-              contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-              floatingLabelBehavior: FloatingLabelBehavior.always,
-              errorMaxLines: 3,
-              helperMaxLines: 3,
-            ),
-          ),
+          supportedLocales: const [Locale('vi', 'VN'), Locale('en', 'US')],
+          onGenerateTitle: (context) =>
+              AppTranslations.of(context)['app_title'],
+          theme: buildAppTheme(),
           debugShowCheckedModeBanner: false,
           initialRoute: '/',
           onGenerateRoute: AppRouter.generateRoute,

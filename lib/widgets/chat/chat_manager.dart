@@ -1,279 +1,13 @@
-import 'dart:convert';
+import 'package:phan_mem_quan_ly_can_ho/screens/ai_import_dialog.dart';
+import 'package:phan_mem_quan_ly_can_ho/screens/ai_subscription_dialog.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'dart:async' show TimeoutException;
 
 import 'package:phan_mem_quan_ly_can_ho/main.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/ai_agent_service.dart';
-import 'package:phan_mem_quan_ly_can_ho/services/auth_service.dart';
-import 'package:phan_mem_quan_ly_can_ho/services/building_service.dart';
-import 'package:phan_mem_quan_ly_can_ho/services/organization_service.dart';
-import 'package:phan_mem_quan_ly_can_ho/services/payments_service.dart';
-import 'package:phan_mem_quan_ly_can_ho/services/room_service.dart';
-import 'package:phan_mem_quan_ly_can_ho/services/tenants_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
-import 'package:http/http.dart' as http;
-
-Future<Map<String, dynamic>> _callWithRetry({
-  required String apiKey,
-  required String modelName,
-  required String systemPrompt,
-  required String userMsg,
-  required List<Map<String, String>> history,
-  int maxRetries = 3,
-}) async {
-  int attempt = 0;
-  while (true) {
-    try {
-      return await _callGeminiHttp(
-        apiKey: apiKey,
-        modelName: modelName,
-        systemPrompt: systemPrompt,
-        userMsg: userMsg,
-        history: history,
-      ).timeout(const Duration(seconds: 30));
-    } catch (e) {
-      attempt++;
-      final msg = e.toString();
-      final is503 = msg.contains('503') || msg.contains('UNAVAILABLE');
-      final is429 = msg.contains('429') || msg.contains('RESOURCE_EXHAUSTED');
-
-      if ((!is503 && !is429) || attempt >= maxRetries) rethrow;
-
-      final waitSeconds = is429 ? 60 : (2 << (attempt - 1));
-      await Future.delayed(Duration(seconds: waitSeconds));
-    }
-  }
-}
-
-Future<Map<String, dynamic>> _sendToolResultWithRetry({
-  required String apiKey,
-  required String modelName,
-  required String systemPrompt,
-  required List<Map<String, dynamic>> contents,
-  int maxRetries = 3,
-}) async {
-  int attempt = 0;
-  while (true) {
-    try {
-      return await _sendToolResult(
-        apiKey: apiKey,
-        modelName: modelName,
-        systemPrompt: systemPrompt,
-        contents: contents,
-      ).timeout(const Duration(seconds: 30));
-    } catch (e) {
-      attempt++;
-      final is503 = e.toString().contains('503') || e.toString().contains('UNAVAILABLE');
-      if (!is503 || attempt >= maxRetries) rethrow;
-      await Future.delayed(Duration(seconds: 2 << (attempt - 1)));
-    }
-  }
-}
-
-// =============================================================================
-// FUNCTION DECLARATIONS
-// =============================================================================
-
-const List<Map<String, dynamic>> _functionDeclarations = [
-  {
-    'name': 'get_organizations',
-    'description':
-        'Get all organizations the current user belongs to. '
-        'Call this first when the user mentions an organization by name, '
-        'to resolve the correct organizationId before calling other tools.',
-    'parameters': {
-      'type': 'object',
-      'properties': {},
-    },
-  },
-  {
-    'name': 'get_buildings',
-    'description':
-        'List all buildings in an organization. '
-        'Ask the user which organization if not already known.',
-    'parameters': {
-      'type': 'object',
-      'properties': {
-        'organizationId': {'type': 'string', 'description': 'The organization ID'},
-      },
-      'required': ['organizationId'],
-    },
-  },
-  {
-    'name': 'get_tenants',
-    'description':
-        'List tenants in an organization. '
-        'Optionally filter by buildingId.',
-    'parameters': {
-      'type': 'object',
-      'properties': {
-        'organizationId': {'type': 'string', 'description': 'The organization ID'},
-        'buildingId': {'type': 'string', 'description': 'Optional: filter by building ID'},
-      },
-      'required': ['organizationId'],
-    },
-  },
-  {
-    'name': 'get_payments',
-    'description':
-        'List payments in an organization. '
-        'Optionally filter by buildingId, tenantId, or overdue status.',
-    'parameters': {
-      'type': 'object',
-      'properties': {
-        'organizationId': {'type': 'string', 'description': 'The organization ID'},
-        'buildingId': {'type': 'string', 'description': 'Optional: filter by building ID'},
-        'tenantId': {'type': 'string', 'description': 'Optional: filter by tenant ID'},
-        'overdueOnly': {
-          'type': 'boolean',
-          'description': 'If true, return only overdue payments',
-        },
-      },
-      'required': ['organizationId'],
-    },
-  },
-  {
-    'name': 'create_building',
-    'description':
-        'Create a new building. '
-        'ALWAYS ask the user for the organization, building name, and address '
-        'before calling this. Never invent a name or address.',
-    'parameters': {
-      'type': 'object',
-      'properties': {
-        'organizationId': {'type': 'string', 'description': 'The organization ID'},
-        'name': {'type': 'string', 'description': 'Building name provided by the user'},
-        'address': {'type': 'string', 'description': 'Building address provided by the user'},
-      },
-      'required': ['organizationId', 'name', 'address'],
-    },
-  },
-  {
-    'name': 'get_rooms',
-    'description': 'List all rooms in a building.',
-    'parameters': {
-      'type': 'object',
-      'properties': {
-        'organizationId': {'type': 'string', 'description': 'The organization ID'},
-        'buildingId': {'type': 'string', 'description': 'The building ID'},
-      },
-      'required': ['organizationId', 'buildingId'],
-    },
-  },
-];
-
-// =============================================================================
-// GEMINI HTTP
-// =============================================================================
-
-Future<Map<String, dynamic>> _callGeminiHttp({
-  required String apiKey,
-  required String modelName,
-  required String systemPrompt,
-  required String userMsg,
-  required List<Map<String, String>> history,
-}) async {
-  final url = Uri.parse(
-    'https://generativelanguage.googleapis.com/v1beta/models/$modelName:generateContent?key=$apiKey',
-  );
-
-  final contents = <Map<String, dynamic>>[];
-  for (final h in history) {
-    contents.add({
-      'role': h['role'] == 'user' ? 'user' : 'model',
-      'parts': [
-        {'text': h['text']}
-      ],
-    });
-  }
-  contents.add({
-    'role': 'user',
-    'parts': [
-      {'text': userMsg}
-    ],
-  });
-
-  final body = jsonEncode({
-    'system_instruction': {
-      'parts': [
-        {'text': systemPrompt}
-      ],
-    },
-    'contents': contents,
-    'tools': [
-      {'function_declarations': _functionDeclarations}
-    ],
-  });
-
-  final response = await http.post(
-    url,
-    headers: {'Content-Type': 'application/json'},
-    body: body,
-  );
-
-  if (response.statusCode != 200) {
-    throw Exception('Gemini API error ${response.statusCode}: ${response.body}');
-  }
-
-  return jsonDecode(response.body) as Map<String, dynamic>;
-}
-
-Future<Map<String, dynamic>> _sendToolResult({
-  required String apiKey,
-  required String modelName,
-  required String systemPrompt,
-  required List<Map<String, dynamic>> contents, // already fully built
-}) async {
-  final url = Uri.parse(
-    'https://generativelanguage.googleapis.com/v1beta/models/$modelName:generateContent?key=$apiKey',
-  );
-
-  final body = jsonEncode({
-    'system_instruction': {
-      'parts': [{'text': systemPrompt}],
-    },
-    'contents': contents,
-    'tools': [
-      {'function_declarations': _functionDeclarations}
-    ],
-  });
-
-  final response = await http.post(
-    url,
-    headers: {'Content-Type': 'application/json'},
-    body: body,
-  );
-
-  if (response.statusCode != 200) {
-    throw Exception('Gemini follow-up error ${response.statusCode}: ${response.body}');
-  }
-
-  return jsonDecode(response.body) as Map<String, dynamic>;
-}
-
-String _extractText(Map<String, dynamic> json) {
-  final candidates = json['candidates'] as List?;
-  if (candidates == null || candidates.isEmpty) return '';
-  final content = candidates[0]['content'] as Map<String, dynamic>?;
-  final parts = content?['parts'] as List?;
-  if (parts == null || parts.isEmpty) return '';
-  return parts[0]['text'] as String? ?? '';
-}
-
-Map<String, dynamic>? _extractFunctionCall(Map<String, dynamic> json) {
-  final candidates = json['candidates'] as List?;
-  if (candidates == null || candidates.isEmpty) return null;
-  final content = candidates[0]['content'] as Map<String, dynamic>?;
-  final parts = content?['parts'] as List?;
-  if (parts == null || parts.isEmpty) return null;
-  for (final part in parts) {
-    if ((part as Map)['functionCall'] != null) {
-      return part['functionCall'] as Map<String, dynamic>;
-    }
-  }
-  return null;
-}
 
 // =============================================================================
 // OVERLAY MANAGER
@@ -361,8 +95,8 @@ class _ChatOverlay extends StatelessWidget {
                 offset: isOpen
                     ? Offset.zero
                     : isSmall
-                        ? const Offset(0, 1.0)
-                        : const Offset(1.0, 0),
+                    ? const Offset(0, 1.0)
+                    : const Offset(1.0, 0),
                 duration: const Duration(milliseconds: 280),
                 curve: Curves.easeInOut,
                 child: _ChatPanel(onClose: ChatOverlayManager.closePanel),
@@ -437,7 +171,9 @@ class _DraggableFabState extends State<_DraggableFab> {
           child: MouseRegion(
             onEnter: (_) => setState(() => _hovered = true),
             onExit: (_) => setState(() => _hovered = false),
-            cursor: _dragging ? SystemMouseCursors.grabbing : SystemMouseCursors.grab,
+            cursor: _dragging
+                ? SystemMouseCursors.grabbing
+                : SystemMouseCursors.grab,
             child: GestureDetector(
               onTap: _didMove ? null : widget.onTap,
               onPanStart: (d) {
@@ -451,7 +187,10 @@ class _DraggableFabState extends State<_DraggableFab> {
                   if (!_dragging) setState(() => _dragging = true);
                 }
                 if (!_didMove) return;
-                widget.positionNotifier.value = _toFrac(_posStart + delta, screen);
+                widget.positionNotifier.value = _toFrac(
+                  _posStart + delta,
+                  screen,
+                );
               },
               onPanEnd: (_) {
                 _didMove = false;
@@ -504,28 +243,43 @@ class _ChatPanelState extends State<_ChatPanel> {
   final _scrollController = ScrollController();
   final _streamingText = ValueNotifier<String>('');
 
+  Map<String, dynamic>? _usage;
+  Future<void> _refreshUsage() async {
+    try {
+      final value = await _ai.usage();
+      if (mounted) setState(() => _usage = value);
+    } catch (_) {}
+  }
+
+  Future<void> _upload() async {
+    final count = await showDialog<int>(
+      context: context,
+      builder: (_) => const AIImportDialog(),
+    );
+    if (count != null && mounted)
+      setState(
+        () => _messages.add(
+          _ChatMessage(
+            text: AppTranslations.of(
+              context,
+            ).textWithParams('ai_import_saved', {'count': count}),
+            isUser: false,
+          ),
+        ),
+      );
+    await _refreshUsage();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _refreshUsage();
+  }
+
   bool _loading = false;
   bool _isStreaming = false;
   bool _scrollPending = false;
   double _lastKeyboardInset = 0;
-
-  String get _systemPrompt {
-    final isVi = getIt<LocaleNotifier>().locale.languageCode == 'vi';
-    
-    if (isVi) {
-      return 'Bạn là trợ lý AI cho ứng dụng quản lý căn hộ. '
-          'Hãy trả lời ngắn gọn, rõ ràng. '
-          'Khi cần thông tin về tổ chức, tòa nhà, người thuê hoặc thanh toán — hãy dùng công cụ. '
-          'Khi người dùng yêu cầu tạo dữ liệu: LUÔN hỏi đầy đủ thông tin trước khi gọi công cụ. '
-          'Không bao giờ tự đặt tên hoặc bịa thông tin.';
-    }
-    
-    return 'You are an AI assistant for an apartment management app. '
-        'Be concise and clear. '
-        'When you need data about organizations, buildings, tenants, or payments — use the provided tools. '
-        'When the user asks to create data: ALWAYS ask for all required info before calling any tool. '
-        'Never invent names or details.';
-  }
 
   AIAgentService get _ai => getIt<AIAgentService>();
 
@@ -559,206 +313,20 @@ class _ChatPanelState extends State<_ChatPanel> {
   // Tool executor
   // ---------------------------------------------------------------------------
 
-  Future<String> _executeTool(String name, Map<String, dynamic> args) async {
-    final userId = getIt<AuthService>().currentUser?.uid;
-    if (userId == null) return 'Error: not authenticated.';
-
-    // Permission check for org-scoped tools
-    final orgId = args['organizationId'] as String?;
-    if (orgId != null && orgId.isNotEmpty) {
-      final membership = await getIt<OrganizationService>()
-          .getUserMembership(userId, orgId);
-      if (membership == null) {
-        return 'Access denied: you are not a member of this organization.';
-      }
-      const writeTools = {'create_building'};
-      if (writeTools.contains(name) && membership.role != 'admin') {
-        return 'Access denied: admin role required for this action.';
-      }
-    }
-
-    try {
-      switch (name) {
-        case 'get_organizations':
-          final orgs = await getIt<OrganizationService>()
-              .getUserOrganizations(userId);
-          if (orgs.isEmpty) return 'No organizations found.';
-          return orgs.map((o) => '- ${o.name} (ID: ${o.id})').join('\n');
-
-        case 'get_buildings':
-          final buildings = await getIt<BuildingService>()
-              .getOrganizationBuildings(orgId!);
-          if (buildings.isEmpty) return 'No buildings found.';
-          return buildings
-              .map((b) => '- ${b.name}, ${b.address} (ID: ${b.id})')
-              .join('\n');
-
-        case 'get_tenants':
-          final bid = args['buildingId'] as String?;
-          final tenants = bid != null && bid.isNotEmpty
-              ? await getIt<TenantService>()
-                  .getBuildingTenants(orgId!, bid)
-              : await getIt<TenantService>()
-                  .getOrganizationTenants(orgId!);
-          if (tenants.isEmpty) return 'No tenants found.';
-          return tenants
-              .map((t) => '- ${t.fullName}, Phone: ${t.phoneNumber}, Room: ${t.roomId}')
-              .join('\n');
-
-        case 'get_payments':
-          final bid = args['buildingId'] as String?;
-          final tid = args['tenantId'] as String?;
-          final overdueOnly = args['overdueOnly'] as bool? ?? false;
-
-          final payments = overdueOnly
-              ? await getIt<PaymentService>().getOverduePayments(orgId!)
-              : bid != null && bid.isNotEmpty
-                  ? await getIt<PaymentService>()
-                      .getBuildingPayments(orgId!, bid)
-                  : tid != null && tid.isNotEmpty
-                      ? await getIt<PaymentService>()
-                          .getTenantPayments(orgId!, tid)
-                      : await getIt<PaymentService>()
-                          .getOrganizationPayments(orgId!);
-
-          if (payments.isEmpty) return 'No payments found.';
-          return payments
-              .map((p) =>
-                  '- ${p.tenantName}: ${p.totalAmount.toStringAsFixed(0)}đ '
-                  '(${p.status.name}, due: ${p.dueDate.day}/${p.dueDate.month}/${p.dueDate.year})')
-              .join('\n');
-
-        case 'create_building':
-          final buildingName = args['name'] as String? ?? '';
-          final address = args['address'] as String? ?? '';
-          if (buildingName.isEmpty) return 'Missing building name.';
-
-          final newId = await getIt<BuildingService>()
-              .addBuildingFromDialogResult(
-            organizationId: orgId!,
-            dialogResult: {
-              'name': buildingName,
-              'address': address,
-              'autoGenerateRooms': false,
-            },
-          );
-          if (newId == null) return 'Failed to create building. Please try again.';
-          return 'Building "$buildingName" created successfully. '
-              'You can now add rooms from the Buildings screen.';
-        
-        case 'get_rooms':
-          final bid = args['buildingId'] as String? ?? '';
-          if (bid.isEmpty) return 'Missing buildingId.';
-          final rooms = await getIt<RoomService>()
-              .getBuildingRooms(orgId!, bid);
-          if (rooms.isEmpty) return 'No rooms found in this building.';
-          return rooms
-              .map((r) => '- ${r.roomNumber}, Type: ${r.roomType}, Area: ${r.area}m² (ID: ${r.id})')
-              .join('\n');
-        
-        default:
-          return 'Unknown tool: $name';
-      }
-    } catch (e) {
-      return 'Tool error: $e';
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Reply with function calling support
-  // ---------------------------------------------------------------------------
-
   Future<void> _streamReply(String userText) async {
     final t = AppTranslations.of(context);
-    final msgNotConfigured = t.text('chat_not_configured');
-    final msgTimeout       = t.text('chat_error_timeout');   // raw template
-    final msgError         = t.text('chat_error_generic');   // raw template
-
-    if (_ai.apiKey.isEmpty) {
-      if (mounted) {
-        setState(() {
-          _messages.add(_ChatMessage(
-            text: msgNotConfigured,
-            isUser: false,
-          ));
-          _loading = false;
-          _isStreaming = false;
-        });
-      }
-      return;
-    }
+    final msgTimeout = t.text('chat_error_timeout'); // raw template
 
     final historyData = List<Map<String, String>>.from(_history);
     _streamingText.value = '';
     final buffer = StringBuffer();
 
     try {
-      // Build contents list once — we'll append to it each tool round
-      final contents = <Map<String, dynamic>>[];
-      for (final h in historyData) {
-        contents.add({
-          'role': h['role'] == 'user' ? 'user' : 'model',
-          'parts': [{'text': h['text']}],
-        });
-      }
-      contents.add({
-        'role': 'user',
-        'parts': [{'text': userText}],
-      });
-
-      // First call
-      var responseJson = await _callWithRetry(
-        apiKey: _ai.apiKey,
-        modelName: _ai.modelName,
-        systemPrompt: _systemPrompt,
-        userMsg: userText,
+      final result = await _ai.chat(
+        message: userText,
         history: historyData,
+        language: t.locale.languageCode,
       );
-
-      // Loop to handle chained tool calls (e.g. get_organizations → get_buildings)
-      while (true) {
-        final functionCall = _extractFunctionCall(responseJson);
-        if (functionCall == null) break; // No more tools → proceed to final text
-
-        final fnName = functionCall['name'] as String;
-        final fnArgs = (functionCall['args'] as Map<String, dynamic>?) ?? {};
-
-        _streamingText.value = ''; // keep typing indicator visible
-
-        final toolResult = await _executeTool(fnName, fnArgs);
-
-        // Append this tool round to contents
-        contents.add({
-          'role': 'model',
-          'parts': [{'functionCall': functionCall}],
-        });
-        contents.add({
-          'role': 'user',
-          'parts': [
-            {
-              'functionResponse': {
-                'name': fnName,
-                'response': {'result': toolResult},
-              }
-            }
-          ],
-        });
-
-        // ✅ Add delay before next API call to avoid hitting rate limit
-        await Future.delayed(const Duration(seconds: 3));
-
-        // Send updated contents and get next response
-        responseJson = await _sendToolResultWithRetry(
-          apiKey: _ai.apiKey,
-          modelName: _ai.modelName,
-          systemPrompt: _systemPrompt,
-          contents: contents,
-        );
-      }
-
-      // Now extract the final text response
-      final result = _extractText(responseJson);
-
       buffer.write(result);
       if (mounted && result.isNotEmpty) {
         const chunkSize = 8;
@@ -777,10 +345,16 @@ class _ChatPanelState extends State<_ChatPanel> {
         _history.add({'role': 'model', 'text': buffer.toString()});
       }
     } on TimeoutException catch (e) {
-       buffer.write(msgTimeout.replaceAll('{{message}}', e.message ?? ''));
+      buffer.write(msgTimeout.replaceAll('{{message}}', e.message ?? ''));
       _streamingText.value = buffer.toString();
     } catch (e) {
-       buffer.write(msgError.replaceAll('{{error}}', e.toString()));
+      buffer.write(
+        e is FirebaseFunctionsException
+            ? t[e.message?.startsWith('ai_') == true
+                  ? e.message!
+                  : 'ai_unavailable']
+            : t['ai_unavailable'],
+      );
       _streamingText.value = buffer.toString();
     } finally {
       if (mounted) {
@@ -792,6 +366,7 @@ class _ChatPanelState extends State<_ChatPanel> {
           _isStreaming = false;
         });
         _streamingText.value = '';
+        _refreshUsage();
         _scrollToBottom();
       }
     }
@@ -847,6 +422,36 @@ class _ChatPanelState extends State<_ChatPanel> {
         child: Column(
           children: [
             _buildHeader(theme, isSmall: isSmall),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _usage == null
+                          ? AppTranslations.of(context)['ai_free_allowance']
+                          : AppTranslations.of(
+                              context,
+                            ).textWithParams('ai_usage', {
+                              'messages': _usage!['remainingMessages'],
+                              'imports': _usage!['remainingImports'],
+                            }),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () async {
+                      await showDialog<void>(
+                        context: context,
+                        builder: (_) => const AISubscriptionDialog(),
+                      );
+                      await _refreshUsage();
+                    },
+                    child: const Text('AI Pro'),
+                  ),
+                ],
+              ),
+            ),
             Expanded(child: _buildMessages()),
             _buildInputBar(theme),
           ],
@@ -912,18 +517,21 @@ class _ChatPanelState extends State<_ChatPanel> {
             onPressed: (_messages.isEmpty && !_isStreaming)
                 ? null
                 : () => setState(() {
-                      _messages.clear();
-                      _history.clear();
-                    }),
+                    _messages.clear();
+                    _history.clear();
+                  }),
             icon: Icon(
               Icons.delete_sweep_outlined,
-              color: Colors.white
-                  .withValues(alpha: (_messages.isEmpty && !_isStreaming) ? 0.4 : 1.0),
+              color: Colors.white.withValues(
+                alpha: (_messages.isEmpty && !_isStreaming) ? 0.4 : 1.0,
+              ),
               size: 20,
             ),
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-            tooltip: AppTranslations.of(context).text('chat_clear_conversation'),
+            tooltip: AppTranslations.of(
+              context,
+            ).text('chat_clear_conversation'),
           ),
         ],
       ),
@@ -933,7 +541,8 @@ class _ChatPanelState extends State<_ChatPanel> {
   Widget _buildMessages() {
     if (_messages.isEmpty && !_isStreaming) return const _EmptyState();
 
-    final itemCount = _messages.length +
+    final itemCount =
+        _messages.length +
         (_isStreaming ? 1 : 0) +
         (_loading && !_isStreaming ? 1 : 0);
 
@@ -967,7 +576,9 @@ class _ChatPanelState extends State<_ChatPanel> {
     // Height the soft keyboard is covering right now (0 when it is closed).
     final keyboardInset = media.viewInsets.bottom;
     // When the keyboard is closed, keep clear of the home indicator instead.
-    final bottomPad = keyboardInset > 0 ? keyboardInset + 10 : media.padding.bottom + 10;
+    final bottomPad = keyboardInset > 0
+        ? keyboardInset + 10
+        : media.padding.bottom + 10;
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 150),
@@ -979,6 +590,11 @@ class _ChatPanelState extends State<_ChatPanel> {
       ),
       child: Row(
         children: [
+          IconButton(
+            onPressed: _loading ? null : _upload,
+            tooltip: AppTranslations.of(context)['ai_import_title'],
+            icon: const Icon(Icons.attach_file),
+          ),
           Expanded(
             child: TextField(
               controller: _controller,
@@ -991,10 +607,13 @@ class _ChatPanelState extends State<_ChatPanel> {
                     : AppTranslations.of(context).text('chat_input_hint'),
                 hintStyle: TextStyle(color: theme.colorScheme.outline),
                 filled: true,
-                fillColor:
-                    theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                fillColor: theme.colorScheme.surfaceContainerHighest.withValues(
+                  alpha: 0.5,
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(20),
                   borderSide: BorderSide.none,
@@ -1069,9 +688,14 @@ class _MessageBubble extends StatelessWidget {
             : MarkdownBody(
                 data: message.text,
                 styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
-                  p: TextStyle(fontSize: 13, color: theme.colorScheme.onSurfaceVariant),
+                  p: TextStyle(
+                    fontSize: 13,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                   code: TextStyle(
-                      fontSize: 12, backgroundColor: theme.colorScheme.surface),
+                    fontSize: 12,
+                    backgroundColor: theme.colorScheme.surface,
+                  ),
                   blockquoteDecoration: BoxDecoration(
                     color: theme.colorScheme.surface,
                     borderRadius: BorderRadius.circular(4),
@@ -1096,14 +720,19 @@ class _EmptyState extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.chat_bubble_outline,
-              size: 40, color: Theme.of(context).colorScheme.outline),
+          Icon(
+            Icons.chat_bubble_outline,
+            size: 40,
+            color: Theme.of(context).colorScheme.outline,
+          ),
           const SizedBox(height: 12),
           Text(
             AppTranslations.of(context).text('chat_empty_hint'),
             textAlign: TextAlign.center,
             style: TextStyle(
-                fontSize: 13, color: Theme.of(context).colorScheme.outline),
+              fontSize: 13,
+              color: Theme.of(context).colorScheme.outline,
+            ),
           ),
         ],
       ),
@@ -1182,7 +811,10 @@ class _DotsAnimationState extends State<_DotsAnimation>
               child: Container(
                 width: 6,
                 height: 6,
-                decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle),
+                decoration: BoxDecoration(
+                  color: dotColor,
+                  shape: BoxShape.circle,
+                ),
               ),
             );
           }),
@@ -1209,11 +841,11 @@ class _SendButtonState extends State<_SendButton> {
   bool _pressed = false;
 
   Color _darken(Color c, double amount) => Color.fromARGB(
-        (c.a * 255.0).round().clamp(0, 255),
-        (c.r * 255.0 * (1 - amount)).round().clamp(0, 255),
-        (c.g * 255.0 * (1 - amount)).round().clamp(0, 255),
-        (c.b * 255.0 * (1 - amount)).round().clamp(0, 255),
-      );
+    (c.a * 255.0).round().clamp(0, 255),
+    (c.r * 255.0 * (1 - amount)).round().clamp(0, 255),
+    (c.g * 255.0 * (1 - amount)).round().clamp(0, 255),
+    (c.b * 255.0 * (1 - amount)).round().clamp(0, 255),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -1222,10 +854,10 @@ class _SendButtonState extends State<_SendButton> {
     final bgColor = disabled
         ? color.withValues(alpha: 0.4)
         : _pressed
-            ? _darken(color, 0.18)
-            : _hovered
-                ? _darken(color, 0.08)
-                : color;
+        ? _darken(color, 0.18)
+        : _hovered
+        ? _darken(color, 0.08)
+        : color;
 
     return MouseRegion(
       cursor: disabled ? SystemMouseCursors.basic : SystemMouseCursors.click,
@@ -1272,7 +904,9 @@ class _SendButtonState extends State<_SendButton> {
                     child: Padding(
                       padding: EdgeInsets.all(10),
                       child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white),
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
                     ),
                   )
                 : const Icon(Icons.send_rounded, color: Colors.white, size: 16),

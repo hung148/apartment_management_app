@@ -47,6 +47,7 @@ class RoomBooking {
 
   final double totalPrice;
   final double paidAmount;
+  final double depositPaidAmount;
   final double? depositAmount;
   final bool depositRefunded;
   final double? depositRefundedAmount;
@@ -80,6 +81,7 @@ class RoomBooking {
     this.pricingType = BookingPricingType.hourly,
     required this.totalPrice,
     this.paidAmount = 0.0,
+    this.depositPaidAmount = 0,
     this.depositAmount,
     this.depositRefunded = false,
     this.depositRefundedAmount,
@@ -144,6 +146,7 @@ class RoomBooking {
       'pricingType': pricingType.name,
       'totalPrice': totalPrice,
       'paidAmount': paidAmount,
+      'depositPaidAmount': depositPaidAmount,
       'depositAmount': depositAmount,
       'depositRefunded': depositRefunded,
       'depositRefundedAmount': depositRefundedAmount,
@@ -185,6 +188,7 @@ class RoomBooking {
         (e) => e.name == map['pricingType'],
         orElse: () => BookingPricingType.hourly,
       ),
+      depositPaidAmount: (map['depositPaidAmount'] as num?)?.toDouble() ?? 0,
       totalPrice: (map['totalPrice'] as num?)?.toDouble() ?? 0.0,
       paidAmount: (map['paidAmount'] as num?)?.toDouble() ?? 0.0,
       depositAmount: (map['depositAmount'] as num?)?.toDouble(),
@@ -248,6 +252,7 @@ class RoomBooking {
       source: source ?? this.source,
       pricingType: pricingType ?? this.pricingType,
       currency: currency,
+      depositPaidAmount: depositPaidAmount,
       totalPrice: totalPrice ?? this.totalPrice,
       paidAmount: paidAmount ?? this.paidAmount,
       depositAmount: depositAmount ?? this.depositAmount,

@@ -1,3 +1,4 @@
+import 'package:phan_mem_quan_ly_can_ho/widgets/app_dialog.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/responsive_form_row.dart';
 import 'package:phan_mem_quan_ly_can_ho/main.dart' show getIt, LocaleNotifier;
 import 'dart:async';
@@ -703,7 +704,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
             );
           }
 
-          return Dialog(
+          return AppDialog(
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20)),
             child: ConstrainedBox(
@@ -1771,7 +1772,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
             {'room': widget.room!.roomNumber})
         : t['payment_dialog_title'];
 
-    return Dialog(
+    return AppDialog(
       backgroundColor: Colors.transparent,
       insetPadding: EdgeInsets.all(isPhone ? 12 : 24),
       child: ConstrainedBox(

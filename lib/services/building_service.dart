@@ -78,19 +78,20 @@ class BuildingService {
   // ========================================
   // READ - Get all buildings for an organization
   // ========================================
-  Future<List<Building>> getOrganizationBuildings(String organizationId) async {
+  Future<List<Building>> getOrganizationBuildings(String organizationId, {bool requireServer = false}) async {
     try {
       final snapshot = await _firestore
           .collection('buildings')
           .where('organizationId', isEqualTo: organizationId)
           .orderBy('createdAt', descending: true)
-          .get();
+          .get(GetOptions(source: requireServer ? Source.server : Source.serverAndCache));
 
       return snapshot.docs
           .map((doc) => Building.fromMap(doc.id, doc.data()))
           .toList();
     } catch (e) {
       logger.e('Error getting buildings', error: e);
+      if (requireServer) rethrow;
       return [];
     }
   }

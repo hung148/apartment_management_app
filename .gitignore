@@ -62,3 +62,8 @@ VC_redist.x64.exe
 installer.exe
 
 analyze.txt
+# Local Firebase credentials (access rules are intentionally versioned)
+**/service-account*.json
+**/serviceAccount*.json
+**/*firebase-adminsdk*.json
+.firebaserc.local

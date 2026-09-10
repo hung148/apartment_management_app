@@ -1,9 +1,18 @@
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/tenants_model.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 
 class TenantService {
   FirebaseFirestore get _firestore => FirebaseFirestore.instance;
+  dynamic _calendarEncode(dynamic value) {
+    if (value is Timestamp) return {'__timestamp':value.millisecondsSinceEpoch};
+    if (value is DateTime) return {'__timestamp':value.millisecondsSinceEpoch};
+    if (value is Map) return value.map((k,v) => MapEntry(k.toString(),_calendarEncode(v)));
+    if (value is List) return value.map(_calendarEncode).toList();
+    return value;
+  }
+
 
   String _formatDate(DateTime date) {
     return DateFormat('dd/MM/yyyy').format(date);
@@ -13,14 +22,10 @@ class TenantService {
   // CREATE - Add a new tenant
   // ========================================
   Future<String?> addTenant(Tenant tenant) async {
-    try {
-      final docRef = await _firestore.collection('tenants').add(tenant.toMap());
-      print('Tenant added successfully: ${docRef.id}');
-      return docRef.id;
-    } catch (e) {
-      print('Error adding tenant: $e');
-      return null;
-    }
+    final id=tenant.id.isEmpty ? _firestore.collection('tenants').doc().id : tenant.id;
+    final result=await FirebaseFunctions.instance.httpsCallable('mutateCalendarTenant').call({
+      'tenantId':id,'create':true,'tenant':_calendarEncode(tenant.toMap())});
+    return (result.data as Map)['id'] as String;
   }
 
   // ========================================
@@ -96,7 +101,7 @@ class TenantService {
   // ========================================
   // READ - Get all tenants in a building
   // ========================================
-  Future<List<Tenant>> getBuildingTenants(String organizationId, String buildingId) async {
+  Future<List<Tenant>> getBuildingTenants(String organizationId, String buildingId, {bool requireServer = false}) async {
     try {
       final snapshot = await _firestore
           .collection('tenants')
@@ -110,6 +115,7 @@ class TenantService {
           .toList();
     } catch (e) {
       print('Error getting building tenants: $e');
+      if (requireServer) rethrow;
       return [];
     }
   }
@@ -318,18 +324,10 @@ class TenantService {
   // ========================================
   // UPDATE - Update tenant information
   // ========================================
-  Future<bool> updateTenant(String tenantId, Map<String, dynamic> data) async {
-    try {
-      // Always update the updatedAt timestamp
-      data['updatedAt'] = Timestamp.now();
-      
-      await _firestore.collection('tenants').doc(tenantId).update(data);
-      print('Tenant updated successfully: $tenantId');
-      return true;
-    } catch (e) {
-      print('Error updating tenant: $e');
-      return false;
-    }
+  Future<bool> updateTenant(String tenantId, Map<String,dynamic> data) async {
+    await FirebaseFunctions.instance.httpsCallable('mutateCalendarTenant').call({
+      'tenantId':tenantId,'create':false,'tenant':_calendarEncode(data)});
+    return true;
   }
 
   // ========================================
@@ -957,7 +955,7 @@ class TenantService {
         final previousRentals = tenant.previousRentals ?? [];
         previousRentals.add(previousRental);
         
-        batch.update(doc.reference, {
+        await updateTenant(doc.id, {
           'status': TenantStatus.moveOut.name,
           'moveOutDate': Timestamp.fromDate(now),
           'updatedAt': Timestamp.fromDate(now),

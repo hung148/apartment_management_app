@@ -1,3 +1,5 @@
+import 'package:phan_mem_quan_ly_can_ho/widgets/app_dialog.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/app_money.dart';
 import 'dart:io';
 import 'dart:math';
 import 'package:phan_mem_quan_ly_can_ho/models/payment_model.dart';
@@ -24,51 +26,9 @@ class PaymentPDFExporter {
   // LOCALIZATION HELPERS
   // ========================================
   static String _l(String key, ExportLanguage? lang) {
-
-    final langCode = lang?.name ?? 'bilingual';
-
-    const labels = {
-      'receipt_title': {
-        'vi': 'THU PHÍ CHỦ CĂN HỘ',
-        'en': 'APARTMENT OWNER FEE RECEIPT',
-        'bilingual': 'THU PHÍ CHỦ CĂN HỘ / APARTMENT OWNER FEE RECEIPT'
-      },
-      'currency_unit': {'vi': 'Đơn vị tính: VND', 'en': 'Currency: VND', 'bilingual': 'Đơn vị tính / Currency: VND'},
-      'apt_code': {'vi': 'MÃ CĂN', 'en': 'APT CODE', 'bilingual': 'MÃ CĂN / APARTMENT CODE'},
-      'apt_type': {'vi': 'LOẠI CĂN HỘ', 'en': 'APT TYPE', 'bilingual': 'LOẠI CĂN HỘ / APARTMENT TYPE'},
-      'full_name': {'vi': 'HỌ VÀ TÊN', 'en': 'FULL NAME', 'bilingual': 'HỌ VÀ TÊN / FULL NAME'},
-      'handover_date': {'vi': 'NGÀY BÀN GIAO', 'en': 'HANDOVER DATE', 'bilingual': 'NGÀY BÀN GIAO / HANDOVER DATE'},
-      'until_date': {'vi': 'ĐẾN NGÀY', 'en': 'UNTIL DATE', 'bilingual': 'ĐẾN NGÀY / UNTIL DATE'},
-      'days_used': {'vi': 'SỐ NGÀY SỬ DỤNG', 'en': 'DAYS USED', 'bilingual': 'SỐ NGÀY SỬ DỤNG / DAYS USED'},
-      'months_used': {'vi': 'SỐ THÁNG', 'en': 'MONTHS USED', 'bilingual': 'SỐ THÁNG / MONTHS USED'},
-      'management_fee': {'vi': 'PHÍ QUẢN LÝ', 'en': 'MANAGEMENT FEE', 'bilingual': 'PHÍ QUẢN LÝ / MANAGEMENT FEE'},
-      'area': {'vi': 'DIỆN TÍCH', 'en': 'AREA', 'bilingual': 'DIỆN TÍCH / AREA'},
-      'unit_price': {'vi': 'ĐƠN GIÁ', 'en': 'UNIT PRICE', 'bilingual': 'ĐƠN GIÁ / UNIT PRICE'},
-      'electricity': {'vi': 'PHÍ ĐIỆN', 'en': 'ELECTRICITY', 'bilingual': 'PHÍ ĐIỆN / ELECTRICITY'},
-      'water': {'vi': 'PHÍ NƯỚC', 'en': 'WATER', 'bilingual': 'PHÍ NƯỚC / WATER'},
-      'usage': {'vi': 'Số sử dụng', 'en': 'Usage', 'bilingual': 'Số sử dụng / Usage'},
-      'internet': {'vi': 'PHÍ INTERNET', 'en': 'INTERNET FEE', 'bilingual': 'PHÍ INTERNET / INTERNET FEE'},
-      'cable_tv': {'vi': 'PHÍ TRUYỀN HÌNH CÁP', 'en': 'CABLE TV FEE', 'bilingual': 'PHÍ TRUYỀN HÌNH CÁP / CABLE TV FEE'},
-      'hot_water': {'vi': 'PHÍ NƯỚC NÓNG', 'en': 'HOT WATER FEE', 'bilingual': 'PHÍ NƯỚC NÓNG / HOT WATER FEE'},
-      'subtotal': {'vi': 'TỔNG CHƯA THUẾ', 'en': 'SUBTOTAL', 'bilingual': 'TỔNG CHƯA THUẾ / SUBTOTAL'},
-      'tax': {'vi': 'THUẾ (10%)', 'en': 'VAT (10%)', 'bilingual': 'THUẾ (10%) / VAT'},
-      'total': {'vi': 'TỔNG THANH TOÁN', 'en': 'TOTAL PAYMENT', 'bilingual': 'TỔNG THANH TOÁN / TOTAL PAYMENT'},
-      'transfer_info': {'vi': 'THÔNG TIN CHUYỂN KHOẢN', 'en': 'TRANSFER INFO', 'bilingual': 'THÔNG TIN CHUYỂN KHOẢN / TRANSFER INFO'},
-      'remark': {'vi': 'GHI CHÚ', 'en': 'REMARK', 'bilingual': 'GHI CHÚ / REMARK'},
-      'days': {'vi': 'ngày', 'en': 'days', 'bilingual': 'ngày/days'},
-      'bank_acc_owner': {'vi': 'Chủ TK: ', 'en': 'Owner: ', 'bilingual': 'Chủ TK/Owner: '},
-      'bank_acc_num': {'vi': 'Số TK: ', 'en': 'Acc No: ', 'bilingual': 'Số TK/Acc No: '},
-      'bank_name': {'vi': 'Ngân hàng: ', 'en': 'Bank: ', 'bilingual': 'Ngân hàng/Bank: '},
-      'rent_unit_price': {'vi': 'ĐƠN GIÁ THUÊ', 'en': 'RENT UNIT PRICE', 'bilingual': 'ĐƠN GIÁ THUÊ / RENT UNIT PRICE'},
-      'rent_qty': {'vi': 'SỐ LƯỢNG', 'en': 'QUANTITY', 'bilingual': 'SỐ LƯỢNG / QUANTITY'},
-      'unit_day': {'vi': 'ngày', 'en': 'day', 'bilingual': 'ngày/day'},
-      'unit_month': {'vi': 'tháng', 'en': 'month', 'bilingual': 'tháng/month'},
-      'unit_year': {'vi': 'năm', 'en': 'year', 'bilingual': 'năm/year'},
-    };
-
-    final entry = labels[key];
-    if (entry == null) return key;
-    return entry[langCode] ?? entry['bilingual'] ?? key;
+    final bilingual=lang == null || lang == ExportLanguage.bilingual;
+    final t=AppTranslations(Locale(lang == ExportLanguage.en ? 'en' : 'vi'));
+    return t['invoice_pdf_${key}${bilingual ? '_bilingual' : ''}'];
   }
 
   static String _rentUnitLabel(RentPriceMode mode, ExportLanguage? lang) {
@@ -140,6 +100,8 @@ class PaymentPDFExporter {
     String? remark,
   }) async {
     final pdf = pw.Document();
+    String money(double value) => AppMoney.numberFormat(payment.currency).format(value);
+    String date(DateTime? value) => value == null ? '—' : DateFormat(language == ExportLanguage.en ? 'MM/dd/yyyy' : 'dd/MM/yyyy').format(value);
 
     try {
       final regularFont = await _loadVietnameseFont();
@@ -154,14 +116,14 @@ class PaymentPDFExporter {
       } else if (tenantNameOverride?.isNotEmpty ?? false) {
         tenantName = tenantNameOverride!;
       } else {
-        tenantName = payment.tenantName!;
+        tenantName = payment.tenantName ?? '—';
       }
 
       // 2. Loại căn hộ (Override > Tenant > Room)
       String apartmentType = apartmentTypeOverride ??
                              tenant?.apartmentType ??
                              room?.roomType ??
-                             'Tiêu chuẩn';
+                             '—';
 
       // 3. Diện tích (Override > Tenant > Room)
       double area = areaOverride ??
@@ -212,10 +174,10 @@ class PaymentPDFExporter {
       }
 
       final subtotal = managementFee + electricityFee + waterFee + actualInternetFee + actualCableTVFee + actualHotWaterFee;
-      final taxAmount = payment.taxAmount ?? (subtotal * 0.10);
-      final grandTotal = subtotal + taxAmount;
+      final taxAmount = payment.taxAmount ?? 0;
+      final grandTotal = subtotal + taxAmount + (payment.lateFee ?? 0);
 
-      final billingPeriodStr = '${formatDate(handoverDate)} - ${formatDate(billingEnd)}';
+      final billingPeriodStr = '${date(handoverDate)} - ${date(billingEnd)}';
 
       // Rent unit-price rows (theo ngày/tháng/năm) — only shown when the rent
       // payment was calculated via a unit price rather than entered directly.
@@ -228,7 +190,7 @@ class PaymentPDFExporter {
             : qty.toStringAsFixed(2);
         rentUnitRows.addAll([
           _buildInfoRow(_l('rent_unit_price', language),
-              '${formatCurrency(payment.rentUnitPrice!)} / $unitLabel', regularFont, boldFont),
+              '${money(payment.rentUnitPrice!)} / $unitLabel', regularFont, boldFont),
           _buildInfoRow(_l('rent_qty', language), '$qtyText $unitLabel', regularFont, boldFont),
         ]);
       }
@@ -267,7 +229,7 @@ class PaymentPDFExporter {
                     pw.Text('${_l('receipt_title', language)} ${roomNumber ?? room?.roomNumber ?? ""}',
                       style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold, font: boldFont)),
                     pw.Text('($billingPeriodStr)', style: pw.TextStyle(fontSize: 9, font: regularFont, fontStyle: pw.FontStyle.italic)),
-                    pw.Text(_l('currency_unit', language), style: pw.TextStyle(fontSize: 8, font: regularFont)),
+                    pw.Text(_l('currency_unit', language).replaceAll('{{currency}}', payment.currency), style: pw.TextStyle(fontSize: 8, font: regularFont)),
                   ]),
                 ),
                 pw.SizedBox(height: 20),
@@ -279,14 +241,14 @@ class PaymentPDFExporter {
                     _buildInfoRow(_l('apt_code', language), roomNumber ?? room?.roomNumber ?? 'N/A', regularFont, boldFont),
                     _buildInfoRow(_l('apt_type', language), apartmentType, regularFont, boldFont),
                     _buildInfoRow(_l('full_name', language), tenantName, regularFont, boldFont),
-                    _buildInfoRow(_l('handover_date', language), formatDate(handoverDate), regularFont, boldFont),
-                    _buildInfoRow(_l('until_date', language), formatDate(billingEnd), regularFont, boldFont),
+                    _buildInfoRow(_l('handover_date', language), date(handoverDate), regularFont, boldFont),
+                    _buildInfoRow(_l('until_date', language), date(billingEnd), regularFont, boldFont),
                     _buildInfoRow(_l('days_used', language), '$daysUsed ${_l('days', language)}', regularFont, boldFont),
                     _buildInfoRow(_l('months_used', language), monthsUsed.toString(), regularFont, boldFont),
-                    _buildInfoRow(_l('management_fee', language), formatCurrency(managementFee), regularFont, boldFont),
+                    _buildInfoRow(_l('management_fee', language), money(managementFee), regularFont, boldFont),
                     ...rentUnitRows,
                     _buildInfoRow(_l('area', language), '${area.toStringAsFixed(2)} m²', regularFont, boldFont),
-                    _buildInfoRow(_l('unit_price', language), (area > 0 && monthsUsed > 0) ? formatCurrency(managementFee / area / monthsUsed) : '0', regularFont, boldFont),
+                    _buildInfoRow(_l('unit_price', language), (area > 0 && monthsUsed > 0) ? money(managementFee / area / monthsUsed) : '0', regularFont, boldFont),
                   ],
                 ),
 
@@ -295,9 +257,9 @@ class PaymentPDFExporter {
                 pw.Table(
                   border: pw.TableBorder.all(color: PdfColors.grey600, width: 0.5),
                   children: [
-                    _buildInfoRow(_l('electricity', language), formatCurrency(electricityFee), regularFont, boldFont),
+                    _buildInfoRow(_l('electricity', language), money(electricityFee), regularFont, boldFont),
                     _buildInfoRow(_l('usage', language), '${payment.electricityUsage?.toStringAsFixed(1) ?? "0"} kWh', regularFont, boldFont),
-                    _buildInfoRow(_l('water', language), formatCurrency(waterFee), regularFont, boldFont),
+                    _buildInfoRow(_l('water', language), money(waterFee), regularFont, boldFont),
                     _buildInfoRow(_l('usage', language), '${payment.waterUsage?.toStringAsFixed(1) ?? "0"} m³', regularFont, boldFont),
                   ],
                 ),
@@ -308,9 +270,9 @@ class PaymentPDFExporter {
                 pw.Table(
                   border: pw.TableBorder.all(color: PdfColors.grey600, width: 0.5),
                   children: [
-                    _buildInfoRow(_l('internet', language), formatCurrency(actualInternetFee), regularFont, boldFont),
-                    _buildInfoRow(_l('cable_tv', language), formatCurrency(actualCableTVFee), regularFont, boldFont),
-                    _buildInfoRow('${_l('hot_water', language)} (${actualHotWaterPercent.toStringAsFixed(0)}%)', formatCurrency(actualHotWaterFee), regularFont, boldFont),
+                    _buildInfoRow(_l('internet', language), money(actualInternetFee), regularFont, boldFont),
+                    _buildInfoRow(_l('cable_tv', language), money(actualCableTVFee), regularFont, boldFont),
+                    _buildInfoRow('${_l('hot_water', language)} (${actualHotWaterPercent.toStringAsFixed(0)}%)', money(actualHotWaterFee), regularFont, boldFont),
                   ],
                 ),
 
@@ -320,9 +282,11 @@ class PaymentPDFExporter {
                 pw.Table(
                   border: pw.TableBorder.all(color: PdfColors.grey600, width: 0.5),
                   children: [
-                    _buildTotalRow(_l('subtotal', language), formatCurrency(subtotal), regularFont, boldFont, false),
-                    _buildTotalRow(_l('tax', language), formatCurrency(taxAmount), regularFont, boldFont, false),
-                    _buildTotalRow(_l('total', language), formatCurrency(grandTotal), regularFont, boldFont, true),
+                    _buildTotalRow(_l('subtotal', language), money(subtotal), regularFont, boldFont, false),
+                    _buildTotalRow(_l('tax', language), money(taxAmount), regularFont, boldFont, false),
+                    if ((payment.lateFee ?? 0) > 0)
+                      _buildTotalRow(_l('late_fee', language), money(payment.lateFee!), regularFont, boldFont, false),
+                    _buildTotalRow(_l('total', language), money(grandTotal), regularFont, boldFont, true),
                   ],
                 ),
 
@@ -481,7 +445,7 @@ class PaymentPDFExporter {
               );
             }
 
-            return AlertDialog(
+            return AppAlertDialog(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 4),
               contentPadding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
@@ -673,7 +637,7 @@ class PaymentPDFExporter {
       if (context.mounted) {
         Navigator.pop(context); // Close loading dialog if open
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi xuất PDF: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text('${AppTranslations.of(context)['pdf_export_error']}: $e'), backgroundColor: Colors.red),
         );
       }
     }
@@ -747,7 +711,7 @@ class _PDFPreviewScreen extends StatelessWidget {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi in: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text('${AppTranslations.of(context)['pdf_print_error']}: $e'), backgroundColor: Colors.red),
         );
       }
     }
@@ -759,7 +723,7 @@ class _PDFPreviewScreen extends StatelessWidget {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi chia sẻ: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text('${AppTranslations.of(context)['pdf_share_error']}: $e'), backgroundColor: Colors.red),
         );
       }
     }
@@ -777,7 +741,7 @@ class _PDFPreviewScreen extends StatelessWidget {
           await file.saveTo(saveLocation.path);
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Đã lưu PDF thành công'), backgroundColor: Colors.green),
+              SnackBar(content: Text(AppTranslations.of(context)['pdf_saved']), backgroundColor: Colors.green),
             );
           }
         }
@@ -787,7 +751,7 @@ class _PDFPreviewScreen extends StatelessWidget {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lỗi lưu file: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text('${AppTranslations.of(context)['pdf_save_error']}: $e'), backgroundColor: Colors.red),
         );
       }
     }
@@ -797,10 +761,10 @@ class _PDFPreviewScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Xem Trước Hóa Đơn'),
+        title: Text(AppTranslations.of(context)['pdf_preview']),
         actions: [
           Tooltip(
-            message: 'In hóa đơn ra máy in',
+            message: AppTranslations.of(context)['pdf_print'],
             child: IconButton(
               icon: const Icon(Icons.print),
               onPressed: () => _printPDF(context),
@@ -808,7 +772,7 @@ class _PDFPreviewScreen extends StatelessWidget {
           ),
           if (!Platform.isWindows && !Platform.isMacOS)
             Tooltip(
-              message: 'Chia sẻ PDF qua ứng dụng khác',
+              message: AppTranslations.of(context)['pdf_share'],
               child: IconButton(
                 icon: const Icon(Icons.share),
                 onPressed: () => _sharePDF(context),
@@ -816,8 +780,8 @@ class _PDFPreviewScreen extends StatelessWidget {
             ),
           Tooltip(
             message: Platform.isWindows || Platform.isMacOS
-                ? 'Lưu PDF vào máy tính'
-                : 'Tải xuống PDF',
+                ? AppTranslations.of(context)['pdf_save']
+                : AppTranslations.of(context)['pdf_save'],
             child: IconButton(
               icon: const Icon(Icons.download),
               onPressed: () => _savePDF(context),

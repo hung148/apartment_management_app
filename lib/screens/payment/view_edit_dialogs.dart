@@ -1,3 +1,4 @@
+import 'package:phan_mem_quan_ly_can_ho/widgets/app_dialog.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/responsive_form_row.dart';
 import 'dart:async';
 
@@ -828,7 +829,7 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog>
     final statusColor = _statusColor(payment.status);
     final dateFormat = t.dateFormat;
 
-    return Dialog(
+    return AppDialog(
       backgroundColor: Colors.transparent,
       insetPadding: EdgeInsets.all(isPhone ? 12 : 24),
       child: ConstrainedBox(
@@ -1010,7 +1011,7 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog>
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                   child: Column(
                     children: [
-                      if (widget.isAdmin && widget.onEdit != null)
+                      if (widget.isAdmin && widget.onEdit != null && widget.payment.bookingId == null)
                         Row(children: [
                           Expanded(
                             child: _actionButton(
@@ -1108,7 +1109,7 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog>
   void _showDeleteConfirmation(AppTranslations t) {
     _showTrackedDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => AppAlertDialog(
         shape:
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(children: [
@@ -1487,7 +1488,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
             );
           }
 
-          return Dialog(
+          return AppDialog(
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20)),
             child: ConstrainedBox(
@@ -2318,7 +2319,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
     final t = AppTranslations.of(context);
     final isPhone = MediaQuery.of(context).size.width < 600;
 
-    return Dialog(
+    return AppDialog(
       backgroundColor: Colors.transparent,
       insetPadding: EdgeInsets.all(isPhone ? 12 : 24),
       child: ConstrainedBox(

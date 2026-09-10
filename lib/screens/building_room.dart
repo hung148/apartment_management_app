@@ -1,3 +1,4 @@
+import 'package:phan_mem_quan_ly_can_ho/widgets/app_dialog.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/responsive_form_row.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/currency_formatter.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/buildings_model.dart';
@@ -259,7 +260,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) {
-          return Dialog(
+          return AppDialog(
             backgroundColor: Colors.transparent,
             insetPadding: EdgeInsets.symmetric(
               horizontal: _isSmallScreen(context) ? 12 : 24,
@@ -781,7 +782,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) {
-          return Dialog(
+          return AppDialog(
             backgroundColor: Colors.transparent,
             insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
             child: Container(
@@ -999,7 +1000,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) {
-          return Dialog(
+          return AppDialog(
             backgroundColor: Colors.transparent,
             insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
             child: Container(
@@ -1236,7 +1237,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
 
     _showTrackedDialog(
       context: context,
-      builder: (dialogContext) => Dialog(
+      builder: (dialogContext) => AppDialog(
         backgroundColor: Colors.transparent,
         insetPadding: EdgeInsets.symmetric(
           horizontal: _isSmallScreen(context) ? 12 : 32,

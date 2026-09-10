@@ -31,7 +31,7 @@ class OrganizationService {
       if (code != null && code.isNotEmpty) {
         final codeRef = firestore.collection('invite_codes').doc(code);
         batch.set(codeRef, {
-          'organizationId': orgId,
+          'orgId': orgId,
           'claimedAt': FieldValue.serverTimestamp(),
         });
         count++;
@@ -66,20 +66,6 @@ class OrganizationService {
       while (true) {
         final inviteCode = _generateRawCode();
 
-        try {
-          await _firestore
-              .collection('invite_codes')
-              .doc(inviteCode)
-              .set({
-                'orgId': orgRef.id,
-                'claimedAt': FieldValue.serverTimestamp()});
-        } on FirebaseException catch (e) {
-          if (e.code == 'already-exists') {
-            logger.w('Invite code collision on $inviteCode, retrying...');
-            continue;
-          }
-          rethrow;
-        }
 
         organization = Organization(
           id: orgRef.id,
@@ -99,6 +85,10 @@ class OrganizationService {
         final batch = _firestore.batch();
 
         batch.set(orgRef, organization.toMap());
+        batch.set(_firestore.collection('invite_codes').doc(inviteCode), {
+          'orgId': orgRef.id,
+          'claimedAt': FieldValue.serverTimestamp(),
+        });
 
         batch.set(
           _firestore.collection('memberships').doc(membershipId),
@@ -472,7 +462,7 @@ class OrganizationService {
       await _firestore
           .collection('memberships')
           .doc(membershipId)
-          .set(newMembership.toMap());
+          .set({...newMembership.toMap(), 'inviteCode': inviteCode});
 
       logger.i('User $ownerId joined organization $orgId');
       return true;
@@ -644,6 +634,15 @@ class OrganizationService {
         return false;
       }
 
+      // Booking history is server-managed; do not begin a partial client cascade.
+      final bookingHistory = await _firestore.collection('bookings')
+          .where('organizationId', isEqualTo: orgId).limit(1)
+          .get(const GetOptions(source: Source.server));
+      if (bookingHistory.docs.isNotEmpty) {
+        logger.w('Organization contains protected booking history; server-side deletion is required.');
+        return false;
+      }
+
       logger.i('Fetching organization data...');
       onProgress?.call(0.1);
 
@@ -672,6 +671,7 @@ class OrganizationService {
           final chunk = buildingIds.skip(i).take(10).toList();
           final roomSnap = await _firestore
               .collection('rooms')
+              .where('organizationId', isEqualTo: orgId)
               .where('buildingId', whereIn: chunk)
               .get();
           roomSnapshots.add(roomSnap);
@@ -911,6 +911,7 @@ class OrganizationService {
           final chunk = buildingIds.skip(i).take(10).toList();
           final roomSnap = await _firestore
               .collection('rooms')
+              .where('organizationId', isEqualTo: sourceOrgId)
               .where('buildingId', whereIn: chunk)
               .get();
           roomSnapshots.add(roomSnap);
@@ -1197,6 +1198,7 @@ class OrganizationService {
           final chunk = buildingIds.skip(i).take(10).toList();
           final roomSnap = await _firestore
               .collection('rooms')
+              .where('organizationId', isEqualTo: sourceOrgId)
               .where('buildingId', whereIn: chunk)
               .get();
           roomCount += roomSnap.docs.length;
@@ -1209,6 +1211,7 @@ class OrganizationService {
           final chunk = buildingIds.skip(i).take(10).toList();
           final roomSnap = await _firestore
               .collection('rooms')
+              .where('organizationId', isEqualTo: sourceOrgId)
               .where('buildingId', whereIn: chunk)
               .get();
           roomIds.addAll(roomSnap.docs.map((doc) => doc.id));

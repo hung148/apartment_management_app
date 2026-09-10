@@ -1,3 +1,4 @@
+import 'package:phan_mem_quan_ly_can_ho/widgets/app_dialog.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/payment_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/payments_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
@@ -401,7 +402,7 @@ class DeletePaymentDialog extends StatelessWidget {
     final isMultiLine = lineItems.length > 1;
     final dateFormat = DateFormat(t.dateFormat);
 
-    return AlertDialog(
+    return AppAlertDialog(
       title: Row(
         children: [
           Icon(Icons.warning, color: Colors.red[700]),

@@ -1,3 +1,5 @@
+import 'package:phan_mem_quan_ly_can_ho/widgets/app_dialog.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/app_money.dart';
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/services.dart';
@@ -530,7 +532,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
       builder: (context) {
         final dialogBg = Theme.of(context).dialogTheme.backgroundColor ??
             Theme.of(context).colorScheme.surface;
-        return Dialog(
+        return AppDialog(
           backgroundColor: Colors.transparent,
           insetPadding:
               const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
@@ -743,9 +745,20 @@ class _OrganizationScreenState extends State<OrganizationScreen>
   // ========================================
   // FORMAT HELPERS
   // ========================================
-  String _formatCurrency(double amount) {
-    final formatter = NumberFormat('#,###', 'vi_VN');
-    return '${formatter.format(amount)} ₫';
+  String _reportCurrency = 'VND';
+  String _formatCurrency(double amount, [String? currency]) => AppMoney.format(amount,currency ?? _reportCurrency);
+
+  Widget _currencySelector(List<Payment> payments) {
+    final t=AppTranslations.of(context);
+    final currencies={_reportCurrency,...AppMoney.currencies(payments)}.toList()..sort();
+    final totals=AppMoney.totals(payments,(p) => p.paidAmount);
+    return Padding(padding:const EdgeInsets.symmetric(horizontal:16,vertical:8),child:Column(
+      crossAxisAlignment:CrossAxisAlignment.start,children:[
+        Wrap(spacing:8,runSpacing:8,children:currencies.map((currency) => ChoiceChip(
+          label:Text('$currency · ${AppMoney.numberFormat(currency).format(totals[currency] ?? 0)}'),
+          selected:currency == _reportCurrency, onSelected:(_) => setState(() => _reportCurrency=currency))).toList()),
+        const SizedBox(height:4),Text(t['report_currency_separate'],style:Theme.of(context).textTheme.bodySmall),
+      ]));
   }
 
   Color _getPaymentStatusColor(PaymentStatus status) {
@@ -1559,7 +1572,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                         children: [
                           _buildingStatChip(
                             value: building.rentAmount != null
-                                ? _formatCurrency(building.rentAmount!)
+                                ? _formatCurrency(building.rentAmount!,building.currency)
                                 : '—',
                             label: t['building_rent_amount_label'],
                             color: const Color(0xFF854F0B),
@@ -1854,7 +1867,8 @@ class _OrganizationScreenState extends State<OrganizationScreen>
       builder: (context, _) {
         // Building-rent payments (income from a whole-building renter) count
         // as revenue like any other payment, so no filtering needed here.
-        final allPayments = _paymentsNotifier.payments;
+        final allCurrencies = _paymentsNotifier.payments;
+        final allPayments = AppMoney.only(allCurrencies,_reportCurrency);
 
         return FutureBuilder<Membership?>(
           future: _membershipFuture,
@@ -1867,7 +1881,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
               builder: (context, roomsSnap) {
                 final rooms = roomsSnap.data?[0] as List<Room>? ?? [];
                 final buildings = roomsSnap.data?[2] as List<Building>? ?? [];
-                if (allPayments.isEmpty) {
+                if (allCurrencies.isEmpty) {
                   return Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -1893,6 +1907,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
 
                 return Column(
                   children: [
+                    _currencySelector(allCurrencies),
                     // ── KPI bar ──────────────────────────────────────────────
                     _buildPaymentKpis(sorted),
 
@@ -2344,7 +2359,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
 
                         // Amount
                         Text(
-                          _formatCurrency(payment.totalAmount),
+                          _formatCurrency(payment.totalAmount,payment.currency),
                           style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w800,
@@ -2587,7 +2602,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
             Text(t['view_details']),
           ]),
         ),
-        PopupMenuItem(
+        if (payment.bookingId == null) PopupMenuItem(
           value: 'edit',
           child: Row(children: [
             const Icon(Icons.edit, size: 20),
@@ -2595,7 +2610,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
             Text(t['edit_payment']),
           ]),
         ),
-        PopupMenuItem(
+        if (payment.bookingId == null) PopupMenuItem(
           value: 'delete',
           child: Row(children: [
             const Icon(Icons.delete, size: 20, color: Colors.red),
@@ -2725,7 +2740,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                     // Building-rent payments (income from a whole-building
                     // renter) count toward revenue/payment stats like any
                     // other payment, so no filtering needed here.
-                    final payments = _paymentsNotifier.payments;
+                    final payments = AppMoney.only(_paymentsNotifier.payments,_reportCurrency);
 
                     final activeTenants = tenants
                         .where((tn) =>
@@ -2766,6 +2781,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        _currencySelector(_paymentsNotifier.payments),
                         // Export buttons + KPI grid
                         Padding(
                           padding: const EdgeInsets.only(top: 28, bottom: 12),
@@ -2850,7 +2866,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
 
                         _statsSectionLabel(t['stat_monthly_revenue']),
                         // ✅ Chart widget — only rebuilds if monthlyRevenue actually changes
-                        _MonthlyRevenueChart(monthlyRevenue: monthlyRevenue),
+                        _MonthlyRevenueChart(monthlyRevenue: monthlyRevenue, currency: _reportCurrency),
 
                         _statsSectionLabel(t['stat_payment_breakdown']),
                         // ✅ Chart widget — only rebuilds if these counts change
@@ -2879,7 +2895,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                           ]),
 
                           _statsSectionLabel(t['stat_building_rent_monthly']),
-                          _MonthlyRevenueChart(monthlyRevenue: monthlyBuildingRentRevenue),
+                          _MonthlyRevenueChart(monthlyRevenue: monthlyBuildingRentRevenue, currency: _reportCurrency),
                         ],
 
                         // ── Revenue by building — ALL buildings, not just rented ones ──────
@@ -3347,6 +3363,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
     required List<Payment> payments,
     String? organizationName,
   }) async {
+    payments = AppMoney.only(payments,_reportCurrency);
     final t = AppTranslations.of(context);
     final ttf = await PdfFontService.getFont();
 
@@ -3361,7 +3378,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
 
     try {
       final currencyFormatter = NumberFormat.currency(
-          locale: 'vi_VN', symbol: '₫', decimalDigits: 0);
+          locale: 'en_US', symbol: _reportCurrency, decimalDigits: _reportCurrency == 'VND' ? 0 : 2);
       final dateFormatter =
           DateFormat('${t.dateFormat} – HH:mm');
 
@@ -4194,6 +4211,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
     required List<Payment> payments,
     String? organizationName,
   }) async {
+    payments = AppMoney.only(payments,_reportCurrency);
     final t = AppTranslations.of(context);
     if (mounted) {
       _showTrackedDialog(
@@ -4205,7 +4223,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
     }
 
     try {
-      final currencyFormat = '#,##0 "₫"';
+      final currencyFormat = AppMoney.excelFormat(_reportCurrency);
       final dateFormatter =
           DateFormat('${t.dateFormat} – HH:mm');
 
@@ -5276,7 +5294,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
     } else if (amount >= 1000) {
       return '${(amount / 1000).toStringAsFixed(0)}K';
     }
-    return amount.toStringAsFixed(0);
+    return AppMoney.numberFormat(_reportCurrency).format(amount);
   }
 
   // ========================================
@@ -5913,7 +5931,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
   ) async {
     final confirm = await _showTrackedDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => AppAlertDialog(
         title: Text(t['promote_to_admin']),
         content: Text(t.textWithParams(
             'member_remove_confirm_body', {'name': member.displayName.isNotEmpty ? member.displayName : member.email})),
@@ -5955,7 +5973,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
   ) async {
     final confirm = await _showTrackedDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => AppAlertDialog(
         title: Text(t['member_remove_confirm_title']),
         content: Text(t.textWithParams(
             'member_remove_confirm_body', {'name': displayName})),
@@ -5990,7 +6008,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
     final scaffoldMessenger = ScaffoldMessenger.of(context);
     final confirm = await _showTrackedDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => AppAlertDialog(
         title: Text(t['refresh_invite_code_title']),
         content: Text(t['refresh_invite_code_body']),
         actions: [
@@ -6152,7 +6170,8 @@ class _DonutPainter extends CustomPainter {
 // ── Monthly Revenue Chart ─────────────────────────────────────────────────────
 class _MonthlyRevenueChart extends StatefulWidget {
   final Map<String, double> monthlyRevenue;
-  const _MonthlyRevenueChart({required this.monthlyRevenue});
+  final String currency;
+  const _MonthlyRevenueChart({required this.monthlyRevenue, required this.currency});
 
   @override
   State<_MonthlyRevenueChart> createState() => _MonthlyRevenueChartState();
@@ -6228,11 +6247,11 @@ class _MonthlyRevenueChartState extends State<_MonthlyRevenueChart> {
   }
 
   // Helpers needed — move these to top-level functions so all chart widgets can share them
-  static String _formatCurrencyShort(double amount) {
+  String _formatCurrencyShort(double amount) {
     if (amount >= 1000000000) return '${(amount / 1000000000).toStringAsFixed(1)}B';
     if (amount >= 1000000) return '${(amount / 1000000).toStringAsFixed(1)}M';
     if (amount >= 1000) return '${(amount / 1000).toStringAsFixed(0)}K';
-    return amount.toStringAsFixed(0);
+    return AppMoney.numberFormat(widget.currency).format(amount);
   }
 
   static BoxDecoration _cardDecoration(BuildContext context) => BoxDecoration(
