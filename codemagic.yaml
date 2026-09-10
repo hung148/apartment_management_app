@@ -30,10 +30,6 @@ workflows:
         script: |
           find . -name "Podfile" -execdir pod install \;
 
-      - name: Recreate .env file
-        script: |
-          echo "$ENV_FILE_CONTENTS" > .env
-      
       - name: Set up keychain
         script: |
           keychain initialize
@@ -55,6 +51,10 @@ workflows:
       - name: Flutter build ipa
         script: |
           flutter build ipa --release \
+            --dart-define="REVENUECAT_APPLE_PUBLIC_KEY=$REVENUECAT_APPLE_PUBLIC_KEY" \
+            --dart-define="REVENUECAT_CHECKOUT_URL=$REVENUECAT_CHECKOUT_URL" \
+            --dart-define="PRIVACY_POLICY_URL=$PRIVACY_POLICY_URL" \
+            --dart-define="TERMS_URL=$TERMS_URL" \
             --export-options-plist=/Users/builder/export_options.plist
 
     artifacts:
@@ -99,10 +99,6 @@ workflows:
         script: |
           flutter packages pub get
 
-      - name: Recreate .env file
-        script: |
-          echo "$ENV_FILE_CONTENTS" > .env
-
       - name: Install pods
         script: |
           find . -name "Podfile" -execdir pod install \;
@@ -141,7 +137,11 @@ workflows:
       - name: Build Flutter macOS
         script: |
           flutter config --enable-macos-desktop
-          flutter build macos --release
+          flutter build macos --release \
+            --dart-define="REVENUECAT_APPLE_PUBLIC_KEY=$REVENUECAT_APPLE_PUBLIC_KEY" \
+            --dart-define="REVENUECAT_CHECKOUT_URL=$REVENUECAT_CHECKOUT_URL" \
+            --dart-define="PRIVACY_POLICY_URL=$PRIVACY_POLICY_URL" \
+            --dart-define="TERMS_URL=$TERMS_URL"
 
       - name: Package application (.pkg)
         script: |
@@ -171,4 +171,4 @@ workflows:
       app_store_connect:
         auth: integration
         submit_to_testflight: true
-        submit_to_app_store: true
+        submit_to_app_store: false
