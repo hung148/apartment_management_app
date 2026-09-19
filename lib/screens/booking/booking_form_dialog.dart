@@ -11,15 +11,16 @@ import 'package:phan_mem_quan_ly_can_ho/models/rooms_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/booking_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/booking_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/app_theme.dart';
 
 // ─────────────────────────────────────────────────────────────
 // DESIGN TOKENS (mirrors the calendar's indigo kPrimaryColor)
 // ─────────────────────────────────────────────────────────────
 class _DS {
-  static const primary = Color(0xFF4F46E5);
-  static const primaryDeep = Color(0xFF3730A3);
-  static const primaryMid = Color(0xFF6366F1);
-  static const primaryLight = Color(0xFFEEF2FF);
+  static Color get primary => AppThemePalette.primary;
+  static Color get primaryDeep => AppThemePalette.primaryDeep;
+  static Color get primaryMid => AppThemePalette.primaryMid;
+  static Color get primaryLight => AppThemePalette.primaryLight;
   static const surface = Color(0xFFF8FAFC);
   static const textPrimary = Color(0xFF1E1B4B);
   static const textSecondary = Color(0xFF64748B);
@@ -138,17 +139,6 @@ class _BookingFormDialogState extends State<BookingFormDialog> {
     final hours = _end.difference(_start).inMinutes / 60.0;
     final total = hours > 0 ? rate * hours : 0.0;
     _priceController.text = CurrencyParser.format(total);
-  }
-
-  bool _isDurationSelected(Duration duration) =>
-      !_isOvernight && _end.difference(_start) == duration;
-
-  void _applyDurationPreset(Duration duration) {
-    setState(() {
-      _isOvernight = false;
-      _end = _start.add(duration);
-      _recalculatePrice();
-    });
   }
 
   void _applyOvernightPreset() {
@@ -290,12 +280,11 @@ class _BookingFormDialogState extends State<BookingFormDialog> {
   @override
   Widget build(BuildContext context) {
     final t = AppTranslations.of(context);
-    final fmt = DateFormat(t.dateTimeFormat);
     final isSmall = MediaQuery.of(context).size.width < 600;
     final hours = _end.difference(_start).inMinutes / 60.0;
 
     return AppDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       elevation: 0,
       backgroundColor: Colors.white,
       insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
@@ -340,60 +329,21 @@ class _BookingFormDialogState extends State<BookingFormDialog> {
                             : null,
                       ),
 
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 12),
                       _sectionLabel(
                         Icons.schedule_rounded,
                         t['booking_form_time_section'],
                       ),
                       const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          _durationChip(
-                            t.textWithParams('booking_form_duration_hours', {
-                              'count': 1,
-                            }),
-                            _isDurationSelected(const Duration(hours: 1)),
-                            () =>
-                                _applyDurationPreset(const Duration(hours: 1)),
-                          ),
-                          _durationChip(
-                            t.textWithParams('booking_form_duration_hours', {
-                              'count': 2,
-                            }),
-                            _isDurationSelected(const Duration(hours: 2)),
-                            () =>
-                                _applyDurationPreset(const Duration(hours: 2)),
-                          ),
-                          _durationChip(
-                            t.textWithParams('booking_form_duration_hours', {
-                              'count': 3,
-                            }),
-                            _isDurationSelected(const Duration(hours: 3)),
-                            () =>
-                                _applyDurationPreset(const Duration(hours: 3)),
-                          ),
-                          if (widget.room.overnightPrice != null)
-                            _durationChip(
-                              t['booking_form_overnight'],
-                              _isOvernight,
-                              _applyOvernightPreset,
-                              icon: Icons.nightlight_round,
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Padding(
-                        padding: const EdgeInsets.only(left: 2, bottom: 8),
-                        child: Text(
-                          t['booking_form_custom_range_hint'],
-                          style: TextStyle(
-                            fontSize: 10.5,
-                            color: Colors.grey.shade500,
-                          ),
+                      if (widget.room.overnightPrice != null) ...[
+                        _durationChip(
+                          t['booking_form_overnight'],
+                          _isOvernight,
+                          _applyOvernightPreset,
+                          icon: Icons.nightlight_round,
                         ),
-                      ),
+                        const SizedBox(height: 10),
+                      ],
                       _dateTimeCard(
                         label: t['booking_check_in'],
                         icon: Icons.login_rounded,
@@ -409,53 +359,7 @@ class _BookingFormDialogState extends State<BookingFormDialog> {
                         onTapDate: () => _pickDate(false),
                         onTapTime: () => _pickClock(false),
                       ),
-                      const SizedBox(height: 10),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 9,
-                        ),
-                        decoration: BoxDecoration(
-                          color: _DS.primaryLight,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(
-                              Icons.hourglass_bottom_rounded,
-                              size: 14,
-                              color: _DS.primary,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                hours > 0
-                                    ? t.textWithParams(
-                                        'booking_form_actual_duration',
-                                        {
-                                          'hours': hours.toStringAsFixed(1),
-                                          'currency':
-                                              (widget.booking?.currency ??
-                                              widget.room.currency),
-                                          'range':
-                                              '${fmt.format(_start)} → ${fmt.format(_end)}',
-                                        },
-                                      )
-                                    : t['booking_form_end_after_start'],
-                                style: TextStyle(
-                                  fontSize: 11.5,
-                                  fontWeight: FontWeight.w600,
-                                  color: hours > 0
-                                      ? _DS.primary
-                                      : const Color(0xFFA32D2D),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 12),
                       _sectionLabel(
                         Icons.payments_rounded,
                         t['booking_form_payment_section'],
@@ -604,13 +508,13 @@ class _BookingFormDialogState extends State<BookingFormDialog> {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(20, 20, 16, 20),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [_DS.primaryMid, _DS.primaryDeep],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
       ),
       child: Row(
         children: [
@@ -687,7 +591,7 @@ class _BookingFormDialogState extends State<BookingFormDialog> {
         const SizedBox(width: 6),
         Text(
           label,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w700,
             color: _DS.primary,
@@ -749,7 +653,7 @@ class _BookingFormDialogState extends State<BookingFormDialog> {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: _DS.primary, width: 1.8),
+          borderSide: BorderSide(color: _DS.primary, width: 1.8),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -1015,3 +919,4 @@ class _BookingFormDialogState extends State<BookingFormDialog> {
     );
   }
 }
+

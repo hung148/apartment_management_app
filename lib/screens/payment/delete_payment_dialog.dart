@@ -2,6 +2,7 @@ import 'package:phan_mem_quan_ly_can_ho/widgets/app_dialog.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/payment_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/payments_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/app_money.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -246,7 +247,7 @@ class DeletePaymentDialog extends StatelessWidget {
                 style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
               ),
               Text(
-                '${NumberFormat('#,###').format(item.amount)} đ',
+                AppMoney.format(item.amount, payment.currency),
                 style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
               ),
             ],
@@ -477,7 +478,7 @@ class DeletePaymentDialog extends StatelessWidget {
                           style: const TextStyle(
                               fontWeight: FontWeight.bold, fontSize: 15)),
                       Text(
-                        '${NumberFormat('#,###').format(payment.amount)} VND',
+                        AppMoney.format(payment.amount, payment.currency),
                         style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 16,
@@ -495,7 +496,7 @@ class DeletePaymentDialog extends StatelessWidget {
                             style: const TextStyle(
                                 fontSize: 13, color: Colors.red)),
                         Text(
-                          '+ ${NumberFormat('#,###').format(payment.lateFee!)} VND',
+                          '+ ${AppMoney.format(payment.lateFee!, payment.currency)}',
                           style: const TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
@@ -513,7 +514,7 @@ class DeletePaymentDialog extends StatelessWidget {
                             style: const TextStyle(
                                 fontWeight: FontWeight.bold, fontSize: 15)),
                         Text(
-                          '${NumberFormat('#,###').format(payment.totalAmount)} VND',
+                          AppMoney.format(payment.totalAmount, payment.currency),
                           style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 16,
@@ -570,3 +571,4 @@ class DeletePaymentDialog extends StatelessWidget {
     );
   }
 }
+

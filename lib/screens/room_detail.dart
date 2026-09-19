@@ -1,5 +1,5 @@
 import 'package:phan_mem_quan_ly_can_ho/widgets/app_dialog.dart';
-import 'package:phan_mem_quan_ly_can_ho/utils/app_money.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/exchange_rate_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/responsive_form_row.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/currency_formatter.dart';
 import 'package:phan_mem_quan_ly_can_ho/main.dart';
@@ -20,6 +20,7 @@ import 'package:phan_mem_quan_ly_can_ho/services/payments_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/payments_notifier.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/organization_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/app_theme.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/shared.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/date_picker.dart';
 import 'package:flutter/material.dart';
@@ -31,8 +32,8 @@ const double minWidth  = 360.0;
 const double minHeight = 600.0;
 
 // ─── Gradient presets ─────────────────────────────────────────────────────────
-const LinearGradient _kDefaultHeaderGradient = LinearGradient(
-  colors: [Color(0xFF1035A0), Color(0xFF2563EB)],
+LinearGradient get _kDefaultHeaderGradient => LinearGradient(
+  colors: [AppThemePalette.primaryDeep, AppThemePalette.primary],
   begin: Alignment.centerLeft,
   end: Alignment.centerRight,
 );
@@ -181,7 +182,7 @@ class _ActionButton extends StatelessWidget {
 
     if (primary && !destructive) {
       return Material(
-        color: disabled ? Colors.grey.shade300 : const Color(0xFF2563EB),
+        color: disabled ? Colors.grey.shade300 : AppThemePalette.primary,
         borderRadius: BorderRadius.circular(10),
         child: InkWell(
           onTap: onPressed,
@@ -308,7 +309,7 @@ class _SectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final labelColor = color ?? const Color(0xFF2563EB);
+    final labelColor = color ?? AppThemePalette.primary;
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
@@ -412,7 +413,7 @@ class _ContentDivider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 14),
+        padding: const EdgeInsets.symmetric(vertical: 8),
         child: Divider(height: 1, color: Colors.grey.shade100),
       );
 }
@@ -516,7 +517,7 @@ class _VehicleCard extends StatelessWidget {
             ),
             PopupMenuButton<String>(
               icon: Icon(Icons.more_vert_rounded,
-                  size: 18, color: Colors.grey.shade400),
+                  size: 18, color: Colors.grey.shade600),
               itemBuilder: (_) => menuItems,
               onSelected: onMenuSelected,
             ),
@@ -602,7 +603,7 @@ Widget _inputField(
       decoration: InputDecoration(
         labelText: label,
         labelStyle: TextStyle(color: Colors.grey.shade500, fontSize: 14),
-        prefixIcon: Icon(icon, size: 18, color: Colors.grey.shade400),
+        prefixIcon: Icon(icon, size: 18, color: Colors.grey.shade600),
         suffixText: suffix,
         suffixStyle: TextStyle(color: Colors.grey.shade500, fontSize: 14),
         border: OutlineInputBorder(
@@ -615,7 +616,7 @@ Widget _inputField(
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.5),
+          borderSide: BorderSide(color: AppThemePalette.primary, width: 1.5),
         ),
         filled: true,
         fillColor: Colors.grey.shade50,
@@ -652,7 +653,7 @@ Widget _dropdownField<T>({
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.5),
+          borderSide: BorderSide(color: AppThemePalette.primary, width: 1.5),
         ),
         filled: true,
         fillColor: Colors.grey.shade50,
@@ -705,7 +706,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
     final t = AppTranslations.of(context);
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(16),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -844,14 +845,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
   String _formatDate(DateTime date) =>
       DateFormat(AppTranslations.of(context).dateFormat).format(date);
 
-  String _formatCurrency(double amount, [String currency = 'VND']) => AppMoney.format(amount,currency);
-
-  String _formatCurrencyShort(double amount) {
-    if (amount >= 1000000000) return '${(amount / 1000000000).toStringAsFixed(1)}B';
-    if (amount >= 1000000) return '${(amount / 1000000).toStringAsFixed(1)}M';
-    if (amount >= 1000) return '${(amount / 1000).toStringAsFixed(0)}K';
-    return amount.toStringAsFixed(0);
-  }
+  String _formatCurrency(double amount, [String currency = 'VND']) => ReportingMoney.format(widget.organization.id, amount, currency);
 
   // ─── Generic confirm dialog ───────────────────────────────────────────────
   Future<bool?> _showConfirmDialog({
@@ -984,7 +978,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
                 ),
                 Flexible(
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(20),
+                    padding: const EdgeInsets.all(12),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -1076,7 +1070,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
                             title: Text(t['room_detail_field_main_tenant'],
                                 style: const TextStyle(fontSize: 14)),
                             value: isMainTenant,
-                            activeColor: const Color(0xFF2563EB),
+                            activeColor: AppThemePalette.primary,
                             shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(10)),
                             onChanged: (v) =>
@@ -1336,7 +1330,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
               ),
               Flexible(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(12),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -1619,7 +1613,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
       menuTile(
           icon: Icons.edit_rounded,
           title: t['room_detail_menu_edit'],
-          color: const Color(0xFF2563EB),
+          color: AppThemePalette.primary,
           onTap: () {
             Navigator.pop(context);
             _showAddEditTenantDialog(tenant: tenant);
@@ -1668,7 +1662,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
     ];
 
     Widget sheetHeader = Container(
-      decoration: const BoxDecoration(gradient: _kDefaultHeaderGradient),
+      decoration: BoxDecoration(gradient: _kDefaultHeaderGradient),
       padding: const EdgeInsets.fromLTRB(20, 16, 14, 16),
       child: Row(
         children: [
@@ -1799,7 +1793,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
                 ),
                 Flexible(
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(20),
+                    padding: const EdgeInsets.all(12),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -2177,7 +2171,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
                   ),
                   Flexible(
                     child: SingleChildScrollView(
-                      padding: const EdgeInsets.all(20),
+                      padding: const EdgeInsets.all(12),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -2307,7 +2301,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
                   ),
                   Flexible(
                     child: SingleChildScrollView(
-                      padding: const EdgeInsets.all(20),
+                      padding: const EdgeInsets.all(12),
                       child: Column(
                         children: [
                           _inputField(
@@ -2661,7 +2655,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
 
     if (_isLoadingTenants) {
       return Center(
-          child: CircularProgressIndicator(color: Colors.blue.shade700));
+          child: CircularProgressIndicator(color: AppThemePalette.primary));
     }
 
     if (_tenants == null || _tenants!.isEmpty) {
@@ -2670,13 +2664,13 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                  color: Colors.blue.shade50, shape: BoxShape.circle),
+                  color: AppThemePalette.primaryLight, shape: BoxShape.circle),
               child: Icon(Icons.people_outline_rounded,
-                  size: 48, color: Colors.blue.shade300),
+                  size: 48, color: AppThemePalette.primaryMid),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 12),
             Text(t['room_detail_no_tenants'],
                 style: TextStyle(
                     fontSize: 16,
@@ -2685,11 +2679,11 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
             const SizedBox(height: 6),
             Text(t['room_detail_no_tenants_hint'],
                 style: TextStyle(fontSize: 13, color: Colors.grey.shade500)),
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
             FilledButton.icon(
               onPressed: () => _showAddEditTenantDialog(),
               style: FilledButton.styleFrom(
-                backgroundColor: Colors.blue.shade700,
+                backgroundColor: AppThemePalette.primary,
                 padding:
                     const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 shape: RoundedRectangleBorder(
@@ -2735,7 +2729,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
           width: 3,
           height: 14,
           decoration: BoxDecoration(
-              color: Colors.blue.shade400,
+              color: AppThemePalette.primaryMid,
               borderRadius: BorderRadius.circular(2)),
         ),
         const SizedBox(width: 8),
@@ -2765,9 +2759,9 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
     final t = AppTranslations.of(context);
     final isMovedOut = tenant.status == TenantStatus.moveOut;
     final Color accentColor =
-        isMovedOut ? Colors.grey.shade400 : Colors.blue.shade700;
+        isMovedOut ? Colors.grey.shade400 : AppThemePalette.primary;
     final Color accentBg =
-        isMovedOut ? Colors.grey.shade50 : Colors.blue.shade50;
+        isMovedOut ? Colors.grey.shade50 : AppThemePalette.primaryLight;
     final statusColor = _getTenantStatusColor(tenant.status);
     final words = tenant.fullName.trim().split(' ');
     final initials = words.length >= 2
@@ -2835,14 +2829,14 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 8, vertical: 3),
                               decoration: BoxDecoration(
-                                color: Colors.blue.shade50,
+                                color: AppThemePalette.primaryLight,
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: Text(t['room_detail_main_tenant_badge'],
                                   style: TextStyle(
                                       fontSize: 10,
                                       fontWeight: FontWeight.w600,
-                                      color: Colors.blue.shade700)),
+                                      color: AppThemePalette.primary)),
                             ),
                           ],
                         ]),
@@ -2857,7 +2851,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
                           if (tenant.occupation != null) ...[
                             Text('  ·  ',
                                 style:
-                                    TextStyle(color: Colors.grey.shade400)),
+                                    TextStyle(color: Colors.grey.shade600)),
                             Icon(Icons.work_outline_rounded,
                                 size: 12, color: Colors.grey.shade500),
                             const SizedBox(width: 4),
@@ -2911,7 +2905,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
                   ),
                   IconButton(
                     icon: Icon(Icons.more_vert_rounded,
-                        size: 18, color: Colors.grey.shade400),
+                        size: 18, color: Colors.grey.shade600),
                     padding: const EdgeInsets.all(4),
                     constraints: const BoxConstraints(),
                     onPressed: () => _showTenantOptionsMenu(tenant),
@@ -2960,14 +2954,14 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(24),
+                      padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                          color: Colors.indigo.shade50,
+                          color: AppThemePalette.primaryLight,
                           shape: BoxShape.circle),
                       child: Icon(Icons.receipt_long_outlined,
-                          size: 48, color: Colors.indigo.shade300),
+                          size: 48, color: AppThemePalette.primaryMid),
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 12),
                     Text(t['room_detail_no_payments'],
                         style: TextStyle(
                             fontSize: 16,
@@ -2978,11 +2972,11 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
                         style: TextStyle(
                             fontSize: 13, color: Colors.grey.shade500)),
                     if (isAdmin) ...[
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 16),
                       FilledButton.icon(
                         onPressed: _showAddPaymentDialog,
                         style: FilledButton.styleFrom(
-                          backgroundColor: Colors.blue.shade700,
+                          backgroundColor: AppThemePalette.primary,
                           padding: const EdgeInsets.symmetric(
                               horizontal: 24, vertical: 12),
                           shape: RoundedRectangleBorder(
@@ -3008,10 +3002,10 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
             final overdue = sorted.where((p) => p.isOverdue).length;
             final paid =
                 sorted.where((p) => p.status == PaymentStatus.paid).length;
-            final totalCollected = sorted.fold<double>(0, (s, p) {
+            final totalCollected = ReportingMoney.total(widget.organization.id, sorted, (p) {
               if (p.status == PaymentStatus.paid)
-                return s + (p.paidAmount > 0 ? p.paidAmount : p.totalAmount);
-              return s + p.paidAmount;
+                return p.paidAmount > 0 ? p.paidAmount : p.totalWithAllFees;
+              return p.paidAmount;
             });
 
             return ListView(
@@ -3044,7 +3038,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
                           const Color(0xFF3B6D11)),
                       _kpiDivider(),
                       _payKpiCell(
-                          _formatCurrencyShort(totalCollected),
+                          totalCollected ?? '—',
                           t['room_detail_kpi_total'],
                           const Color(0xFF185FA5)),
                     ],
@@ -3066,7 +3060,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
   Widget _payKpiCell(String value, String label, Color color) {
     return Expanded(
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 14),
+        padding: const EdgeInsets.symmetric(vertical: 8),
         child: Column(
           children: [
             Text(value,
@@ -3198,8 +3192,8 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
                                   Icons.pending_outlined,
                                   t.textWithParams(
                                       'room_detail_remaining_chip', {
-                                    'amount': _formatCurrencyShort(
-                                        payment.remainingAmount)
+                                    'amount': _formatCurrency(
+                                        payment.remainingAmount, payment.currency)
                                   }),
                                   const Color(0xFF185FA5)),
                             if (payment.isOverdue)
@@ -3218,7 +3212,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
                     Builder(
                       builder: (btnContext) => IconButton(
                         icon: Icon(Icons.more_vert_rounded,
-                            size: 18, color: Colors.grey.shade400),
+                            size: 18, color: Colors.grey.shade600),
                         padding: const EdgeInsets.all(4),
                         constraints: const BoxConstraints(),
                         onPressed: () {
@@ -3250,7 +3244,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
                                 value: 'view',
                                 child: Row(children: [
                                   Icon(Icons.visibility_rounded,
-                                      size: 18, color: Colors.blue.shade700),
+                                      size: 18, color: AppThemePalette.primary),
                                   const SizedBox(width: 8),
                                   Text(td['room_detail_pay_menu_view']),
                                 ]),
@@ -3305,7 +3299,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
       case PaymentStatus.overdue:   return Colors.red;
       case PaymentStatus.cancelled: return Colors.grey;
       case PaymentStatus.refunded:  return Colors.purple;
-      case PaymentStatus.partial:   return Colors.blue;
+      case PaymentStatus.partial:   return AppThemePalette.primary;
     }
   }
 
@@ -3331,160 +3325,48 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
   // ═══════════════════════════════════════════════════════════════
   Widget _buildSliverAppBar(bool innerBoxIsScrolled) {
     final t = AppTranslations.of(context);
-    final activeTenants =
-        _tenants?.where((t) => t.status == TenantStatus.active).length ?? 0;
-    final mainTenant = _tenants?.where((t) => t.isMainTenant).firstOrNull;
-
+    final tabs = [t['room_detail_tab_tenants'], t['room_detail_tab_payments']];
     return SliverAppBar(
-      expandedHeight: 200,
       pinned: true,
-      stretch: true,
-      backgroundColor: Colors.blue.shade800,
-      automaticallyImplyLeading: false,
-      leading: IconButton(
-        icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
-        onPressed: () => Navigator.of(context).pop(),
-      ),
-      flexibleSpace: FlexibleSpaceBar(
-        collapseMode: CollapseMode.pin,
-        background: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Colors.blue.shade900, Colors.blue.shade600],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-              ),
-            ),
-            Positioned(right: -15, top: -20,
-              child: Container(width: 90, height: 90,
-                decoration: BoxDecoration(shape: BoxShape.circle,
-                    color: Colors.white.withOpacity(0.14)))),
-            Positioned(right: 55, top: -28,
-              child: Container(width: 60, height: 60,
-                decoration: BoxDecoration(shape: BoxShape.circle,
-                    color: Colors.white.withOpacity(0.10)))),
-            Positioned(left: 280, top: -18,
-              child: Container(width: 48, height: 48,
-                decoration: BoxDecoration(shape: BoxShape.circle,
-                    color: Colors.white.withOpacity(0.09)))),
-            Positioned(left: -18, bottom: 40,
-              child: Container(width: 72, height: 72,
-                decoration: BoxDecoration(shape: BoxShape.circle,
-                    color: Colors.white.withOpacity(0.10)))),
-            Positioned(left: 42, top: -12,
-              child: Container(width: 38, height: 38,
-                decoration: BoxDecoration(shape: BoxShape.circle,
-                    color: Colors.white.withOpacity(0.08)))),
-            Column(
-              mainAxisAlignment: MainAxisAlignment.end,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Icon(Icons.meeting_room_rounded,
-                                color: Colors.white, size: 24),
-                          ),
-                          const SizedBox(width: 12),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('${t['manage_rooms']} ${widget.room.roomNumber}',
-                                  style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 24,
-                                      fontWeight: FontWeight.bold,
-                                      letterSpacing: -0.3)),
-                              if (widget.room.roomType.isNotEmpty)
-                                Text(widget.room.roomType,
-                                    style: TextStyle(
-                                        color: Colors.white.withOpacity(0.80),
-                                        fontSize: 13)),
-                            ],
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Row(children: [
-                        _headerChip(
-                            icon: Icons.people_rounded,
-                            label: t.textWithParams(
-                                'room_detail_tenants_count',
-                                {'count': activeTenants})),
-                        const SizedBox(width: 8),
-                        if (widget.room.area > 0)
-                          _headerChip(
-                              icon: Icons.square_foot_rounded,
-                              label: '${widget.room.area} m²'),
-                        if (mainTenant != null) ...[
-                          const SizedBox(width: 8),
-                          _headerChip(
-                              icon: Icons.person_rounded,
-                              label: mainTenant.fullName.split(' ').last),
-                        ],
-                      ]),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-      bottom: PreferredSize(
-        preferredSize: const Size.fromHeight(46),
-        child: Container(
-          color: Colors.blue.shade800,
-          child: TabBar(
+      toolbarHeight: 56,
+      backgroundColor: AppThemePalette.primaryDeep,
+      foregroundColor: Colors.white,
+      leading: BackButton(onPressed: () => Navigator.of(context).pop()),
+      title: LayoutBuilder(builder: (context, constraints) {
+        final inline = constraints.maxWidth > 560 && MediaQuery.textScalerOf(context).scale(13) < 18;
+        return Row(children: [
+          Expanded(child: Tooltip(
+            message: '${widget.room.roomNumber} / ${widget.room.roomType} / ${widget.room.area} m²',
+            child: Text('${t['manage_rooms']} ${widget.room.roomNumber}',
+              maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+          )),
+          const SizedBox(width: 8),
+          if (inline) TabBar(
             controller: _tabController,
-            labelColor: Colors.white,
-            unselectedLabelColor: Colors.white.withOpacity(0.55),
-            indicatorColor: Colors.white,
-            indicatorWeight: 3,
-            labelStyle: const TextStyle(
-                fontSize: 13, fontWeight: FontWeight.w600),
-            unselectedLabelStyle: const TextStyle(
-                fontSize: 13, fontWeight: FontWeight.w400),
-            tabs: [
-              Tab(
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.people_rounded, size: 17),
-                    const SizedBox(width: 6),
-                    Text(t['room_detail_tab_tenants']),
-                  ],
-                ),
-              ),
-              Tab(
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.receipt_long_rounded, size: 17),
-                    const SizedBox(width: 6),
-                    Text(t['room_detail_tab_payments']),
-                  ],
-                ),
-              ),
-            ],
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
+            labelColor: AppThemePalette.primaryDeep,
+            unselectedLabelColor: Colors.white,
+            indicator: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
+            indicatorSize: TabBarIndicatorSize.tab,
+            indicatorPadding: const EdgeInsets.symmetric(vertical: 5),
+            dividerColor: Colors.transparent,
+            tabs: tabs.map((label) => Tab(height: 48, text: label)).toList(),
+          ) else AnimatedBuilder(
+            animation: _tabController,
+            builder: (context, _) => PopupMenuButton<int>(
+              tooltip: tabs[_tabController.index],
+              icon: const Icon(Icons.more_horiz),
+              onSelected: _tabController.animateTo,
+              itemBuilder: (_) => List.generate(2, (index) => CheckedPopupMenuItem<int>(
+                value: index, checked: index == _tabController.index,
+                child: Text(tabs[index]),
+              )),
+            ),
           ),
-        ),
-      ),
+        ]);
+      }),
     );
   }
 
@@ -3548,7 +3430,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen>
                     else
                       _showAddPaymentDialog();
                   },
-                  backgroundColor: Colors.blue.shade700,
+                  backgroundColor: AppThemePalette.primary,
                   child: const Icon(Icons.add, color: Colors.white),
                 );
               }
@@ -3595,7 +3477,7 @@ class _ContractDateTile extends StatelessWidget {
       child: ListTile(
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
-        leading: Icon(icon, size: 18, color: Colors.grey.shade400),
+        leading: Icon(icon, size: 18, color: Colors.grey.shade600),
         title: Text(label,
             style: TextStyle(fontSize: 13, color: Colors.grey.shade500)),
         subtitle: Text(
@@ -3610,12 +3492,13 @@ class _ContractDateTile extends StatelessWidget {
         trailing: date != null
             ? IconButton(
                 icon: Icon(Icons.clear_rounded,
-                    size: 16, color: Colors.grey.shade400),
+                    size: 16, color: Colors.grey.shade600),
                 onPressed: onClear,
               )
             : Icon(Icons.calendar_today_rounded,
-                size: 16, color: Colors.grey.shade400),
+                size: 16, color: Colors.grey.shade600),
       ),
     );
   }
 }
+

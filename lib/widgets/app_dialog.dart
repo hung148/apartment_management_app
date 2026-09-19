@@ -44,14 +44,14 @@ class AppDialog extends StatelessWidget {
       shape:
           shape ??
           RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(16),
             side: const BorderSide(color: Color(0xFFE2E8F0)),
           ),
       clipBehavior: Clip.antiAlias,
       insetPadding: padding,
       child: ConstrainedBox(
         constraints: BoxConstraints(
-          maxWidth: constraints?.maxWidth ?? 960,
+          maxWidth: constraints?.maxWidth ?? 800,
           maxHeight: height,
         ),
         child: scrollable ? SingleChildScrollView(child: child) : child,
@@ -68,11 +68,11 @@ class AppAlertDialog extends AlertDialog {
     super.content,
     super.actions,
     super.shape = const RoundedRectangleBorder(
-      borderRadius: BorderRadius.all(Radius.circular(24)),
+      borderRadius: BorderRadius.all(Radius.circular(16)),
       side: BorderSide(color: Color(0xFFE2E8F0)),
     ),
-    super.titlePadding = const EdgeInsets.fromLTRB(24, 24, 24, 12),
-    super.contentPadding = const EdgeInsets.fromLTRB(24, 8, 24, 16),
+    super.titlePadding = const EdgeInsets.fromLTRB(16, 16, 16, 8),
+    super.contentPadding = const EdgeInsets.fromLTRB(16, 8, 16, 16),
     super.actionsPadding = const EdgeInsets.fromLTRB(16, 8, 16, 16),
     super.insetPadding = const EdgeInsets.symmetric(
       horizontal: 16,
@@ -81,3 +81,4 @@ class AppAlertDialog extends AlertDialog {
     super.scrollable = true,
   });
 }
+

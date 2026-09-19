@@ -89,6 +89,7 @@ void setup() {
   getIt.registerLazySingleton(() => PaymentsNotifier(getIt<PaymentService>()));
   getIt.registerLazySingleton(() => UpdateService());
   getIt.registerLazySingleton(() => LocaleNotifier());
+  getIt.registerLazySingleton(() => AppThemeNotifier());
   getIt.registerLazySingleton(() => BookingService());
   getIt.registerLazySingleton(() => BookingsNotifier(getIt<BookingService>()));
 }
@@ -143,6 +144,7 @@ void main() async {
   setup();
 
   final prefs = await SharedPreferences.getInstance();
+  await getIt<AppThemeNotifier>().load();
   final savedLang = prefs.getString('language_code') ?? 'vi';
   final savedCountry = savedLang == 'vi' ? 'VN' : 'US';
   getIt<LocaleNotifier>().setLocale(Locale(savedLang, savedCountry));
@@ -159,27 +161,30 @@ class MyApp extends StatelessWidget {
       listenable: getIt<LocaleNotifier>(),
       builder: (context, child) {
         final localeNotifier = getIt<LocaleNotifier>();
-
-        return MaterialApp(
-          navigatorKey: navigatorKey,
-          navigatorObservers: [_chatRouteObserver],
-          builder: (context, child) => child!,
-          locale: localeNotifier.locale,
-          localizationsDelegates: const [
-            AppTranslationsDelegate(),
-            GlobalMaterialLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
-          ],
-          supportedLocales: const [Locale('vi', 'VN'), Locale('en', 'US')],
-          onGenerateTitle: (context) =>
-              AppTranslations.of(context)['app_title'],
-          theme: buildAppTheme(),
-          debugShowCheckedModeBanner: false,
-          initialRoute: '/',
-          onGenerateRoute: AppRouter.generateRoute,
+        return ListenableBuilder(
+          listenable: getIt<AppThemeNotifier>(),
+          builder: (context, child) => MaterialApp(
+            navigatorKey: navigatorKey,
+            navigatorObservers: [_chatRouteObserver],
+            builder: (context, child) => child!,
+            locale: localeNotifier.locale,
+            localizationsDelegates: const [
+              AppTranslationsDelegate(),
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+            supportedLocales: const [Locale('vi', 'VN'), Locale('en', 'US')],
+            onGenerateTitle: (context) =>
+                AppTranslations.of(context)['app_title'],
+            theme: buildAppTheme(getIt<AppThemeNotifier>().primary),
+            debugShowCheckedModeBanner: false,
+            initialRoute: '/',
+            onGenerateRoute: AppRouter.generateRoute,
+          ),
         );
       },
     );
   }
 }
+

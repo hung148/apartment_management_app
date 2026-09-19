@@ -275,11 +275,17 @@ class _AIImportDialogState extends State<AIImportDialog> {
                 ? CurrencyParser.parse(value)
                 : value;
         }
-        return {...record, 'fields': fields, 'dateOffsets': {
-          for (final name in ['moveInDate', 'moveOutDate', 'dueDate'])
-            if (fields[name] != null)
-              name: DateTime.parse(fields[name] as String).timeZoneOffset.inMinutes,
-        }};
+        return {
+          ...record,
+          'fields': fields,
+          'dateOffsets': {
+            for (final name in ['moveInDate', 'moveOutDate', 'dueDate'])
+              if (fields[name] != null)
+                name: DateTime.parse(
+                  fields[name] as String,
+                ).timeZoneOffset.inMinutes,
+          },
+        };
       }).toList();
       final result = await _ai.commit(_draftId!, records);
       if (mounted) Navigator.pop(context, (result['created'] as List).length);
@@ -537,7 +543,14 @@ class _AIImportDialogState extends State<AIImportDialog> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       if (_draftId == null) ...[
-                        Text(t['ai_upload_privacy']),
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF0F6F4),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(t['ai_upload_privacy']),
+                        ),
                         const SizedBox(height: 16),
                         if (_loadingOrganizations)
                           const LinearProgressIndicator()
@@ -588,7 +601,16 @@ class _AIImportDialogState extends State<AIImportDialog> {
                         ),
                         Text(t['ai_file_types']),
                       ] else ...[
-                        Text(t['ai_review_notice']),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(16),
+                          margin: const EdgeInsets.only(bottom: 16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF0F6F4),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(t['ai_review_notice']),
+                        ),
                         ..._warnings.map(
                           (w) => Padding(
                             padding: const EdgeInsets.symmetric(vertical: 6),
@@ -648,3 +670,4 @@ class _AIImportDialogState extends State<AIImportDialog> {
     );
   }
 }
+

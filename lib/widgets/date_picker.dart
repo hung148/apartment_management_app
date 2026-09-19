@@ -175,3 +175,4 @@ class CompactLocalizedDatePicker extends StatelessWidget {
     required: required,
   );
 }
+

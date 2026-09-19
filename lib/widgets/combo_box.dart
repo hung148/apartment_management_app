@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/app_theme.dart';
 
 // ─── Combobox: dropdown + type-to-filter, built on Flutter's DropdownMenu ────
 class ComboBoxField<T> extends StatefulWidget {
@@ -133,7 +134,7 @@ class _ComboBoxFieldState<T> extends State<ComboBoxField<T>> {
         : (widget.disabledFillColor ?? Colors.grey.shade100);
     final Color resolvedBorder = widget.borderColor ?? Colors.grey.shade300;
     final Color resolvedFocusedBorder =
-        widget.focusedBorderColor ?? const Color(0xFF2563EB);
+        widget.focusedBorderColor ?? AppThemePalette.primary;
     final Color resolvedIconColor = widget.iconColor ?? Colors.grey.shade400;
     final Color resolvedTextColor = widget.textColor ?? Colors.black87;
 
@@ -168,7 +169,7 @@ class _ComboBoxFieldState<T> extends State<ComboBoxField<T>> {
             child: Row(
               children: [
                 if (widget.icon != null) ...[
-                  Icon(widget.icon, size: widget.iconSize, color: Colors.grey.shade400),
+                  Icon(widget.icon, size: widget.iconSize, color: Colors.grey.shade600),
                   const SizedBox(width: 10),
                 ],
                 Expanded(
@@ -241,7 +242,7 @@ class _ComboBoxFieldState<T> extends State<ComboBoxField<T>> {
               shape: WidgetStatePropertyAll(
                 RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
-                  side: BorderSide(color: Colors.grey.shade400, width: 1.2),
+                  side: BorderSide(color: Colors.grey.shade600, width: 1.2),
                 ),
               ),
               padding: const WidgetStatePropertyAll(
@@ -303,3 +304,4 @@ class _ComboBoxFieldState<T> extends State<ComboBoxField<T>> {
         : field;
   }
 }
+

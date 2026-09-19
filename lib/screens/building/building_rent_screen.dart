@@ -1,5 +1,5 @@
 import 'package:phan_mem_quan_ly_can_ho/widgets/app_dialog.dart';
-import 'package:phan_mem_quan_ly_can_ho/utils/app_money.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/exchange_rate_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/currency_formatter.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -11,6 +11,7 @@ import 'package:phan_mem_quan_ly_can_ho/models/organization_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/payment_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/payments_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/app_theme.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/payments_notifier.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/date_picker.dart';
 
@@ -20,10 +21,10 @@ import 'package:phan_mem_quan_ly_can_ho/widgets/date_picker.dart';
 // _DS but tuned to the amber palette already used for rent UI)
 // ─────────────────────────────────────────────────────────────
 class _DS {
-  static const primary       = Color(0xFF854F0B);
-  static const primaryDeep   = Color(0xFF5E3806);
-  static const primaryMid    = Color(0xFF9C5E0E);
-  static const primaryLight  = Color(0xFFFAEEDA);
+  static Color get primary => AppThemePalette.primary;
+  static Color get primaryDeep => AppThemePalette.primaryDeep;
+  static Color get primaryMid => AppThemePalette.primaryMid;
+  static Color get primaryLight => AppThemePalette.primaryLight;
   static const surface       = Color(0xFFFBF8F3);
   static const textPrimary   = Color(0xFF35260F);
   static const textSecondary = Color(0xFF8A7660);
@@ -59,87 +60,12 @@ class _BuildingRentScreenState extends State<BuildingRentScreen> {
     return Scaffold(
       backgroundColor: _DS.surface,
       appBar: AppBar(
-        elevation: 0,
-        automaticallyImplyLeading: false,
-        titleSpacing: 0,
-        flexibleSpace: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              colors: [_DS.primaryMid, _DS.primaryDeep],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-          ),
-        ),
-        title: Row(
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(left: 12),
-              child: InkWell(
-                onTap: () => Navigator.of(context).pop(),
-                borderRadius: BorderRadius.circular(10),
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.18),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.arrow_back_ios_new_rounded,
-                          size: 14, color: Colors.white),
-                      const SizedBox(width: 4),
-                      Text(t['back'],
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white.withValues(alpha: 0.9),
-                          )),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Container(
-              width: 34,
-              height: 34,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(9),
-              ),
-              child: const Icon(Icons.real_estate_agent_rounded,
-                  size: 18, color: Colors.white),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(t['building_rent_tab_label'],
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                      ),
-                      overflow: TextOverflow.ellipsis),
-                  Text(building.name,
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.75),
-                        fontSize: 12,
-                      ),
-                      overflow: TextOverflow.ellipsis),
-                ],
-              ),
-            ),
-          ],
-        ),
+        backgroundColor: _DS.primaryDeep,
+        foregroundColor: Colors.white,
+        title: Tooltip(message: t['building_rent_tab_label'], child: Text(
+          building.name, maxLines: 1, overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        )),
       ),
       body: FutureBuilder<List<Payment>>(
         key: ValueKey(_refreshTick),
@@ -155,15 +81,15 @@ class _BuildingRentScreenState extends State<BuildingRentScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _renterInfoCard(t, building),
-                const SizedBox(height: 20),
+                const SizedBox(height: 12),
                 _sectionLabel(
                     Icons.receipt_long_rounded, t['building_rent_payment_history']),
                 const SizedBox(height: 10),
                 _addPaymentButton(t, building),
                 const SizedBox(height: 12),
                 if (isLoading)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 32),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 32),
                     child: Center(
                         child: CircularProgressIndicator(color: _DS.primary)),
                   )
@@ -184,7 +110,7 @@ class _BuildingRentScreenState extends State<BuildingRentScreen> {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.grey.shade200),
         boxShadow: [
           BoxShadow(
@@ -214,7 +140,7 @@ class _BuildingRentScreenState extends State<BuildingRentScreen> {
                         color: _DS.primaryLight,
                         borderRadius: BorderRadius.circular(13),
                       ),
-                      child: const Icon(Icons.person_rounded,
+                      child: Icon(Icons.person_rounded,
                           color: _DS.primary, size: 24),
                     ),
                     const SizedBox(width: 12),
@@ -234,7 +160,7 @@ class _BuildingRentScreenState extends State<BuildingRentScreen> {
                           Row(
                             children: [
                               Icon(Icons.phone_rounded,
-                                  size: 12, color: Colors.grey.shade400),
+                                  size: 12, color: Colors.grey.shade600),
                               const SizedBox(width: 4),
                               Text(
                                 building.renterPhone ?? '—',
@@ -256,11 +182,11 @@ class _BuildingRentScreenState extends State<BuildingRentScreen> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.real_estate_agent_rounded,
+                          Icon(Icons.real_estate_agent_rounded,
                               size: 11, color: _DS.primary),
                           const SizedBox(width: 4),
                           Text(t['building_management_rented'],
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w600,
                                 color: _DS.primary,
@@ -337,7 +263,7 @@ class _BuildingRentScreenState extends State<BuildingRentScreen> {
           children: [
             Text(
               value,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w800,
                 color: _DS.primary,
@@ -364,7 +290,7 @@ class _BuildingRentScreenState extends State<BuildingRentScreen> {
       const SizedBox(width: 6),
       Text(
         label.toUpperCase(),
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w700,
           color: _DS.primary,
@@ -400,10 +326,10 @@ class _BuildingRentScreenState extends State<BuildingRentScreen> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.add_rounded, color: _DS.primary, size: 20),
+              Icon(Icons.add_rounded, color: _DS.primary, size: 20),
               const SizedBox(width: 6),
               Text(t['building_rent_add_payment'],
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: _DS.primary,
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
@@ -498,7 +424,7 @@ class _BuildingRentScreenState extends State<BuildingRentScreen> {
               builder: (buttonContext) => IconButton(
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
-                icon: Icon(Icons.more_vert, size: 18, color: Colors.grey.shade400),
+                icon: Icon(Icons.more_vert, size: 18, color: Colors.grey.shade600),
                 onPressed: () => _showPaymentActionMenu(buttonContext, p),
               ),
             ),
@@ -551,7 +477,7 @@ class _BuildingRentScreenState extends State<BuildingRentScreen> {
         PopupMenuItem(
           value: 'edit',
           child: Row(children: [
-            const Icon(Icons.edit_rounded, size: 18, color: _DS.primary),
+            Icon(Icons.edit_rounded, size: 18, color: _DS.primary),
             const SizedBox(width: 8),
             Text(t['edit_payment']),
           ]),
@@ -600,7 +526,7 @@ class _BuildingRentScreenState extends State<BuildingRentScreen> {
         builder: (dialogContext, setDialogState) {
           final isSmall = MediaQuery.of(dialogContext).size.width < 600;
           return AppDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             elevation: 0,
             backgroundColor: Colors.white,
             child: ConstrainedBox(
@@ -615,13 +541,13 @@ class _BuildingRentScreenState extends State<BuildingRentScreen> {
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.fromLTRB(20, 20, 16, 20),
-                    decoration: const BoxDecoration(
+                    decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [_DS.primaryMid, _DS.primaryDeep],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
-                      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
                     ),
                     child: Row(children: [
                       Container(
@@ -831,7 +757,7 @@ class _BuildingRentScreenState extends State<BuildingRentScreen> {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: _DS.primary, width: 1.8),
+          borderSide: BorderSide(color: _DS.primary, width: 1.8),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -886,7 +812,7 @@ class _BuildingRentScreenState extends State<BuildingRentScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AppDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         elevation: 0,
         backgroundColor: Colors.white,
         child: ConstrainedBox(
@@ -903,7 +829,7 @@ class _BuildingRentScreenState extends State<BuildingRentScreen> {
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
                 ),
                 child: Column(
                   children: [
@@ -1001,7 +927,7 @@ class _BuildingRentScreenState extends State<BuildingRentScreen> {
     }
   }
 
-  String _formatCurrency(double amount, [String currency = 'VND']) => AppMoney.format(amount,currency);
+  String _formatCurrency(double amount, [String currency = 'VND']) => ReportingMoney.format(widget.organization.id, amount, currency);
 
   Color _getPaymentStatusColor(PaymentStatus status) {
     switch (status) {
@@ -1020,3 +946,4 @@ class _BuildingRentScreenState extends State<BuildingRentScreen> {
     }
   }
 }
+

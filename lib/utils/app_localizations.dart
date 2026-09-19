@@ -11,6 +11,7 @@ class AppTranslations {
 
   static final Map<String, Map<String, String>> _values = {
     'vi': {
+      'ai_product_unavailable': 'Chưa tải được gói đăng ký. Vui lòng thử tải lại sau.',
       'ai_save_uncertain': 'Chưa xác nhận được kết quả lưu. Thử lưu lại bản nháp này; hệ thống không tạo bản ghi trùng.',
       'ai_duplicate_room': 'Số phòng đã tồn tại trong tòa nhà.',
 "ai_option_USD":"USD",
@@ -273,7 +274,13 @@ class AppTranslations {
       'invoice_pdf_receipt_title_bilingual': 'THU PHÍ CHỦ CĂN HỘ / APARTMENT OWNER FEE RECEIPT',
       'refresh': 'Tải lại',
       'retry': 'Thử lại',
-      'report_currency_separate': 'Số tiền được tổng hợp riêng theo loại tiền; không quy đổi.',
+      'report_currency_separate': 'Các tổng số được quy đổi sang tiền tệ hiển thị; chứng từ gốc vẫn giữ nguyên.',
+      'report_currency_label': 'Tiền tệ hiển thị',
+      'refresh_rates': 'Cập nhật tỷ giá',
+      'rates_offline': 'Không thể cập nhật tỷ giá. Tỷ giá đã lưu vẫn được sử dụng nếu có.',
+      'report_currency_hint': 'Quy đổi để tham khảo. Chứng từ gốc giữ nguyên số tiền và loại tiền.',
+      'reference_rates': 'Tỷ giá tham khảo ngày',
+      'rates_required': 'Cần cập nhật tỷ giá để tính tổng đầy đủ. Các giao dịch gốc vẫn hiển thị.',
       'report_currency': 'Loại tiền báo cáo',
       'booking_edit': 'Sửa đặt phòng',
       'booking_deposit_refunded': 'Tiền cọc đã hoàn',
@@ -462,6 +469,14 @@ class AppTranslations {
       'user_data_not_found': 'Không tìm thấy dữ liệu người dùng',
       'logout_action': 'Đăng xuất',
       'settings': 'Cài đặt',
+      'theme_color': 'Màu giao diện',
+      'theme_color_description': 'Chọn màu chủ đạo cho toàn bộ ứng dụng',
+      'theme_color_teal': 'Xanh ngọc',
+      'theme_color_indigo': 'Chàm',
+      'theme_color_blue': 'Xanh dương',
+      'theme_color_purple': 'Tím',
+      'theme_color_amber': 'Hổ phách',
+      'theme_color_rose': 'Hồng đỏ',
       'delete_account': 'Xóa tài khoản',
       'confirm_delete_account': 'Xóa tài khoản?',
       'confirm_delete_account_message': 'Thao tác này sẽ xóa vĩnh viễn tài khoản của bạn cùng mọi tổ chức mà bạn là quản trị viên duy nhất, bao gồm toà nhà, phòng, người thuê và thanh toán. Bạn không thể hoàn tác.',
@@ -1443,6 +1458,7 @@ class AppTranslations {
     },
 
     'en': {
+      'ai_product_unavailable': 'The subscription could not be loaded. Please try refreshing shortly.',
       'ai_save_uncertain': 'Could not confirm the save result. Retry this draft; already saved records will not be duplicated.',
       'ai_duplicate_room': 'This room number already exists in the building.',
 "ai_option_USD":"USD",
@@ -1705,7 +1721,13 @@ class AppTranslations {
       'invoice_pdf_receipt_title_bilingual': 'THU PHÍ CHỦ CĂN HỘ / APARTMENT OWNER FEE RECEIPT',
       'refresh': 'Refresh',
       'retry': 'Retry',
-      'report_currency_separate': 'Totals are separated by currency; no conversion is applied.',
+      'report_currency_separate': 'Totals are converted to the display currency; original documents keep their source currency.',
+      'report_currency_label': 'Display currency',
+      'refresh_rates': 'Refresh exchange rates',
+      'rates_offline': 'Rates could not be refreshed. Saved rates are used where available.',
+      'report_currency_hint': 'Reference conversion. Original billing amounts and currencies are preserved.',
+      'reference_rates': 'Reference rates dated',
+      'rates_required': 'Refresh exchange rates to calculate complete totals. Original transactions remain visible.',
       'report_currency': 'Report currency',
       'booking_edit': 'Edit booking',
       'booking_deposit_refunded': 'Deposit refunded',
@@ -1894,6 +1916,14 @@ class AppTranslations {
       'user_data_not_found': 'User data not found',
       'logout_action': 'Logout',
       'settings': 'Settings',
+      'theme_color': 'Theme color',
+      'theme_color_description': 'Choose the accent color used across the app',
+      'theme_color_teal': 'Teal',
+      'theme_color_indigo': 'Indigo',
+      'theme_color_blue': 'Blue',
+      'theme_color_purple': 'Purple',
+      'theme_color_amber': 'Amber',
+      'theme_color_rose': 'Rose',
       'delete_account': 'Delete Account',
       'confirm_delete_account': 'Delete Account?',
       'confirm_delete_account_message': 'This will permanently delete your account and any organizations where you are the sole admin, including their buildings, rooms, tenants, and payments. This cannot be undone.',
@@ -2955,3 +2985,4 @@ extension DatePickerFormatting on AppTranslations {
     return '${weekdays[date.weekday % 7]}, ${months[date.month - 1]} $day$suffix, ${date.year}';
   }
 }
+

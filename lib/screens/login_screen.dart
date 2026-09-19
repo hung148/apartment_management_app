@@ -4,6 +4,7 @@ import 'package:phan_mem_quan_ly_can_ho/main.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/auth_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_router.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/app_theme.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/responsive.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/loading.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/shared.dart';
@@ -42,93 +43,125 @@ class LoginScreen extends StatelessWidget {
                 fit: StackFit.expand,
                 children: [
                   child,
+                  Positioned.fill(
+                    child: ColoredBox(
+                      color: Colors.black.withValues(alpha: 0.42),
+                    ),
+                  ),
                   SafeArea(
                     child: SingleChildScrollView(
                       physics: const ClampingScrollPhysics(),
                       child: ConstrainedBox(
-                        constraints: BoxConstraints(
-                          minHeight: size.height,
-                        ),
+                        constraints: BoxConstraints(minHeight: size.height),
                         child: Center(
                           child: ChangeNotifierProvider(
                             create: (context) => ChoiceState(),
-                            child: Padding(
-                              padding: EdgeInsets.all(20.0),
-                              child: Container(
-                                padding: EdgeInsets.all(16.0),
-                                decoration: BoxDecoration(
-                                  color: Colors.transparent,
-                                  border: Border.all(color: Colors.transparent),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Theme(
-                                  data: Theme.of(context).copyWith(
-                                    inputDecorationTheme: InputDecorationTheme(
-                                      filled: true,
-                                      fillColor: Colors.white.withValues(alpha: 0.15),
-                                      errorStyle: TextStyle(
-                                        color: Color(0xFFFF6B6B),
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                      labelStyle: TextStyle(color: Colors.white70),
-                                      hintStyle: TextStyle(color: Colors.white54),
-                          
-                                      enabledBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                        borderSide: BorderSide(color: Colors.white38),
-                                      ),
-                                      focusedBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                        borderSide: BorderSide(color: Colors.white, width: 1.5),
-                                      ),
-                                    ),
-                                    colorScheme: Theme.of(context).colorScheme.copyWith(
-                                      error: Color(0xFFFF6B6B),
-                                    ),
-                                    textTheme: Theme.of(context).textTheme.apply(
-                                      bodyColor: Colors.white,
-                                      displayColor: Colors.white,
-                                    ),
-                                    segmentedButtonTheme: SegmentedButtonThemeData(
-                                      style: ButtonStyle(
-                                        foregroundColor: WidgetStateProperty.resolveWith((states) =>
-                                          states.contains(WidgetState.selected) ? Colors.black87 : Colors.white70,
-                                        ),
-                                        backgroundColor: WidgetStateProperty.resolveWith((states) =>
-                                          states.contains(WidgetState.selected)
-                                            ? Colors.white.withValues(alpha: 0.85)
-                                            : Colors.transparent,
-                                        ),
-                                        side: WidgetStateProperty.all(
-                                          BorderSide(color: Colors.white38),
-                                        ),
-                                      ),
-                                    ),
-                                    textSelectionTheme: TextSelectionThemeData(
-                                      cursorColor: Colors.white,
-                                      selectionColor: Colors.white38,
-                                      selectionHandleColor: Colors.white,
-                                    ),
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 480),
+                              child: Padding(
+                                padding: const EdgeInsets.all(20.0),
+                                child: Container(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    24,
+                                    28,
+                                    24,
+                                    24,
                                   ),
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    crossAxisAlignment: CrossAxisAlignment.center,
-                                    children: [
-                                      Icon(Icons.apartment_rounded, size: iconSize, color: Colors.white70),
-                                      SizedBox(height: 4),
-                                      Text(
-                                        AppTranslations.of(context)['app_title'],
-                                        style: TextStyle(
-                                          fontSize: titleSize,
-                                          fontWeight: FontWeight.w700,
-                                          color: Colors.white,
-                                          letterSpacing: 1.0,
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: 0.48),
+                                    border: Border.all(
+                                      color: Colors.white.withValues(alpha: 0.18),
+                                    ),
+                                    borderRadius: BorderRadius.circular(12),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withValues(alpha: 0.28),
+                                        blurRadius: 32,
+                                        offset: const Offset(0, 16),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Theme(
+                                    data: Theme.of(context).copyWith(
+                                      inputDecorationTheme: InputDecorationTheme(
+                                        filled: true,
+                                        fillColor: Colors.white.withValues(alpha: 0.12),
+                                        errorStyle: const TextStyle(
+                                          color: Color(0xFFFF6B6B),
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                        labelStyle: const TextStyle(color: Colors.white70),
+                                        hintStyle: const TextStyle(color: Colors.white54),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                          borderSide: const BorderSide(color: Colors.white38),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                          borderSide: BorderSide(
+                                            color: AppThemePalette.primary,
+                                            width: 1.8,
+                                          ),
                                         ),
                                       ),
-                                      ChoicesButton(textSize: textSize),
-                                      SizedBox(height: 10),
-                                      Content(buttonSize: buttonSize, textSize: textSize, titleSize: titleSize,),
-                                    ],
+                                      colorScheme: Theme.of(context).colorScheme.copyWith(
+                                        error: const Color(0xFFFF6B6B),
+                                      ),
+                                      textTheme: Theme.of(context).textTheme.apply(
+                                        bodyColor: Colors.white,
+                                        displayColor: Colors.white,
+                                      ),
+                                      segmentedButtonTheme: SegmentedButtonThemeData(
+                                        style: ButtonStyle(
+                                          foregroundColor: WidgetStateProperty.resolveWith(
+                                            (states) => states.contains(WidgetState.selected)
+                                                ? Colors.black87
+                                                : Colors.white70,
+                                          ),
+                                          backgroundColor: WidgetStateProperty.resolveWith(
+                                            (states) => states.contains(WidgetState.selected)
+                                                ? Colors.white.withValues(alpha: 0.85)
+                                                : Colors.transparent,
+                                          ),
+                                          side: WidgetStateProperty.all(
+                                            const BorderSide(color: Colors.white38),
+                                          ),
+                                        ),
+                                      ),
+                                      textSelectionTheme: const TextSelectionThemeData(
+                                        cursorColor: Colors.white,
+                                        selectionColor: Colors.white38,
+                                        selectionHandleColor: Colors.white,
+                                      ),
+                                    ),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      crossAxisAlignment: CrossAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.apartment_rounded,
+                                          size: iconSize,
+                                          color: AppThemePalette.primary,
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          AppTranslations.of(context)['app_title'],
+                                          style: TextStyle(
+                                            fontSize: titleSize,
+                                            fontWeight: FontWeight.w700,
+                                            color: Colors.white,
+                                            letterSpacing: 1.0,
+                                          ),
+                                        ),
+                                        ChoicesButton(textSize: textSize),
+                                        const SizedBox(height: 10),
+                                        Content(
+                                          buttonSize: buttonSize,
+                                          textSize: textSize,
+                                          titleSize: titleSize,
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
@@ -407,9 +440,9 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
                 child: InkWell(
                   onTap: loading ? null : () => _handleLogin(),
                   borderRadius: BorderRadius.circular(10),
-                  splashColor: Colors.blue.withValues(alpha: 0.9),
-                  highlightColor: Colors.blue.withValues(alpha: 0.75),
-                  hoverColor: Colors.blue.withValues(alpha: 0.8),
+                  splashColor: AppThemePalette.primary.withValues(alpha: 0.9),
+                  highlightColor: AppThemePalette.primaryMid.withValues(alpha: 0.75),
+                  hoverColor: AppThemePalette.primaryMid.withValues(alpha: 0.8),
                   child: Container(
                     padding: EdgeInsets.symmetric(horizontal: 40, vertical: 14),
                     decoration: BoxDecoration(
@@ -417,7 +450,10 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
                       gradient: LinearGradient(
                         colors: loading
                           ? [Colors.grey.withValues(alpha: 0.3), Colors.grey.withValues(alpha: 0.3)]
-                          : [Colors.blue.withValues(alpha: 0.6), Colors.lightBlue.withValues(alpha: 0.7)],
+                          : [
+                              AppThemePalette.primary,
+                              AppThemePalette.primaryMid,
+                            ],
                       ),
                       boxShadow: [
                         BoxShadow(
@@ -543,9 +579,9 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
                 child: InkWell(
                   onTap: loading ? null : () => _handleRegister(),
                   borderRadius: BorderRadius.circular(10),
-                  splashColor: Colors.blue.withValues(alpha: 0.9),
-                  highlightColor: Colors.blue.withValues(alpha: 0.75),
-                  hoverColor: Colors.blue.withValues(alpha: 0.8),
+                  splashColor: AppThemePalette.primary.withValues(alpha: 0.9),
+                  highlightColor: AppThemePalette.primaryMid.withValues(alpha: 0.75),
+                  hoverColor: AppThemePalette.primaryMid.withValues(alpha: 0.8),
                   child: Container(
                     padding: EdgeInsets.symmetric(horizontal: 40, vertical: 14),
                     decoration: BoxDecoration(
@@ -553,7 +589,10 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
                       gradient: LinearGradient(
                         colors: loading
                           ? [Colors.grey.withValues(alpha: 0.3), Colors.grey.withValues(alpha: 0.3)]
-                          : [Colors.blue.withValues(alpha: 0.6), Colors.lightBlue.withValues(alpha: 0.7)],
+                          : [
+                              AppThemePalette.primary,
+                              AppThemePalette.primaryMid,
+                            ],
                       ),
                       boxShadow: [
                         BoxShadow(
@@ -658,7 +697,7 @@ class _SwitchAuthLinkState extends State<SwitchAuthLink> {
               TextSpan(
                 text: isLogin ? t['auth_register_title'] : t['auth_login_title'],
                 style: TextStyle(
-                  color: _hovered ? Colors.blue : Colors.white70,
+                  color: _hovered ? AppThemePalette.primaryMid : Colors.white70,
                   fontSize: widget.textSize + 2,
                   shadows: [
                     Shadow(
@@ -669,7 +708,7 @@ class _SwitchAuthLinkState extends State<SwitchAuthLink> {
                   ],
                   fontWeight: FontWeight.bold,
                   decoration: TextDecoration.underline,
-                  decorationColor: _hovered ? Colors.blue : Colors.white70,
+                  decorationColor: _hovered ? AppThemePalette.primaryMid : Colors.white70,
                 ),
               ),
             ],
@@ -681,4 +720,5 @@ class _SwitchAuthLinkState extends State<SwitchAuthLink> {
 }
 
 enum Choices { login, register }
+
 

@@ -1,5 +1,6 @@
 import 'package:phan_mem_quan_ly_can_ho/widgets/app_dialog.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_money.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/exchange_rate_service.dart';
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/services.dart';
@@ -29,6 +30,7 @@ import 'package:phan_mem_quan_ly_can_ho/services/room_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_router.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/app_theme.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/shared.dart';
 import 'package:flutter/gestures.dart';
 import 'package:intl/intl.dart' hide TextDirection;
@@ -40,17 +42,11 @@ import 'package:file_selector/file_selector.dart';
 import 'package:path/path.dart' as p;
 import 'package:syncfusion_flutter_xlsio/xlsio.dart' as xlsio;
 
-final Color kPrimaryColor = const Color(0xFF4F46E5); // Modern Indigo
-final Color kBgColor = const Color(0xFFF8FAFC);      // Soft Slate background
+Color get kPrimaryColor => AppThemePalette.primary;
+Color get kBgColor => const Color(0xFFF6F7F4);      // Soft neutral background
 final Color kSurfaceColor = Colors.white;
 
-const List<Color> _buildingColors = [
-  Color(0xFF185FA5), // blue
-  Color(0xFF0F6E56), // teal
-  Color(0xFF854F0B), // amber
-  Color(0xFF534AB7), // purple
-  Color(0xFF993556), // pink
-];
+List<Color> get _buildingColors => AppThemePalette.identityColors;
 
 // Helper class for invoice line items
 class InvoiceLineItem {
@@ -81,6 +77,7 @@ class _StableTabState extends State<_StableTab>
 
   @override
   Widget build(BuildContext context) {
+    Theme.of(context); // Rebuild theme-dependent custom accents.
     super.build(context); // required by AutomaticKeepAliveClientMixin
     return widget.builder(context);
   }
@@ -250,6 +247,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
     _paymentsNotifier.loadPayments(widget.organization.id);
     _refreshAll();
     _loadChromePref();
+    _loadReportingCurrency();
   }
 
   @override
@@ -258,6 +256,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
     _searchController.dispose();
     _resizeDebounceTimer?.cancel();
     _filterChipsScrollController.dispose();
+    _exchangeRates.dispose();
     super.dispose();
   }
 
@@ -634,14 +633,14 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                         padding: EdgeInsets.all(
                             _isSmallScreen(context) ? 10 : 12),
                         decoration: BoxDecoration(
-                          color: Colors.blue.shade50,
+                          color: AppThemePalette.primaryLight,
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(Icons.info_outline,
-                                size: 20, color: Colors.blue.shade700),
+                                size: 20, color: AppThemePalette.primary),
                             const SizedBox(width: 8),
                             Flexible(
                               fit: FlexFit.loose,
@@ -746,18 +745,98 @@ class _OrganizationScreenState extends State<OrganizationScreen>
   // FORMAT HELPERS
   // ========================================
   String _reportCurrency = 'VND';
-  String _formatCurrency(double amount, [String? currency]) => AppMoney.format(amount,currency ?? _reportCurrency);
+  final _exchangeRates = ExchangeRateService();
+  ExchangeRateSnapshot? _rateSnapshot;
+  bool _ratesLoading = false;
+  bool _ratesFailed = false;
+
+  Future<void> _loadReportingCurrency() async {
+    final prefs = await SharedPreferences.getInstance();
+    final cached = await _exchangeRates.cached();
+    if (!mounted) return;
+    setState(() {
+      _reportCurrency = prefs.getString('report_currency_${widget.organization.id}') ?? 'VND';
+      _rateSnapshot = cached;
+      ReportingMoney.configure(widget.organization.id, _reportCurrency, _rateSnapshot);
+    });
+  }
+
+  Future<void> _refreshRates() async {
+    if (_ratesLoading) return;
+    setState(() { _ratesLoading = true; _ratesFailed = false; });
+    try {
+      final snapshot = await _exchangeRates.refresh();
+      if (mounted) setState(() {
+        _rateSnapshot = snapshot;
+        ReportingMoney.configure(widget.organization.id, _reportCurrency, snapshot);
+      });
+    } catch (_) {
+      if (mounted) setState(() => _ratesFailed = true);
+    } finally {
+      if (mounted) setState(() => _ratesLoading = false);
+    }
+  }
+
+  List<Payment>? _reportPayments(List<Payment> payments) {
+    try {
+      return payments.map((p) => AppMoney.code(p.currency) == _reportCurrency
+          ? p : _rateSnapshot!.project(p, _reportCurrency)).toList();
+    } catch (_) {
+      // A partial total would be misleading. Keep transactions visible, but
+      // require a complete rate snapshot before displaying combined reports.
+      return null;
+    }
+  }
+
+  String _formatCurrency(double amount, [String? currency]) {
+    final source = currency ?? _reportCurrency;
+    if (source == _reportCurrency) return AppMoney.format(amount, source);
+    try {
+      return '≈ ${AppMoney.format(_rateSnapshot!.convert(amount, source, _reportCurrency), _reportCurrency)}';
+    } catch (_) {
+      return AppMoney.format(amount, source);
+    }
+  }
 
   Widget _currencySelector(List<Payment> payments) {
     final t=AppTranslations.of(context);
-    final currencies={_reportCurrency,...AppMoney.currencies(payments)}.toList()..sort();
-    final totals=AppMoney.totals(payments,(p) => p.paidAmount);
+    final currencies={_reportCurrency,'VND','USD','EUR','GBP','AUD','CAD','JPY','SGD',...AppMoney.currencies(payments)}.toList()..sort();
+    final usedCurrencies = {...AppMoney.currencies(payments), _reportCurrency};
+    final dates = usedCurrencies.map((code) => _rateSnapshot?.dates[code])
+        .whereType<String>().toSet().toList();
+    dates.sort();
     return Padding(padding:const EdgeInsets.symmetric(horizontal:16,vertical:8),child:Column(
       crossAxisAlignment:CrossAxisAlignment.start,children:[
-        Wrap(spacing:8,runSpacing:8,children:currencies.map((currency) => ChoiceChip(
-          label:Text('$currency · ${AppMoney.numberFormat(currency).format(totals[currency] ?? 0)}'),
-          selected:currency == _reportCurrency, onSelected:(_) => setState(() => _reportCurrency=currency))).toList()),
-        const SizedBox(height:4),Text(t['report_currency_separate'],style:Theme.of(context).textTheme.bodySmall),
+        Row(children: [
+          Expanded(child: DropdownButtonFormField<String>(
+            key: ValueKey(_reportCurrency),
+            initialValue: _reportCurrency,
+            decoration: InputDecoration(labelText: t['report_currency_label']),
+            items: currencies.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+            onChanged: (value) async {
+              if (value == null) return;
+              setState(() {
+                _reportCurrency = value;
+                ReportingMoney.configure(widget.organization.id, value, _rateSnapshot);
+              });
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setString('report_currency_${widget.organization.id}', value);
+              if (mounted && _reportPayments(payments) == null) await _refreshRates();
+            },
+          )),
+          const SizedBox(width: 12),
+          IconButton(onPressed: _ratesLoading ? null : _refreshRates,
+            tooltip: t['refresh_rates'],
+            icon: _ratesLoading ? const SizedBox(width:20,height:20,child:CircularProgressIndicator(strokeWidth:2)) : const Icon(Icons.currency_exchange)),
+        ]),
+        const SizedBox(height:8),
+        Text(_ratesFailed ? t['rates_offline'] : dates.isEmpty
+            ? t['report_currency_hint']
+            : '${t['reference_rates']} ${dates.first}${dates.last == dates.first ? '' : ' – ${dates.last}'} · Frankfurter',
+          style:Theme.of(context).textTheme.bodySmall),
+        if (_reportPayments(payments) == null)
+          Padding(padding: const EdgeInsets.only(top:8), child: Text(t['rates_required'],
+            style: TextStyle(color: Theme.of(context).colorScheme.error))),
       ]));
   }
 
@@ -781,8 +860,140 @@ class _OrganizationScreenState extends State<OrganizationScreen>
   // ========================================
   // BUILD
   // ========================================
+  PreferredSizeWidget _buildWorkspaceAppBar(BuildContext context, AppTranslations t) {
+    final gradient = AppThemePalette.identityGradient(widget.organization.id);
+    final tabs = <(IconData, String)>[
+      (Icons.calendar_month_outlined, t['calendar_tab']),
+      (Icons.apartment_outlined, t['buildings_tab']),
+      (Icons.people_outline, t['tenants_tab']),
+      (Icons.receipt_long_outlined, t['payments_tab']),
+      (Icons.bar_chart_outlined, t['statistics_tab']),
+      (Icons.group_outlined, t['members_tab']),
+    ];
+    final controller = DefaultTabController.of(context);
+    return AppBar(
+      backgroundColor: gradient.last,
+      foregroundColor: Colors.white,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      toolbarHeight: 56,
+      leadingWidth: 48,
+      leading: IconButton(
+        tooltip: t['back'],
+        icon: const Icon(Icons.arrow_back_rounded, size: 20),
+        onPressed: () => Navigator.of(context).pop(),
+      ),
+      titleSpacing: 4,
+      title: LayoutBuilder(
+        builder: (context, constraints) {
+          final scale = MediaQuery.textScalerOf(context).scale(13) / 13;
+          // Reserve room for the property name and every translated tab label.
+          final tabWidth = tabs.fold<double>(0, (width, tab) {
+            final painter = TextPainter(
+              text: TextSpan(text: tab.$2, style: const TextStyle(
+                fontSize: 13, fontWeight: FontWeight.w600,
+              )),
+              textDirection: Directionality.of(context),
+              textScaler: MediaQuery.textScalerOf(context),
+            )..layout();
+            final widthNeeded = painter.width + 56;
+            painter.dispose();
+            return width + widthNeeded;
+          });
+          final inline = constraints.maxWidth >= tabWidth + 220 && scale <= 1.3;
+          return Row(
+            children: [
+              if (constraints.maxWidth >= 360) ...[
+                const Icon(Icons.apartment_outlined, size: 21),
+                const SizedBox(width: 8),
+              ],
+              Expanded(
+                child: Tooltip(
+                  message: widget.organization.name,
+                  child: Text(
+                    widget.organization.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              if (inline)
+                TabBar(
+                  isScrollable: true,
+                  tabAlignment: TabAlignment.start,
+                  padding: EdgeInsets.zero,
+                  labelPadding: const EdgeInsets.symmetric(horizontal: 12),
+                  labelColor: gradient.last,
+                  unselectedLabelColor: Colors.white,
+                  indicator: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  indicatorSize: TabBarIndicatorSize.tab,
+                  indicatorPadding: const EdgeInsets.symmetric(vertical: 5),
+                  dividerColor: Colors.transparent,
+                  labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                  tabs: tabs.map((tab) => Tab(
+                    height: 48,
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(tab.$1, size: 18),
+                      const SizedBox(width: 8),
+                      Text(tab.$2, maxLines: 1),
+                    ]),
+                  )).toList(),
+                )
+              else
+                AnimatedBuilder(
+                  animation: controller,
+                  builder: (context, _) => PopupMenuButton<int>(
+                    tooltip: tabs[controller.index].$2,
+                    initialValue: controller.index,
+                    onSelected: controller.animateTo,
+                    itemBuilder: (context) => List.generate(tabs.length, (index) =>
+                      CheckedPopupMenuItem<int>(
+                        value: index,
+                        checked: controller.index == index,
+                        child: Text(tabs[index].$2),
+                      ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: SizedBox(
+                        height: 48,
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          Icon(tabs[controller.index].$1, size: 20),
+                          if (constraints.maxWidth >= 440 && scale <= 1.3) ...[
+                            const SizedBox(width: 8),
+                            Text(tabs[controller.index].$2,
+                              style: const TextStyle(fontSize: 13)),
+                          ],
+                          const SizedBox(width: 4),
+                          const Icon(Icons.expand_more_rounded, size: 18),
+                        ]),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          );
+        },
+      ),
+      actions: [
+        IconButton(
+          onPressed: _toggleChrome,
+          tooltip: t['hide_header'],
+          icon: const Icon(Icons.unfold_less_rounded, size: 20),
+        ),
+        const SizedBox(width: 4),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    Theme.of(context); // Rebuild theme-dependent custom accents.
     final t = AppTranslations.of(context);
     return DefaultTabController(
       length: 6,
@@ -798,205 +1009,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
           }
           return Scaffold(
             backgroundColor: kBgColor,
-            appBar: _chromeHidden
-                ? null
-                : AppBar(
-              backgroundColor: Colors.transparent,
-              elevation: 6,
-              shadowColor: Colors.black.withValues(alpha: 0.4),
-              automaticallyImplyLeading: false,
-              titleSpacing: 0,
-              flexibleSpace: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  // Gradient background (bottom layer)
-                  Container(
-                    decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [Color(0xFF1565C0), Color(0xFF185FA5), Color(0xFF0D47A1)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                    ),
-                  ),
-
-                  // ── Right-side circles ───────────────────────────────────
-                  Positioned(
-                    right: -15,
-                    top: -20,
-                    child: Container(
-                      width: 90,
-                      height: 90,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.white.withValues(alpha: 0.14),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    right: 55,
-                    top: -28,
-                    child: Container(
-                      width: 60,
-                      height: 60,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.white.withValues(alpha: 0.10),
-                      ),
-                    ),
-                  ),
-
-                  // ── Center circle ────────────────────────────────────────
-                  Positioned(
-                    left: 280,
-                    top: -18,
-                    child: Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.white.withValues(alpha: 0.09),
-                      ),
-                    ),
-                  ),
-
-                  // ── Left-side circles ────────────────────────────────────
-                  Positioned(
-                    left: -18,
-                    bottom: -12,
-                    child: Container(
-                      width: 72,
-                      height: 72,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.white.withValues(alpha: 0.10),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    left: 42,
-                    top: -12,
-                    child: Container(
-                      width: 38,
-                      height: 38,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.white.withValues(alpha: 0.08),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              title: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Row(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.only(left: 12),  
-                        child: InkWell(
-                          onTap: () => Navigator.of(context).pop(),
-                          borderRadius: BorderRadius.circular(10),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(
-                                color: Colors.white.withValues(alpha: 0.18),
-                                width: 1,
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.arrow_back_ios_new_rounded, size: 14, color: Colors.white),
-                                const SizedBox(width: 4),
-                                Text(
-                                  t['back'],
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.white.withValues(alpha: 0.9),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Container(
-                        width: 34,
-                        height: 34,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(9),
-                        ),
-                        child: const Icon(Icons.apartment_rounded, size: 18, color: Colors.white),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              widget.organization.name,
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700,
-                                color: Colors.white,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            Text(
-                              t['title'],
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: Colors.white.withValues(alpha: 0.7),
-                                fontWeight: FontWeight.w400,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              actions: [
-                IconButton(
-                  onPressed: _toggleChrome,
-                  tooltip: t['hide_header'],
-                  icon: const Icon(Icons.unfold_less_rounded,
-                      color: Colors.white, size: 22),
-                ),
-                const SizedBox(width: 4),
-              ],
-              bottom: PreferredSize(
-                preferredSize: const Size.fromHeight(52),
-                child: TabBar(
-                  isScrollable: false,
-                  labelStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
-                  unselectedLabelStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.w400),
-                  indicatorSize: TabBarIndicatorSize.tab,
-                  indicatorWeight: 3,
-                  labelPadding: EdgeInsets.zero,
-                  labelColor: Colors.white,
-                  unselectedLabelColor: Colors.white.withValues(alpha: 0.55),
-                  indicatorColor: Colors.white,
-                  tabs: [
-                    _CompactTab(icon: Icons.calendar_month_rounded, label: t['calendar_tab']),
-                    _CompactTab(icon: Icons.apartment_rounded,   label: t['buildings_tab']),
-                    _CompactTab(icon: Icons.people_alt_rounded,   label: t['tenants_tab']),
-                    _CompactTab(icon: Icons.receipt_long_rounded, label: t['payments_tab']),
-                    _CompactTab(icon: Icons.bar_chart_rounded,    label: t['statistics_tab']),
-                    _CompactTab(icon: Icons.group_rounded,        label: t['members_tab']),
-                  ],
-                ),
-              ),
-            ),
+            appBar: _chromeHidden ? null : _buildWorkspaceAppBar(context, t),
            body: SafeArea(
             // The AppBar normally handles the status bar / notch. When it is
             // hidden we have to keep the content clear of it ourselves.
@@ -1004,6 +1017,10 @@ class _OrganizationScreenState extends State<OrganizationScreen>
             bottom: false,
             child: Stack(
               children: [
+                // Tab content owns its own readable insets. Keeping this
+                // shell edge-to-edge lets the calendar timeline use the full
+                // viewport instead of leaving decorative gutters on either
+                // side of the resource grid.
                 Positioned.fill(child: _buildTabContent()),
                 if (_chromeHidden) ...[
                   // Touch: swipe down from the top edge to bring the header back.
@@ -1103,81 +1120,28 @@ class _OrganizationScreenState extends State<OrganizationScreen>
 
             return CustomScrollView(
               slivers: [
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                    child: Column(
-                      children: [
-                        // ── Summary bar ──────────────────────────────
+                SliverToBoxAdapter(child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: LayoutBuilder(builder: (context, constraints) {
+                    final actions = Wrap(spacing: 8, runSpacing: 4, children: [
+                      if (isAdmin) FilledButton.icon(
+                        onPressed: _showAddBuildingDialog,
+                        icon: const Icon(Icons.add, size: 18),
+                        label: Text(t['add_building']),
+                      ),
+                    ]);
+                    if (constraints.maxWidth < 850 || MediaQuery.textScalerOf(context).scale(14) > 18) {
+                      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                         _buildBuildingSummaryBar(t, buildings),
-                        const SizedBox(height: 16),
-
-                        // ── Add button ───────────────────────────────
-                        if (isAdmin)
-                          _buildAddBuildingButton(t),
-
-                        const SizedBox(height: 10),
-                        Material(
-                          color: const Color(0xFFEEEDFE),
-                          borderRadius: BorderRadius.circular(14),
-                          child: InkWell(
-                            onTap: () => Navigator.pushNamed(
-                              context,
-                              AppRouter.availabilityCalendarScreen,
-                              arguments: {'building': null, 'organization': widget.organization},
-                            ),
-                            borderRadius: BorderRadius.circular(14),
-                            hoverColor: const Color(0xFFDCD9F8),
-                            child: Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(color: const Color(0xFF534AB7), width: 1.5),
-                              ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const Icon(Icons.calendar_month_rounded, color: Color(0xFF534AB7), size: 20),
-                                  const SizedBox(width: 6),
-                                  Text(t['view_all_buildings_calendar'],
-                                      style: const TextStyle(color: Color(0xFF534AB7), fontSize: 14, fontWeight: FontWeight.w600)),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-
-                        // ── Section header ───────────────────────────
-                        if (buildings.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            child: Row(
-                              children: [
-                                Text(
-                                  t['buildings_tab'].toUpperCase(),
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                    letterSpacing: 0.8,
-                                    color: Colors.grey.shade500,
-                                  ),
-                                ),
-                                const Spacer(),
-                                Text(
-                                  '${buildings.length} ${t['buildings_tab'].toLowerCase()}',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey.shade400,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
+                        const SizedBox(height: 8), actions,
+                      ]);
+                    }
+                    return Row(children: [
+                      Expanded(child: _buildBuildingSummaryBar(t, buildings)),
+                      const SizedBox(width: 12), actions,
+                    ]);
+                  }),
+                )),
 
                 if (buildings.isEmpty)
                   SliverFillRemaining(
@@ -1188,7 +1152,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                           Icon(Icons.apartment, size: 64, color: Colors.grey.shade300),
                           const SizedBox(height: 16),
                           Text(t['no_buildings'],
-                              style: TextStyle(color: Colors.grey.shade400)),
+                              style: TextStyle(color: Colors.grey.shade600)),
                         ],
                       ),
                     ),
@@ -1245,7 +1209,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
 
         return Container(
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface,
+            color: Theme.of(context).colorScheme.surfaceContainerLow,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: Colors.grey.shade200),
             boxShadow: [
@@ -1261,7 +1225,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
               _summaryBarItem(
                 value: buildings.length.toString(),
                 label: t['stat_buildings'], 
-                color: const Color(0xFF185FA5),
+                color: AppThemePalette.primary,
                 isFirst: true,
               ),
               _summaryBarDivider(),
@@ -1297,7 +1261,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
   }) {
     return Expanded(
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 14),
+        padding: const EdgeInsets.symmetric(vertical: 8),
         child: Column(
           children: [
             Text(
@@ -1311,7 +1275,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
             const SizedBox(height: 2),
             Text(
               label,
-              style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+              style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
             ),
           ],
         ),
@@ -1327,32 +1291,32 @@ class _OrganizationScreenState extends State<OrganizationScreen>
 
   Widget _buildAddBuildingButton(AppTranslations t) {
     return Material(
-      color: const Color(0xFFE6F1FB),
+      color: AppThemePalette.primaryLight,
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         onTap: _showAddBuildingDialog,
         borderRadius: BorderRadius.circular(14),
-        hoverColor: const Color(0xFFD0E8F8),
-        splashColor: const Color(0xFF378ADD).withValues(alpha: 0.2),
+        hoverColor: AppThemePalette.primaryLight,
+        splashColor: AppThemePalette.primary.withValues(alpha: 0.2),
         child: Container(
           width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 14),
+          padding: const EdgeInsets.symmetric(vertical: 8),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: const Color(0xFF378ADD),
+              color: AppThemePalette.primary,
               width: 1.5,
             ),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.add_rounded, color: Color(0xFF185FA5), size: 20),
+               Icon(Icons.add_rounded, color: AppThemePalette.primary, size: 20),
               const SizedBox(width: 6),
               Text(
                 t['add_building'],
-                style: const TextStyle(
-                  color: Color(0xFF185FA5),
+                style:  TextStyle(
+                  color: AppThemePalette.primary,
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
                 ),
@@ -1397,26 +1361,19 @@ class _OrganizationScreenState extends State<OrganizationScreen>
         return Container(
           margin: const EdgeInsets.only(bottom: 14),
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface,
-            borderRadius: BorderRadius.circular(16),
+            color: Theme.of(context).colorScheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(12),
             border: Border.all(color: Colors.grey.shade200),
-            boxShadow: [
-              BoxShadow(
-                color: color.withValues(alpha: 0.08),
-                blurRadius: 16,
-                offset: const Offset(0, 4),
-              ),
-            ],
           ),
           clipBehavior: Clip.antiAlias,
           child: Column(
             children: [
               // ── Colored top accent ───────────────────────────────
-              Container(height: 5, color: color),
+              Container(height: 2, color: color.withValues(alpha: 0.5)),
 
               // ── Card body ────────────────────────────────────────
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1457,51 +1414,57 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                           ),
                         ),
                         const SizedBox(width: 8),
-                        // Status badge
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: pct >= 1.0
-                                ? const Color(0xFFFCEBEB)
-                                : const Color(0xFFEAF3DE),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            pct >= 1.0 ? t['building_status_full'] : t['building_status_active'],
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: pct >= 1.0
-                                  ? const Color(0xFFA32D2D)
-                                  : const Color(0xFF3B6D11),
+                        // Keep status labels in a compact stack so long
+                        // building names and narrow phone layouts do not fight
+                        // for the same horizontal space.
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 9, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: pct >= 1.0
+                                    ? const Color(0xFFFCEBEB)
+                                    : const Color(0xFFEAF3DE),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                pct >= 1.0 ? t['building_status_full'] : t['building_status_active'],
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: pct >= 1.0
+                                      ? const Color(0xFFA32D2D)
+                                      : const Color(0xFF3B6D11),
+                                ),
+                              ),
                             ),
-                          ),
+                            if (building.isRented) ...[
+                              const SizedBox(height: 4),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFAEEDA),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.real_estate_agent_rounded,
+                                        size: 11, color: Color(0xFF854F0B)),
+                                    const SizedBox(width: 4),
+                                    Text(t['building_management_rented'],
+                                        style: const TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                            color: Color(0xFF854F0B))),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
-
-                        if (building.isRented) ...[
-                          const SizedBox(height: 4),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFFAEEDA),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(Icons.real_estate_agent_rounded,
-                                    size: 11, color: Color(0xFF854F0B)),
-                                const SizedBox(width: 4),
-                                Text(t['building_management_rented'],
-                                    style: const TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w600,
-                                        color: Color(0xFF854F0B))),
-                              ],
-                            ),
-                          ),
-                        ],
                       ],
                     ),
 
@@ -1591,7 +1554,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                     const SizedBox(height: 10),
                     Text(
                       '${t['created_at']} ${_formatDate(building.createdAt)}',
-                      style: TextStyle(fontSize: 11, color: Colors.grey.shade400),
+                      style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
                     ),
                   ],
                 ),
@@ -1628,17 +1591,6 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                           color: color,
                           bgColor: color.withValues(alpha: 0.08),
                           onTap: () => _navigateToBuildingRooms(building),
-                        ),
-                        (
-                          icon: Icons.calendar_month_rounded,
-                          label: t['hourly_calendar'],
-                          color: const Color(0xFF534AB7),
-                          bgColor: const Color(0xFFEEEDFE),
-                          onTap: () => Navigator.pushNamed(
-                            context,
-                            AppRouter.availabilityCalendarScreen,
-                            arguments: {'building': building, 'organization': widget.organization},
-                          ),
                         ),
                       ],
                       (
@@ -1721,11 +1673,11 @@ class _OrganizationScreenState extends State<OrganizationScreen>
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.07),
+          color: const Color(0xFFF8FAFC),
           borderRadius: BorderRadius.circular(10),
         ),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               value,
@@ -1738,8 +1690,8 @@ class _OrganizationScreenState extends State<OrganizationScreen>
             const SizedBox(height: 2),
             Text(
               label,
-              style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
-              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+              textAlign: TextAlign.start,
             ),
           ],
         ),
@@ -1868,7 +1820,8 @@ class _OrganizationScreenState extends State<OrganizationScreen>
         // Building-rent payments (income from a whole-building renter) count
         // as revenue like any other payment, so no filtering needed here.
         final allCurrencies = _paymentsNotifier.payments;
-        final allPayments = AppMoney.only(allCurrencies,_reportCurrency);
+        final allPayments = allCurrencies;
+        final reporting = _reportPayments(allCurrencies);
 
         return FutureBuilder<Membership?>(
           future: _membershipFuture,
@@ -1890,7 +1843,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                         const SizedBox(height: 16),
                         Text(t['no_payments'],
                             style: TextStyle(color: Colors.grey.shade500, fontSize: 16)),
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 16),
                         if (isAdmin)
                           ElevatedButton.icon(
                             onPressed: _showAddPaymentDialog,
@@ -1909,10 +1862,13 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                   children: [
                     _currencySelector(allCurrencies),
                     // ── KPI bar ──────────────────────────────────────────────
-                    _buildPaymentKpis(sorted),
-
-                    // ── Revenue bar ──────────────────────────────────────────
-                    _buildPaymentRevenueBar(sorted),
+                    if (reporting != null) ExpansionTile(
+                      title: Text(t['stat_revenue_title']),
+                      subtitle: Text('${allPayments.length} ${t['payments_tab'].toLowerCase()}'),
+                      tilePadding: const EdgeInsets.symmetric(horizontal: 16),
+                      initiallyExpanded: MediaQuery.sizeOf(context).width >= 1000,
+                      children: [_buildPaymentKpis(reporting), _buildPaymentRevenueBar(reporting)],
+                    ),
 
                     // ── Toolbar (search + filter chips + add button) ─────────
                     Padding(
@@ -1948,7 +1904,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                                   if (isAdmin) ...[
                                     const SizedBox(width: 10),
                                     Material(
-                                      color: const Color(0xFF185FA5),
+                                      color: AppThemePalette.primary,
                                       borderRadius: BorderRadius.circular(10),
                                       child: InkWell(
                                         onTap: _showAddPaymentDialog,
@@ -2047,30 +2003,28 @@ class _OrganizationScreenState extends State<OrganizationScreen>
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-      child: Row(
-        children: [
+      child: LayoutBuilder(builder: (context, constraints) {
+        final columns = constraints.maxWidth < 640 ? 2 : 4;
+        final width = (constraints.maxWidth - (columns - 1) * 16) / columns;
+        return Wrap(spacing: 16, runSpacing: 16, children: [
           _payKpi(label: t['stat_total_payments'], value: total.toString(),
               color: Theme.of(context).colorScheme.onSurface),
-          const SizedBox(width: 8),
-          _payKpi(label: t['stat_collected'], value: _formatCurrencyShort(collected),
+          _payKpi(label: t['stat_collected'], value: _formatCurrency(collected),
               color: const Color(0xFF3B6D11)),
-          const SizedBox(width: 8),
           _payKpi(label: t['stat_pending'], value: pending.toString(),
               color: const Color(0xFF854F0B)),
-          const SizedBox(width: 8),
           _payKpi(label: t['stat_overdue'], value: overdue.toString(),
               color: const Color(0xFFA32D2D)),
-        ],
-      ),
+        ].map((child) => SizedBox(width: width, child: child)).toList());
+      }),
     );
   }
 
   Widget _payKpi({required String label, required String value, required Color color}) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+    return Container(
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
+          color: Theme.of(context).colorScheme.surfaceContainerLow,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: Colors.grey.shade200),
         ),
@@ -2080,14 +2034,11 @@ class _OrganizationScreenState extends State<OrganizationScreen>
             Text(value,
                 style: TextStyle(
                     fontSize: 18, fontWeight: FontWeight.w700, color: color)),
-            const SizedBox(height: 3),
+            const SizedBox(height: 8),
             Text(label,
-                style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis),
+                style: TextStyle(fontSize: 13, color: Colors.grey.shade700)),
           ],
         ),
-      ),
     );
   }
 
@@ -2110,7 +2061,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
       child: Container(
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
         decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
+          color: Theme.of(context).colorScheme.surfaceContainerLow,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: Colors.grey.shade200),
         ),
@@ -2269,7 +2220,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.grey.shade100),
         boxShadow: [
@@ -2406,8 +2357,8 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                             if (isPartial && remaining > 0)
                               _infoChip(
                                 icon: Icons.pending_outlined,
-                                text: _formatCurrencyShort(remaining),
-                                color: const Color(0xFF185FA5),
+                                text: _formatCurrency(remaining, payment.currency),
+                                color: AppThemePalette.primary,
                               ),
                           ],
                         ),
@@ -2420,7 +2371,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                     Builder(
                       builder: (ctx) => IconButton(
                         icon: Icon(Icons.more_vert,
-                            size: 18, color: Colors.grey.shade400),
+                            size: 18, color: Colors.grey.shade600),
                         padding: const EdgeInsets.all(4),
                         constraints: const BoxConstraints(),
                         onPressed: () => _showPaymentMenu(ctx, payment, isAdmin),
@@ -2740,7 +2691,8 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                     // Building-rent payments (income from a whole-building
                     // renter) count toward revenue/payment stats like any
                     // other payment, so no filtering needed here.
-                    final payments = AppMoney.only(_paymentsNotifier.payments,_reportCurrency);
+                    final payments = _reportPayments(_paymentsNotifier.payments);
+                    if (payments == null) return _currencySelector(_paymentsNotifier.payments);
 
                     final activeTenants = tenants
                         .where((tn) =>
@@ -2789,7 +2741,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Container(width: 3, height: 14,
-                                  decoration: BoxDecoration(color: Colors.blue.shade400, borderRadius: BorderRadius.circular(2))),
+                                  decoration: BoxDecoration(color: AppThemePalette.primary, borderRadius: BorderRadius.circular(2))),
                               const SizedBox(width: 16),
                               Text(t['stat_overview_title'].toUpperCase(),
                                   style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800,
@@ -2888,8 +2840,8 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                               count: buildingRentPayments
                                   .where((p) => p.status == PaymentStatus.paid)
                                   .length,
-                              color: const Color(0xFF185FA5),
-                              bgColor: const Color(0xFFE1EEFA),
+                              color: AppThemePalette.primary,
+                              bgColor: AppThemePalette.primaryLight,
                               icon: Icons.real_estate_agent_outlined,
                             )),
                           ]),
@@ -2947,7 +2899,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
           width: 3,
           height: 14,
           decoration: BoxDecoration(
-            color: Colors.blue.shade400,
+            color: AppThemePalette.primary,
             borderRadius: BorderRadius.circular(2),
           ),
         ),
@@ -2975,18 +2927,18 @@ class _OrganizationScreenState extends State<OrganizationScreen>
             width: 72,
             height: 72,
             decoration: BoxDecoration(
-              color: Colors.blue.shade50,
+              color: AppThemePalette.primaryLight,
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.blue.withValues(alpha: 0.15),
+                  color: AppThemePalette.primary.withValues(alpha: 0.15),
                   blurRadius: 20,
                   offset: const Offset(0, 6),
                 ),
               ],
             ),
             child: Icon(Icons.bar_chart_rounded,
-                size: 36, color: Colors.blue.shade400),
+                size: 36, color: AppThemePalette.primary),
           ),
           const SizedBox(height: 18),
           Text(t['stat_no_data'],
@@ -3020,8 +2972,8 @@ class _OrganizationScreenState extends State<OrganizationScreen>
       Row(children: [
         Expanded(child: _kpiCard(
           icon: Icons.apartment_rounded,
-          iconColor: const Color(0xFF185FA5),
-          iconBg: const Color(0xFFE6F1FB),
+          iconColor: AppThemePalette.primary,
+          iconBg: AppThemePalette.primaryLight,
           value: buildings.length.toString(),
           label: t['stat_buildings'],
         )),
@@ -3075,16 +3027,16 @@ class _OrganizationScreenState extends State<OrganizationScreen>
       Row(children: [
         Expanded(child: _kpiCard(
           icon: Icons.receipt_long_rounded,
-          iconColor: const Color(0xFF534AB7),
-          iconBg: const Color(0xFFEEEDFE),
+          iconColor: AppThemePalette.primary,
+          iconBg: AppThemePalette.primaryLight,
           value: totalPayments.toString(),
           label: t['stat_total_payments'],
         )),
         const SizedBox(width: 10),
         Expanded(child: _kpiCard(
           icon: Icons.pie_chart_rounded,
-          iconColor: const Color(0xFF185FA5),
-          iconBg: const Color(0xFFE6F1FB),
+          iconColor: AppThemePalette.primary,
+          iconBg: AppThemePalette.primaryLight,
           value: '$occupancyPct%',
           label: t['stat_occupancy'],
         )),
@@ -3103,7 +3055,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
     final effectiveColor = valueColor ?? iconColor;
     return Container(
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
@@ -3247,7 +3199,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
     }
   
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(12),
       decoration: _cardDecoration(),
       child: Column(children: [
         _tenantStatusRow(
@@ -3266,7 +3218,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
             label: t['tenant_status_moved_out'],
             count: movedOut,
             total: total,
-            color: Colors.grey.shade400),
+            color: Colors.grey.shade600),
         if (suspended > 0) ...[
           const SizedBox(height: 18),
           _tenantStatusRow(
@@ -3328,7 +3280,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
           const SizedBox(height: 8),
           Text(message,
               style:
-                  TextStyle(fontSize: 12, color: Colors.grey.shade400)),
+                  TextStyle(fontSize: 12, color: Colors.grey.shade600)),
         ]),
       ),
     );
@@ -3363,7 +3315,6 @@ class _OrganizationScreenState extends State<OrganizationScreen>
     required List<Payment> payments,
     String? organizationName,
   }) async {
-    payments = AppMoney.only(payments,_reportCurrency);
     final t = AppTranslations.of(context);
     final ttf = await PdfFontService.getFont();
 
@@ -3587,9 +3538,9 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                     ),
                   ],
                 ),
-                pw.SizedBox(height: 24),
+                pw.SizedBox(height: 16),
                 pw.Divider(thickness: 2),
-                pw.SizedBox(height: 24),
+                pw.SizedBox(height: 16),
                 pw.Text(t['pdf_section_overview'],
                     style: heading1Style),
                 pw.SizedBox(height: 16),
@@ -3636,7 +3587,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                             color: PdfColors.grey)),
                   ],
                 ),
-                pw.SizedBox(height: 24),
+                pw.SizedBox(height: 16),
                 pw.Text(t['pdf_section_tenant_status'],
                     style: heading1Style),
                 pw.SizedBox(height: 12),
@@ -3697,7 +3648,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                   border:
                       pw.TableBorder.all(color: PdfColors.grey300),
                 ),
-                pw.SizedBox(height: 24),
+                pw.SizedBox(height: 16),
                 pw.Text(t['pdf_section_payment_summary'],
                     style: heading1Style),
                 pw.SizedBox(height: 12),
@@ -3910,7 +3861,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                 ),
                 pw.SizedBox(height: 4),
                 pw.Divider(thickness: 2),
-                pw.SizedBox(height: 20),
+                pw.SizedBox(height: 12),
                 if (buildingTableRows.isEmpty)
                   pw.Center(
                     child: pw.Text(t['pdf_no_building_data'],
@@ -4043,7 +3994,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                     ),
                     pw.SizedBox(height: 4),
                     pw.Divider(thickness: 2),
-                    pw.SizedBox(height: 20),
+                    pw.SizedBox(height: 12),
                     pw.Text(t['pdf_revenue_6months'],
                         style: heading2Style),
                     pw.SizedBox(height: 16),
@@ -4094,7 +4045,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                         ],
                       ),
                     ),
-                    pw.SizedBox(height: 24),
+                    pw.SizedBox(height: 16),
                     pw.Text(t['pdf_revenue_detail'],
                         style: heading2Style),
                     pw.SizedBox(height: 12),
@@ -4211,7 +4162,6 @@ class _OrganizationScreenState extends State<OrganizationScreen>
     required List<Payment> payments,
     String? organizationName,
   }) async {
-    payments = AppMoney.only(payments,_reportCurrency);
     final t = AppTranslations.of(context);
     if (mounted) {
       _showTrackedDialog(
@@ -4742,7 +4692,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
         .fold<double>(0, (a, b) => a > b ? a : b);
 
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(12),
       decoration: _cardDecoration(),
       child: Column(
         mainAxisSize: MainAxisSize.min, // ← hug content, don't stretch
@@ -4802,7 +4752,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
     final collected = data['collected'] as double;
     final pending = data['pending'] as double;
     final ratio = maxCollected > 0 ? collected / maxCollected : 0.0;
-    const barColor = Color(0xFF185FA5);
+    final barColor = AppThemePalette.primary;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 18),
@@ -4819,7 +4769,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                 decoration: BoxDecoration(
                     color: barColor.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(20)),
                 child: Text(_formatCurrency(collected),
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: barColor)),
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: barColor)),
               ),
             ],
           ),
@@ -4833,7 +4783,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
           if (pending > 0) ...[
             const SizedBox(height: 4),
             Text(t.textWithParams('stat_pending_amount', {'amount': _formatCurrency(pending)}),
-                style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+                style: const TextStyle(fontSize: 12, color: Color(0xFF64748B))),
           ],
         ],
       ),
@@ -4898,7 +4848,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
     ];
 
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(12),
       decoration: _cardDecoration(),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -5007,7 +4957,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
     }
   
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(12),
       decoration: _cardDecoration(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -5051,7 +5001,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
               ),
             ),
           ]),
-          const SizedBox(height: 20),
+          const SizedBox(height: 12),
           ...displayOccupancy.entries.map((entry) {
             final data = entry.value;
             final String buildingName = data['name'] ?? '';
@@ -5141,7 +5091,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
         selectedBuilding.id, rooms, tenants);
   
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(12),
       decoration: _cardDecoration(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -5179,14 +5129,14 @@ class _OrganizationScreenState extends State<OrganizationScreen>
               ),
             ),
           ]),
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
           if (monthlyOccupancy.isEmpty)
             Center(
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 32),
                 child: Text(t['stat_no_building_selected'],
                     style: TextStyle(
-                        color: Colors.grey.shade400, fontSize: 13)),
+                        color: Colors.grey.shade600, fontSize: 13)),
               ),
             )
           else
@@ -5200,7 +5150,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                     style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
-                        color: Colors.grey.shade400,
+                        color: Colors.grey.shade600,
                         letterSpacing: 0.5),
                   ),
                   const SizedBox(height: 12),
@@ -5358,7 +5308,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                               '$totalMembers ${t['members_tab'].toLowerCase()}',
                               style: TextStyle(
                                 fontSize: 12,
-                                color: Colors.grey.shade400,
+                                color: Colors.grey.shade600,
                               ),
                             ),
                           ],
@@ -5380,7 +5330,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                           size: 64, color: Colors.grey.shade300),
                       const SizedBox(height: 16),
                       Text(t['no_members'],
-                          style: TextStyle(color: Colors.grey.shade400)),
+                          style: TextStyle(color: Colors.grey.shade600)),
                     ],
                   ),
                 ),
@@ -5415,7 +5365,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
   }) {
     return Container(
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.grey.shade200),
         boxShadow: [
@@ -5431,7 +5381,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
           _summaryBarItem(
             value: total.toString(),
             label: t['members_title'],
-            color: const Color(0xFF185FA5),
+            color: AppThemePalette.primary,
             isFirst: true,
           ),
           _summaryBarDivider(),
@@ -5457,7 +5407,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.grey.shade200),
         boxShadow: [
@@ -5472,7 +5422,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(height: 4, color: const Color(0xFF534AB7)),
+          Container(height: 4, color: AppThemePalette.primary),
 
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
@@ -5486,11 +5436,11 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                       width: 38,
                       height: 38,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFEEEDFE),
+                        color: AppThemePalette.primaryLight,
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Icon(Icons.link_rounded,
-                          size: 20, color: Color(0xFF534AB7)),
+                      child:  Icon(Icons.link_rounded,
+                          size: 20, color: AppThemePalette.primary),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -5526,21 +5476,21 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                     padding: const EdgeInsets.symmetric(
                         horizontal: 16, vertical: 12),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFEEEDFE),
+                      color: AppThemePalette.primaryLight,
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                          color: const Color(0xFF534AB7).withValues(alpha: 0.3)),
+                          color: AppThemePalette.primary.withValues(alpha: 0.3)),
                     ),
                     child: Row(
                       children: [
                         Expanded(
                           child: SelectableText(
                             inviteCode!,
-                            style: const TextStyle(
+                            style:  TextStyle(
                               fontFamily: 'monospace',
                               fontSize: 18,
                               fontWeight: FontWeight.w700,
-                              color: Color(0xFF534AB7),
+                              color: AppThemePalette.primary,
                               letterSpacing: 3,
                             ),
                           ),
@@ -5578,10 +5528,10 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                                     ? const Color(0xFF3B6D11)
                                         .withValues(alpha: 0.12)
                                     : _codePressed
-                                        ? const Color(0xFF534AB7)
+                                        ? AppThemePalette.primary
                                             .withValues(alpha: 0.2)
                                         : _codeHovered
-                                            ? const Color(0xFF534AB7)
+                                            ? AppThemePalette.primary
                                                 .withValues(alpha: 0.1)
                                             : Colors.transparent,
                                 borderRadius: BorderRadius.circular(6),
@@ -5596,7 +5546,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                                   size: 16,
                                   color: _codeCopied
                                       ? const Color(0xFF3B6D11)
-                                      : const Color(0xFF534AB7),
+                                      : AppThemePalette.primary,
                                 ),
                               ),
                             ),
@@ -5618,8 +5568,8 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                       label: inviteCode == null
                           ? t['get_invite_code']
                           : t['hide_invite_code'], // add this key to AppTranslations
-                      color: const Color(0xFF534AB7),
-                      bgColor: const Color(0xFFEEEDFE),
+                      color: AppThemePalette.primary,
+                      bgColor: AppThemePalette.primaryLight,
                       onTap: loadingInvite
                           ? () {}
                           : () {
@@ -5673,37 +5623,25 @@ class _OrganizationScreenState extends State<OrganizationScreen>
 
     final initials = _getMemberInitials(displayName);
 
-    final Color accentColor = isAdminMember
-        ? const Color(0xFF854F0B)
-        : const Color(0xFF185FA5);
-
-    final Color avatarBg = isAdminMember
-        ? const Color(0xFFFAEEDA)
-        : const Color(0xFFE6F1FB);
+    final Color accentColor = AppThemePalette.primary;
+    final Color avatarBg = AppThemePalette.primaryLight;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.grey.shade200),
-        boxShadow: [
-          BoxShadow(
-            color: accentColor.withValues(alpha: 0.07),
-            blurRadius: 14,
-            offset: const Offset(0, 4),
-          ),
-        ],
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
           // ── Colored top accent ────────────────────────────────────
-          Container(height: 4, color: accentColor),
+          Container(height: 2, color: accentColor.withValues(alpha: 0.4)),
 
           // ── Card body ─────────────────────────────────────────────
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -5878,8 +5816,8 @@ class _OrganizationScreenState extends State<OrganizationScreen>
                     _footerActionBtn(
                       icon: Icons.arrow_upward_rounded,
                       label: t['promote_to_admin'],
-                      color: const Color(0xFF534AB7),
-                      bgColor: const Color(0xFFEEEDFE),
+                      color: AppThemePalette.primary,
+                      bgColor: AppThemePalette.primaryLight,
                       onTap: () => _promoteMember(member, myMembership, t),
                     ),
                   if (member.role == 'member') const SizedBox(width: 8),
@@ -5941,7 +5879,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
               child: Text(t['cancel'])),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF534AB7),
+              backgroundColor: AppThemePalette.primary,
               foregroundColor: Colors.white,
             ),
             onPressed: () => Navigator.pop(ctx, true),
@@ -6180,6 +6118,7 @@ class _MonthlyRevenueChart extends StatefulWidget {
 class _MonthlyRevenueChartState extends State<_MonthlyRevenueChart> {
   @override
   Widget build(BuildContext context) {
+    Theme.of(context); // Rebuild theme-dependent custom accents.
     final t = AppTranslations.of(context);
     // move _buildMonthlyRevenueChart body here, replace widget refs
     final monthlyRevenue = widget.monthlyRevenue;
@@ -6209,7 +6148,7 @@ class _MonthlyRevenueChartState extends State<_MonthlyRevenueChart> {
                       style: TextStyle(
                         fontSize: 9,
                         fontWeight: FontWeight.w700,
-                        color: isHighest ? const Color(0xFF1A6FBF) : Colors.grey.shade400,
+                        color: isHighest ? AppThemePalette.primary : Colors.grey.shade400,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -6217,13 +6156,13 @@ class _MonthlyRevenueChartState extends State<_MonthlyRevenueChart> {
                       height: barH,
                       decoration: BoxDecoration(
                         gradient: isHighest
-                            ? const LinearGradient(
-                                colors: [Color(0xFF378ADD), Color(0xFF1A6FBF)],
+                            ?  LinearGradient(
+                                colors: [AppThemePalette.primary, AppThemePalette.primary],
                                 begin: Alignment.topCenter,
                                 end: Alignment.bottomCenter,
                               )
                             : null,
-                        color: isHighest ? null : const Color(0xFF378ADD).withValues(alpha: 0.25),
+                        color: isHighest ? null : AppThemePalette.primary.withValues(alpha: 0.25),
                         borderRadius: const BorderRadius.vertical(top: Radius.circular(5)),
                       ),
                     ),
@@ -6232,7 +6171,7 @@ class _MonthlyRevenueChartState extends State<_MonthlyRevenueChart> {
                       entry.key.split('/')[0],
                       style: TextStyle(
                         fontSize: 9,
-                        color: isHighest ? const Color(0xFF1A6FBF) : Colors.grey.shade500,
+                        color: isHighest ? AppThemePalette.primary : Colors.grey.shade500,
                         fontWeight: isHighest ? FontWeight.w700 : FontWeight.w400,
                       ),
                     ),
@@ -6255,7 +6194,7 @@ class _MonthlyRevenueChartState extends State<_MonthlyRevenueChart> {
   }
 
   static BoxDecoration _cardDecoration(BuildContext context) => BoxDecoration(
-    color: Theme.of(context).colorScheme.surface,
+    color: Theme.of(context).colorScheme.surfaceContainerLow,
     borderRadius: BorderRadius.circular(16),
     boxShadow: [
       BoxShadow(color: Colors.black.withValues(alpha: 0.07), blurRadius: 16, offset: const Offset(0, 4)),
@@ -6269,7 +6208,7 @@ class _MonthlyRevenueChartState extends State<_MonthlyRevenueChart> {
       child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
         Icon(icon, size: 28, color: Colors.grey.shade300),
         const SizedBox(height: 8),
-        Text(message, style: TextStyle(fontSize: 12, color: Colors.grey.shade400)),
+        Text(message, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
       ]),
     ),
   );
@@ -6296,13 +6235,14 @@ class _PaymentBreakdownChart extends StatefulWidget {
 class _PaymentBreakdownChartState extends State<_PaymentBreakdownChart> {
   @override
   Widget build(BuildContext context) {
+    Theme.of(context); // Rebuild theme-dependent custom accents.
     final t = AppTranslations.of(context);
     if (widget.total == 0) {
       return Container(
         height: 100,
         decoration: _cardDecoration(),
         child: Center(child: Text(t['chart_no_payment_data'],
-            style: TextStyle(fontSize: 12, color: Colors.grey.shade400))),
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade600))),
       );
     }
     final paidPct = (widget.paid / widget.total * 100).toStringAsFixed(0);
@@ -6310,7 +6250,7 @@ class _PaymentBreakdownChartState extends State<_PaymentBreakdownChart> {
     final overduePct = (widget.overdue / widget.total * 100).toStringAsFixed(0);
 
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(12),
       decoration: _cardDecoration(),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -6349,7 +6289,7 @@ class _PaymentBreakdownChartState extends State<_PaymentBreakdownChart> {
   }
 
   BoxDecoration _cardDecoration() => BoxDecoration(
-    color: Theme.of(context).colorScheme.surface,
+    color: Theme.of(context).colorScheme.surfaceContainerLow,
     borderRadius: BorderRadius.circular(16),
     boxShadow: [
       BoxShadow(color: Colors.black.withValues(alpha: 0.07), blurRadius: 16, offset: const Offset(0, 4)),
@@ -6394,6 +6334,7 @@ class _HoverRestoreButtonState extends State<_HoverRestoreButton> {
 
   @override
   Widget build(BuildContext context) {
+    Theme.of(context); // Rebuild theme-dependent custom accents.
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -6415,7 +6356,7 @@ class _HoverRestoreButtonState extends State<_HoverRestoreButton> {
                 child: Tooltip(
                   message: widget.tooltip,
                   child: Material(
-                    color: const Color(0xFF185FA5),
+                    color: AppThemePalette.primary,
                     shape: const CircleBorder(),
                     elevation: 3,
                     child: InkWell(
@@ -6455,6 +6396,7 @@ class _TopEdgeSwipeZoneState extends State<_TopEdgeSwipeZone> {
 
   @override
   Widget build(BuildContext context) {
+    Theme.of(context); // Rebuild theme-dependent custom accents.
     return GestureDetector(
       // Translucent so ordinary taps still reach whatever is underneath.
       behavior: HitTestBehavior.translucent,
@@ -6471,27 +6413,6 @@ class _TopEdgeSwipeZoneState extends State<_TopEdgeSwipeZone> {
         }
       },
       child: const SizedBox(width: double.infinity, height: 24),
-    );
-  }
-}
-
-class _CompactTab extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  const _CompactTab({required this.icon, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Tab(
-      height: 52,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, size: 18),
-          const SizedBox(height: 3),
-          Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
-        ],
-      ),
     );
   }
 }
@@ -6519,6 +6440,7 @@ class _FilterChipState extends State<_FilterChip> {
 
   @override
   Widget build(BuildContext context) {
+    Theme.of(context); // Rebuild theme-dependent custom accents.
     final scale = _pressed ? 0.94 : (_hovered ? 1.04 : 1.0);
 
     return MouseRegion(
@@ -6541,18 +6463,18 @@ class _FilterChipState extends State<_FilterChip> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
               color: widget.isActive
-                  ? const Color(0xFF185FA5)
-                  : Theme.of(context).colorScheme.surface,
+                  ? AppThemePalette.primary
+                  : Theme.of(context).colorScheme.surfaceContainerLow,
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
                 color: widget.isActive
-                    ? const Color(0xFF185FA5)
+                    ? AppThemePalette.primary
                     : Colors.grey.shade300,
               ),
               boxShadow: widget.isActive
                   ? [
                       BoxShadow(
-                        color: const Color(0xFF185FA5).withValues(alpha: 0.35),
+                        color: AppThemePalette.primary.withValues(alpha: 0.35),
                         blurRadius: 6,
                         offset: const Offset(0, 2),
                       ),
@@ -6596,3 +6518,4 @@ class _FilterChipState extends State<_FilterChip> {
     );
   }
 }
+

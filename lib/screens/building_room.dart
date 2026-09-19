@@ -1,3 +1,5 @@
+import 'package:phan_mem_quan_ly_can_ho/utils/app_theme.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/exchange_rate_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/app_dialog.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/responsive_form_row.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/currency_formatter.dart';
@@ -8,12 +10,12 @@ import 'package:phan_mem_quan_ly_can_ho/services/room_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/app_logger.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/shared.dart';
+import 'package:phan_mem_quan_ly_can_ho/main.dart' show getIt;
 import 'package:phan_mem_quan_ly_can_ho/models/booking_model.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
 
 import 'package:flutter/services.dart';
-import 'package:intl/intl.dart';
 
 class BuildingRoomScreen extends StatefulWidget {
   final Organization organization; 
@@ -78,7 +80,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
     );
   }
 
-  final RoomService _roomService = RoomService();
+  final RoomService _roomService = getIt<RoomService>();
   
   StreamSubscription<List<Room>>? _roomSubscription;
   List<Room>? _cachedRooms;
@@ -290,9 +292,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                       padding: const EdgeInsets.fromLTRB(20, 20, 16, 20),
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
-                          colors: isEditing
-                              ? [Colors.orange.shade700, Colors.orange.shade400]
-                              : [Colors.blue.shade700, Colors.blue.shade400],
+                          colors: [AppThemePalette.primary, AppThemePalette.primaryDeep],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                         ),
@@ -347,7 +347,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                     // ── Body ─────────────────────────────────────────────────
                     Flexible(
                       child: SingleChildScrollView(
-                        padding: const EdgeInsets.all(20),
+                        padding: const EdgeInsets.all(12),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -356,7 +356,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                               children: [
                                 Icon(Icons.info_outline_rounded,
                                     size: 16,
-                                    color: isEditing ? Colors.orange.shade700 : Colors.blue.shade700),
+                                    color: AppThemePalette.primary),
                                 const SizedBox(width: 6),
                                 Text(
                                   t['room_dialog_section_basic'],
@@ -364,7 +364,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                                     fontSize: 12,
                                     fontWeight: FontWeight.w700,
                                     letterSpacing: 0.8,
-                                    color: isEditing ? Colors.orange.shade700 : Colors.blue.shade700,
+                                    color: AppThemePalette.primary,
                                   ),
                                 ),
                               ],
@@ -381,7 +381,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                               maxLength: 20,
                               autofocus: true,
                               textCapitalization: TextCapitalization.characters,
-                              accentColor: isEditing ? Colors.orange.shade700 : Colors.blue.shade700,
+                              accentColor: AppThemePalette.primary,
                             ),
                             const SizedBox(height: 14),
 
@@ -394,7 +394,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                               enabled: !isSaving,
                               maxLength: 50,
                               textCapitalization: TextCapitalization.words,
-                              accentColor: isEditing ? Colors.orange.shade700 : Colors.blue.shade700,
+                              accentColor: AppThemePalette.primary,
                             ),
                             const SizedBox(height: 14),
 
@@ -410,7 +410,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                               inputFormatters: [
                                 FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
                               ],
-                              accentColor: isEditing ? Colors.orange.shade700 : Colors.blue.shade700,
+                              accentColor: AppThemePalette.primary,
                             ),
 
                             const SizedBox(height: 14),
@@ -425,7 +425,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                               enabled: !isSaving,
                               keyboardType: TextInputType.number,
                               inputFormatters: [CurrencyInputFormatter(decimalDigits: 2)],
-                              accentColor: isEditing ? Colors.orange.shade700 : Colors.blue.shade700,
+                              accentColor: AppThemePalette.primary,
                             ),
 
                             SizedBox(height: 14),
@@ -433,7 +433,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                             Row(
                               children: [
                                 Icon(Icons.schedule_rounded,
-                                    size: 16, color: isEditing ? Colors.orange.shade700 : Colors.blue.shade700),
+                                    size: 16, color: AppThemePalette.primary),
                                 const SizedBox(width: 6),
                                 Text(
                                   t['rental_setup'],
@@ -441,7 +441,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                                     fontSize: 12,
                                     fontWeight: FontWeight.w700,
                                     letterSpacing: 0.8,
-                                    color: isEditing ? Colors.orange.shade700 : Colors.blue.shade700,
+                                    color: AppThemePalette.primary,
                                   ),
                                 ),
                               ],
@@ -459,10 +459,10 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                                   label: Text(label),
                                   selected: rentalMode == mode,
                                   onSelected: isSaving ? null : (_) => setDialogState(() => rentalMode = mode),
-                                  selectedColor: (isEditing ? Colors.orange.shade700 : Colors.blue.shade700).withValues(alpha: 0.15),
+                                  selectedColor: (AppThemePalette.primary).withValues(alpha: 0.15),
                                   labelStyle: TextStyle(
                                     color: rentalMode == mode
-                                        ? (isEditing ? Colors.orange.shade800 : Colors.blue.shade800)
+                                        ? (AppThemePalette.primaryDeep)
                                         : Colors.grey.shade700,
                                     fontWeight: rentalMode == mode ? FontWeight.w700 : FontWeight.w400,
                                   ),
@@ -480,7 +480,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                                 suffixText: room?.currency ?? t.defaultCurrency,
                                 keyboardType: TextInputType.number,
                                 inputFormatters: [CurrencyInputFormatter(decimalDigits: 2)],
-                                accentColor: isEditing ? Colors.orange.shade700 : Colors.blue.shade700,
+                                accentColor: AppThemePalette.primary,
                               ),
                               const SizedBox(height: 10),
                               ResponsiveFormRow(children: [
@@ -494,7 +494,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                                     suffixText: room?.currency ?? t.defaultCurrency,
                                 keyboardType: TextInputType.number,
                                     inputFormatters: [CurrencyInputFormatter(decimalDigits: 2)],
-                                    accentColor: isEditing ? Colors.orange.shade700 : Colors.blue.shade700,
+                                    accentColor: AppThemePalette.primary,
                                   ),
                                 ),
                                 const SizedBox(width: 10),
@@ -508,7 +508,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                                     enabled: !isSaving,
                                     keyboardType: TextInputType.number,
                                     inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                                    accentColor: isEditing ? Colors.orange.shade700 : Colors.blue.shade700,
+                                    accentColor: AppThemePalette.primary,
                                   ),
                                 ),
                               ]),
@@ -522,7 +522,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                                 suffixText: room?.currency ?? t.defaultCurrency,
                                 keyboardType: TextInputType.number,
                                 inputFormatters: [CurrencyInputFormatter(decimalDigits: 2)],
-                                accentColor: isEditing ? Colors.orange.shade700 : Colors.blue.shade700,
+                                accentColor: AppThemePalette.primary,
                               ),
                               const SizedBox(height: 10),
                               ResponsiveFormRow(children: [
@@ -535,7 +535,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                                     enabled: !isSaving,
                                     keyboardType: TextInputType.number,
                                     inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                                    accentColor: isEditing ? Colors.orange.shade700 : Colors.blue.shade700,
+                                    accentColor: AppThemePalette.primary,
                                   ),
                                 ),
                                 const SizedBox(width: 10),
@@ -549,7 +549,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                                     enabled: !isSaving,
                                     keyboardType: TextInputType.number,
                                     inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                                    accentColor: isEditing ? Colors.orange.shade700 : Colors.blue.shade700,
+                                    accentColor: AppThemePalette.primary,
                                   ),
                                 ),
                               ]),
@@ -673,7 +673,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                                   borderRadius: BorderRadius.circular(10),
                                 ),
                                 backgroundColor:
-                                    isEditing ? Colors.orange.shade700 : Colors.blue.shade700,
+                                    AppThemePalette.primary,
                               ),
                               child: isSaving
                                   ? const SizedBox(
@@ -840,7 +840,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                     ),
                     // Body
                     Padding(
-                      padding: const EdgeInsets.all(20),
+                      padding: const EdgeInsets.all(12),
                       child: isDeleting
                           ? Row(
                               children: [
@@ -1072,7 +1072,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                     ),
                     // Body
                     Padding(
-                      padding: const EdgeInsets.all(20),
+                      padding: const EdgeInsets.all(12),
                       child: isDeleting
                           ? Row(
                               children: [
@@ -1267,7 +1267,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                   padding: const EdgeInsets.fromLTRB(20, 20, 16, 20),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [Colors.blue.shade700, Colors.blue.shade400],
+                      colors: [AppThemePalette.primary, AppThemePalette.primaryDeep],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
@@ -1317,7 +1317,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                 // Info rows
                 Flexible(
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(20),
+                    padding: const EdgeInsets.all(12),
                     child: Column(
                       children: [
                         _buildInfoCard(children: [
@@ -1325,14 +1325,14 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                             icon: Icons.tag_rounded,
                             label: t['room_info_number'],
                             value: room.roomNumber,
-                            color: Colors.blue.shade700,
+                            color: AppThemePalette.primary,
                           ),
                           _buildInfoDivider(),
                           _buildInfoRow(
                             icon: Icons.category_rounded,
                             label: t['room_info_type'],
                             value: room.roomType,
-                            color: Colors.blue.shade700,
+                            color: AppThemePalette.primary,
                           ),
                           if (room.area > 0) ...[
                             _buildInfoDivider(),
@@ -1341,7 +1341,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                               label: t['room_info_area'],
                               value: t.textWithParams(
                                   'room_area_value', {'area': room.area}),
-                              color: Colors.blue.shade700,
+                              color: AppThemePalette.primary,
                             ),
                           ],
                           if (room.roomPrice != null && room.roomPrice! > 0) ...[
@@ -1349,8 +1349,8 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                             _buildInfoRow(
                               icon: Icons.payments_rounded,
                               label: t['room_field_price_label'],
-                              value: '${NumberFormat('#,###').format(room.roomPrice)} VND',
-                              color: Colors.blue.shade700,
+                              value: ReportingMoney.format(widget.organization.id, room.roomPrice ?? 0, room.currency),
+                              color: AppThemePalette.primary,
                             ),
                           ],
                           _buildInfoDivider(),
@@ -1358,7 +1358,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                             icon: Icons.calendar_today_rounded,
                             label: t['room_info_created_at'],
                             value: _formatDate(room.createdAt),
-                            color: Colors.blue.shade700,
+                            color: AppThemePalette.primary,
                           ),
                         ]),
                         const SizedBox(height: 12),
@@ -1367,14 +1367,14 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                             icon: Icons.apartment_rounded,
                             label: t['room_info_building_name'],
                             value: widget.building.name,
-                            color: Colors.indigo.shade600,
+                            color: AppThemePalette.primaryDeep,
                           ),
                           _buildInfoDivider(),
                           _buildInfoRow(
                             icon: Icons.location_on_rounded,
                             label: t['room_info_building_address'],
                             value: widget.building.address,
-                            color: Colors.indigo.shade600,
+                            color: AppThemePalette.primaryDeep,
                           ),
                         ]),
                         const SizedBox(height: 12),
@@ -1422,7 +1422,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                         padding: const EdgeInsets.symmetric(vertical: 13),
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10)),
-                        backgroundColor: Colors.blue.shade700,
+                        backgroundColor: AppThemePalette.primary,
                       ),
                       child: Text(t['close'],
                           style: const TextStyle(
@@ -1520,7 +1520,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Container(
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                     color: Colors.red.shade50, shape: BoxShape.circle),
                 child: Icon(Icons.error_outline_rounded,
@@ -1537,11 +1537,11 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                   textAlign: TextAlign.center,
                   style:
                       TextStyle(color: Colors.grey.shade600, fontSize: 13)),
-              const SizedBox(height: 24),
+              const SizedBox(height: 16),
               FilledButton.icon(
                 onPressed: _initializeStream,
                 style: FilledButton.styleFrom(
-                  backgroundColor: Colors.blue.shade700,
+                  backgroundColor: AppThemePalette.primary,
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10)),
                   padding: const EdgeInsets.symmetric(
@@ -1563,7 +1563,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              CircularProgressIndicator(color: Colors.blue.shade700),
+              CircularProgressIndicator(color: AppThemePalette.primary),
               const SizedBox(height: 16),
               Text(t['room_loading'],
                   style:
@@ -1581,13 +1581,13 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Container(
-                padding: const EdgeInsets.all(24),
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                    color: Colors.blue.shade50, shape: BoxShape.circle),
+                    color: AppThemePalette.primaryLight, shape: BoxShape.circle),
                 child: Icon(Icons.meeting_room_outlined,
-                    size: 48, color: Colors.blue.shade300),
+                    size: 48, color: AppThemePalette.primary),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 12),
               Text(t['room_empty_title'],
                   style: TextStyle(
                       fontSize: 16,
@@ -1643,12 +1643,12 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                   duration: const Duration(milliseconds: 200),
                   decoration: BoxDecoration(
                     color: isSelected
-                        ? Colors.blue.shade50
+                        ? AppThemePalette.primaryLight
                         : Theme.of(context).colorScheme.surface,
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
                       color: isSelected
-                          ? Colors.blue.shade400
+                          ? AppThemePalette.primary
                           : Colors.grey.shade200,
                       width: isSelected ? 2 : 1,
                     ),
@@ -1673,7 +1673,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                               ? Checkbox(
                                   key: const ValueKey('checkbox'),
                                   value: isSelected,
-                                  activeColor: Colors.blue.shade700,
+                                  activeColor: AppThemePalette.primary,
                                   shape: RoundedRectangleBorder(
                                       borderRadius:
                                           BorderRadius.circular(4)),
@@ -1686,13 +1686,13 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                                   height: 44,
                                   decoration: BoxDecoration(
                                     color: isSelected
-                                        ? Colors.blue.shade100
-                                        : Colors.blue.shade50,
+                                        ? AppThemePalette.primaryLight
+                                        : AppThemePalette.primaryLight,
                                     borderRadius:
                                         BorderRadius.circular(10),
                                   ),
                                   child: Icon(Icons.meeting_room_rounded,
-                                      color: Colors.blue.shade700,
+                                      color: AppThemePalette.primary,
                                       size: 22),
                                 ),
                         ),
@@ -1707,7 +1707,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                                   fontWeight: FontWeight.w600,
                                   fontSize: 15,
                                   color: isSelected
-                                      ? Colors.blue.shade900
+                                      ? AppThemePalette.primaryDeep
                                       : Colors.grey.shade900,
                                 ),
                               ),
@@ -1759,7 +1759,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                                         color: Colors.grey.shade500),
                                     const SizedBox(width: 4),
                                     Text(
-                                        '${NumberFormat('#,###').format(room.roomPrice)} đ',
+                                        ReportingMoney.format(widget.organization.id, room.roomPrice ?? 0, room.currency),
                                         style: TextStyle(
                                             fontSize: 12,
                                             color: Colors.grey.shade600)),
@@ -1788,7 +1788,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                                 child: Row(children: [
                                   Icon(Icons.info_outline_rounded,
                                       size: 18,
-                                      color: Colors.blue.shade700),
+                                      color: AppThemePalette.primary),
                                   const SizedBox(width: 10),
                                   Text(t['room_popup_view']),
                                 ]),
@@ -1838,6 +1838,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
   // =========================
   @override
   Widget build(BuildContext context) {
+    Theme.of(context); // Rebuild theme-dependent custom accents.
     final t = AppTranslations.of(context);
 
     return LayoutBuilder(builder: (context, constraints) {
@@ -1850,17 +1851,17 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
             ? null
             : FloatingActionButton(
                 onPressed: _showRoomDialog,
-                backgroundColor: Colors.blue.shade700,
+                backgroundColor: AppThemePalette.primary,
                 child: const Icon(Icons.add_rounded, color: Colors.white),
               ),
         body: CustomScrollView(
           slivers: [
             // ── Merged SliverAppBar + header ─────────────────────────────────
             SliverAppBar(
-              expandedHeight: 160,
+              toolbarHeight: 56,
               pinned: true,
-              stretch: true,
-              backgroundColor: Colors.blue.shade800,
+              foregroundColor: Colors.white,
+              backgroundColor: AppThemePalette.primaryDeep,
               automaticallyImplyLeading: false,
               leading: _isSelectionMode
                   ? IconButton(
@@ -1880,7 +1881,12 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                       style: const TextStyle(
                           color: Colors.white, fontWeight: FontWeight.w600),
                     )
-                  : null,
+                  : Tooltip(
+                      message: '${widget.building.name}\n${widget.building.address}',
+                      child: Text(widget.building.name, maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                    ),
               actions: [
                 if (_isSelectionMode) ...[
                   IconButton(
@@ -1909,189 +1915,7 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
                   ),
                 ],
               ],
-              flexibleSpace: FlexibleSpaceBar(
-                collapseMode: CollapseMode.pin,
-                // ⚠️ No title here — avoids the bleed-through overlap
-                background: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    // ── Gradient background ──────────────────────────────
-                    Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [Colors.blue.shade900, Colors.blue.shade600],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                      ),
-                    ),
 
-                    // ── Right-side circles ───────────────────────────────
-                    Positioned(
-                      right: -15,
-                      top: -20,
-                      child: Container(
-                        width: 90,
-                        height: 90,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.white.withValues(alpha: 0.14),
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      right: 55,
-                      top: -28,
-                      child: Container(
-                        width: 60,
-                        height: 60,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.white.withValues(alpha:0.10),
-                        ),
-                      ),
-                    ),
-
-                    // ── Center circle ────────────────────────────────────
-                    Positioned(
-                      left: 280,
-                      top: -18,
-                      child: Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.white.withValues(alpha: 0.09),
-                        ),
-                      ),
-                    ),
-
-                    // ── Left-side circles ────────────────────────────────
-                    Positioned(
-                      left: -18,
-                      bottom: -12,
-                      child: Container(
-                        width: 72,
-                        height: 72,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.white.withValues(alpha: 0.10),
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      left: 42,
-                      top: -12,
-                      child: Container(
-                        width: 38,
-                        height: 38,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.white.withValues(alpha: 0.08),
-                        ),
-                      ),
-                    ),
-
-                    // ── Existing content column ──────────────────────────
-                    Column(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Building name row
-                              Row(
-                                crossAxisAlignment: CrossAxisAlignment.center,
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(8),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white.withValues(alpha: 0.2),
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                    child: const Icon(Icons.apartment_rounded,
-                                        color: Colors.white, size: 22),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Text(
-                                      widget.building.name,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 22,
-                                        fontWeight: FontWeight.bold,
-                                        letterSpacing: -0.3,
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 10),
-                              // Address + room count row
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.location_on_rounded,
-                                            size: 13,
-                                            color: Colors.white.withValues(alpha: 0.75)),
-                                        const SizedBox(width: 4),
-                                        Flexible(
-                                          child: Text(
-                                            widget.building.address,
-                                            style: TextStyle(
-                                              fontSize: 13,
-                                              color: Colors.white.withValues(alpha: 0.85),
-                                            ),
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 10, vertical: 5),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white.withValues(alpha: 0.2),
-                                      borderRadius: BorderRadius.circular(20),
-                                      border: Border.all(
-                                          color: Colors.white.withValues(alpha: 0.3), width: 1),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        const Icon(Icons.meeting_room_rounded,
-                                            size: 13, color: Colors.white),
-                                        const SizedBox(width: 5),
-                                        Text(
-                                          t.textWithParams('room_total_count',
-                                              {'count': _cachedRooms?.length ?? 0}),
-                                          style: const TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.white,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
             ),
 
             // ── Room list as sliver ───────────────────────────────────────────
@@ -2142,3 +1966,4 @@ class _BuildingRoomScreenState extends State<BuildingRoomScreen> with WidgetsBin
     });
   }
 }
+

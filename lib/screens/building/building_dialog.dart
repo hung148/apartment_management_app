@@ -2,6 +2,7 @@ import 'package:phan_mem_quan_ly_can_ho/widgets/app_dialog.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/responsive_form_row.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/currency_formatter.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/app_theme.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/combo_box.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/constants.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/buildings_model.dart';
@@ -13,10 +14,10 @@ import 'package:flutter/material.dart';
 // DESIGN TOKENS (mirrors dashboard _DS)
 // ─────────────────────────────────────────────────────────────
 class _DS {
-  static const primary      = Color(0xFF1A56DB);
-  static const primaryDeep  = Color(0xFF0E3A9F);
-  static const primaryMid   = Color(0xFF2563EB);
-  static const primaryLight = Color(0xFFEFF6FF);
+  static Color get primary => AppThemePalette.primary;
+  static Color get primaryDeep => AppThemePalette.primaryDeep;
+  static Color get primaryMid => AppThemePalette.primaryMid;
+  static Color get primaryLight => AppThemePalette.primaryLight;
   static const surface      = Color(0xFFF4F6FB);
   static const textPrimary  = Color(0xFF0C1C3E);
   static const textSecondary= Color(0xFF64748B);
@@ -377,7 +378,7 @@ class _BuildingDialogState extends State<BuildingDialog>
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [_DS.primaryMid, _DS.primaryDeep],
                       begin: Alignment.topLeft,
@@ -436,7 +437,7 @@ class _BuildingDialogState extends State<BuildingDialog>
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(10),
-                            borderSide: const BorderSide(
+                            borderSide: BorderSide(
                                 color: _DS.primary, width: 1.6),
                           ),
                           isDense: true,
@@ -445,7 +446,7 @@ class _BuildingDialogState extends State<BuildingDialog>
                             alignment: Alignment.center,
                             child: Text(
                               '${index + 1}',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontWeight: FontWeight.w700,
                                 fontSize: 12,
                                 color: _DS.primary,
@@ -520,7 +521,7 @@ class _BuildingDialogState extends State<BuildingDialog>
     return FadeTransition(
       opacity: _fadeAnim,
       child: AppDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         elevation: 0,
         backgroundColor: Colors.white,
         child: ConstrainedBox(
@@ -569,7 +570,7 @@ class _BuildingDialogState extends State<BuildingDialog>
                               : null,
                         ),
 
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 12),
 
                         // ── Management type ─────────────
                         _sectionLabel(Icons.badge_rounded, t['building_section_management']),
@@ -581,13 +582,13 @@ class _BuildingDialogState extends State<BuildingDialog>
                           _buildRenterSection(t),
                         ],
 
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 12),
 
                         // ── Room generation toggle ──────
                         _buildAutoGenerateToggle(t),
 
                         if (autoGenerateRooms) ...[
-                          const SizedBox(height: 20),
+                          const SizedBox(height: 12),
                           _sectionLabel(Icons.layers_rounded,
                               t['building_section_rooms']),
                           const SizedBox(height: 10),
@@ -649,13 +650,13 @@ class _BuildingDialogState extends State<BuildingDialog>
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(20, 20, 16, 20),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [_DS.primaryMid, _DS.primaryDeep],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
       ),
       child: Row(children: [
         Container(
@@ -726,7 +727,7 @@ class _BuildingDialogState extends State<BuildingDialog>
       const SizedBox(width: 6),
       Text(
         label.toUpperCase(),
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w700,
           color: _DS.primary,
@@ -778,7 +779,7 @@ class _BuildingDialogState extends State<BuildingDialog>
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: _DS.primary, width: 1.8),
+          borderSide: BorderSide(color: _DS.primary, width: 1.8),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -878,11 +879,11 @@ class _BuildingDialogState extends State<BuildingDialog>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(children: [
-            const Icon(Icons.event_available_rounded, size: 14, color: _DS.primary),
+            Icon(Icons.event_available_rounded, size: 14, color: _DS.primary),
             const SizedBox(width: 6),
             Text(
               'CHẾ ĐỘ CHO THUÊ MẶC ĐỊNH',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
                 color: _DS.primary,
@@ -1344,7 +1345,7 @@ class _BuildingDialogState extends State<BuildingDialog>
           const SizedBox(width: 6),
           Text(
             t['building_bulk_edit'].toUpperCase(),
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.w700,
               color: _DS.primary,
@@ -1441,7 +1442,7 @@ class _BuildingDialogState extends State<BuildingDialog>
         Container(
           width: 28, height: 28,
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
+            gradient: LinearGradient(
               colors: [_DS.primaryMid, _DS.primaryDeep],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
@@ -1553,7 +1554,7 @@ class _BuildingDialogState extends State<BuildingDialog>
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide:
-              const BorderSide(color: _DS.primary, width: 1.6),
+              BorderSide(color: _DS.primary, width: 1.6),
         ),
         filled: true,
         fillColor: Colors.white,
@@ -1777,7 +1778,7 @@ class _TypePickerFieldState extends State<_TypePickerField> {
           decoration: InputDecoration(
             isDense: true,
             suffixIcon: Icon(Icons.keyboard_arrow_down_rounded,
-                size: 14, color: Colors.grey.shade400),
+                size: 14, color: Colors.grey.shade600),
             suffixIconConstraints:
                 const BoxConstraints(minWidth: 22, minHeight: 0),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
@@ -1787,7 +1788,7 @@ class _TypePickerFieldState extends State<_TypePickerField> {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: _DS.primary, width: 1.6),
+              borderSide: BorderSide(color: _DS.primary, width: 1.6),
             ),
             filled: true,
             fillColor: Colors.white,
@@ -1800,3 +1801,4 @@ class _TypePickerFieldState extends State<_TypePickerField> {
     );
   }
 }
+

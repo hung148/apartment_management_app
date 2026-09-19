@@ -753,7 +753,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
 
                   Flexible(
                     child: SingleChildScrollView(
-                      padding: const EdgeInsets.all(20),
+                      padding: const EdgeInsets.all(12),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
@@ -1402,11 +1402,11 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
             const SizedBox(height: 8),
             Text(t['payment_items_empty'],
                 style: TextStyle(
-                    color: Colors.grey.shade400, fontSize: 14)),
+                    color: Colors.grey.shade600, fontSize: 14)),
             const SizedBox(height: 4),
             Text(t['payment_items_empty_hint'],
                 style: TextStyle(
-                    color: Colors.grey.shade400, fontSize: 12)),
+                    color: Colors.grey.shade600, fontSize: 12)),
           ],
         ),
       );
@@ -2246,3 +2246,4 @@ String _rentUnitShort(AppTranslations t, RentPriceMode mode) {
       return '';
   }
 }
+

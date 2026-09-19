@@ -101,3 +101,4 @@ class CurrencyParser {
     return int.tryParse(cleaned) ?? 0;
   }
 }
+

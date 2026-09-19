@@ -42,6 +42,11 @@ class _AISubscriptionDialogState extends State<AISubscriptionDialog> {
   }
 
   Future<void> _load() async {
+    if (mounted)
+      setState(() {
+        _busy = true;
+        _error = null;
+      });
     try {
       _usage = await _ai.usage();
       if (_apple && appleKey.isNotEmpty) {
@@ -55,9 +60,10 @@ class _AISubscriptionDialogState extends State<AISubscriptionDialog> {
           await Purchases.logIn(uid);
         }
         _package = (await Purchases.getOfferings()).current?.monthly;
+        if (_package == null) _error = 'ai_product_unavailable';
       }
     } catch (_) {
-      _error = 'ai_billing_unavailable';
+      _error = 'ai_product_unavailable';
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -101,88 +107,186 @@ class _AISubscriptionDialogState extends State<AISubscriptionDialog> {
   @override
   Widget build(BuildContext context) {
     final t = AppTranslations.of(context);
-    return AppAlertDialog(
-      title: Text('AI Pro'),
-      content: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    final theme = Theme.of(context);
+    final paid = _usage?['paid'] == true;
+    return AppDialog(
+      constraints: const BoxConstraints(maxWidth: 520),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Text(t['ai_pro_allowance']),
-          const SizedBox(height: 12),
-          Text(t['ai_free_allowance']),
-          if (_package != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Text(
-                '${_package!.storeProduct.priceString} / ${t['ai_month']}',
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
-            ),
-          if (_usage != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Text(
-                t.textWithParams('ai_usage', {
-                  'messages': _usage!['remainingMessages'],
-                  'imports': _usage!['remainingImports'],
-                }),
-              ),
-            ),
-          if (_usage?['paid'] == true) Text(t['ai_pro_active']),
-          Text(t['ai_subscription_terms']),
-          if (!_configured) Text(t['ai_billing_setup']),
-          if (_error != null)
-            Text(
-              t[_error!],
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
-            ),
-          Wrap(
-            children: [
-              if (privacy.startsWith('https://'))
-                TextButton(
-                  onPressed: () => launchUrl(Uri.parse(privacy)),
-                  child: Text(t['ai_privacy']),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 20, 12, 12),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.auto_awesome_outlined,
+                  color: theme.colorScheme.primary,
                 ),
-              if (terms.startsWith('https://'))
-                TextButton(
-                  onPressed: () => launchUrl(Uri.parse(terms)),
-                  child: Text(t['ai_terms']),
-                ),
-              if (_apple)
-                TextButton(
-                  onPressed: () => launchUrl(
-                    Uri.parse('https://apps.apple.com/account/subscriptions'),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'AI Pro',
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                  child: Text(t['ai_manage_subscription']),
                 ),
-            ],
+                IconButton(
+                  tooltip: t['close'],
+                  onPressed: _busy ? null : () => Navigator.pop(context),
+                  icon: const Icon(Icons.close),
+                ),
+              ],
+            ),
           ),
-          if (_busy) const LinearProgressIndicator(),
+          Flexible(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0F6F4),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xFFD7E6E1)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (_package != null) ...[
+                          Text(
+                            '${_package!.storeProduct.priceString} / ${t['ai_month']}',
+                            style: theme.textTheme.headlineSmall?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                        ],
+                        Text(
+                          t['ai_pro_allowance'],
+                          style: theme.textTheme.bodyLarge?.copyWith(
+                            height: 1.5,
+                          ),
+                        ),
+                        if (paid) ...[
+                          const SizedBox(height: 12),
+                          Text(
+                            t['ai_pro_active'],
+                            style: TextStyle(
+                              color: theme.colorScheme.primary,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    t['ai_free_allowance'],
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                  if (_usage != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      t.textWithParams('ai_usage', {
+                        'messages': _usage!['remainingMessages'],
+                        'imports': _usage!['remainingImports'],
+                      }),
+                      style: theme.textTheme.titleSmall,
+                    ),
+                  ],
+                  const Divider(),
+                  if (!_configured || _error != null)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 16),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.errorContainer,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        t[!_configured ? 'ai_billing_setup' : _error!],
+                        style: TextStyle(
+                          color: theme.colorScheme.onErrorContainer,
+                        ),
+                      ),
+                    ),
+                  Text(
+                    t['ai_subscription_terms'],
+                    style: theme.textTheme.bodySmall?.copyWith(height: 1.5),
+                  ),
+                  Wrap(
+                    spacing: 4,
+                    children: [
+                      if (privacy.startsWith('https://'))
+                        TextButton(
+                          onPressed: () => launchUrl(Uri.parse(privacy)),
+                          child: Text(t['ai_privacy']),
+                        ),
+                      if (terms.startsWith('https://'))
+                        TextButton(
+                          onPressed: () => launchUrl(Uri.parse(terms)),
+                          child: Text(t['ai_terms']),
+                        ),
+                      if (_apple && paid)
+                        TextButton(
+                          onPressed: () => launchUrl(
+                            Uri.parse(
+                              'https://apps.apple.com/account/subscriptions',
+                            ),
+                          ),
+                          child: Text(t['ai_manage_subscription']),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (_busy)
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 12),
+                    child: LinearProgressIndicator(),
+                  ),
+                if (!paid)
+                  FilledButton(
+                    onPressed:
+                        _busy || !_configured || (_apple && _package == null)
+                        ? null
+                        : () => _action(),
+                    child: Text(t['ai_subscribe']),
+                  ),
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 8,
+                  children: [
+                    if (_apple)
+                      TextButton(
+                        onPressed: _busy || appleKey.isEmpty
+                            ? null
+                            : () => _action(restore: true),
+                        child: Text(t['ai_restore']),
+                      ),
+                    TextButton(
+                      onPressed: _busy ? null : _load,
+                      child: Text(t['refresh']),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
         ],
       ),
-      actions: [
-        TextButton(
-          onPressed: _busy ? null : () => Navigator.pop(context),
-          child: Text(t['close']),
-        ),
-        if (_apple)
-          TextButton(
-            onPressed: _busy || appleKey.isEmpty
-                ? null
-                : () => _action(restore: true),
-            child: Text(t['ai_restore']),
-          ),
-        TextButton(
-          onPressed: _busy ? null : () => _action(refresh: true),
-          child: Text(t['refresh']),
-        ),
-        if (_usage?['paid'] != true)
-          FilledButton(
-            onPressed: _busy || !_configured || (_apple && _package == null)
-                ? null
-                : () => _action(),
-            child: Text(t['ai_subscribe']),
-          ),
-      ],
     );
   }
 }
+

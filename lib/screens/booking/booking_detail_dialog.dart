@@ -1,4 +1,5 @@
 import 'package:phan_mem_quan_ly_can_ho/widgets/app_dialog.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/exchange_rate_service.dart';
 import 'package:uuid/uuid.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/currency_formatter.dart';
 import 'package:flutter/material.dart';
@@ -9,15 +10,16 @@ import 'package:phan_mem_quan_ly_can_ho/models/payment_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/booking_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/payments_notifier.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/app_theme.dart';
 
 // ─────────────────────────────────────────────────────────────
 // DESIGN TOKENS (mirrors the calendar's indigo kPrimaryColor)
 // ─────────────────────────────────────────────────────────────
 class _DS {
-  static const primary = Color(0xFF4F46E5);
-  static const primaryDeep = Color(0xFF3730A3);
-  static const primaryMid = Color(0xFF6366F1);
-  static const primaryLight = Color(0xFFEEF2FF);
+  static Color get primary => AppThemePalette.primary;
+  static Color get primaryDeep => AppThemePalette.primaryDeep;
+  static Color get primaryMid => AppThemePalette.primaryMid;
+  static Color get primaryLight => AppThemePalette.primaryLight;
   static const surface = Color(0xFFF8FAFC);
   static const textPrimary = Color(0xFF1E1B4B);
   static const textSecondary = Color(0xFF64748B);
@@ -48,8 +50,7 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
   }
 
   String _formatCurrency(double amount) {
-    final formatter = NumberFormat('#,##0.##', 'en_US');
-    return '${formatter.format(amount)} ${widget.booking.currency}';
+    return ReportingMoney.format(widget.booking.organizationId, amount, widget.booking.currency);
   }
 
   Color _statusColor(BookingStatus status) {
@@ -242,7 +243,7 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
       context: context,
       builder: (ctx) => AppDialog(
         scrollable: true,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         elevation: 0,
         backgroundColor: Colors.white,
         child: ConstrainedBox(
@@ -253,13 +254,13 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.fromLTRB(20, 20, 16, 20),
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [_DS.primaryMid, _DS.primaryDeep],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
                 ),
                 child: Row(
                   children: [
@@ -367,7 +368,7 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
                                 Icon(
                                   Icons.chevron_right_rounded,
                                   size: 18,
-                                  color: Colors.grey.shade400,
+                                  color: Colors.grey.shade600,
                                 ),
                               ],
                             ),
@@ -392,7 +393,7 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
       context: context,
       builder: (ctx) => AppDialog(
         scrollable: true,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         elevation: 0,
         backgroundColor: Colors.white,
         child: ConstrainedBox(
@@ -409,7 +410,7 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
                 ),
                 child: Column(
                   children: [
@@ -544,7 +545,7 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
     final isSmall = MediaQuery.of(context).size.width < 600;
 
     return AppDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       elevation: 0,
       backgroundColor: Colors.white,
       insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
@@ -567,7 +568,7 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
                   end: Alignment.bottomRight,
                 ),
                 borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(24),
+                  top: Radius.circular(12),
                 ),
               ),
               child: Row(
@@ -739,8 +740,8 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
                 ),
               ),
               child: _busy
-                  ? const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 4),
+                  ? Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
                       child: Center(
                         child: CircularProgressIndicator(
                           strokeWidth: 2.4,
@@ -883,7 +884,7 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 15, color: Colors.grey.shade400),
+          Icon(icon, size: 15, color: Colors.grey.shade600),
           const SizedBox(width: 8),
           SizedBox(
             width: 96,
@@ -907,3 +908,4 @@ class _BookingDetailDialogState extends State<BookingDetailDialog> {
     );
   }
 }
+

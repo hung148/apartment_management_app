@@ -1,4 +1,5 @@
 import 'package:phan_mem_quan_ly_can_ho/widgets/app_dialog.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/exchange_rate_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/responsive_form_row.dart';
 import 'dart:async';
 
@@ -294,7 +295,7 @@ Widget _infoRow(IconData icon, String label, String value,
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 16, color: Colors.grey.shade400),
+        Icon(icon, size: 16, color: Colors.grey.shade600),
         const SizedBox(width: 10),
         SizedBox(
           width: 110,
@@ -591,7 +592,7 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog>
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
-                    '${NumberFormat('#,##0.##', 'en_US').format(item.amount)} ${widget.payment.currency}',
+                    ReportingMoney.format(widget.payment.organizationId, item.amount, widget.payment.currency),
                     style: TextStyle(
                       fontWeight: FontWeight.w700,
                       fontSize: 14,
@@ -638,7 +639,7 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog>
                           .toStringAsFixed(1),
                     }),
                     rate: item.electricityPricePerUnit != null
-                        ? '× ${NumberFormat('#,##0.##', 'en_US').format(item.electricityPricePerUnit)} ${widget.payment.currency}/kWh'
+                        ? '× ${ReportingMoney.format(widget.payment.organizationId, item.electricityPricePerUnit!, widget.payment.currency)}/kWh'
                         : null,
                   ),
                 ],
@@ -681,7 +682,7 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog>
                           .toStringAsFixed(1),
                     }),
                     rate: item.waterPricePerUnit != null
-                        ? '× ${NumberFormat('#,##0.##', 'en_US').format(item.waterPricePerUnit)} ${widget.payment.currency}/m³'
+                        ? '× ${ReportingMoney.format(widget.payment.organizationId, item.waterPricePerUnit!, widget.payment.currency)}/m³'
                         : null,
                   ),
                 ],
@@ -705,7 +706,7 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog>
                 value:
                     '${item.rentPriceMode == RentPriceMode.daily ? item.rentUnitQuantity!.toStringAsFixed(0) : item.rentUnitQuantity!.toStringAsFixed(2)} ${_rentUnitShort(t, item.rentPriceMode!)}',
                 rate:
-                    '× ${NumberFormat('#,##0.##', 'en_US').format(item.rentUnitPrice)} ${widget.payment.currency}/${_rentUnitShort(t, item.rentPriceMode!)}',
+                    '× ${ReportingMoney.format(widget.payment.organizationId, item.rentUnitPrice!, widget.payment.currency)}/${_rentUnitShort(t, item.rentPriceMode!)}',
               ),
             ),
           ],
@@ -717,7 +718,7 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog>
               child: Row(
                 children: [
                   Icon(Icons.notes_rounded,
-                      size: 14, color: Colors.grey.shade400),
+                      size: 14, color: Colors.grey.shade600),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(item.description!,
@@ -751,7 +752,7 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog>
               if (date != null)
                 Text(DateFormat(dateFormat).format(date),
                     style: TextStyle(
-                        fontSize: 10, color: Colors.grey.shade400)),
+                        fontSize: 10, color: Colors.grey.shade600)),
             ],
           ),
         ),
@@ -809,7 +810,7 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog>
                   color: color ?? Colors.grey.shade700,
                 )),
             Text(
-              '${NumberFormat('#,##0.##', 'en_US').format(amount)} ${widget.payment.currency}',
+              ReportingMoney.format(widget.payment.organizationId, amount, widget.payment.currency),
               style: TextStyle(
                 fontSize: large ? 17 : 14,
                 fontWeight: FontWeight.w700,
@@ -1527,7 +1528,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                   ),
                   Flexible(
                     child: SingleChildScrollView(
-                      padding: const EdgeInsets.all(20),
+                      padding: const EdgeInsets.all(12),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
@@ -2066,10 +2067,10 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                 size: 44, color: Colors.grey.shade300),
             const SizedBox(height: 8),
             Text(t['payment_items_empty'],
-                style: TextStyle(color: Colors.grey.shade400, fontSize: 14)),
+                style: TextStyle(color: Colors.grey.shade600, fontSize: 14)),
             const SizedBox(height: 4),
             Text(t['payment_items_empty_hint'],
-                style: TextStyle(color: Colors.grey.shade400, fontSize: 12)),
+                style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
           ],
         ),
       );
@@ -2704,3 +2705,4 @@ Widget _calcPreviewChip({
                 fontSize: 12, fontWeight: FontWeight.w700, color: color)),
       ]),
     );
+

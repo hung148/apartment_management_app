@@ -1,5 +1,6 @@
 import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_router.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/app_theme.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/loading.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -119,7 +120,7 @@ class _SplashScreenState extends State<SplashScreen>
                                   borderRadius: BorderRadius.circular(24),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: const Color(0xFF1A56DB).withValues(alpha: 0.5),
+                                      color: AppThemePalette.primary.withValues(alpha: 0.5),
                                       blurRadius: 32,
                                       spreadRadius: 4,
                                       offset: const Offset(0, 8),
@@ -138,14 +139,14 @@ class _SplashScreenState extends State<SplashScreen>
 
                               // App name with blue accent on first letter
                               RichText(
-                                text: const TextSpan(
+                                text: TextSpan(
                                   children: [
                                     TextSpan(
                                       text: 'C',
                                       style: TextStyle(
                                         fontSize: 52,
                                         fontWeight: FontWeight.w800,
-                                        color: Color(0xFF4D8EFF),
+                                        color: AppThemePalette.primaryMid,
                                         letterSpacing: -1.5,
                                         height: 1.0,
                                       ),
@@ -217,3 +218,4 @@ class _SplashScreenState extends State<SplashScreen>
     );
   }
 }
+

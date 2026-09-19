@@ -18,10 +18,33 @@ class ChatOverlayManager {
   static final ValueNotifier<bool> _visible = ValueNotifier(false);
   static final ValueNotifier<bool> _panelOpen = ValueNotifier(false);
   static final ValueNotifier<Offset?> _fabPosition = ValueNotifier(null);
+  static final ValueNotifier<int> _modalDepth = ValueNotifier(0);
+  static int _modalGeneration = 0;
 
   static void install() {
     _visible.value = true;
+    // Route notifications from a chat-owned dialog must not move the chat
+    // above that dialog or recreate the conversation while it is open.
+    if (_modalDepth.value > 0) return;
     _reinsertOnTop();
+  }
+
+  static Future<T?> showModal<T>({
+    required BuildContext context,
+    required WidgetBuilder builder,
+  }) async {
+    closePanel();
+    final generation = _modalGeneration;
+    _modalDepth.value++;
+    try {
+      return await showDialog<T>(
+        context: context,
+        useRootNavigator: true,
+        builder: builder,
+      );
+    } finally {
+      if (generation == _modalGeneration) _modalDepth.value--;
+    }
   }
 
   static void uninstall() {
@@ -50,7 +73,14 @@ class ChatOverlayManager {
         valueListenable: _visible,
         builder: (_, visible, __) {
           if (!visible) return const SizedBox.shrink();
-          return _ChatOverlay(panelOpen: _panelOpen, fabPosition: _fabPosition);
+          return ValueListenableBuilder<int>(
+            valueListenable: _modalDepth,
+            builder: (_, depth, child) => Offstage(
+              offstage: depth > 0,
+              child: TickerMode(enabled: depth == 0, child: child!),
+            ),
+            child: _ChatOverlay(panelOpen: _panelOpen, fabPosition: _fabPosition),
+          );
         },
       ),
     );
@@ -59,6 +89,8 @@ class ChatOverlayManager {
 
   static void dispose() {
     dismissKeyboard();
+    _modalGeneration++;
+    _modalDepth.value = 0;
     _entry?.remove();
     _entry = null;
     _visible.value = false;
@@ -202,6 +234,7 @@ class _DraggableFabState extends State<_DraggableFab> {
                 curve: Curves.easeOut,
                 child: Image.asset(
                   'assets/image/chat_button.png',
+                  key: const ValueKey('ai-chat-launcher'),
                   width: _fabSize,
                   height: _fabSize,
                 ),
@@ -252,7 +285,7 @@ class _ChatPanelState extends State<_ChatPanel> {
   }
 
   Future<void> _upload() async {
-    final count = await showDialog<int>(
+    final count = await ChatOverlayManager.showModal<int>(
       context: context,
       builder: (_) => const AIImportDialog(),
     );
@@ -441,7 +474,7 @@ class _ChatPanelState extends State<_ChatPanel> {
                   ),
                   TextButton(
                     onPressed: () async {
-                      await showDialog<void>(
+                      await ChatOverlayManager.showModal<void>(
                         context: context,
                         builder: (_) => const AISubscriptionDialog(),
                       );
@@ -916,3 +949,4 @@ class _SendButtonState extends State<_SendButton> {
     );
   }
 }
+
