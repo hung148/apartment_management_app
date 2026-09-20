@@ -1,4 +1,5 @@
 import 'package:phan_mem_quan_ly_can_ho/widgets/app_dialog.dart';
+import 'package:phan_mem_quan_ly_can_ho/widgets/building_summary_card.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_money.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/exchange_rate_service.dart';
 import 'dart:async';
@@ -29,7 +30,6 @@ import 'package:phan_mem_quan_ly_can_ho/services/payments_notifier.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/room_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
-import 'package:phan_mem_quan_ly_can_ho/utils/app_router.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_theme.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/shared.dart';
 import 'package:flutter/gestures.dart';
@@ -1289,45 +1289,6 @@ class _OrganizationScreenState extends State<OrganizationScreen>
         color: Colors.grey.shade200,
       );
 
-  Widget _buildAddBuildingButton(AppTranslations t) {
-    return Material(
-      color: AppThemePalette.primaryLight,
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        onTap: _showAddBuildingDialog,
-        borderRadius: BorderRadius.circular(14),
-        hoverColor: AppThemePalette.primaryLight,
-        splashColor: AppThemePalette.primary.withValues(alpha: 0.2),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: AppThemePalette.primary,
-              width: 1.5,
-            ),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-               Icon(Icons.add_rounded, color: AppThemePalette.primary, size: 20),
-              const SizedBox(width: 6),
-              Text(
-                t['add_building'],
-                style:  TextStyle(
-                  color: AppThemePalette.primary,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildBuildingCard({
     required AppTranslations t,
     required Building building,
@@ -1335,366 +1296,36 @@ class _OrganizationScreenState extends State<OrganizationScreen>
     required bool isAdmin,
     List<Room>? allRooms,
   }) {
-    // Cache the future so resize doesn't recreate it
     final future = _buildingCardFutures.putIfAbsent(
       building.id,
-      () => Future.wait([
-        _roomService.getBuildingRooms(widget.organization.id, building.id),
-        _tenantService.getBuildingTenants(widget.organization.id, building.id),
-      ]),
+      () => building.isRented
+          ? Future.value(<dynamic>[<Room>[], <Tenant>[]])
+          : Future.wait([
+              _roomService.getBuildingRooms(widget.organization.id, building.id,
+                  requireServer: true),
+              _tenantService.getBuildingTenants(widget.organization.id, building.id,
+                  requireServer: true),
+            ]),
     );
     return FutureBuilder<List<dynamic>>(
       future: future,
-      builder: (context, snap) {
-        final rooms = snap.data?[0] as List<Room>? ?? [];
-        final tenants = snap.data?[1] as List<Tenant>? ?? [];
-        final occupied = tenants.where((t) => t.status == TenantStatus.active).length;
-        final vacant = (rooms.length - occupied).clamp(0, rooms.length);
-        final pct = rooms.isNotEmpty ? (occupied / rooms.length) : 0.0;
-
-        Color barColor = pct >= 0.8
-            ? const Color(0xFF1D9E75)
-            : pct >= 0.5
-                ? const Color(0xFFEF9F27)
-                : const Color(0xFFE24B4A);
-
-        return Container(
-          margin: const EdgeInsets.only(bottom: 14),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerLow,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey.shade200),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: Column(
-            children: [
-              // ── Colored top accent ───────────────────────────────
-              Container(height: 2, color: color.withValues(alpha: 0.5)),
-
-              // ── Card body ────────────────────────────────────────
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Header
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            color: color.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Icon(Icons.apartment_rounded, color: color, size: 22),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                building.name,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                building.address,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey.shade500,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        // Keep status labels in a compact stack so long
-                        // building names and narrow phone layouts do not fight
-                        // for the same horizontal space.
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 9, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: pct >= 1.0
-                                    ? const Color(0xFFFCEBEB)
-                                    : const Color(0xFFEAF3DE),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                pct >= 1.0 ? t['building_status_full'] : t['building_status_active'],
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: pct >= 1.0
-                                      ? const Color(0xFFA32D2D)
-                                      : const Color(0xFF3B6D11),
-                                ),
-                              ),
-                            ),
-                            if (building.isRented) ...[
-                              const SizedBox(height: 4),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFFAEEDA),
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(Icons.real_estate_agent_rounded,
-                                        size: 11, color: Color(0xFF854F0B)),
-                                    const SizedBox(width: 4),
-                                    Text(t['building_management_rented'],
-                                        style: const TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w600,
-                                            color: Color(0xFF854F0B))),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 14),
-
-                    if (!building.isRented) ...[
-                      // Stats row
-                      Row(
-                        children: [
-                          _buildingStatChip(
-                            value: rooms.length.toString(),
-                            label: t['building_stat_total_rooms'],
-                            color: color,
-                          ),
-                          const SizedBox(width: 8),
-                          _buildingStatChip(
-                            value: occupied.toString(),
-                            label: t['building_stat_rented'],
-                            color: const Color(0xFF3B6D11),
-                          ),
-                          const SizedBox(width: 8),
-                          _buildingStatChip(
-                            value: vacant.toString(),
-                            label: t['building_stat_vacant'],
-                            color: vacant == 0
-                                ? Colors.grey
-                                : const Color(0xFF854F0B),
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 14),
-
-                      // Occupancy bar
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            t['building_occupancy_label'],
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.grey.shade500,
-                            ),
-                          ),
-                          Text(
-                            '${(pct * 100).round()}%',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: barColor,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
-                        child: LinearProgressIndicator(
-                          value: pct,
-                          backgroundColor: barColor.withValues(alpha: 0.12),
-                          color: barColor,
-                          minHeight: 7,
-                        ),
-                      ),
-                    ] else ...[
-                      // Rent summary (replaces room stats for rented buildings)
-                      Row(
-                        children: [
-                          _buildingStatChip(
-                            value: building.rentAmount != null
-                                ? _formatCurrency(building.rentAmount!,building.currency)
-                                : '—',
-                            label: t['building_rent_amount_label'],
-                            color: const Color(0xFF854F0B),
-                          ),
-                          const SizedBox(width: 8),
-                          _buildingStatChip(
-                            value: building.rentDueDay?.toString() ?? '—',
-                            label: t['building_rent_due_day_label'],
-                            color: const Color(0xFF854F0B),
-                          ),
-                        ],
-                      ),
-                    ],
-
-                    // Created at
-                    const SizedBox(height: 10),
-                    Text(
-                      '${t['created_at']} ${_formatDate(building.createdAt)}',
-                      style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-                    ),
-                  ],
-                ),
-              ),
-
-              // ── Footer actions ───────────────────────────────────
-              if (isAdmin) ...[
-                Divider(height: 1, color: Colors.grey.shade100),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  child: _buildCardFooterActions(
-                    context: context,
-                    actions: [
-                      if (building.isRented)
-                        (
-                          icon: Icons.real_estate_agent_rounded,
-                          label: t['building_rent_tab_label'],
-                          color: const Color(0xFF854F0B),
-                          bgColor: const Color(0xFFFAEEDA),
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => BuildingRentScreen(
-                                organization: widget.organization,
-                                building: building,
-                              ),
-                            ),
-                          ),
-                        ),
-                      if (!building.isRented) ...[
-                        (
-                          icon: Icons.meeting_room_rounded,
-                          label: t['manage_rooms'],
-                          color: color,
-                          bgColor: color.withValues(alpha: 0.08),
-                          onTap: () => _navigateToBuildingRooms(building),
-                        ),
-                      ],
-                      (
-                        icon: Icons.edit_rounded,
-                        label: t['edit'],
-                        color: Colors.grey.shade600,
-                        bgColor: Colors.grey.shade100,
-                        onTap: () => _showEditBuildingDialog(building),
-                      ),
-                      (
-                        icon: Icons.delete_outline_rounded,
-                        label: t['delete'],
-                        color: const Color(0xFFA32D2D),
-                        bgColor: const Color(0xFFFCEBEB),
-                        onTap: () => _deleteBuilding(building, widget.organization),
-                      ),
-                    ],
-                  ),
-                ),
-              ] else
-                if (!building.isRented) ...[
-                  InkWell(
-                    onTap: () => _navigateToBuildingRooms(building),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.meeting_room_rounded, size: 16, color: color),
-                          const SizedBox(width: 6),
-                          Text(
-                            t['building_action_view_rooms'],
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: color,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          Icon(Icons.arrow_forward_ios_rounded,
-                              size: 12, color: color),
-                        ],
-                      ),
-                    ),
-                  ),
-                ] else ...[
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.real_estate_agent_rounded,
-                            size: 15, color: const Color(0xFF854F0B).withValues(alpha: 0.7)),
-                        const SizedBox(width: 6),
-                        Text(
-                          t['building_rented_footer_notice'],
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: const Color(0xFF854F0B).withValues(alpha: 0.7),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildingStatChip({
-    required String value,
-    required String label,
-    required Color color,
-  }) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF8FAFC),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              value,
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-                color: color,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
-              textAlign: TextAlign.start,
-            ),
-          ],
-        ),
+      builder: (context, snap) => BuildingSummaryCard(
+        building: building,
+        translations: t,
+        color: color,
+        rooms: snap.data?[0] as List<Room>? ?? [],
+        tenants: snap.data?[1] as List<Tenant>? ?? [],
+        loading: snap.connectionState != ConnectionState.done,
+        hasError: snap.hasError,
+        onRetry: () => setState(() => _buildingCardFutures.remove(building.id)),
+        onManage: building.isRented
+            ? (isAdmin ? () => Navigator.push(context, MaterialPageRoute(
+                builder: (_) => BuildingRentScreen(
+                  organization: widget.organization, building: building),
+              )) : null)
+            : () => _navigateToBuildingRooms(building),
+        onEdit: isAdmin ? () => _showEditBuildingDialog(building) : null,
+        onDelete: isAdmin ? () => _deleteBuilding(building, widget.organization) : null,
       ),
     );
   }
@@ -1734,67 +1365,6 @@ class _OrganizationScreenState extends State<OrganizationScreen>
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildCardFooterActions({
-    required BuildContext context,
-    required List<({IconData icon, String label, Color color, Color bgColor, VoidCallback onTap})> actions,
-  }) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final baseStyle = DefaultTextStyle.of(context).style
-            .merge(const TextStyle(fontSize: 11, fontWeight: FontWeight.w600));
-        final textScaler = MediaQuery.textScalerOf(context);
-
-        double naturalWidth(String label) {
-          final painter = TextPainter(
-            text: TextSpan(text: label, style: baseStyle),
-            maxLines: 1,
-            textDirection: TextDirection.ltr,
-            textScaler: textScaler,
-          )..layout();
-          return 14 + 4 + painter.width + 8 + 16; // icon + gap + text + padding + safety margin
-        }
-
-        Widget button(({IconData icon, String label, Color color, Color bgColor, VoidCallback onTap}) a) =>
-            _footerActionBtn(icon: a.icon, label: a.label, color: a.color, bgColor: a.bgColor, onTap: a.onTap);
-
-        final count = actions.length;
-        final gap = 8.0 * (count - 1);
-        final equalShare = (constraints.maxWidth - gap) / count;
-        final maxNatural = actions.map((a) => naturalWidth(a.label)).reduce((a, b) => a > b ? a : b);
-
-        if (maxNatural <= equalShare) {
-          return Row(
-            children: [
-              for (int i = 0; i < count; i++) ...[
-                if (i > 0) const SizedBox(width: 8),
-                Expanded(child: button(actions[i])),
-              ],
-            ],
-          );
-        }
-
-        final overflowAction =
-            actions.reduce((a, b) => naturalWidth(a.label) >= naturalWidth(b.label) ? a : b);
-        final rest = actions.where((a) => a != overflowAction).toList();
-
-        return Column(
-          children: [
-            SizedBox(width: double.infinity, child: button(overflowAction)),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                for (int i = 0; i < rest.length; i++) ...[
-                  if (i > 0) const SizedBox(width: 8),
-                  Expanded(child: button(rest[i])),
-                ],
-              ],
-            ),
-          ],
-        );
-      },
     );
   }
 
@@ -5990,41 +5560,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
     }
   }
 
-  // ========================================
-  // DATE FORMATTING
-  // ========================================
-  String _formatDate(DateTime date) {
-    final locale = Localizations.localeOf(context).languageCode;
-    final now = DateTime.now();
-    final difference = now.difference(date);
-    if (locale == 'vi') {
-      if (difference.inDays == 0) return 'hôm nay';
-      if (difference.inDays == 1) return 'hôm qua';
-      if (difference.inDays < 7) {
-        return '${difference.inDays} ngày trước';
-      }
-      if (difference.inDays < 30) {
-        return '${(difference.inDays / 7).floor()} tuần trước';
-      }
-      if (difference.inDays < 365) {
-        return '${(difference.inDays / 30).floor()} tháng trước';
-      }
-      return '${(difference.inDays / 365).floor()} năm trước';
-    } else {
-      if (difference.inDays == 0) return 'today';
-      if (difference.inDays == 1) return 'yesterday';
-      if (difference.inDays < 7) {
-        return '${difference.inDays} days ago';
-      }
-      if (difference.inDays < 30) {
-        return '${(difference.inDays / 7).floor()} weeks ago';
-      }
-      if (difference.inDays < 365) {
-        return '${(difference.inDays / 30).floor()} months ago';
-      }
-      return '${(difference.inDays / 365).floor()} years ago';
-    }
-  }
+
 }
 
 // ============================================================

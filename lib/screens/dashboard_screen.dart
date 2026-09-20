@@ -1,4 +1,5 @@
 import 'package:phan_mem_quan_ly_can_ho/widgets/app_dialog.dart';
+import 'package:phan_mem_quan_ly_can_ho/widgets/dashboard_settings_button.dart';
 import 'dart:ui';
 
 import 'package:phan_mem_quan_ly_can_ho/main.dart';
@@ -3028,11 +3029,10 @@ class _DashboardScreenState extends State<DashboardScreen>
       title: Text(AppTranslations.of(context).text('dashboard'),
         maxLines: 1, overflow: TextOverflow.ellipsis,
         style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-      actions: [IconButton(
+      actions: [DashboardSettingsButton(
         onPressed: _showSettingsDialog,
         tooltip: AppTranslations.of(context).text('settings'),
-        icon: Badge(isLabelVisible: _updateAvailable && !_checkingUpdate,
-          child: const Icon(Icons.settings_outlined)),
+        showBadge: _updateAvailable && !_checkingUpdate,
       ), const SizedBox(width: 4)],
     );
   }

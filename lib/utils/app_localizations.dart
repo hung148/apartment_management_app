@@ -1042,6 +1042,10 @@ class AppTranslations {
       'building_stat_rented': 'Đang thuê',
       'building_stat_vacant': 'Trống',
       'building_occupancy_label': 'Tỉ lệ lấp đầy',
+      'building_actions': 'Thao tác tòa nhà',
+      'building_no_matching_rooms': 'Không có phòng phù hợp.',
+      'building_details_load_error': 'Không thể tải thông tin phòng.',
+      'building_occupancy_explanation': 'Danh sách theo người thuê dài hạn đang hoạt động; không bao gồm đặt phòng theo giờ.',
       'building_action_view_rooms': 'Xem phòng',
       'building_count_label': '{{count}} toà nhà',
 
@@ -2489,6 +2493,10 @@ class AppTranslations {
       'building_stat_rented': 'Rented',
       'building_stat_vacant': 'Vacant',
       'building_occupancy_label': 'Occupancy',
+      'building_actions': 'Building actions',
+      'building_no_matching_rooms': 'No matching rooms.',
+      'building_details_load_error': 'Could not load room details.',
+      'building_occupancy_explanation': 'Based on active long-term tenants; excludes hourly bookings.',
       'building_action_view_rooms': 'View rooms',
       'building_count_label': '{{count}} buildings',
 

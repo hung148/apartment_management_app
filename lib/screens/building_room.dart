@@ -11,7 +11,6 @@ import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/app_logger.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/shared.dart';
 import 'package:phan_mem_quan_ly_can_ho/main.dart' show getIt;
-import 'package:phan_mem_quan_ly_can_ho/models/booking_model.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
 

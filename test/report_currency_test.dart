@@ -5,6 +5,20 @@ import 'package:phan_mem_quan_ly_can_ho/utils/app_money.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
 
 void main() {
+  test('Building room labels preserve the room-number placeholder', () {
+    expect(
+      AppTranslations(
+        const Locale('en'),
+      ).textWithParams('building_room_label', {'n': '101'}),
+      'Room 101',
+    );
+    expect(
+      AppTranslations(
+        const Locale('vi'),
+      ).textWithParams('building_room_label', {'n': '101'}),
+      'Phòng 101',
+    );
+  });
   test('USD retains cents and VND displays grouped whole units', () {
     expect(AppMoney.format(1234.56, 'USD'), '1,234.56 USD');
     expect(AppMoney.format(1234567, 'VND'), '1,234,567 VND');
