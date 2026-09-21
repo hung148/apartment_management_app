@@ -68,3 +68,5 @@ analyze.txt
 **/serviceAccount*.json
 **/*firebase-adminsdk*.json
 .firebaserc.local
+
+project_diagram.excalidraw

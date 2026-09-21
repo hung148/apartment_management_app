@@ -1,3 +1,4 @@
+import 'package:phan_mem_quan_ly_can_ho/widgets/tenant_toolbar.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/tenant_summary_card.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/app_dialog.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/exchange_rate_service.dart';
@@ -898,94 +899,6 @@ class _TenantsTabState extends State<TenantsTab>
     }
   }
 
-  // ─── Summary bar ─────────────────────────────────────────────────────────────
-  Widget _buildSummaryBar(List<Tenant> tenants) {
-    final t = AppTranslations.of(context);
-    final active =
-        tenants.where((x) => x.status == TenantStatus.active).length;
-    final inactive =
-        tenants.where((x) => x.status == TenantStatus.inactive).length;
-    final movedOut =
-        tenants.where((x) => x.status == TenantStatus.moveOut).length;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.shade200),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          _summaryBarItem(
-            value: active.toString(),
-            label: t['tenant_status_active'],
-            color: const Color(0xFF3B6D11),
-            isFirst: true,
-          ),
-          _summaryBarDivider(),
-          _summaryBarItem(
-            value: inactive.toString(),
-            label: t['tenant_status_inactive'],
-            color: const Color(0xFF854F0B),
-          ),
-          _summaryBarDivider(),
-          _summaryBarItem(
-            value: movedOut.toString(),
-            label: t['tenant_status_moved_out'],
-            color: Colors.blueGrey.shade600,
-            isLast: true,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _summaryBarItem({
-    required String value,
-    required String label,
-    required Color color,
-    bool isFirst = false,
-    bool isLast = false,
-  }) {
-    return Expanded(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Column(
-          children: [
-            Text(
-              value,
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-                color: color,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              style:
-                  const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _summaryBarDivider() => Container(
-        width: 0.5,
-        height: 40,
-        color: Colors.grey.shade200,
-      );
-
   // ─── Build ────────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
@@ -1021,94 +934,16 @@ class _TenantsTabState extends State<TenantsTab>
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                child: Column(
-                  children: [
-                    _buildSummaryBar(allTenants),
-                    const SizedBox(height: 16),
-                    ValueListenableBuilder<TextEditingValue>(
-                      valueListenable: _searchController,
-                      builder: (context, value, _) {
-                        return Container(
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.surface,
-                            borderRadius: BorderRadius.circular(12),
-                            border:
-                                Border.all(color: Colors.grey.shade200),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.04),
-                                blurRadius: 8,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: TextField(
-                            controller: _searchController,
-                            decoration: InputDecoration(
-                              hintText: t['tenant_search_hint'],
-                              hintStyle: TextStyle(
-                                  color: Colors.grey.shade600,
-                                  fontSize: 14),
-                              prefixIcon: Icon(Icons.search,
-                                  color: Colors.grey.shade600, size: 20),
-                              suffixIcon: value.text.isNotEmpty
-                                  ? IconButton(
-                                      icon: Icon(Icons.clear,
-                                          color: Colors.grey.shade600,
-                                          size: 18),
-                                      onPressed: () =>
-                                          _searchController.clear(),
-                                    )
-                                  : null,
-                              border: InputBorder.none,
-                              contentPadding:
-                                  const EdgeInsets.symmetric(
-                                      vertical: 14, horizontal: 4),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    if (isAdmin)
-                      Material(
-                        color: AppThemePalette.primaryLight,
-                        borderRadius: BorderRadius.circular(14),
-                        child: InkWell(
-                          onTap: () =>
-                              _showAddTenantDialog(buildings, rooms),
-                          borderRadius: BorderRadius.circular(14),
-                          child: Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.symmetric(
-                                vertical: 14),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(
-                                  color: AppThemePalette.primary,
-                                  width: 1.5),
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                 Icon(Icons.person_add_rounded,
-                                    color: AppThemePalette.primary, size: 20),
-                                const SizedBox(width: 8),
-                                Text(
-                                  t['tenant_add_button'],
-                                  style:  TextStyle(
-                                    color: AppThemePalette.primary,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    const SizedBox(height: 16),
-                  ],
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: TenantToolbar(
+                    counts: [
+                      for (final status in [TenantStatus.active, TenantStatus.inactive, TenantStatus.moveOut])
+                        allTenants.where((tenant) => tenant.status == status).length,
+                    ],
+                    searchController: _searchController,
+                    onAdd: isAdmin ? () => _showAddTenantDialog(buildings, rooms) : null,
+                  ),
                 ),
               ),
             ),

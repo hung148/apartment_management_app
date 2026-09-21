@@ -1,3 +1,4 @@
+import 'package:phan_mem_quan_ly_can_ho/widgets/compact_summary_toolbar.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/app_dialog.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/building_summary_card.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_money.dart';
@@ -205,6 +206,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
   String? _selectedOccupancyBuildingId;
   String? _selectedRevenueBuildingId;
 
+  final TextEditingController _buildingSearchController = TextEditingController();
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _filterChipsScrollController = ScrollController();
 
@@ -253,6 +255,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _buildingSearchController.dispose();
     _searchController.dispose();
     _resizeDebounceTimer?.cancel();
     _filterChipsScrollController.dispose();
@@ -1118,66 +1121,57 @@ class _OrganizationScreenState extends State<OrganizationScreen>
             }
             final buildings = snapshot.data ?? [];
 
-            return CustomScrollView(
-              slivers: [
-                SliverToBoxAdapter(child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: LayoutBuilder(builder: (context, constraints) {
-                    final actions = Wrap(spacing: 8, runSpacing: 4, children: [
-                      if (isAdmin) FilledButton.icon(
-                        onPressed: _showAddBuildingDialog,
-                        icon: const Icon(Icons.add, size: 18),
-                        label: Text(t['add_building']),
-                      ),
-                    ]);
-                    if (constraints.maxWidth < 850 || MediaQuery.textScalerOf(context).scale(14) > 18) {
-                      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                        _buildBuildingSummaryBar(t, buildings),
-                        const SizedBox(height: 8), actions,
-                      ]);
-                    }
-                    return Row(children: [
-                      Expanded(child: _buildBuildingSummaryBar(t, buildings)),
-                      const SizedBox(width: 12), actions,
-                    ]);
-                  }),
-                )),
+            return ValueListenableBuilder<TextEditingValue>(
+              valueListenable: _buildingSearchController,
+              builder: (context, search, _) {
+                final query = search.text.trim().toLowerCase();
+                final visibleBuildings = buildings.where((building) =>
+                    building.name.toLowerCase().contains(query) ||
+                    building.address.toLowerCase().contains(query)).toList();
+                return CustomScrollView(
+                  slivers: [
+                    SliverToBoxAdapter(child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: _buildBuildingSummaryBar(t, buildings, isAdmin),
+                    )),
 
-                if (buildings.isEmpty)
-                  SliverFillRemaining(
-                    child: Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.apartment, size: 64, color: Colors.grey.shade300),
-                          const SizedBox(height: 16),
-                          Text(t['no_buildings'],
-                              style: TextStyle(color: Colors.grey.shade600)),
-                        ],
+                    if (visibleBuildings.isEmpty)
+                      SliverFillRemaining(
+                        child: Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.apartment, size: 64, color: Colors.grey.shade300),
+                              const SizedBox(height: 16),
+                              Text(query.isEmpty ? t['no_buildings'] : t['building_search_empty'],
+                                  style: TextStyle(color: Colors.grey.shade600)),
+                            ],
+                          ),
+                        ),
+                      )
+                    else
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+                        sliver: SliverList(
+                          delegate: SliverChildBuilderDelegate(
+                            (context, index) {
+                              final building = visibleBuildings[index];
+                              final color = _buildingColors[buildings.indexOf(building) % _buildingColors.length];
+                              return _buildBuildingCard(
+                                t: t,
+                                building: building,
+                                color: color,
+                                isAdmin: isAdmin,
+                                allRooms: snapshot.data != null ? null : [],
+                              );
+                            },
+                            childCount: visibleBuildings.length,
+                          ),
+                        ),
                       ),
-                    ),
-                  )
-                else
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
-                    sliver: SliverList(
-                      delegate: SliverChildBuilderDelegate(
-                        (context, index) {
-                          final building = buildings[index];
-                          final color = _buildingColors[index % _buildingColors.length];
-                          return _buildBuildingCard(
-                            t: t,
-                            building: building,
-                            color: color,
-                            isAdmin: isAdmin,
-                            allRooms: snapshot.data != null ? null : [],
-                          );
-                        },
-                        childCount: buildings.length,
-                      ),
-                    ),
-                  ),
-              ],
+                  ],
+                );
+              },
             );
           },
         );
@@ -1185,7 +1179,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
     );
   }
 
-  Widget _buildBuildingSummaryBar(AppTranslations t, List<Building> buildings) {
+  Widget _buildBuildingSummaryBar(AppTranslations t, List<Building> buildings, bool isAdmin) {
     return FutureBuilder<List<dynamic>>(
       future: _summaryBarFuture,
       builder: (context, snap) {
@@ -1207,46 +1201,17 @@ class _OrganizationScreenState extends State<OrganizationScreen>
             ? (activeTenants / rooms.length * 100).round()
             : 0;
 
-        return Container(
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerLow,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.grey.shade200),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              _summaryBarItem(
-                value: buildings.length.toString(),
-                label: t['stat_buildings'], 
-                color: AppThemePalette.primary,
-                isFirst: true,
-              ),
-              _summaryBarDivider(),
-              _summaryBarItem(
-                value: rooms.length.toString(),
-                label: t['stat_rooms'],
-                color: const Color(0xFF0F6E56),
-              ),
-              _summaryBarDivider(),
-              _summaryBarItem(
-                value: '$occupancyPct%',
-                label: t['stat_occupancy'],
-                color: occupancyPct >= 80
-                    ? const Color(0xFF3B6D11)
-                    : occupancyPct >= 50
-                        ? const Color(0xFF854F0B)
-                        : const Color(0xFFA32D2D),
-                isLast: true,
-              ),
-            ],
-          ),
+        return CompactSummaryToolbar(
+          values: ['${buildings.length}', '${rooms.length}', '$occupancyPct%'],
+          labels: [t['stat_buildings'], t['stat_rooms'], t['stat_occupancy']],
+          icons: const [Icons.apartment_rounded, Icons.meeting_room_outlined, Icons.pie_chart_outline],
+          searchController: _buildingSearchController,
+          searchTitle: t['building_search_title'],
+          searchHint: t['building_search_hint'],
+          addLabel: t['add_building'],
+          addIcon: Icons.add_business_rounded,
+          actionKeyPrefix: 'building',
+          onAdd: isAdmin ? _showAddBuildingDialog : null,
         );
       },
     );
