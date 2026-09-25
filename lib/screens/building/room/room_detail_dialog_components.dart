@@ -114,7 +114,7 @@ class _DialogShell extends StatelessWidget {
           color: Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(20),
           clipBehavior: Clip.antiAlias,
-          child: child,
+          child: Form(child: child),
         ),
       ),
     );
@@ -231,7 +231,9 @@ class _ActionButton extends StatelessWidget {
         color: disabled ? Colors.grey.shade300 : AppThemePalette.primary,
         borderRadius: BorderRadius.circular(10),
         child: InkWell(
-          onTap: onPressed,
+          onTap: onPressed == null ? null : () {
+            if (Form.maybeOf(context)?.validate() ?? true) onPressed!();
+          },
           borderRadius: BorderRadius.circular(10),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),

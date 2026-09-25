@@ -26,7 +26,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:get_it/get_it.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:window_manager/window_manager.dart';
+import 'utils/app_window.dart';
 
 final navigatorKey = GlobalKey<NavigatorState>();
 final _chatRouteObserver = _ChatRouteObserver();
@@ -111,17 +111,7 @@ void main() async {
 
   WidgetsFlutterBinding.ensureInitialized();
 
-  if (defaultTargetPlatform == TargetPlatform.windows) {
-    await windowManager.ensureInitialized();
-    const WindowOptions windowOptions = WindowOptions(
-      minimumSize: Size(480, 600),
-      size: Size(1200, 800),
-      center: true,
-      title: 'Phần Mềm Quản Lý Căn Hộ',
-    );
-    await windowManager.waitUntilReadyToShow(windowOptions);
-    await windowManager.show();
-  }
+  await initializeAppWindow();
 
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 

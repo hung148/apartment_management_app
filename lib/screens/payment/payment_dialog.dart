@@ -533,6 +533,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
     }
 
     if (!mounted) return;
+    final dateFormKey = GlobalKey<FormState>();
     final result = await _showTrackedDialog<Map<String, dynamic>?>(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -704,7 +705,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
             );
           }
 
-          return AppDialog(
+          return Form(key: dateFormKey, child: AppDialog(
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20)),
             child: ConstrainedBox(
@@ -1265,6 +1266,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                                 borderRadius: BorderRadius.circular(10)),
                           ),
                           onPressed: () {
+                            if (!dateFormKey.currentState!.validate()) return;
                             if (selectedType != null &&
                                 amountController.text.isNotEmpty) {
                               final amount = CurrencyParser.parse(
@@ -1344,7 +1346,7 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
                 ],
               ),
             ),
-          );
+          ));
         },
       ),
     );
@@ -1751,11 +1753,15 @@ class _ImprovedPaymentFormDialogState extends State<ImprovedPaymentFormDialog>
     bool barrierDismissible = true,
   }) async {
     try {
-      return await showDialog<T>(
+      final route = DialogRoute<T>(
         context: context,
         barrierDismissible: barrierDismissible,
         builder: builder,
       );
+      final result = await Navigator.of(context, rootNavigator: true).push(route);
+      // Caller-owned controllers must outlive the closing animation.
+      await route.completed;
+      return result;
     } finally {
     }
   }

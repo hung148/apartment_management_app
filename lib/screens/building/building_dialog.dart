@@ -3,7 +3,6 @@ import 'package:phan_mem_quan_ly_can_ho/widgets/responsive_form_row.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/currency_formatter.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/localizations/app_localizations.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_theme.dart';
-import 'package:phan_mem_quan_ly_can_ho/widgets/combo_box.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/constants.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/buildings_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/date_picker.dart';
@@ -255,8 +254,8 @@ class _BuildingDialogState extends State<BuildingDialog>
       for (int i = start - 1; i < end; i++) {
         if (bulkRoomsController.text.isNotEmpty)
           {floorConfigs[i].countController.text = bulkRoomsController.text;}
-        if (selectedBulkAptType != null)
-          {floorConfigs[i].aptType = selectedBulkAptType!;}
+        if (selectedBulkAptType != null && selectedBulkAptType!.trim().isNotEmpty)
+          {floorConfigs[i].aptType = normalizeAptType(selectedBulkAptType);}
         if (bulkAreaController.text.isNotEmpty)
           {floorConfigs[i].areaController.text = bulkAreaController.text;}
       }
@@ -320,14 +319,14 @@ class _BuildingDialogState extends State<BuildingDialog>
         'uniformRooms': true,
         'floors': int.tryParse(floorsController.text) ?? 0,
         'roomsPerFloor': int.tryParse(uniformRoomsController.text) ?? 0,
-        'roomType': selectedUniformAptType,
+        'roomType': normalizeAptType(selectedUniformAptType),
         'roomArea': double.tryParse(uniformAreaController.text) ?? 0.0,
         'roomPrefix': roomPrefixController.text.trim(),
       };
     } else {
       final details = floorConfigs.map((c) => {
         'count': int.tryParse(c.countController.text) ?? 0,
-        'type': c.aptType,
+        'type': normalizeAptType(c.aptType),
         'area': double.tryParse(c.areaController.text) ?? 0.0,
         'customNames': c.customNames,
       }).toList();
@@ -725,7 +724,7 @@ class _BuildingDialogState extends State<BuildingDialog>
     return Row(children: [
       Icon(icon, size: 14, color: _DS.primary),
       const SizedBox(width: 6),
-      Text(
+      Flexible(child: Text(
         label.toUpperCase(),
         style: TextStyle(
           fontSize: 11,
@@ -733,7 +732,7 @@ class _BuildingDialogState extends State<BuildingDialog>
           color: _DS.primary,
           letterSpacing: 0.8,
         ),
-      ),
+      )),
       const SizedBox(width: 8),
       Expanded(
         child: Divider(
@@ -881,7 +880,7 @@ class _BuildingDialogState extends State<BuildingDialog>
           Row(children: [
             Icon(Icons.event_available_rounded, size: 14, color: _DS.primary),
             const SizedBox(width: 6),
-            Text(
+            Flexible(child: Text(
               'CHẾ ĐỘ CHO THUÊ MẶC ĐỊNH',
               style: TextStyle(
                 fontSize: 11,
@@ -889,7 +888,7 @@ class _BuildingDialogState extends State<BuildingDialog>
                 color: _DS.primary,
                 letterSpacing: 0.6,
               ),
-            ),
+            )),
           ]),
           const SizedBox(height: 10),
           Wrap(
@@ -1017,14 +1016,15 @@ class _BuildingDialogState extends State<BuildingDialog>
                       ? Colors.white
                       : _DS.textSecondary),
               const SizedBox(width: 6),
-              Text(
+              Flexible(child: Text(
                 label,
+                textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
                   color: selected ? Colors.white : _DS.textSecondary,
                 ),
-              ),
+              )),
             ],
           ),
         ),
@@ -1168,10 +1168,6 @@ class _BuildingDialogState extends State<BuildingDialog>
   // ── UNIFORM SECTION ──────────────────────────────────────────
   Widget _buildUniformSection(AppTranslations t) {
 
-    final aptTypeOptions = kApartmentTypes.contains(selectedUniformAptType)
-      ? kApartmentTypes
-      : [selectedUniformAptType, ...kApartmentTypes];
-
     return Column(children: [
       _styledField(
         controller: uniformRoomsController,
@@ -1190,28 +1186,14 @@ class _BuildingDialogState extends State<BuildingDialog>
         },
       ),
       const SizedBox(height: 10),
-      Row(children: [
+      ResponsiveFormRow(children: [
         Expanded(
           flex: 3,
-          child: SizedBox(
-            height: 52, // _styledField is taller than _compactField — measure and adjust
-            child: ComboBoxField<String>(
-              options: aptTypeOptions,
-              labelOf: (v) => aptTypeLabel(t, v),
-              selected: selectedUniformAptType,
-              icon: Icons.category_rounded,
-              label: t['building_room_type_label'],
-              onSelected: (v) {
-                if (v != null) setState(() => selectedUniformAptType = v);
-              },
-              fillColor: _DS.surface,
-              borderColor: Colors.grey.withValues(alpha: 0.22),
-              focusedBorderColor: _DS.primary,
-              iconColor: _DS.textSecondary,
-              textColor: _DS.textPrimary,
-              borderRadius: 12,
-              wrapInBottomPadding: false,
-            ),
+          child: _compactTypeDropdown(
+            key: const ValueKey('uniform-room-type'),
+            value: selectedUniformAptType,
+            onChanged: (v) => selectedUniformAptType = v ?? '',
+            t: t,
           ),
         ),
         const SizedBox(width: 10),
@@ -1241,7 +1223,7 @@ class _BuildingDialogState extends State<BuildingDialog>
           borderRadius: BorderRadius.circular(10),
           border: Border.all(color: Colors.grey.withValues(alpha: 0.15)),
         ),
-        child: Row(children: [
+        child: Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
           Icon(Icons.layers_rounded, size: 14, color: _DS.textSecondary),
           const SizedBox(width: 8),
           Text(
@@ -1252,7 +1234,7 @@ class _BuildingDialogState extends State<BuildingDialog>
               color: _DS.textPrimary,
             ),
           ),
-          const Spacer(),
+
           GestureDetector(
             onTap: () => setState(() => showBulkEdit = !showBulkEdit),
             child: Container(
@@ -1296,7 +1278,7 @@ class _BuildingDialogState extends State<BuildingDialog>
 
       if (floorConfigs.isNotEmpty) ...[
         // Column headers
-        Padding(
+        if (!_stackRoomFields) Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4),
           child: Row(children: [
             const SizedBox(width: 44),
@@ -1340,7 +1322,7 @@ class _BuildingDialogState extends State<BuildingDialog>
         border: Border.all(color: _DS.primary.withValues(alpha: 0.2)),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
+        ResponsiveFormRow(children: [
           Icon(Icons.edit_note_rounded, size: 14, color: _DS.primary),
           const SizedBox(width: 6),
           Text(
@@ -1354,7 +1336,7 @@ class _BuildingDialogState extends State<BuildingDialog>
           ),
         ]),
         const SizedBox(height: 10),
-        Row(children: [
+        ResponsiveFormRow(children: [
           Expanded(
             child: _compactField(
                 bulkStartFloorController, t['building_bulk_from_floor'],
@@ -1368,10 +1350,10 @@ class _BuildingDialogState extends State<BuildingDialog>
           ),
         ]),
         const SizedBox(height: 8),
-        Row(children: [
+        ResponsiveFormRow(children: [
           Expanded(
             child: SizedBox(
-              height: 40,
+              height: MediaQuery.textScalerOf(context).scale(20) + 36,
               child: _compactField(bulkRoomsController,
                   t['building_bulk_rooms'], '10', TextInputType.number),
             ),
@@ -1380,18 +1362,11 @@ class _BuildingDialogState extends State<BuildingDialog>
           Expanded(
             flex: 2,
             child: SizedBox(
-              height: 40,
-              // DropdownButtonFormField, not ComboBoxField — see the comment
-              // in _buildFloorRow. DropdownMenu's own intrinsic height
-              // always overrode any SizedBox we put around it, so we swap
-              // to a widget that uses the same InputDecorator as
-              // _compactField and therefore matches its height exactly.
+              height: MediaQuery.textScalerOf(context).scale(20) + 36,
               child: _compactTypeDropdown(
-                key: ValueKey('bulk-$selectedBulkAptType'),
-                value: kApartmentTypes.contains(selectedBulkAptType)
-                    ? selectedBulkAptType!
-                    : kApartmentTypes.first,
-                onChanged: (v) => setState(() => selectedBulkAptType = v),
+                key: const ValueKey('bulk-room-type'),
+                value: selectedBulkAptType ?? '',
+                onChanged: (v) => selectedBulkAptType = v,
                 t: t,
               ),
             ),
@@ -1399,7 +1374,7 @@ class _BuildingDialogState extends State<BuildingDialog>
           const SizedBox(width: 8),
           Expanded(
             child: SizedBox(
-              height: 40,
+              height: MediaQuery.textScalerOf(context).scale(20) + 36,
               child: _compactField(bulkAreaController,
                   t['building_bulk_area'], '50', TextInputType.number),
             ),
@@ -1427,8 +1402,38 @@ class _BuildingDialogState extends State<BuildingDialog>
     );
   }
 
+  bool get _stackRoomFields => MediaQuery.sizeOf(context).width < 600 ||
+      MediaQuery.textScalerOf(context).scale(1) > 1.3;
+
   Widget _buildFloorRow(FloorConfig config, AppTranslations t) {
     final hasCustomNames = config.customNames.any((n) => n.isNotEmpty);
+    if (_stackRoomFields) {
+      return Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(color: _DS.surface, borderRadius: BorderRadius.circular(10)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            Expanded(child: Text('${t['building_floor_label']} ${config.floorNumber}',
+                style: const TextStyle(fontWeight: FontWeight.w700))),
+            IconButton(onPressed: () => _showCustomRoomNamesDialog(config),
+                icon: Icon(Icons.badge_rounded, color: hasCustomNames ? Colors.green : _DS.textSecondary)),
+          ]),
+          _compactTypeDropdown(
+            key: ValueKey('floor-${config.floorNumber}-room-type'),
+            value: config.aptType,
+            onChanged: (v) => config.aptType = v ?? '',
+            t: t,
+          ),
+          const SizedBox(height: 12),
+          ResponsiveFormRow(children: [
+            Expanded(child: _compactField(config.countController, t['building_col_count'], '', TextInputType.number, maxLength: 4)),
+            const SizedBox(width: 12),
+            Expanded(child: _compactField(config.areaController, t['building_col_area'], '', TextInputType.number, maxLength: 7)),
+          ]),
+        ]),
+      );
+    }
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -1461,16 +1466,9 @@ class _BuildingDialogState extends State<BuildingDialog>
           ),
         ),
         const SizedBox(width: 8),
-        // All three fields below share one explicit height so they line up
-        // identically across platforms. "Loại" uses DropdownButtonFormField
-        // (not ComboBoxField/DropdownMenu) — DropdownMenu has a taller
-        // built-in minimum tap-target size that ignores a surrounding
-        // SizedBox, so no amount of height-forcing ever made it match a
-        // plain TextField. DropdownButtonFormField shares TextField's own
-        // InputDecorator, which guarantees identical height here.
         Expanded(
           child: SizedBox(
-            height: 42,
+            height: MediaQuery.textScalerOf(context).scale(20) + 36,
             child: _compactField(
                 config.countController, '', '', TextInputType.number,
                 maxLength: 4),
@@ -1480,14 +1478,12 @@ class _BuildingDialogState extends State<BuildingDialog>
         Expanded(
           flex: 2,
           child: SizedBox(
-            height: 42,
+            height: MediaQuery.textScalerOf(context).scale(20) + 36,
             child: _compactTypeDropdown(
-              key: ValueKey('floor-${config.floorNumber}-${config.aptType}'),
-              value: kApartmentTypes.contains(config.aptType)
-                  ? config.aptType
-                  : kApartmentTypes.first,
+              key: ValueKey('floor-${config.floorNumber}-room-type'),
+              value: config.aptType,
               onChanged: (v) {
-                if (v != null) setState(() => config.aptType = v);
+                if (v != null) config.aptType = v;
               },
               t: t,
             ),
@@ -1496,7 +1492,7 @@ class _BuildingDialogState extends State<BuildingDialog>
         const SizedBox(width: 4),
         Expanded(
           child: SizedBox(
-            height: 42,
+            height: MediaQuery.textScalerOf(context).scale(20) + 36,
             child: _compactField(
                 config.areaController, '', '', TextInputType.number,
                 maxLength: 7),
@@ -1565,19 +1561,7 @@ class _BuildingDialogState extends State<BuildingDialog>
     );
   }
 
-  // Room-type field. Both ComboBoxField (Material 3 DropdownMenu) and
-  // DropdownButtonFormField were tried here and BOTH have their own hidden
-  // minimum tap-target height (DropdownMenu ignores outer SizedBox
-  // constraints entirely; DropdownButton reserves ~48px for its closed
-  // selection row even with isDense + itemHeight: null) that kept making
-  // this taller than the plain SL/m² TextFields no matter what decoration
-  // or height we forced on it.
-  //
-  // This version sidesteps the problem: it's a literal _compactField-style
-  // read-only TextField (same decoration, same intrinsic height, no
-  // dropdown-widget internals at all) that opens a popup menu on tap.
-  // Because it's the exact same widget type as its siblings, the height is
-  // guaranteed pixel-identical rather than hoped-for.
+  // Editable text with optional preset choices.
   Widget _compactTypeDropdown({
     Key? key,
     required String value,
@@ -1586,7 +1570,9 @@ class _BuildingDialogState extends State<BuildingDialog>
   }) {
     return _TypePickerField(
       key: key,
-      label: aptTypeLabel(t, value),
+      value: value,
+      label: t['building_room_type_label'],
+      displayText: aptTypeLabel(t, value),
       options: kApartmentTypes.map((v) => MapEntry(v, aptTypeLabel(t, v))).toList(),
       onChanged: onChanged,
     );
@@ -1603,7 +1589,7 @@ class _BuildingDialogState extends State<BuildingDialog>
         borderRadius:
             const BorderRadius.vertical(bottom: Radius.circular(24)),
       ),
-      child: Row(children: [
+      child: OverflowBar(alignment: MainAxisAlignment.spaceBetween, spacing: 12, overflowSpacing: 8, children: [
         OutlinedButton(
           onPressed: () => Navigator.pop(context),
           style: OutlinedButton.styleFrom(
@@ -1617,7 +1603,7 @@ class _BuildingDialogState extends State<BuildingDialog>
           child: Text(t['cancel'],
               style: const TextStyle(fontWeight: FontWeight.w600)),
         ),
-        const Spacer(),
+
         FilledButton.icon(
           onPressed: () {
             if (_formKey.currentState!.validate()) {
@@ -1690,19 +1676,19 @@ class FloorConfig {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Read-only "combo box" that looks and measures exactly like a
-// _compactField TextField, with a popup menu for picking a value.
-// Used for the "Loại" room-type field so it lines up pixel-for-pixel
-// with its SL / m² siblings — see the comment on _compactTypeDropdown.
-// ─────────────────────────────────────────────────────────────
+// Room type supports free text; the arrow retains the preset menu.
 class _TypePickerField extends StatefulWidget {
+  final String value;
   final String label;
-  final List<MapEntry<String, String>> options; // value -> display label
+  final String displayText;
+  final List<MapEntry<String, String>> options;
   final ValueChanged<String?> onChanged;
 
   const _TypePickerField({
     super.key,
+    required this.value,
     required this.label,
+    required this.displayText,
     required this.options,
     required this.onChanged,
   });
@@ -1713,14 +1699,16 @@ class _TypePickerField extends StatefulWidget {
 
 class _TypePickerFieldState extends State<_TypePickerField> {
   late final TextEditingController _controller =
-      TextEditingController(text: widget.label);
-  final GlobalKey _fieldKey = GlobalKey();
+      TextEditingController(text: widget.displayText);
+  String? _lastTyped;
 
   @override
   void didUpdateWidget(covariant _TypePickerField oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (_controller.text != widget.label) {
-      _controller.text = widget.label;
+    // Parent rebuilds must not reset the cursor or an in-progress IME edit.
+    if (widget.value != _lastTyped &&
+        _controller.text != widget.displayText) {
+      _controller.text = widget.displayText;
     }
   }
 
@@ -1730,75 +1718,49 @@ class _TypePickerFieldState extends State<_TypePickerField> {
     super.dispose();
   }
 
-  Future<void> _openMenu() async {
-    final box = _fieldKey.currentContext?.findRenderObject() as RenderBox?;
-    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox?;
-    if (box == null || overlay == null) return;
-    final topLeft = box.localToGlobal(Offset.zero, ancestor: overlay);
-    final position = RelativeRect.fromLTRB(
-      topLeft.dx,
-      topLeft.dy + box.size.height + 4,
-      overlay.size.width - (topLeft.dx + box.size.width),
-      0,
-    );
-    final selected = await showMenu<String>(
-      context: context,
-      position: position,
-      constraints: BoxConstraints(
-        minWidth: box.size.width,
-        maxWidth: box.size.width,
-      ),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-        side: BorderSide(color: Colors.grey.shade300, width: 1),
-      ),
-      color: Colors.white,
-      items: widget.options
-          .map((e) => PopupMenuItem<String>(
-                value: e.key,
-                height: 40,
-                child: Text(e.value, style: const TextStyle(fontSize: 13)),
-              ))
-          .toList(),
-    );
-    if (selected != null) widget.onChanged(selected);
-  }
-
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      key: _fieldKey,
-      behavior: HitTestBehavior.opaque,
-      onTap: _openMenu,
-      child: AbsorbPointer(
-        child: TextField(
-          controller: _controller,
-          readOnly: true,
-          style: const TextStyle(fontSize: 13),
-          decoration: InputDecoration(
-            isDense: true,
-            suffixIcon: Icon(Icons.keyboard_arrow_down_rounded,
-                size: 14, color: Colors.grey.shade600),
-            suffixIconConstraints:
-                const BoxConstraints(minWidth: 22, minHeight: 0),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: _DS.primary, width: 1.6),
-            ),
-            filled: true,
-            fillColor: Colors.white,
-            counterText: '',
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-          ),
+    return TextField(
+      controller: _controller,
+      onChanged: (value) {
+        _lastTyped = value;
+        widget.onChanged(value);
+      },
+      maxLength: 50,
+      textCapitalization: TextCapitalization.words,
+      style: const TextStyle(fontSize: 13),
+      decoration: InputDecoration(
+        labelText: widget.label,
+        isDense: true,
+        suffixIcon: PopupMenuButton<String>(
+          tooltip: widget.label,
+          icon: Icon(Icons.keyboard_arrow_down_rounded,
+              size: 20, color: Colors.grey.shade600),
+          onSelected: (value) {
+            _lastTyped = null;
+            _controller.text = widget.options.firstWhere((e) => e.key == value).value;
+            widget.onChanged(value);
+          },
+          itemBuilder: (_) => widget.options.map((e) => PopupMenuItem<String>(
+            value: e.key,
+            child: Text(e.value),
+          )).toList(),
         ),
+        suffixIconConstraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: _DS.primary, width: 1.6),
+        ),
+        filled: true,
+        fillColor: Colors.white,
+        counterText: '',
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
       ),
     );
   }
 }
-

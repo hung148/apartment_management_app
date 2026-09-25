@@ -693,6 +693,8 @@ final Map<String, String> _viTranslations = {
       'building_room_type_label': 'Loại phòng',
       'building_room_type_standard': 'Tiêu chuẩn',
       'building_area_label': 'Diện tích (m²)',
+      'record_search_label': 'Tìm kiếm',
+      'building_floor_label': 'Tầng',
       'building_floor_config_title': 'Cấu hình tầng',
       'building_bulk_edit': 'Chỉnh hàng loạt',
       'building_bulk_close': 'Đóng',

@@ -693,6 +693,8 @@ final Map<String, String> _enTranslations = {
       'building_room_type_label': 'Room type',
       'building_room_type_standard': 'Standard',
       'building_area_label': 'Area (m²)',
+      'record_search_label': 'Search',
+      'building_floor_label': 'Floor',
       'building_floor_config_title': 'Floor configuration',
       'building_bulk_edit': 'Bulk edit',
       'building_bulk_close': 'Close',

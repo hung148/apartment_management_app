@@ -520,12 +520,13 @@ class _BuildingRentScreenState extends State<BuildingRentScreen> {
     DateTime dueDate = existing?.dueDate ?? DateTime.now().add(const Duration(days: 7));
     String? amountError;
 
+    final dateFormKey = GlobalKey<FormState>();
     final result = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) {
           final isSmall = MediaQuery.of(dialogContext).size.width < 600;
-          return AppDialog(
+          return Form(key: dateFormKey, child: AppDialog(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             elevation: 0,
             backgroundColor: Colors.white,
@@ -612,6 +613,7 @@ class _BuildingRentScreenState extends State<BuildingRentScreen> {
                           const SizedBox(height: 14),
                           CompactLocalizedDatePicker(
                             labelText: t['due_date_label'],
+                            required: true,
                             initialDate: dueDate,
                             onDateChanged: (d) {
                               if (d != null) setDialogState(() => dueDate = d);
@@ -659,6 +661,7 @@ class _BuildingRentScreenState extends State<BuildingRentScreen> {
                         flex: 2,
                         child: FilledButton.icon(
                           onPressed: () async {
+                            if (!dateFormKey.currentState!.validate()) return;
                             final amount = CurrencyParser.tryParse(amountController.text);
                             if (amount == null || amount <= 0) {
                               setDialogState(
@@ -717,7 +720,7 @@ class _BuildingRentScreenState extends State<BuildingRentScreen> {
                 ],
               ),
             ),
-          );
+          ));
         },
       ),
     );

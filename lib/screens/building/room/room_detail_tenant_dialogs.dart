@@ -912,26 +912,19 @@ extension _RoomDetailTenantDialogs on _RoomDetailScreenState {
                           },
                         ),
                         const SizedBox(height: 12),
-                        _dropdownField<String>(
+                        SuggestedTextField(
                           label: td['room_detail_moveout_reason'],
-                          value: selectedReason,
-                          items: reasonOptions
-                              .map((r) => DropdownMenuItem(
-                                  value: r, child: Text(r)))
-                              .toList(),
-                          onChanged: (v) =>
-                              setDialogState(() => selectedReason = v),
+                          value: selectedReason ?? '',
+                          options: reasonOptions,
+                          onChanged: (v) => selectedReason = v,
                         ),
                         if (isEarly) ...[
                           const SizedBox(height: 4),
                           _InfoBanner(
                             icon: Icons.warning_amber_rounded,
                             color: const Color(0xFF854F0B),
-                            text: td.textWithParams(
-                                'room_detail_moveout_early_warn', {
-                              'days': tenant.contractEndDate!
-                                  .difference(selectedDate)
-                                  .inDays
+                            text: td.textWithParams('room_detail_moveout_early_warn', {
+                              'days': tenant.contractEndDate!.difference(selectedDate).inDays,
                             }),
                           ),
                         ],
@@ -949,7 +942,7 @@ extension _RoomDetailTenantDialogs on _RoomDetailScreenState {
                     icon: Icons.logout_rounded,
                     onPressed: () => Navigator.pop(context, {
                       'date': selectedDate,
-                      'reason': selectedReason,
+                      'reason': selectedReason?.trim(),
                     }),
                   ),
                 ]),

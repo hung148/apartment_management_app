@@ -1,3 +1,4 @@
+import 'package:phan_mem_quan_ly_can_ho/widgets/searchable_select_field.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/app_dialog.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/exchange_rate_service.dart';
 import 'package:flutter/services.dart';
@@ -612,57 +613,37 @@ class _AvailabilityCalendarScreenState
   // ── Building dropdown (in app bar) ──────────────────────────────────
   Widget _buildBuildingDropdown({bool toolbar = false}) {
     final t = AppTranslations.of(context);
-    final dropdown = DropdownButtonHideUnderline(
-      child: DropdownButton<Building>(
-        isExpanded: true,
-        isDense: true,
-        value: _selectedBuilding,
-        dropdownColor: Theme.of(context).colorScheme.surface,
-        iconEnabledColor: toolbar ? Theme.of(context).colorScheme.onSurfaceVariant : Colors.white,
-        selectedItemBuilder: (context) => _buildings
-            .map(
-              (b) => Align(
-                alignment: Alignment.centerLeft,
-                child: Text.rich(
-                  TextSpan(
-                    children: [
-                      if (!toolbar) TextSpan(
-                        text: '${t['calendar_title']}  ·  ',
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: Colors.white70,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      TextSpan(
-                        text: b.name,
-                        style: TextStyle(
-                          fontSize: toolbar ? 14 : 16,
-                          fontWeight: FontWeight.w600,
-                          color: toolbar ? Theme.of(context).colorScheme.onSurface : Colors.white,
-                        ),
-                      ),
-                    ],
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            )
-            .toList(),
-        items: _buildings
-            .map(
-              (b) => DropdownMenuItem(
-                value: b,
-                child: Text(
-                  b.name,
-                  style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
-                ),
-              ),
-            )
-            .toList(),
-        onChanged: _onBuildingChanged,
-      ),
+    final dropdown = InkWell(
+      key: const ValueKey('calendar-building-selector'),
+      onTap: () async {
+        final building = await showSearchableOptions<Building>(
+          context: context,
+          title: t['tenant_move_room_building'],
+          options: _buildings,
+          labelOf: (building) => building.name,
+          selected: _selectedBuilding,
+        );
+        if (mounted && building != null) _onBuildingChanged(building);
+      },
+      child: Row(children: [
+        Expanded(child: Text.rich(
+          TextSpan(children: [
+            if (!toolbar) TextSpan(
+              text: '${t['calendar_title']}  ·  ',
+              style: const TextStyle(fontSize: 13, color: Colors.white70),
+            ),
+            TextSpan(text: _selectedBuilding?.name ?? '', style: TextStyle(
+              fontSize: toolbar ? 14 : 16,
+              fontWeight: FontWeight.w600,
+              color: toolbar ? Theme.of(context).colorScheme.onSurface : Colors.white,
+            )),
+          ]),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        )),
+        Icon(Icons.search, size: 20,
+          color: toolbar ? Theme.of(context).colorScheme.onSurfaceVariant : Colors.white),
+      ]),
     );
     if (!toolbar) return dropdown;
     return LayoutBuilder(builder: (context, constraints) {

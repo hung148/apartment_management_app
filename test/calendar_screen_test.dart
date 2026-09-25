@@ -71,6 +71,15 @@ class BuildingsFake implements BuildingService {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+class SearchBuildingsFake extends BuildingsFake {
+  @override
+  Future<List<Building>> getOrganizationBuildings(String org, {bool requireServer = false}) async => [
+    building,
+    Building(id: 'second', organizationId: 'o', name: 'Tòa nhà Nguyễn Văn Linh — Riverside',
+      address: '', createdAt: DateTime(2026)),
+  ];
+}
+
 class TenantsFake implements TenantService {
   List<Tenant> entries = [];
   @override
@@ -149,6 +158,37 @@ class ThemePaymentsFake implements PaymentService {
 }
 
 void main() {
+  for (final embedded in [false, true]) {
+    testWidgets('Calendar building search switches existing records embedded=$embedded', (tester) async {
+      await getIt.reset();
+      addTearDown(getIt.reset);
+      getIt.registerSingleton<RoomService>(RoomsFake());
+      getIt.registerSingleton<BuildingService>(SearchBuildingsFake());
+      getIt.registerSingleton<TenantService>(TenantsFake());
+      getIt.registerSingleton<BookingService>(BookingsFake());
+      tester.view.physicalSize = const Size(360, 740);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(MaterialApp(
+        locale: const Locale('en'),
+        localizationsDelegates: const [AppTranslationsDelegate(), ...GlobalMaterialLocalizations.delegates],
+        home: AvailabilityCalendarScreen(embedded: embedded,
+          organization: Organization(id: 'o', name: 'Test', createdBy: 'u', createdAt: DateTime(2026), inviteCode: '123')),
+      ));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('calendar-building-selector')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('record-search')), 'Riverside');
+      await tester.pumpAndSettle();
+      expect(find.byType(ListTile), findsOneWidget);
+      await tester.tap(find.byType(ListTile));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('record-search')), findsNothing);
+      expect(find.textContaining('Riverside', findRichText: true), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
   testWidgets('Organization header and calendar follow live theme changes', (
     tester,
   ) async {

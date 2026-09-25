@@ -213,18 +213,16 @@ extension _TenantManagementDialogs on _TenantsTabState {
                           t['tenant_section_invoice_apt'],
                           icon: Icons.apartment_rounded,
                         ),
-                        Row(
+                        ResponsiveFormRow(
                           children: [
                             Expanded(
-                                child: ComboBoxField<String>(
+                                child: SuggestedTextField(
+                                maxLength: 50,
                                 options: aptTypeOptions,
                                 labelOf: (v) => aptTypeLabel(t, v),
-                                selected: selectedAptType,
-                                icon: Icons.category_rounded,
+                                value: selectedAptType,
                                 label: t['tenant_field_apt_type'],
-                                onSelected: (v) {
-                                  if (v != null) setDialogState(() => selectedAptType = v);
-                                },
+                                onChanged: (v) => selectedAptType = v,
                               ),
                             ),
                             const SizedBox(width: 12),
@@ -296,7 +294,7 @@ extension _TenantManagementDialogs on _TenantsTabState {
                               0,
                           'apartmentArea':
                               double.tryParse(areaController.text) ?? 0,
-                          'apartmentType': selectedAptType,
+                          'apartmentType': normalizeAptType(selectedAptType),
                           'isMainTenant': isMainTenant,
                           'status': selectedStatus,
                           'moveInDate': moveInDate,
@@ -512,18 +510,16 @@ extension _TenantManagementDialogs on _TenantsTabState {
                           },
                         ),
                         const SizedBox(height: 4),
-                        Row(
+                        ResponsiveFormRow(
                           children: [
                             Expanded(
-                              child: ComboBoxField<String>(
+                              child: SuggestedTextField(
+                                maxLength: 50,
                                 options: aptTypeOptions,
                                 labelOf: (v) => aptTypeLabel(t, v),
-                                selected: selectedAptType,
-                                icon: Icons.category_rounded,
+                                value: selectedAptType,
                                 label: t['tenant_field_apt_type'],
-                                onSelected: (v) {
-                                  if (v != null) setDialogState(() => selectedAptType = v);
-                                },
+                                onChanged: (v) => selectedAptType = v,
                               ),
                             ),
                             const SizedBox(width: 12),
@@ -602,7 +598,7 @@ extension _TenantManagementDialogs on _TenantsTabState {
                                 'monthlyRent': CurrencyParser.tryParse(monthlyRentController.text),
                                 'apartmentArea': double.tryParse(
                                     areaController.text.trim()),
-                                'apartmentType': selectedAptType,
+                                'apartmentType': normalizeAptType(selectedAptType),
                                 'moveInDate': editedMoveInDate,
                                 'buildingId': selectedBuildingId,
                                 'roomId': selectedRoomId,
@@ -763,29 +759,25 @@ extension _TenantManagementDialogs on _TenantsTabState {
                         icon: Icons.location_on_rounded,
                         color: const Color(0xFF0F6E56),
                       ),
-                      _dropdownField<String>(
+                      SearchableSelectField<String>(
                         label: t['tenant_move_room_building'],
-                        value: selectedBuildingId,
-                        items: _buildings
-                            .map((b) => DropdownMenuItem(
-                                value: b.id, child: Text(b.name)))
-                            .toList(),
+                        selected: selectedBuildingId,
+                        options: _buildings.map((b) => b.id).toList(),
+                        labelOf: (id) => _buildings.firstWhere((b) => b.id == id).name,
                         onChanged: (val) => setDialogState(() {
                           selectedBuildingId = val;
                           selectedRoomId = null;
                         }),
                       ),
-                      _dropdownField<String>(
+                      SearchableSelectField<String>(
                         label: t['tenant_move_room_room'],
-                        value: selectedRoomId,
-                        items: availableRooms
-                            .map((r) => DropdownMenuItem(
-                                value: r.id,
-                                child: Text(
-                                    '${r.roomNumber} (${r.roomType})')))
-                            .toList(),
-                        onChanged: (val) =>
-                            setDialogState(() => selectedRoomId = val),
+                        selected: selectedRoomId,
+                        options: availableRooms.map((r) => r.id).toList(),
+                        labelOf: (id) {
+                          final room = availableRooms.firstWhere((r) => r.id == id);
+                          return '${room.roomNumber} (${room.roomType})';
+                        },
+                        onChanged: (val) => setDialogState(() => selectedRoomId = val),
                       ),
                     ],
                   ),
@@ -921,15 +913,11 @@ extension _TenantManagementDialogs on _TenantsTabState {
                           },
                         ),
                         const SizedBox(height: 12),
-                        _dropdownField<String>(
+                        SuggestedTextField(
                           label: t['tenant_moveout_reason_label'],
-                          value: selectedReason,
-                          items: reasonOptions
-                              .map((reason) => DropdownMenuItem(
-                                  value: reason, child: Text(reason)))
-                              .toList(),
-                          onChanged: (value) =>
-                              setDialogState(() => selectedReason = value),
+                          value: selectedReason ?? '',
+                          options: reasonOptions,
+                          onChanged: (value) => selectedReason = value,
                         ),
                         if (isEarly) ...[
                           const SizedBox(height: 4),
@@ -959,7 +947,7 @@ extension _TenantManagementDialogs on _TenantsTabState {
                       icon: Icons.logout_rounded,
                       onPressed: () => Navigator.pop(context, {
                         'date': selectedDate,
-                        'reason': selectedReason,
+                        'reason': selectedReason?.trim(),
                       }),
                     ),
                   ],

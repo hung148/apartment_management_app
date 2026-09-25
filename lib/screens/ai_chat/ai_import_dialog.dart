@@ -1,3 +1,4 @@
+import 'package:phan_mem_quan_ly_can_ho/widgets/date_picker.dart';
 import '../../services/building_service.dart';
 import '../../services/room_service.dart';
 import '../../utils/currency_formatter.dart';
@@ -420,36 +421,38 @@ class _AIImportDialogState extends State<AIImportDialog> {
       );
     }
     final date = ['moveInDate', 'moveOutDate', 'dueDate'].contains(name);
+    if (date) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: LocalizedDatePicker(
+          key: ValueKey('${record['key']}:$name'),
+          labelText: t['ai_field_$name'],
+          initialDate: DateTime.tryParse(controller.text),
+          firstDate: DateTime(1900), lastDate: DateTime(2200),
+          enabled: !_busy,
+          required: requiredFields[record['type']]!.contains(name),
+          onDateChanged: (value) {
+            controller.text = value == null ? '' :
+                '${value.year}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
+          },
+        ),
+      );
+    }
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: TextFormField(
         key: ValueKey('${record['key']}:$name'),
         controller: controller,
         enabled: !_busy,
-        readOnly: date,
         keyboardType: numeric.contains(name)
             ? const TextInputType.numberWithOptions(decimal: true)
             : TextInputType.text,
         inputFormatters: numeric.contains(name)
             ? [CurrencyInputFormatter(decimalDigits: 2)]
             : null,
-        onTap: date
-            ? () async {
-                final selected = await showDatePicker(
-                  context: context,
-                  initialDate:
-                      DateTime.tryParse(controller.text) ?? DateTime.now(),
-                  firstDate: DateTime(1900),
-                  lastDate: DateTime(2200),
-                );
-                if (selected != null)
-                  controller.text =
-                      '${selected.year}-${selected.month.toString().padLeft(2, '0')}-${selected.day.toString().padLeft(2, '0')}';
-              }
-            : null,
         decoration: InputDecoration(
           labelText: t['ai_field_$name'],
-          suffixIcon: date ? const Icon(Icons.calendar_month) : null,
         ),
         validator: (v) {
           if (requiredFields[record['type']]!.contains(name) &&

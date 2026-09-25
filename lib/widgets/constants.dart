@@ -34,5 +34,5 @@ String normalizeAptType(String? raw) {
     'penthouse': 'penthouse',
   };
 
-  return legacyMap[v] ?? v; // unknown → keep as-is (see Option A earlier)
+  return legacyMap[v] ?? raw.trim(); // Preserve custom names, including case.
 }

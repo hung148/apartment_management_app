@@ -94,11 +94,15 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
     bool barrierDismissible = true,
   }) async {
     try {
-      return await showDialog<T>(
+      final route = DialogRoute<T>(
         context: context,
         barrierDismissible: barrierDismissible,
         builder: builder,
       );
+      final result = await Navigator.of(context, rootNavigator: true).push(route);
+      // Caller-owned controllers must outlive the closing animation.
+      await route.completed;
+      return result;
     } finally {
     }
   }
@@ -182,6 +186,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
       }
     }
 
+    final dateFormKey = GlobalKey<FormState>();
     final result = await _showTrackedDialog<Map<String, dynamic>?>(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -341,7 +346,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
             );
           }
 
-          return AppDialog(
+          return Form(key: dateFormKey, child: AppDialog(
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20)),
             child: ConstrainedBox(
@@ -810,6 +815,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                           flex: 2,
                           child: ElevatedButton(
                             onPressed: () {
+                              if (!dateFormKey.currentState!.validate()) return;
                               if (selectedType != null &&
                                   amountController.text.isNotEmpty) {
                                 final amount = CurrencyParser.parse(amountController.text);
@@ -868,7 +874,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                 ],
               ),
             ),
-          );
+          ));
         },
       ),
     );
@@ -1243,38 +1249,19 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                         children: [
                           // ── Tenant
                           _sectionLabel(t['payment_section_tenant']),
-                          DropdownButtonFormField<String?>(
-                            initialValue: _tenants
-                                    .any((ten) => ten.id == _selectedTenantId)
-                                ? _selectedTenantId
-                                : null,
-                            decoration: _inputDec(t['tenant_label'],
-                                Icons.person_outline_rounded),
-                            items: [
-                              DropdownMenuItem<String?>(
-                                  value: null,
-                                  child: Text(t['no_data'])),
-                              ..._tenants.map((ten) => DropdownMenuItem<String?>(
-                                  value: ten.id,
-                                  child: Text(ten.fullName))),
-                            ],
-                            onChanged: (v) {
-                              if (v != null && v.isNotEmpty) {
-                                final tenant =
-                                    _tenants.firstWhere((ten) => ten.id == v);
-                                setState(() {
-                                  _selectedTenantId = v;
-                                  _selectedTenantName = tenant.fullName;
-                                });
-                              } else {
-                                setState(() {
-                                  _selectedTenantId = null;
-                                  _selectedTenantName = null;
-                                });
-                              }
-                            },
+                          SearchableSelectField<String>(
+                            label: t['tenant_label'],
+                            selected: _tenants.any((ten) => ten.id == _selectedTenantId)
+                                ? _selectedTenantId : null,
+                            options: _tenants.map((ten) => ten.id).toList(),
+                            labelOf: (id) => _tenants.firstWhere((ten) => ten.id == id).fullName,
+                            allowClear: true,
+                            onChanged: (id) => setState(() {
+                              _selectedTenantId = id;
+                              _selectedTenantName = id == null ? null :
+                                  _tenants.firstWhere((ten) => ten.id == id).fullName;
+                            }),
                           ),
-
                           // ── Line items
                           _sectionLabel(t['payment_section_items']),
                           Row(

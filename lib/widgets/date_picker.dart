@@ -29,6 +29,7 @@ class _LocalizedDatePickerState extends State<LocalizedDatePicker> {
   final _controller = TextEditingController();
   final _fieldKey = GlobalKey<FormFieldState<String>>();
   DateTime? _date;
+  String? _format;
   DateTime get _first => DateUtils.dateOnly(widget.firstDate ?? DateTime(1900));
   DateTime get _last => DateUtils.dateOnly(widget.lastDate ?? DateTime(2100));
   @override
@@ -46,16 +47,39 @@ class _LocalizedDatePickerState extends State<LocalizedDatePicker> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _syncText();
+    final format = AppTranslations.of(context).dateFormat;
+    if (_format != format) {
+      _format = format;
+      _syncText();
+    }
   }
 
   @override
   void didUpdateWidget(covariant LocalizedDatePicker oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.initialDate != widget.initialDate) {
+    if (oldWidget.initialDate != widget.initialDate &&
+        widget.initialDate != _date) {
       _date = widget.initialDate;
       _syncText();
     }
+  }
+
+  DateTime? _parse(String text) {
+    if (!RegExp(r'^\d{1,2}/\d{1,2}/\d{4}$').hasMatch(text.trim())) return null;
+    try {
+      return DateFormat(
+        AppTranslations.of(context).dateFormat,
+      ).parseStrict(text.trim());
+    } on FormatException {
+      return null;
+    }
+  }
+
+  void _typed(String text) {
+    final parsed = _parse(text);
+    setState(() => _date = parsed);
+    // Invalid input is blocked by form validation, never silently normalized.
+    widget.onDateChanged?.call(parsed);
   }
 
   Future<void> _pick() async {
@@ -89,60 +113,78 @@ class _LocalizedDatePickerState extends State<LocalizedDatePicker> {
   @override
   Widget build(BuildContext context) {
     final t = AppTranslations.of(context);
-    return TextFormField(
-      key: _fieldKey,
-      controller: _controller,
-      readOnly: true,
-      enabled: widget.enabled,
-      onTap: _pick,
-      decoration: InputDecoration(
-        labelText: widget.labelText + (widget.required ? ' *' : ''),
-        hintText: t.dateFormat.toUpperCase(),
-        floatingLabelBehavior: FloatingLabelBehavior.always,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 18,
-        ),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-        prefixIcon: widget.prefixIcon == null ? null : Icon(widget.prefixIcon),
-        suffixIcon: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (!widget.required && _date != null)
-              IconButton(
-                tooltip: MaterialLocalizations.of(context).deleteButtonTooltip,
-                icon: const Icon(Icons.clear),
-                onPressed: !widget.enabled
-                    ? null
-                    : () {
-                        setState(() {
-                          _date = null;
-                          _syncText();
-                        });
-                        _fieldKey.currentState?.didChange('');
-                        widget.onDateChanged?.call(null);
-                      },
-              ),
-            IconButton(
-              onPressed: widget.enabled ? _pick : null,
-              tooltip: t['select_from_calendar'],
-              icon: const Icon(Icons.calendar_today),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact =
+            constraints.maxWidth < 360 &&
+            MediaQuery.textScalerOf(context).scale(1) > 1.3;
+        return TextFormField(
+          key: _fieldKey,
+          controller: _controller,
+          keyboardType: TextInputType.datetime,
+          autovalidateMode: AutovalidateMode.onUserInteraction,
+          enabled: widget.enabled,
+          onChanged: _typed,
+          decoration: InputDecoration(
+            labelText: widget.labelText + (widget.required ? ' *' : ''),
+            hintText: t.dateFormat.toUpperCase(),
+            floatingLabelBehavior: FloatingLabelBehavior.always,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 18,
             ),
-          ],
-        ),
-        errorMaxLines: 3,
-      ),
-      validator: (_) {
-        if (widget.required && _date == null) return t['please_enter_date'];
-        if (_date != null &&
-            (_date!.isBefore(_first) || _date!.isAfter(_last))) {
-          final format = DateFormat(t.dateFormat);
-          return t.textWithParams('date_must_be_between', {
-            'first': format.format(_first),
-            'last': format.format(_last),
-          });
-        }
-        return widget.validator?.call(_date);
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+            prefixIcon: widget.prefixIcon == null || compact
+                ? null
+                : Icon(widget.prefixIcon),
+            suffixIcon: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (!compact && !widget.required && _date != null)
+                  IconButton(
+                    tooltip: MaterialLocalizations.of(
+                      context,
+                    ).deleteButtonTooltip,
+                    icon: const Icon(Icons.clear),
+                    onPressed: !widget.enabled
+                        ? null
+                        : () {
+                            setState(() {
+                              _date = null;
+                              _syncText();
+                            });
+                            _fieldKey.currentState?.didChange('');
+                            widget.onDateChanged?.call(null);
+                          },
+                  ),
+                IconButton(
+                  onPressed: widget.enabled ? _pick : null,
+                  tooltip: t['select_from_calendar'],
+                  icon: const Icon(Icons.calendar_today),
+                ),
+              ],
+            ),
+            errorMaxLines: 3,
+          ),
+          validator: (_) {
+            if (_controller.text.trim().isEmpty) {
+              if (widget.required) return t['please_enter_date'];
+              return widget.validator?.call(null);
+            }
+            if (_date == null) {
+              return MaterialLocalizations.of(context).invalidDateFormatLabel;
+            }
+            if (_date != null &&
+                (_date!.isBefore(_first) || _date!.isAfter(_last))) {
+              final format = DateFormat(t.dateFormat);
+              return t.textWithParams('date_must_be_between', {
+                'first': format.format(_first),
+                'last': format.format(_last),
+              });
+            }
+            return widget.validator?.call(_date);
+          },
+        );
       },
     );
   }
@@ -175,4 +217,3 @@ class CompactLocalizedDatePicker extends StatelessWidget {
     required: required,
   );
 }
-

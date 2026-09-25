@@ -1,3 +1,6 @@
+import 'package:phan_mem_quan_ly_can_ho/widgets/suggested_text_field.dart';
+import 'package:phan_mem_quan_ly_can_ho/widgets/searchable_select_field.dart';
+import 'package:phan_mem_quan_ly_can_ho/widgets/responsive_form_row.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/tenant_toolbar.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/tenant_summary_card.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/app_dialog.dart';
@@ -112,11 +115,15 @@ class _TenantsTabState extends State<TenantsTab>
     bool barrierDismissible = true,
   }) async {
     try {
-      return await showDialog<T>(
+      final route = DialogRoute<T>(
         context: context,
         barrierDismissible: barrierDismissible,
         builder: builder,
       );
+      final result = await Navigator.of(context, rootNavigator: true).push(route);
+      // Caller-owned controllers must outlive the closing animation.
+      await route.completed;
+      return result;
     } finally {
     }
   }

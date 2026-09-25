@@ -8,6 +8,40 @@ import 'package:phan_mem_quan_ly_can_ho/utils/localizations/app_localizations.da
 import 'package:phan_mem_quan_ly_can_ho/widgets/date_picker.dart';
 
 void main() {
+  testWidgets('Dates accept direct typing and reject invalid calendar dates', (
+    tester,
+  ) async {
+    final form = GlobalKey<FormState>();
+    DateTime? saved;
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('vi'),
+        supportedLocales: const [Locale('vi')],
+        localizationsDelegates: const [
+          AppTranslationsDelegate(),
+          ...GlobalMaterialLocalizations.delegates,
+        ],
+        home: Scaffold(
+          body: Form(
+            key: form,
+            child: LocalizedDatePicker(
+              labelText: 'Date',
+              required: true,
+              onDateChanged: (date) => saved = date,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(find.byType(TextField)).readOnly, isFalse);
+    await tester.enterText(find.byType(TextFormField), '25/09/2026');
+    expect(form.currentState!.validate(), isTrue);
+    expect(saved, DateTime(2026, 9, 25));
+    await tester.enterText(find.byType(TextFormField), '31/02/2026');
+    expect(form.currentState!.validate(), isFalse);
+    expect(tester.takeException(), isNull);
+  });
   TextEditingValue edit(String text, [int? cursor]) => TextEditingValue(
     text: text,
     selection: TextSelection.collapsed(offset: cursor ?? text.length),
