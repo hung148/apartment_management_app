@@ -3,9 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../services/ai_agent_service.dart';
-import '../utils/app_localizations.dart';
-import '../widgets/app_dialog.dart';
+import '../../services/ai_agent_service.dart';
+import '../../utils/localizations/app_localizations.dart';
+import '../../widgets/app_dialog.dart';
 
 class AISubscriptionDialog extends StatefulWidget {
   const AISubscriptionDialog({super.key});

@@ -15,7 +15,7 @@ import 'package:phan_mem_quan_ly_can_ho/services/room_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/tenants_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/currency_formatter.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/date_picker.dart';
-import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/localizations/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 

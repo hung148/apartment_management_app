@@ -1,11 +1,11 @@
-import 'package:phan_mem_quan_ly_can_ho/screens/ai_import_dialog.dart';
-import 'package:phan_mem_quan_ly_can_ho/screens/ai_subscription_dialog.dart';
+import 'package:phan_mem_quan_ly_can_ho/screens/ai_chat/ai_import_dialog.dart';
+import 'package:phan_mem_quan_ly_can_ho/screens/ai_chat/ai_subscription_dialog.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'dart:async' show TimeoutException;
 
 import 'package:phan_mem_quan_ly_can_ho/main.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/ai_agent_service.dart';
-import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/localizations/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 

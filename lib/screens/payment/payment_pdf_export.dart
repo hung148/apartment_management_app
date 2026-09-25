@@ -6,7 +6,7 @@ import 'package:phan_mem_quan_ly_can_ho/models/payment_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/organization_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/tenants_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/rooms_model.dart'; // Import Room Model
-import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/localizations/app_localizations.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';

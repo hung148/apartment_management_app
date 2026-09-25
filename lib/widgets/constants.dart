@@ -1,4 +1,4 @@
-import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/localizations/app_localizations.dart';
 
 // Canonical stored values — keep these stable, they're what gets saved to Firestore.
 const List<String> kApartmentTypes = ['standard', 'deluxe', 'suite', 'penthouse'];

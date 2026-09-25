@@ -1,4 +1,4 @@
-import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/localizations/app_localizations.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_router.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_theme.dart';
 import 'package:firebase_auth/firebase_auth.dart';

@@ -1,7 +1,8 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
-/// Shared dialog surface. Existing forms keep their own scrollable body/actions.
+/// Shared dialog sizing. Appearance defaults come from the current dialog theme;
+/// callers may override them. Forms keep their own scrollable body/actions.
 class AppDialog extends StatelessWidget {
   final Widget? child;
   final bool scrollable;
@@ -37,16 +38,9 @@ class AppDialog extends StatelessWidget {
           padding.vertical,
     );
     return Dialog(
-      backgroundColor: backgroundColor ?? Colors.white,
-      surfaceTintColor: Colors.transparent,
-      elevation: elevation == 0 ? 8 : elevation ?? 8,
-      shadowColor: const Color(0x221E1B4B),
-      shape:
-          shape ??
-          RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: const BorderSide(color: Color(0xFFE2E8F0)),
-          ),
+      backgroundColor: backgroundColor,
+      elevation: elevation,
+      shape: shape,
       clipBehavior: Clip.antiAlias,
       insetPadding: padding,
       child: ConstrainedBox(
@@ -67,10 +61,7 @@ class AppAlertDialog extends AlertDialog {
     super.title,
     super.content,
     super.actions,
-    super.shape = const RoundedRectangleBorder(
-      borderRadius: BorderRadius.all(Radius.circular(16)),
-      side: BorderSide(color: Color(0xFFE2E8F0)),
-    ),
+    super.shape,
     super.titlePadding = const EdgeInsets.fromLTRB(16, 16, 16, 8),
     super.contentPadding = const EdgeInsets.fromLTRB(16, 8, 16, 16),
     super.actionsPadding = const EdgeInsets.fromLTRB(16, 8, 16, 16),

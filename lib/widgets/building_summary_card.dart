@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/buildings_model.dart';
 import '../models/rooms_model.dart';
 import '../models/tenants_model.dart';
-import '../utils/app_localizations.dart';
+import '../utils/localizations/app_localizations.dart';
 import '../utils/app_money.dart';
 import 'app_dialog.dart';
 

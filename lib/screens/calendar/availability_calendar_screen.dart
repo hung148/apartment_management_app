@@ -1,7 +1,7 @@
 import 'package:phan_mem_quan_ly_can_ho/widgets/app_dialog.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/exchange_rate_service.dart';
 import 'package:flutter/services.dart';
-import 'package:phan_mem_quan_ly_can_ho/screens/room_detail.dart';
+import 'package:phan_mem_quan_ly_can_ho/screens/building/room/room_detail.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/payment/payment_dialog.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/payments_service.dart';
 import 'dart:async';
@@ -14,7 +14,7 @@ import 'package:phan_mem_quan_ly_can_ho/models/rooms_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/booking_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/room_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/booking_service.dart';
-import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/localizations/app_localizations.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_theme.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/building_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/booking/booking_form_dialog.dart';

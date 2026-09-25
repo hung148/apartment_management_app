@@ -2,7 +2,7 @@ import 'dart:ui';
 
 import 'package:phan_mem_quan_ly_can_ho/main.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/auth_service.dart';
-import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/localizations/app_localizations.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_router.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_theme.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/responsive.dart';

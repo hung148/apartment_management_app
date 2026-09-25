@@ -10,7 +10,7 @@ import 'package:phan_mem_quan_ly_can_ho/models/buildings_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/organization_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/payment_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/payments_service.dart';
-import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/localizations/app_localizations.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_theme.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/payments_notifier.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/date_picker.dart';

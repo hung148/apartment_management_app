@@ -1,5 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../utils/app_localizations.dart';
+import '../utils/localizations/app_localizations.dart';
 
 enum RoomRentalMode {
   monthly,  // Cho thuê dài hạn (mặc định, như hiện tại)

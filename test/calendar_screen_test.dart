@@ -15,13 +15,13 @@ import 'package:phan_mem_quan_ly_can_ho/services/room_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/building_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/booking_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/tenants_service.dart';
-import 'package:phan_mem_quan_ly_can_ho/screens/availability_calendar_screen.dart';
-import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
+import 'package:phan_mem_quan_ly_can_ho/screens/calendar/availability_calendar_screen.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/localizations/app_localizations.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/membership_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/payment_model.dart';
-import 'package:phan_mem_quan_ly_can_ho/screens/organization_screen.dart'
+import 'package:phan_mem_quan_ly_can_ho/screens/organizations/organization_screen.dart'
     show OrganizationScreen;
 import 'package:phan_mem_quan_ly_can_ho/services/auth_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/organization_service.dart';

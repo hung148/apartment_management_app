@@ -2,7 +2,7 @@ import 'package:phan_mem_quan_ly_can_ho/models/payment_model.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_money.dart';
-import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/localizations/app_localizations.dart';
 
 void main() {
   test('Building room labels preserve the room-number placeholder', () {

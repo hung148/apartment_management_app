@@ -112,11 +112,13 @@ ThemeData buildAppTheme([
       elevation: 8,
       shadowColor: Color(0x221E1B4B),
       titleTextStyle: TextStyle(
+        fontFamily: 'Roboto',
         fontSize: 18,
         fontWeight: FontWeight.w700,
         color: Color(0xFF172D3B),
       ),
       contentTextStyle: TextStyle(
+        fontFamily: 'Roboto',
         fontSize: 15,
         height: 1.5,
         color: Color(0xFF475569),

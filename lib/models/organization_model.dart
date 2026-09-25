@@ -1,5 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../utils/app_localizations.dart';
+import '../utils/localizations/app_localizations.dart';
 
 class Organization {
   final String id;

@@ -1,7 +1,7 @@
 import 'package:phan_mem_quan_ly_can_ho/widgets/app_dialog.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/responsive_form_row.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/currency_formatter.dart';
-import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/localizations/app_localizations.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_theme.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/combo_box.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/constants.dart';

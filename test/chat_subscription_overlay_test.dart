@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:phan_mem_quan_ly_can_ho/main.dart';
-import 'package:phan_mem_quan_ly_can_ho/screens/ai_subscription_dialog.dart';
+import 'package:phan_mem_quan_ly_can_ho/screens/ai_chat/ai_subscription_dialog.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/ai_agent_service.dart';
-import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/localizations/app_localizations.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_theme.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/chat/chat_manager.dart';
 

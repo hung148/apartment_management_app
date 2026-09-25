@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/tenants_model.dart';
-import '../utils/app_localizations.dart';
+import '../utils/localizations/app_localizations.dart';
 import '../utils/app_money.dart';
 
 /// Compact tenant identity and facts, with management actions kept at the edge.

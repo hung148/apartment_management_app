@@ -12,7 +12,7 @@ import 'package:phan_mem_quan_ly_can_ho/models/organization_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/rooms_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/booking/booking_form_dialog.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/booking_service.dart';
-import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/localizations/app_localizations.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_theme.dart';
 
 class _BookingsFake implements BookingService {

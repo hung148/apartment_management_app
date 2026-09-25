@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../utils/app_localizations.dart';
+import '../utils/localizations/app_localizations.dart';
 import 'compact_summary_toolbar.dart';
 
 /// Compact tenant totals with actions that remain visible on narrow screens.

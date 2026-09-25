@@ -4,11 +4,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:phan_mem_quan_ly_can_ho/main.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/organization_model.dart';
-import 'package:phan_mem_quan_ly_can_ho/screens/ai_import_dialog.dart';
+import 'package:phan_mem_quan_ly_can_ho/screens/ai_chat/ai_import_dialog.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/ai_agent_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/auth_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/organization_service.dart';
-import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/localizations/app_localizations.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_theme.dart';
 
 class UserFake implements User {

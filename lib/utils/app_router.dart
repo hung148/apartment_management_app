@@ -1,11 +1,11 @@
-import 'package:phan_mem_quan_ly_can_ho/screens/building_room.dart';
-import 'package:phan_mem_quan_ly_can_ho/screens/dashboard_screen.dart';
-import 'package:phan_mem_quan_ly_can_ho/screens/login_screen.dart';
-import 'package:phan_mem_quan_ly_can_ho/screens/organization_screen.dart';
-import 'package:phan_mem_quan_ly_can_ho/screens/room_detail.dart';
+import 'package:phan_mem_quan_ly_can_ho/screens/building/building_room.dart';
+import 'package:phan_mem_quan_ly_can_ho/screens/dashboard/dashboard_screen.dart';
+import 'package:phan_mem_quan_ly_can_ho/screens/authentication/login_screen.dart';
+import 'package:phan_mem_quan_ly_can_ho/screens/organizations/organization_screen.dart';
+import 'package:phan_mem_quan_ly_can_ho/screens/building/room/room_detail.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/splash_screen.dart';
 import 'package:flutter/material.dart';
-import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/localizations/app_localizations.dart';
 
 class AppRouter {
   // address

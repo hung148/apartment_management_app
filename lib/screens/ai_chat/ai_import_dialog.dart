@@ -1,17 +1,17 @@
-import '../services/building_service.dart';
-import '../services/room_service.dart';
-import '../utils/currency_formatter.dart';
+import '../../services/building_service.dart';
+import '../../services/room_service.dart';
+import '../../utils/currency_formatter.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:excel/excel.dart' hide Border;
 import 'package:cloud_functions/cloud_functions.dart';
-import '../main.dart';
-import '../services/ai_agent_service.dart';
-import '../services/organization_service.dart';
-import '../services/auth_service.dart';
-import '../utils/app_localizations.dart';
-import '../widgets/app_dialog.dart';
+import '../../main.dart';
+import '../../services/ai_agent_service.dart';
+import '../../services/organization_service.dart';
+import '../../services/auth_service.dart';
+import '../../utils/localizations/app_localizations.dart';
+import '../../widgets/app_dialog.dart';
 
 class AIImportDialog extends StatefulWidget {
   const AIImportDialog({super.key});

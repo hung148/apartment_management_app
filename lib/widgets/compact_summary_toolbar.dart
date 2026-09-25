@@ -1,6 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import '../utils/app_localizations.dart';
+import '../utils/localizations/app_localizations.dart';
 
 /// Full-width totals with fixed, reachable actions and scrollable large values.
 class CompactSummaryToolbar extends StatelessWidget {

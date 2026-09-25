@@ -7,7 +7,7 @@ import 'package:phan_mem_quan_ly_can_ho/models/buildings_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/organization_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/rooms_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/room_service.dart';
-import 'package:phan_mem_quan_ly_can_ho/utils/app_localizations.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/localizations/app_localizations.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/app_logger.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/shared.dart';
 import 'package:phan_mem_quan_ly_can_ho/main.dart' show getIt;
