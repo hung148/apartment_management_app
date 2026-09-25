@@ -7,7 +7,9 @@
     "start": "npm run shell",
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log",
-    "test": "node --test test/calendar.test.js",
+    "test": "node --test test/calendar.test.js test/team_access.test.js test/team.test.js",
+    "test:team": "node --test test/team_access.test.js test/team.test.js",
+    "test:team:emulator": "firebase emulators:exec --config ../firebase.emulator.json --project demo-apartment-calendar --only firestore \"node --test --test-concurrency=1 test/firestore.integration.js test/team.integration.js\"",
     "test:emulator": "firebase emulators:exec --config ../firebase.emulator.json --project demo-apartment-calendar --only firestore \"node --test test/firestore.integration.js\""
   },
   "engines": {

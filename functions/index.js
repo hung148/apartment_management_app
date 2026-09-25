@@ -3,6 +3,10 @@ const admin = require('firebase-admin');
 admin.initializeApp();
 
 const db = admin.firestore();
+const {createTeamHandler} = require('./team');
+const teamHandler = createTeamHandler({db, Timestamp: admin.firestore.Timestamp,
+  HttpsError: functions.https.HttpsError});
+exports.mutateTeam = functions.https.onCall({maxInstances:5}, request => teamHandler(request));
 
 // Get current user's memberships
 exports.getMyMemberships = functions.https.onCall(async (data, context) => {
