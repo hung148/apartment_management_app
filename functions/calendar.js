@@ -1,10 +1,24 @@
+const {bookingPrice}=require('./booking_quote');
+const {createHash}=require('node:crypto');
 const ACTIVE = new Set(['pending', 'confirmed', 'checkedIn']);
+const {allows} = require('./team_access');
+const {withinHours}=require('./booking_settings');
 const STATUSES = new Set([...ACTIVE, 'checkedOut', 'cancelled', 'noShow']);
 const METHODS = new Set(['cash', 'bankTransfer', 'momo', 'zalopay', 'creditCard', 'other']);
 const EDITABLE = ['guestName', 'guestPhone', 'guestIdNumber', 'numberOfGuests', 'startTime', 'endTime', 'totalPrice', 'depositAmount', 'notes', 'pricingType', 'source'];
 const cents = value => Math.round(Number(value || 0) * 100);
 const ms = value => value && typeof value.toMillis === 'function' ? value.toMillis() : value;
 const overlaps = (start, end, otherStart, otherEnd) => start < otherEnd && end > otherStart;
+// Audit snapshots deliberately omit guest identity, contact details and notes.
+const AUDIT_FIELDS=['roomId','buildingId','status','startTime','endTime','moveInDate','moveOutDate','currency','totalPrice','paidAmount','depositPaidAmount','depositRefundedAmount'];
+const auditSnapshot=value=>value?Object.fromEntries(AUDIT_FIELDS.filter(k=>value[k]!==undefined).map(k=>[k,value[k]])):null;
+const comparable=value=>JSON.stringify(value,(_k,v)=>v&&typeof v.toMillis==='function'?v.toMillis():v);
+function auditOperation(db,tx,{organizationId,actorId,action,targetId,old,next,createdAt}) {
+  const changed=Object.keys(next).filter(k=>!['createdAt','updatedAt','createdBy','updatedBy'].includes(k)&&comparable(old?.[k])!==comparable(next[k]));
+  if(old&&!changed.length)return;
+  tx.create(db.collection('teamActivity').doc(),{organizationId,actorId,action,targetId,createdAt,
+    before:auditSnapshot(old),after:{...auditSnapshot(next),changedFields:changed.filter(k=>AUDIT_FIELDS.includes(k))}});
+}
 
 function createCalendarHandler({db, Timestamp, FieldValue, HttpsError}) {
   const fail = (code, key) => { throw new HttpsError(code, key); };
@@ -32,14 +46,39 @@ function createCalendarHandler({db, Timestamp, FieldValue, HttpsError}) {
       if (!id(orgId) || !id(roomId)) fail('invalid-argument', 'booking_invalid_request');
       const org = await tx.get(db.collection('organizations').doc(orgId));
       const membership = await tx.get(db.collection('memberships').doc(`${context.auth.uid}_${orgId}`));
-      if (!org.exists || (org.data().createdBy !== context.auth.uid &&
+      const v2 = org.exists && org.data().accessVersion === 2;
+      if (!org.exists || (!v2 && (org.data().createdBy !== context.auth.uid &&
           (!membership.exists || membership.data().organizationId !== orgId ||
             membership.data().ownerId !== context.auth.uid || membership.data().status !== 'active' ||
-            !['admin','member'].includes(membership.data().role)))) fail('permission-denied', 'booking_access_denied');
+            !['admin','member'].includes(membership.data().role))))) fail('permission-denied', 'booking_access_denied');
       const roomRef = db.collection('rooms').doc(roomId);
       const roomDoc = await tx.get(roomRef);
       if (!roomDoc.exists || roomDoc.data().organizationId !== orgId) fail('not-found', 'booking_room_not_found');
       const room = roomDoc.data();
+      if (v2) {
+        const scope = {organizationId:orgId,userId:context.auth.uid,buildingId:room.buildingId};
+        const actor = membership.exists ? membership.data() : null;
+        const permission = ['refund','refundRent'].includes(action) ? 'refundPayments' :
+          ['payment','deposit'].includes(action) ? 'collectPayments' : 'manageBookings';
+        if (!allows(actor,permission,scope) ||
+            (action === 'checkout' && !allows(actor,'collectPayments',scope)) ||
+            (action === 'edit' && input.serverPricing!==true && old && proposed.totalPrice !== undefined && proposed.totalPrice !== old.totalPrice && !allows(actor,'overridePrices',scope)) ||
+            action === 'delete') fail('permission-denied','booking_access_denied');
+        // Creating an arbitrary custom-priced booking also requires price authority
+        // until server-side rate calculation is integrated for receptionists.
+        if (action === 'create' && input.serverPricing!==true && !allows(actor,'overridePrices',scope)) fail('permission-denied','booking_price_authority_required');
+      }
+      let commandRef,commandFingerprint;
+      if(v2&&id(operationId)){
+        const commandKey=createHash('sha256').update(JSON.stringify(['booking',orgId,context.auth.uid,operationId])).digest('hex');commandRef=db.doc(`bookingOperations/${commandKey}`);commandFingerprint=createHash('sha256').update(JSON.stringify(Object.fromEntries(Object.entries(input).filter(([key])=>key!=='propertyRevision')))).digest('hex');
+        const prior=await tx.get(commandRef);if(prior.exists){if(prior.data().fingerprint!==commandFingerprint)fail('failed-precondition','booking_operation_reused');return prior.data().result;}
+      }
+      if(v2&&input.propertyRevision){const property=await tx.get(db.doc(`buildings/${room.buildingId}`));if(!property.exists||property.data().organizationId!==orgId||input.propertyRevision!==`${property.updateTime.seconds}:${property.updateTime.nanoseconds}`)fail('aborted','booking_property_changed');}
+      if(v2&&input.revision&&(!existing.exists||input.revision!==`${existing.updateTime.seconds}:${existing.updateTime.nanoseconds}`))fail('aborted','booking_changed');
+      if(v2&&input.roomRevision&&input.roomRevision!==`${roomDoc.updateTime.seconds}:${roomDoc.updateTime.nanoseconds}`)fail('aborted','booking_room_changed');
+      if(v2&&input.serverPricing===true&&['create','edit'].includes(action)){
+        try{const quote=bookingPrice(room,ms(proposed.startTime??old?.startTime),ms(proposed.endTime??old?.endTime),proposed.pricingType??old?.pricingType);proposed.totalPrice=quote.totalMinor/(quote.currency==='USD'?100:1);proposed.pricingType=quote.pricingType;}catch(e){fail('failed-precondition',e.message);}
+      }
       const validMoney=value => amount(value) && Math.abs(value*((old?.currency || room.currency) === 'USD' ? 100 : 1)-Math.round(value*((old?.currency || room.currency) === 'USD' ? 100 : 1))) < 0.00001;
       // Every booking mutation reads AND writes this shared document. Concurrent
       // requests for the same room therefore serialize, even with zero bookings.
@@ -70,6 +109,10 @@ function createCalendarHandler({db, Timestamp, FieldValue, HttpsError}) {
         const start = ms(next.startTime), end = ms(next.endTime);
         if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start ||
             end - start < (room.minBookingHours || 0) * 3600000) fail('invalid-argument','booking_invalid_dates');
+        if(v2&&(room.operatingSchedule!=null||room.operatingHoursStartMin!=null||room.operatingHoursEndMin!=null)){
+          const property=await tx.get(db.doc(`buildings/${room.buildingId}`));
+          if(!property.exists||property.data().organizationId!==orgId||!withinHours(start,end,room,property.data().timeZone))fail('failed-precondition','booking_outside_operating_hours');
+        }
         const bookings = await tx.get(db.collection('bookings').where('roomId','==',roomId));
         const tenants = await tx.get(db.collection('tenants').where('roomId','==',roomId));
         const buffer = Math.max(0, room.cleaningBufferMinutes || 0) * 60000;
@@ -79,8 +122,10 @@ function createCalendarHandler({db, Timestamp, FieldValue, HttpsError}) {
         }
         for (const doc of tenants.docs) {
           const t = doc.data();
-          if (t.status === 'active' && overlaps(start,end,ms(t.moveInDate),t.moveOutDate ? ms(t.moveOutDate) : Infinity)) fail('already-exists','booking_conflict');
+          if ((['active','suspended'].includes(t.status)||t.moveOutDate) && overlaps(start,end,ms(t.occupancyStartDate??t.moveInDate),t.moveOutDate ? ms(t.moveOutDate) : Infinity)) fail('already-exists','booking_conflict');
         }
+        const history=await tx.get(db.collection('leaseOccupancy').where('roomId','==',roomId));
+        if(history.docs.some(doc=>overlaps(start,end,ms(doc.data().start),ms(doc.data().end))))fail('already-exists','booking_conflict');
         next.startTime = Timestamp.fromMillis(start); next.endTime = Timestamp.fromMillis(end);
       } else if (action === 'status') {
         const status = input.status;
@@ -89,28 +134,30 @@ function createCalendarHandler({db, Timestamp, FieldValue, HttpsError}) {
         next.status = status;
         if (status === 'checkedIn') { next.checkedInAt = now; next.checkedInBy = context.auth.uid; }
         if (status === 'cancelled') next.cancelReason = String(input.reason || '').slice(0,1000);
-      } else if (['payment','deposit','refund','checkout'].includes(action)) {
+      } else if (['payment','deposit','refund','refundRent','checkout'].includes(action)) {
         if (action === 'checkout' && old.status === 'checkedOut') return {id: bookingId, paymentId: old.paymentId || null};
         if (!id(operationId) && action !== 'checkout') fail('invalid-argument','booking_invalid_request');
         paymentRef = db.collection('payments').doc(`booking_${bookingId}_${action === 'checkout' ? 'checkout' : operationId}`);
         const prior = await tx.get(paymentRef);
         if (prior.exists) return {id:bookingId,paymentId:paymentRef.id};
-        if (action === 'checkout' ? old.status !== 'checkedIn' : action !== 'refund' && !ACTIVE.has(old.status)) fail('failed-precondition','booking_invalid_transition');
+        if (action === 'checkout' ? old.status !== 'checkedIn' : !['refund','refundRent'].includes(action) && !ACTIVE.has(old.status)) fail('failed-precondition','booking_invalid_transition');
         if (!METHODS.has(input.paymentMethod)) fail('invalid-argument','booking_invalid_request');
         const value = action === 'checkout' ? (cents(old.totalPrice)-cents(old.paidAmount))/100 : input.amount;
         if (!validMoney(value) || (action !== 'checkout' && value <= 0)) fail('invalid-argument','booking_invalid_amount');
         if ((action === 'payment' || action === 'checkout') && cents(value)+cents(old.paidAmount) > cents(old.totalPrice)) fail('invalid-argument','booking_overpayment');
         if (action === 'deposit' && cents(value)+cents(old.depositPaidAmount) > cents(old.depositAmount)) fail('invalid-argument','booking_overpayment');
         if (action === 'refund' && cents(value) > cents(old.depositPaidAmount)-cents(old.depositRefundedAmount)) fail('invalid-argument','booking_refund_exceeds_deposit');
-        if (action === 'deposit') next.depositPaidAmount = (cents(old.depositPaidAmount)+cents(value))/100;
+        if (action === 'refundRent' && cents(value)>cents(old.paidAmount))fail('invalid-argument','booking_refund_exceeds_payment');
+        if (action === 'refundRent') next.paidAmount=(cents(old.paidAmount)-cents(value))/100;
+        else if (action === 'deposit') next.depositPaidAmount = (cents(old.depositPaidAmount)+cents(value))/100;
         else if (action === 'refund') {
           next.depositRefundedAmount = (cents(old.depositRefundedAmount)+cents(value))/100;
           next.depositRefunded = cents(next.depositRefundedAmount) === cents(old.depositPaidAmount);
         } else next.paidAmount = (cents(old.paidAmount)+cents(value))/100;
         payment = {organizationId:orgId, buildingId:room.buildingId, roomId, tenantId:null,
           tenantName:old.guestName, bookingId, type:['deposit','refund'].includes(action) ? 'deposit' : 'hourlyRent',
-          status:action === 'refund' ? 'refunded' : 'paid', amount:value,
-          paidAmount:action === 'refund' ? 0 : value, currency:old.currency || 'VND',
+          status:['refund','refundRent'].includes(action) ? 'refunded' : 'paid', amount:value,
+          paidAmount:['refund','refundRent'].includes(action) ? 0 : value, currency:old.currency || 'VND',
           paymentMethod:input.paymentMethod, dueDate:old.endTime, paidAt:now, createdAt:now,
           billingStartDate:old.startTime, billingEndDate:old.endTime,
           descriptionKey:action === 'refund' ? 'booking_deposit_refund' : 'booking_payment',
@@ -124,13 +171,17 @@ function createCalendarHandler({db, Timestamp, FieldValue, HttpsError}) {
       if (action === 'delete') tx.delete(ref);
       else tx.set(ref,{...next,updatedAt:now});
       if (payment) tx.create(paymentRef,payment);
-      return {id:bookingId, ...(payment ? {paymentId:paymentRef.id} : {})};
+      if(v2) auditOperation(db,tx,{organizationId:orgId,actorId:context.auth.uid,action:`booking_${action}`,targetId:bookingId,old,next,createdAt:now});
+      const result={id:bookingId, ...(payment ? {paymentId:paymentRef.id} : {})};
+      if(commandRef)tx.create(commandRef,{organizationId:orgId,actorId:context.auth.uid,createdAt:now,fingerprint:commandFingerprint,result,...(input.priceOverrideReason?{priceOverrideReason:input.priceOverrideReason}:{}),...(input.reason?{reason:input.reason}:{})});
+      return result;
     });
   };
 }
 module.exports = {createCalendarHandler, overlaps, cents};
 // Tenant moves and active leases use the same room lock as reservations.
 function createTenantHandler({db, Timestamp, FieldValue, HttpsError}) {
+  const {leaseDatePolicy}=require('./lease_dates');
   const fail=(code,key) => {throw new HttpsError(code,key);};
   const decode=value => {
     if (value && typeof value === 'object' && !Array.isArray(value)) {
@@ -155,15 +206,50 @@ function createTenantHandler({db, Timestamp, FieldValue, HttpsError}) {
       if (!/^[A-Za-z0-9_-]{1,128}$/.test(orgId || '') || !/^[A-Za-z0-9_-]{1,128}$/.test(next.roomId || '')) fail('invalid-argument','booking_invalid_request');
       const org=await tx.get(db.collection('organizations').doc(orgId));
       const member=await tx.get(db.collection('memberships').doc(`${context.auth.uid}_${orgId}`));
-      if (!org.exists || (org.data().createdBy !== context.auth.uid && (!member.exists || member.data().organizationId !== orgId || member.data().ownerId !== context.auth.uid || member.data().role !== 'admin' || member.data().status !== 'active'))) fail('permission-denied','booking_access_denied');
-      if (input.create && old) return {id:ref.id};
+      const v2 = org.exists && org.data().accessVersion === 2;
+      if (!org.exists || (!v2 && (org.data().createdBy !== context.auth.uid && (!member.exists || member.data().organizationId !== orgId || member.data().ownerId !== context.auth.uid || member.data().role !== 'admin' || member.data().status !== 'active')))) fail('permission-denied','booking_access_denied');
       const roomRef=db.collection('rooms').doc(next.roomId), room=await tx.get(roomRef);
       if (!room.exists || room.data().organizationId !== orgId) fail('not-found','booking_room_not_found');
       let previousRoom;
       if (old && old.roomId !== next.roomId) previousRoom=await tx.get(db.collection('rooms').doc(old.roomId));
+      if (v2) {
+        const actor=member.exists?member.data():null;
+        const scope={organizationId:orgId,userId:context.auth.uid};
+        if (!allows(actor,'manageLease',{...scope,buildingId:room.data().buildingId}) ||
+            (old && !allows(actor,'manageLease',{...scope,buildingId:old.buildingId})) ||
+            (previousRoom && (!previousRoom.exists || previousRoom.data().organizationId!==orgId || !allows(actor,'manageLease',{...scope,buildingId:previousRoom.data().buildingId})))) fail('permission-denied','booking_access_denied');
+      }
+      if (input.create && old) return {id:ref.id};
+      if(v2&&(next.isMainTenant===false||old?.isMainTenant===false)&&(!old||['roomId','mainTenantId','isMainTenant','status','moveInDate','moveOutDate','monthlyRent','monthlyRentMinor','deposit','contractStartDate','contractEndDate'].some(k=>comparable(old[k])!==comparable(next[k]))))fail('failed-precondition','roommate_dedicated_workflow_required');
+      if(v2&&(['rentSchedule','rentTimeZone'].some(k=>Object.hasOwn(patch,k))||(old&&['monthlyRent','monthlyRentMinor'].some(k=>comparable(old[k])!==comparable(next[k])))))fail('failed-precondition','tenant_rent_dedicated_workflow_required');
+      if(v2&&old?.isMainTenant===true&&['roomId','status','moveInDate','moveOutDate','isMainTenant'].some(k=>comparable(old[k])!==comparable(next[k]))){
+        const linked=await tx.get(db.collection('tenants').where('mainTenantId','==',ref.id));
+        if(linked.docs.some(doc=>['active','suspended'].includes(doc.data().status)))fail('failed-precondition','lease_linked_roommates_require_review');
+      }
+      if(v2&&['occupancyStartDate','contractEndLocalDate','contractEndTimeZone','moveOutLocalDate','moveOutTimeZone'].some(k=>Object.hasOwn(patch,k)))fail('failed-precondition','lease_dedicated_workflow_required');
+      if(v2&&old&&['roomId','buildingId','moveOutDate','contractEndDate','status'].some(k=>comparable(old[k])!==comparable(next[k])))fail('failed-precondition','lease_dedicated_workflow_required');
       if (!['active','inactive','suspended','moveOut'].includes(next.status) || typeof next.fullName !== 'string' || !next.fullName.trim()) fail('invalid-argument','booking_invalid_request');
+      if (v2 && ['active','suspended'].includes(next.status) && !['monthly','both'].includes(room.data().rentalMode || 'monthly')) fail('failed-precondition','lease_room_not_monthly');
       const start=ms(next.moveInDate), end=next.moveOutDate ? ms(next.moveOutDate) : Infinity;
       if (!Number.isFinite(start) || end <= start) fail('invalid-argument','booking_invalid_dates');
+      const now=Timestamp.now();
+      let datePolicy;
+      if(v2){
+        // These fields are server-owned, even through the older broad patch API.
+        delete next.backdateReason;
+        for(const k of ['moveInLocalDate','moveInTimeZone']){
+          if(old?.[k]!==undefined)next[k]=old[k];else delete next[k];
+        }
+        if(!old||start!==ms(old.moveInDate)){
+          const building=await tx.get(db.collection('buildings').doc(room.data().buildingId));
+          if(!building.exists||building.data().organizationId!==orgId)fail('not-found','lease_property_not_found');
+          datePolicy=leaseDatePolicy({moveInMillis:start,nowMillis:now.toMillis(),timeZone:building.data().timeZone,role:member.data()?.role,reason:patch.backdateReason});
+          if(datePolicy.error)fail(datePolicy.error,datePolicy.key);
+          next.moveInLocalDate=datePolicy.localDate;next.moveInTimeZone=datePolicy.timeZone;
+        }else if(Object.hasOwn(patch,'backdateReason')){
+          fail('invalid-argument','lease_backdate_reason_without_date_change');
+        }
+      }
       if (next.status === 'active') {
         const bookings=await tx.get(db.collection('bookings').where('roomId','==',next.roomId));
         for (const doc of bookings.docs) {
@@ -171,13 +257,27 @@ function createTenantHandler({db, Timestamp, FieldValue, HttpsError}) {
           if (ACTIVE.has(b.status) && overlaps(start,end,ms(b.startTime),ms(b.endTime))) fail('already-exists','booking_conflict');
         }
       }
+      if(v2&&next.isMainTenant!==false&&['active','suspended'].includes(next.status)){
+        const occupants=await tx.get(db.collection('tenants').where('roomId','==',next.roomId));
+        for(const doc of occupants.docs){
+          if(doc.id===ref.id)continue;
+          const t=doc.data();
+          if(old&&t.isMainTenant===false&&t.mainTenantId===ref.id)continue;
+          if(['active','suspended'].includes(t.status)&&overlaps(start,end,ms(t.moveInDate),t.moveOutDate?ms(t.moveOutDate):Infinity))fail('already-exists','lease_room_occupied');
+        }
+      }
       next.organizationId=orgId;next.buildingId=room.data().buildingId;
       next.currency=old?.currency || room.data().currency || 'VND';
-      next.createdAt=old?.createdAt || Timestamp.now();next.updatedAt=Timestamp.now();
+      next.createdAt=old?.createdAt || now;next.updatedAt=now;
       next.createdBy=old?.createdBy || context.auth.uid;next.updatedBy=context.auth.uid;
       tx.update(roomRef,{bookingRevision:FieldValue.increment(1)});
       if (previousRoom?.exists) tx.update(previousRoom.ref,{bookingRevision:FieldValue.increment(1)});
       tx.set(ref,next);
+      if(datePolicy?.backdated){
+        // Private immutable evidence; the general activity projection omits it.
+        tx.create(db.collection('leaseDateCorrections').doc(),{organizationId:orgId,buildingId:room.data().buildingId,tenantId:ref.id,actorId:context.auth.uid,createdAt:now,previousMoveInDate:old?.moveInDate??null,moveInDate:next.moveInDate,localDate:datePolicy.localDate,timeZone:datePolicy.timeZone,reason:datePolicy.reason});
+      }
+      if(v2) auditOperation(db,tx,{organizationId:orgId,actorId:context.auth.uid,action:!old?'lease_create':old.roomId!==next.roomId?'lease_move':old.status!==next.status?'lease_status':'lease_edit',targetId:ref.id,old,next,createdAt:next.updatedAt});
       return {id:ref.id};
     });
   };

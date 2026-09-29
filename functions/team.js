@@ -132,6 +132,7 @@ function createTeamHandler({db, Timestamp, HttpsError}) {
         if (invitation.data.status !== 'pending') fail('failed-precondition', 'team_invitation_closed');
         writes.push(['update', invitation.ref, {status:'revoked', updatedAt:now}]);
         targetId = invitation.ref.id; result = {status:'revoked'};
+        before = {status:'pending'}; after = {status:'revoked'};
       } else if (action === 'acceptInvitation') {
         const email = verifiedEmail();
         const invitation = await read('teamInvitations', input.invitationId);
@@ -180,6 +181,7 @@ function createTeamHandler({db, Timestamp, HttpsError}) {
         const status = input.decision === 'approve' ? 'approved' : 'rejected';
         writes.push(['update',pending.ref,{status,reviewedBy:uid,reviewedAt:now}]);
         targetId = pending.ref.id; result = {status};
+        before = {status:'pending'}; after = {...(after || {}),requestStatus:status};
       } else if (action === 'setAccess') {
         if (!id(input.userId) || input.userId === uid) fail('permission-denied','team_self_access_change');
         const target = await read('memberships', `${input.userId}_${orgId}`);

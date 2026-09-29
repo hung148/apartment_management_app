@@ -24,6 +24,17 @@ class DB {
  }
 }
 const context={auth:{uid:'owner'}};
+test('v2 lease creation rejects a manager backdating through the legacy endpoint',async()=>{
+ const db=new DB({
+  'organizations/org':{accessVersion:2},
+  'memberships/manager_org':{organizationId:'org',ownerId:'manager',accessVersion:2,role:'manager',status:'active',buildingScope:'all',buildingIds:[]},
+  'buildings/building':{organizationId:'org',timeZone:'Asia/Ho_Chi_Minh'},
+  'rooms/room':{organizationId:'org',buildingId:'building',rentalMode:'monthly'},
+ });
+ const handler=createTenantHandler({db,Timestamp:Stamp,FieldValue:{increment:n=>n},HttpsError:ErrorCode});
+ await assert.rejects(handler({create:true,tenantId:'past',tenant:{organizationId:'org',roomId:'room',status:'active',fullName:'Tenant',moveInDate:{__timestamp:Date.parse('2020-01-01T00:00:00Z')},backdateReason:'Existing tenant'}},{auth:{uid:'manager'}}),e=>e.code==='permission-denied'&&e.message==='lease_backdate_owner_admin_required');
+ assert.equal(db.rows.has('tenants/past'),false);
+});
 function fixture(){
  const db=new DB({'organizations/org':{createdBy:'owner'},'rooms/room':{organizationId:'org',buildingId:'building',rentalMode:'both',currency:'USD',cleaningBufferMinutes:30}});
  const deps={db,Timestamp:Stamp,FieldValue:{increment:n=>n},HttpsError:ErrorCode};
@@ -81,8 +92,8 @@ test('Rejects unauthorized users, invalid amounts, and illegal status changes',a
 
 test('Deployed callable wrappers forward second-generation request data and authentication', async () => {
  const exported = require('../index');
- for (const name of ['mutateCalendarBooking','mutateCalendarTenant']) {
+ for (const name of ['mutateCalendarBooking','mutateCalendarTenant','tenantLeases','tenantRoommates','tenantRent']) {
    await assert.rejects(exported[name].run({data:{}}), error => error.code === 'unauthenticated');
-   await assert.rejects(exported[name].run({data:{},auth:{uid:'owner'}}), error => error.code === 'invalid-argument');
+   await assert.rejects(exported[name].run({data:{},auth:{uid:'owner'}}), error => error.code === 'unauthenticated' && error.message === 'app_check_required');
  }
 });

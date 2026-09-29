@@ -49,7 +49,7 @@ function createImport({db,Timestamp,FieldValue,ai,generate}){
   const user=ai.uid(request),{draftId}=request.data||{};if(!validId(draftId))fail('invalid-argument','ai_import_invalid');
   const records=normalize(request.data.records,true),draftRef=db.doc('aiDrafts/'+draftId);
   return db.runTransaction(async tx=>{
-   const draft=await tx.get(draftRef);if(!draft.exists||draft.data().ownerId!==user)fail('permission-denied','ai_access_denied');if(draft.data().status==='saved')return draft.data().result;if(draft.data().expiresAt.toMillis()<Date.now())fail('failed-precondition','ai_import_expired');
+   const draft=await tx.get(draftRef);if(!draft.exists||draft.data().ownerId!==user)fail('permission-denied','ai_access_denied');if(draft.data().status==='saved')return draft.data().result;if(draft.data().expiresAt.toMillis()<=Date.now())fail('failed-precondition','ai_import_expired');
    const original=new Map(draft.data().records.map(r=>[r.key,r.type]));if(records.some(r=>original.get(r.key)!==r.type))fail('invalid-argument','ai_import_invalid');
    const pending=new Map(),writes=[],locks=new Map(),result=[];
    const ordered=[...records].sort((a,b)=>TYPES.indexOf(a.type)-TYPES.indexOf(b.type));

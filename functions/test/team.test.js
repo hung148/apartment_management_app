@@ -164,5 +164,5 @@ test('administrator cannot grant default capabilities they have explicitly lost'
 test('callable wrapper forwards authentication and validates input',async()=>{
   const {mutateTeam}=require('../index');
   await assert.rejects(mutateTeam.run({data:{}}),e=>e.code==='unauthenticated');
-  await assert.rejects(mutateTeam.run({auth:{uid:'owner'},data:{}}),e=>e.code==='invalid-argument');
+  await assert.rejects(mutateTeam.run({auth:{uid:'owner'},data:{}}),e=>e.code==='unauthenticated'&&e.message==='app_check_required');
 });

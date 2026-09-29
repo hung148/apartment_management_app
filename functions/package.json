@@ -7,8 +7,8 @@
     "start": "npm run shell",
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log",
-    "test": "node --test test/calendar.test.js test/team_access.test.js test/team.test.js",
-    "test:team": "node --test test/team_access.test.js test/team.test.js",
+    "test": "node --test test/*.test.js",
+    "test:team": "node --test test/team_access.test.js test/team.test.js test/team_read.test.js",
     "test:team:emulator": "firebase emulators:exec --config ../firebase.emulator.json --project demo-apartment-calendar --only firestore \"node --test --test-concurrency=1 test/firestore.integration.js test/team.integration.js\"",
     "test:emulator": "firebase emulators:exec --config ../firebase.emulator.json --project demo-apartment-calendar --only firestore \"node --test test/firestore.integration.js\""
   },
@@ -17,14 +17,22 @@
   },
   "main": "index.js",
   "dependencies": {
-    "firebase-admin": "^12.6.0",
-    "firebase-functions": "^6.0.1"
+    "firebase-admin": "^14.5.0",
+    "firebase-functions": "^7.4.0"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.2",
     "firebase": "^12.19.0",
-    "firebase-functions-test": "^3.1.0",
     "firebase-tools": "^15.29.0"
   },
-  "private": true
+  "private": true,
+  "overrides": {
+    "qs": "^6.16.0",
+    "gaxios": {
+      "uuid": "^11.1.1"
+    },
+    "@google-cloud/pubsub": {
+      "@opentelemetry/core": "^2.8.0"
+    }
+  }
 }

@@ -2,6 +2,7 @@ import 'package:phan_mem_quan_ly_can_ho/models/membership_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/organization_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/app_logger.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
@@ -381,33 +382,29 @@ class OrganizationService {
   // READ - Get all organizations the current user is a member of
   // ========================================
   Future<List<Organization>> getUserOrganizations(String ownerId) async {
-    if (FirebaseAuth.instance.currentUser == null) return [];
+    if (FirebaseAuth.instance.currentUser?.uid != ownerId) return [];
 
     try {
-      final membershipsSnap = await _firestore
-          .collection('memberships')
-          .where('ownerId', isEqualTo: ownerId)
-          .where('status', isEqualTo: 'active')
-          .limit(100)
-          .get();
-
-      if (membershipsSnap.docs.isEmpty) {
-        return [];
-      }
-
-      final orgIds = membershipsSnap.docs
-          .map((doc) => doc.data()['organizationId'] as String)
-          .toSet()
-          .toList();
-
-      final orgsSnap = await _firestore
-          .collection('organizations')
-          .where(FieldPath.documentId, whereIn: orgIds)
-          .get();
-
-      return orgsSnap.docs
-          .map((doc) => Organization.fromMap(doc.id, doc.data()))
-          .toList();
+      final organizations = <Organization>[];
+      String? cursor;
+      do {
+        final response = await FirebaseFunctions.instance.httpsCallable('listMyOrganizations').call({'cursor': ?cursor});
+        final page = Map<String, dynamic>.from(response.data as Map);
+        for (final raw in page['records'] as List) {
+          final row = Map<String, dynamic>.from(raw as Map);
+          final id = row.remove('id') as String;
+          if (row['accessVersion'] == 2) {
+            row['createdAt'] = Timestamp.fromDate(DateTime.parse(row['createdAt'] as String));
+            if (row['updatedAt'] != null) row['updatedAt'] = Timestamp.fromDate(DateTime.parse(row['updatedAt'] as String));
+            organizations.add(Organization.fromMap(id, row));
+          } else {
+            final organization = await getOrganizationById(id);
+            if (organization != null) organizations.add(organization);
+          }
+        }
+        cursor = page['nextCursor'] as String?;
+      } while (cursor != null);
+      return organizations;
     } catch (e) {
       if (e is FirebaseException && e.code == 'permission-denied') return [];
       logger.e('Error fetching user organizations for $ownerId', error: e);
@@ -418,59 +415,9 @@ class OrganizationService {
   // ========================================
   // JOIN - Join an organization using an invite code
   // ========================================
-  Future<bool> joinOrganization({
-    required String ownerId,
-    required String inviteCode,
-  }) async {
-    try {
-      final codeDoc = await _firestore
-          .collection('invite_codes')
-          .doc(inviteCode)
-          .get();
-
-      if (!codeDoc.exists) {
-        logger.w('Invalid invite code');
-        return false;
-      }
-
-      final orgId = codeDoc.data()!['orgId'] as String;
-
-      final membershipId = '${ownerId}_$orgId';
-      final alreadyMember = await _firestore
-          .collection('memberships')
-          .doc(membershipId)
-          .get();
-
-      if (alreadyMember.exists) {
-        logger.w('Already a member');
-        return false;
-      }
-
-      final user = FirebaseAuth.instance.currentUser; 
-
-      final newMembership = Membership(
-        id: membershipId,
-        organizationId: orgId,
-        ownerId: ownerId,
-        role: 'member',
-        status: 'active',
-        joinedAt: DateTime.now(),
-        displayName: user?.displayName ?? '', 
-        email: user?.email ?? '',             
-      );
-
-      await _firestore
-          .collection('memberships')
-          .doc(membershipId)
-          .set({...newMembership.toMap(), 'inviteCode': inviteCode});
-
-      logger.i('User $ownerId joined organization $orgId');
-      return true;
-    } catch (e) {
-      logger.e('Error joining organization', error: e);
-      return false;
-    }
-  }
+  // Shared codes no longer grant membership. Use TeamService.requestAccess
+  // and administrator review; historical callers fail closed.
+  Future<bool> joinOrganization({required String ownerId, required String inviteCode}) async => false;
 
   // ========================================
   // LEAVE - Leave an organization

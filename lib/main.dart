@@ -9,6 +9,8 @@ import 'package:phan_mem_quan_ly_can_ho/services/payments_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/payments_notifier.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/room_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/tenants_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/team_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/app_check_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/update_services.dart';
 
 import 'package:phan_mem_quan_ly_can_ho/utils/localizations/app_localizations.dart';
@@ -84,6 +86,7 @@ void setup() {
   getIt.registerLazySingleton(() => TenantService());
   getIt.registerLazySingleton(() => BuildingService());
   getIt.registerLazySingleton(() => OrganizationService());
+  getIt.registerLazySingleton(() => TeamService());
   getIt.registerLazySingleton(() => PaymentService());
   getIt.registerLazySingleton(() => PaymentsNotifier(getIt<PaymentService>()));
   getIt.registerLazySingleton(() => UpdateService());
@@ -114,6 +117,7 @@ void main() async {
   await initializeAppWindow();
 
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await activateAppCheck();
 
   try {
     if (!kIsWeb) {

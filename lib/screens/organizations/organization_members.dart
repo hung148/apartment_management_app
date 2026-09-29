@@ -7,6 +7,12 @@ extension _OrganizationMembers on _OrganizationScreenState {
   // MEMBERS TAB
   // ========================================
   Widget _buildMembersTab() {
+    if (widget.organization.accessVersion == 2) {
+      return TeamScreen(
+        organizationId: widget.organization.id,
+        service: getIt<TeamService>(),
+      );
+    }
     final t = AppTranslations.of(context);
     return FutureBuilder<List<dynamic>>(
       future: _membersTabFuture,

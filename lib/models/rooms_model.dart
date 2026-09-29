@@ -2,13 +2,34 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../utils/localizations/app_localizations.dart';
 
 enum RoomRentalMode {
-  monthly,  // Cho thuê dài hạn (mặc định, như hiện tại)
-  hourly,   // Cho thuê theo giờ (kiểu khách sạn)
-  both,     // Linh hoạt: vừa dài hạn vừa theo giờ khi trống
+  monthly, // Cho thuê dài hạn (mặc định, như hiện tại)
+  hourly, // Cho thuê theo giờ (kiểu khách sạn)
+  both, // Linh hoạt: vừa dài hạn vừa theo giờ khi trống
 }
 
 class Room {
   final String currency;
+  // Keep nested schedule snapshots independent of Firestore maps and callers.
+  final Map<String, dynamic>? operatingSchedule;
+  static dynamic _copyScheduleValue(dynamic value, {bool immutable = false}) {
+    if (value is Map) {
+      final copy = value.map(
+        (key, item) => MapEntry(
+          key as String,
+          _copyScheduleValue(item, immutable: immutable),
+        ),
+      );
+      return immutable ? Map<String, dynamic>.unmodifiable(copy) : copy;
+    }
+    if (value is List) {
+      final copy = value
+          .map((item) => _copyScheduleValue(item, immutable: immutable))
+          .toList();
+      return immutable ? List<dynamic>.unmodifiable(copy) : copy;
+    }
+    return value;
+  }
+
   final String id;
   final String organizationId;
   final String buildingId;
@@ -20,17 +41,20 @@ class Room {
 
   // ---- Hourly rental config (all optional — backward compatible) ----
   final RoomRentalMode rentalMode;
-  final double? hourlyPrice;              // Giá theo giờ (VND/giờ)
-  final double? dailyPrice;               // Giá trọn ngày (áp dụng khi vượt ngưỡng giờ)
-  final double? overnightPrice;           // Giá qua đêm (gói cố định)
-  final double? dailyPriceThresholdHours; // Vượt ngưỡng này thì tính theo dailyPrice thay vì hourlyPrice
-  final int? minBookingHours;             // Số giờ đặt tối thiểu
-  final int? cleaningBufferMinutes;       // Thời gian dọn phòng bắt buộc giữa 2 lượt đặt
-  final int? operatingHoursStartMin;      // Phút tính từ nửa đêm, null = mở 24h
-  final int? operatingHoursEndMin;        // Phút tính từ nửa đêm, null = mở 24h
+  final double? hourlyPrice; // Giá theo giờ (VND/giờ)
+  final double? dailyPrice; // Giá trọn ngày (áp dụng khi vượt ngưỡng giờ)
+  final double? overnightPrice; // Giá qua đêm (gói cố định)
+  final double?
+  dailyPriceThresholdHours; // Vượt ngưỡng này thì tính theo dailyPrice thay vì hourlyPrice
+  final int? minBookingHours; // Số giờ đặt tối thiểu
+  final int?
+  cleaningBufferMinutes; // Thời gian dọn phòng bắt buộc giữa 2 lượt đặt
+  final int? operatingHoursStartMin; // Phút tính từ nửa đêm, null = mở 24h
+  final int? operatingHoursEndMin; // Phút tính từ nửa đêm, null = mở 24h
 
   Room({
     this.currency = 'VND',
+    Map<String, dynamic>? operatingSchedule,
     required this.id,
     required this.organizationId,
     required this.buildingId,
@@ -48,7 +72,10 @@ class Room {
     this.cleaningBufferMinutes,
     this.operatingHoursStartMin,
     this.operatingHoursEndMin,
-  });
+  }) : operatingSchedule = operatingSchedule == null
+           ? null
+           : _copyScheduleValue(operatingSchedule, immutable: true)
+                 as Map<String, dynamic>;
 
   bool get supportsHourlyBooking =>
       rentalMode == RoomRentalMode.hourly || rentalMode == RoomRentalMode.both;
@@ -59,6 +86,8 @@ class Room {
   Map<String, dynamic> toMap() {
     return {
       'currency': currency,
+      if (operatingSchedule != null)
+        'operatingSchedule': _copyScheduleValue(operatingSchedule),
       'organizationId': organizationId,
       'buildingId': buildingId,
       'roomNumber': roomNumber,
@@ -81,6 +110,9 @@ class Room {
   factory Room.fromMap(String id, Map<String, dynamic> map) {
     return Room(
       currency: map['currency'] as String? ?? 'VND',
+      operatingSchedule: map['operatingSchedule'] == null
+          ? null
+          : Map<String, dynamic>.from(map['operatingSchedule'] as Map),
       id: id,
       organizationId: map['organizationId'] ?? '',
       buildingId: map['buildingId'] ?? '',
@@ -96,7 +128,8 @@ class Room {
       hourlyPrice: (map['hourlyPrice'] as num?)?.toDouble(),
       dailyPrice: (map['dailyPrice'] as num?)?.toDouble(),
       overnightPrice: (map['overnightPrice'] as num?)?.toDouble(),
-      dailyPriceThresholdHours: (map['dailyPriceThresholdHours'] as num?)?.toDouble(),
+      dailyPriceThresholdHours: (map['dailyPriceThresholdHours'] as num?)
+          ?.toDouble(),
       minBookingHours: map['minBookingHours'] as int?,
       cleaningBufferMinutes: map['cleaningBufferMinutes'] as int?,
       operatingHoursStartMin: map['operatingHoursStartMin'] as int?,
@@ -124,6 +157,8 @@ class Room {
     int? operatingHoursEndMin,
   }) {
     return Room(
+      currency: currency,
+      operatingSchedule: operatingSchedule,
       id: id ?? this.id,
       organizationId: organizationId ?? this.organizationId,
       buildingId: buildingId ?? this.buildingId,
@@ -136,10 +171,13 @@ class Room {
       hourlyPrice: hourlyPrice ?? this.hourlyPrice,
       dailyPrice: dailyPrice ?? this.dailyPrice,
       overnightPrice: overnightPrice ?? this.overnightPrice,
-      dailyPriceThresholdHours: dailyPriceThresholdHours ?? this.dailyPriceThresholdHours,
+      dailyPriceThresholdHours:
+          dailyPriceThresholdHours ?? this.dailyPriceThresholdHours,
       minBookingHours: minBookingHours ?? this.minBookingHours,
-      cleaningBufferMinutes: cleaningBufferMinutes ?? this.cleaningBufferMinutes,
-      operatingHoursStartMin: operatingHoursStartMin ?? this.operatingHoursStartMin,
+      cleaningBufferMinutes:
+          cleaningBufferMinutes ?? this.cleaningBufferMinutes,
+      operatingHoursStartMin:
+          operatingHoursStartMin ?? this.operatingHoursStartMin,
       operatingHoursEndMin: operatingHoursEndMin ?? this.operatingHoursEndMin,
     );
   }

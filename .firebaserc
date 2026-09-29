@@ -1,5 +1,6 @@
 {
   "projects": {
-    "default": "apartment-management-app-776b9"
+    "default": "apartment-management-app-776b9",
+    "staging": "apartment-management-staging"
   }
 }

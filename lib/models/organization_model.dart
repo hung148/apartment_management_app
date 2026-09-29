@@ -15,6 +15,8 @@ class Organization {
   final DateTime createdAt;
   final DateTime? updatedAt;       // NEW: Track last update
   final String inviteCode;
+  // Server-owned migration marker; never included in client writes.
+  final int accessVersion;
 
   Organization({
     required this.id,
@@ -30,6 +32,7 @@ class Organization {
     required this.createdAt,
     this.updatedAt,
     required this.inviteCode,
+    this.accessVersion = 1,
   });
 
   Map<String, dynamic> toMap() {
@@ -66,6 +69,7 @@ class Organization {
           ? (map['updatedAt'] as Timestamp).toDate() 
           : null,
       inviteCode: map['inviteCode'] ?? '',
+      accessVersion: map['accessVersion'] is int ? map['accessVersion'] as int : 1,
     );
   }
 
@@ -99,6 +103,7 @@ class Organization {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       inviteCode: inviteCode ?? this.inviteCode,
+      accessVersion: accessVersion,
     );
   }
 

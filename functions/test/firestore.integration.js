@@ -3,16 +3,17 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const {initializeTestEnvironment, assertFails, assertSucceeds}=require('@firebase/rules-unit-testing');
 const {doc,setDoc,updateDoc,getDoc,getDocs,collection,query,where,writeBatch}=require('firebase/firestore');
-const admin=require('firebase-admin');
+const {initializeApp,getApps,deleteApp}=require('firebase-admin/app');
+const {getFirestore,Timestamp,FieldValue}=require('firebase-admin/firestore');
 const {createCalendarHandler}=require('../calendar');
 let env, db, handler;
 before(async()=>{
   if (!process.env.FIRESTORE_EMULATOR_HOST) throw Error('Emulator required: never run against production');
   env=await initializeTestEnvironment({projectId:'demo-apartment-calendar',firestore:{rules:fs.readFileSync('../firestore.rules','utf8')}});
-  admin.initializeApp({projectId:'demo-apartment-calendar'}); db=admin.firestore();
-  handler=createCalendarHandler({db,Timestamp:admin.firestore.Timestamp,FieldValue:admin.firestore.FieldValue,HttpsError:class extends Error{constructor(code,message){super(message);this.code=code;}}});
+  initializeApp({projectId:'demo-apartment-calendar'}); db=getFirestore();
+  handler=createCalendarHandler({db,Timestamp:Timestamp,FieldValue:FieldValue,HttpsError:class extends Error{constructor(code,message){super(message);this.code=code;}}});
 });
-after(async()=>{await env?.cleanup();await Promise.all(admin.apps.map(a=>a.delete()));});
+after(async()=>{await env?.cleanup();await Promise.all(getApps().map(a=>deleteApp(a)));});
 beforeEach(async()=>{
   await env.clearFirestore();
   await db.doc('organizations/org').set({createdBy:'owner'});
@@ -31,7 +32,7 @@ test('clients cannot bypass functions or forge booking payment records',async()=
  await assertSucceeds(setDoc(doc(client,'payments/invoice'),{organizationId:'org',amount:25}));
  await assertSucceeds(updateDoc(doc(client,'rooms/room'),{roomNumber:'101'}));
 });
-test('outsiders cannot read inventory or self-promote; valid invitation works',async()=>{
+test('outsiders cannot read inventory or self-promote even with a valid shared code',async()=>{
  const outsider=env.authenticatedContext('outsider').firestore();
  await assertFails(getDoc(doc(outsider,'rooms/room')));
  await assertFails(getDocs(collection(outsider,'rooms')));
@@ -40,9 +41,9 @@ test('outsiders cannot read inventory or self-promote; valid invitation works',a
  const member={ownerId:'outsider',organizationId:'org',role:'admin',status:'active'};
  await assertFails(setDoc(doc(outsider,'memberships/outsider_org'),member));
  await assertFails(setDoc(doc(outsider,'memberships/outsider_org'),{...member,role:'member',inviteCode:'WRONG'}));
- await assertSucceeds(setDoc(doc(outsider,'memberships/outsider_org'),{...member,role:'member',inviteCode:'SECRET'}));
+ await assertFails(setDoc(doc(outsider,'memberships/outsider_org'),{...member,role:'member',inviteCode:'SECRET'}));
  await assertFails(updateDoc(doc(outsider,'memberships/outsider_org'),{role:'admin'}));
- await assertSucceeds(getDocs(query(collection(outsider,'rooms'),where('organizationId','==','org'))));
+ await assertFails(getDocs(query(collection(outsider,'rooms'),where('organizationId','==','org'))));
 });
 test('atomic organization creation and owner membership remains supported',async()=>{
  const client=env.authenticatedContext('newowner').firestore(),batch=writeBatch(client);
@@ -63,8 +64,8 @@ const {createAI}=require('../ai');
 const {createImport}=require('../ai_import');
 class AIError extends Error {constructor(code,message){super(message);this.code=code;}}
 function aiFixture(generate=async()=>({candidates:[{content:{parts:[{text:'Verified response'}]}}]})){
- const ai=createAI({db,Timestamp:admin.firestore.Timestamp,HttpsError:AIError,generate});
- return {ai,imports:createImport({db,Timestamp:admin.firestore.Timestamp,FieldValue:admin.firestore.FieldValue,ai,generate})};
+ const ai=createAI({db,Timestamp:Timestamp,HttpsError:AIError,generate});
+ return {ai,imports:createImport({db,Timestamp:Timestamp,FieldValue:FieldValue,ai,generate})};
 }
 test('AI daily message limits are atomic across devices and replay does not double-charge',async()=>{
  const {ai}=aiFixture();const request=id=>({auth:{uid:'owner'},data:{requestId:id,message:'Help me prioritize'}});
@@ -85,7 +86,7 @@ test('AI failures return quota and clients cannot forge usage or subscriptions',
 });
 test('Paid allowance is shared across the subscription billing period, not reset daily',async()=>{
  const start=Date.now()-86400000,end=Date.now()+86400000*29;
- await db.doc('aiEntitlements/owner').set({verified:true,status:'active',periodStart:admin.firestore.Timestamp.fromMillis(start),expiresAt:admin.firestore.Timestamp.fromMillis(end)});
+ await db.doc('aiEntitlements/owner').set({verified:true,status:'active',periodStart:Timestamp.fromMillis(start),expiresAt:Timestamp.fromMillis(end)});
  const {ai}=aiFixture();await ai.chat({auth:{uid:'owner'},data:{requestId:'paidmessage',message:'hello'}});
  const usage=await ai.usage({auth:{uid:'owner'}});assert.equal(usage.remainingMessages,299);assert.equal(usage.remainingImports,30);assert.equal(usage.resetAt,end);
 });
@@ -113,7 +114,7 @@ test('Cross-organization import and unauthorized draft commits fail without part
 test('Subscriptions use provider-verified state, reject sandbox access and expire correctly',async()=>{
  const {createSubscriptions}=require('../subscriptions');
  let value={subscriber:{entitlements:{ai_pro:{expires_date:new Date(Date.now()+86400000).toISOString(),purchase_date:new Date(Date.now()-1000).toISOString(),product_identifier:'ai_pro_monthly'}},subscriptions:{ai_pro_monthly:{is_sandbox:false}}}};
- const billing=createSubscriptions({db,Timestamp:admin.firestore.Timestamp,HttpsError:AIError,getKey:()=> 'test',getWebhookSecret:()=> 'secret',fetcher:async()=>({ok:true,json:async()=>value})});
+ const billing=createSubscriptions({db,Timestamp:Timestamp,HttpsError:AIError,getKey:()=> 'test',getWebhookSecret:()=> 'secret',fetcher:async()=>({ok:true,json:async()=>value})});
  assert.equal((await billing.sync({auth:{uid:'owner'},data:{verified:true}})).active,true);
  assert.equal((await aiFixture().ai.usage({auth:{uid:'owner'}})).paid,true);
  value.subscriber.subscriptions.ai_pro_monthly.is_sandbox=true;

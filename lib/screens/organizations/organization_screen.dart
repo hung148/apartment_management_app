@@ -1,4 +1,7 @@
 import 'package:phan_mem_quan_ly_can_ho/widgets/compact_summary_toolbar.dart';
+import 'package:phan_mem_quan_ly_can_ho/screens/team/team_screen.dart';
+import 'package:phan_mem_quan_ly_can_ho/screens/team/role_workspace.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/team_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/app_dialog.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/building_summary_card.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_money.dart';
@@ -77,18 +80,33 @@ class _StableTabState extends State<_StableTab>
   }
 }
 
-class OrganizationScreen extends StatefulWidget {
+class OrganizationScreen extends StatelessWidget {
   final Organization organization;
-  const OrganizationScreen({
+  final TeamService? teamService;
+  const OrganizationScreen({super.key, required this.organization, this.teamService});
+  @override
+  Widget build(BuildContext context) {
+    if (organization.accessVersion == 2) {
+      return Scaffold(
+        appBar: AppBar(title: Text(organization.name, maxLines: 1, overflow: TextOverflow.ellipsis)),
+        body: RoleWorkspace(organizationId: organization.id, service: teamService ?? getIt<TeamService>()),
+      );
+    }
+    return _LegacyOrganizationScreen(organization: organization);
+  }
+}
+
+class _LegacyOrganizationScreen extends StatefulWidget {
+  final Organization organization;
+  const _LegacyOrganizationScreen({
     required this.organization,
-    super.key,
   });
 
   @override
-  State<OrganizationScreen> createState() => _OrganizationScreenState();
+  State<_LegacyOrganizationScreen> createState() => _OrganizationScreenState();
 }
 
-class _OrganizationScreenState extends State<OrganizationScreen>
+class _OrganizationScreenState extends State<_LegacyOrganizationScreen>
     with WidgetsBindingObserver {
   
   bool _codeCopied = false;
@@ -228,7 +246,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
         _getBuildings(),
         _getAllRooms(),
       ]);
-      _membersTabFuture = Future.wait([
+      _membersTabFuture = widget.organization.accessVersion == 2 ? null : Future.wait([
         _getMembers(),
         _getMyMembership(),
       ]);
@@ -436,7 +454,7 @@ class _OrganizationScreenState extends State<OrganizationScreen>
       (Icons.people_outline, t['tenants_tab']),
       (Icons.receipt_long_outlined, t['payments_tab']),
       (Icons.bar_chart_outlined, t['statistics_tab']),
-      (Icons.group_outlined, t['members_tab']),
+      (Icons.group_outlined, t[widget.organization.accessVersion == 2 ? 'team_title' : 'members_tab']),
     ];
     final controller = DefaultTabController.of(context);
     return AppBar(
@@ -850,4 +868,3 @@ class _TopEdgeSwipeZoneState extends State<_TopEdgeSwipeZone> {
     );
   }
 }
-

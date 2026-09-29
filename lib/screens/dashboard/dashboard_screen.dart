@@ -1,4 +1,7 @@
 import 'package:phan_mem_quan_ly_can_ho/widgets/app_dialog.dart';
+import 'package:phan_mem_quan_ly_can_ho/screens/team/invitation_acceptance.dart';
+import 'package:phan_mem_quan_ly_can_ho/screens/team/access_request.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/team_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/dashboard_settings_button.dart';
 import 'dart:ui';
 
@@ -113,7 +116,6 @@ class _DashboardScreenState extends State<DashboardScreen>
   late final AnimationController _listAnimCtrl;
 
   final AsyncLock _createOrgLock = AsyncLock();
-  final AsyncLock _joinOrgLock   = AsyncLock();
   final AsyncLock _dialogLock    = AsyncLock();
   final AsyncLock _logoutLock    = AsyncLock();
   final AsyncLock _leaveOrgLock  = AsyncLock();
@@ -311,6 +313,17 @@ class _DashboardScreenState extends State<DashboardScreen>
                 controller: _scrollCtrl,
                 slivers: [
                   SliverToBoxAdapter(child: _buildHero(context, isSmall)),
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                      child: InvitationEntryButton(
+                        service: getIt<TeamService>(),
+                        onReturn: () {
+                          if (mounted) _refreshOrgs(owner.id);
+                        },
+                      ),
+                    ),
+                  ),
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: EdgeInsets.fromLTRB(
@@ -1081,4 +1094,3 @@ class AsyncLock {
     }
   }
 }
-

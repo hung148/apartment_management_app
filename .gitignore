@@ -27,6 +27,7 @@ migrate_working_dir/
 **/doc/api/
 **/ios/Flutter/.last_build_id
 .dart_tool/
+private-backups/
 .appdata/
 .flutter-plugins-dependencies
 .pub-cache/
@@ -51,6 +52,12 @@ android/app/google-services.json
 ios/Runner/GoogleService-Info.plist
 
 .env
+**/.env.*
+!**/.env.example
+**/*.jks
+**/*.keystore
+**/*.p12
+**/key.properties
 
 # Ignore local logs
 lib\log.txt

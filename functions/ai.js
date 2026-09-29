@@ -12,6 +12,9 @@ function createAI({db,Timestamp,HttpsError,generate,now=()=>Date.now()}) {
  async function member(user,orgId,admin=false,tx=null){
   if(!validId(orgId))fail('invalid-argument','ai_invalid_request');
   const ref=db.doc(`memberships/${user}_${orgId}`), snap=tx?await tx.get(ref):await ref.get();
+  const orgRef=db.doc(`organizations/${orgId}`), org=tx?await tx.get(orgRef):await orgRef.get();
+  // Legacy AI tools return organization-wide data; deny until scoped v2 tools exist.
+  if(!org.exists || org.data().accessVersion===2)fail('permission-denied','ai_scoped_access_required');
   if(!snap.exists || snap.data().ownerId!==user || snap.data().organizationId!==orgId || snap.data().status!=='active' || (admin && snap.data().role!=='admin'))fail('permission-denied','ai_access_denied');
  }
  const premium=doc=>doc.exists && doc.data().status==='active' && doc.data().expiresAt?.toMillis()>now() && doc.data().verified===true && doc.data().periodStart?.toMillis()<=now();
@@ -50,7 +53,7 @@ function createAI({db,Timestamp,HttpsError,generate,now=()=>Date.now()}) {
  async function readTool(user,call){
   if(call.name==='list_organizations'){
    const memberships=await db.collection('memberships').where('ownerId','==',user).where('status','==','active').limit(30).get();
-   const result=[];for(const m of memberships.docs){const o=await db.doc('organizations/'+m.data().organizationId).get();if(o.exists)result.push(safeRecord('organizations',o));}return {records:result,possiblyTruncated:memberships.size===30};
+   const result=[];for(const m of memberships.docs){const o=await db.doc('organizations/'+m.data().organizationId).get();if(o.exists && o.data().accessVersion!==2)result.push(safeRecord('organizations',o));}return {records:result,possiblyTruncated:memberships.size===30};
   }
   const collection=call.name?.replace('list_','');if(!['buildings','rooms','tenants','payments'].includes(collection))fail('invalid-argument','ai_invalid_request');
   await member(user,call.args?.organizationId);
