@@ -4,6 +4,7 @@ class Owner {
   final String id; // Unique ID from Firestore
   final String email; // Owner's email
   final String name; // Owner's full name
+  final String? phone; // Optional contact phone (Settings > Personal information)
   final DateTime createdAt; // When they joined
   // If owner was invited by someone, store their ID
   final String? invitedBy; // Optional
@@ -14,6 +15,7 @@ class Owner {
     required this.name,
     required this.createdAt,
     this.invitedBy,
+    this.phone,
   });
 
   // convert Owner to Map for saving to Firestore
@@ -24,6 +26,8 @@ class Owner {
       'name': name,
       'createdAt': Timestamp.fromDate(createdAt), // Convert DateTime to Timestamp
     };
+
+    if (phone != null) map['phone'] = phone;
 
     // Add invitedBy only if it exists (not null)
     if (invitedBy != null) {
@@ -39,8 +43,9 @@ class Owner {
       id: id,
       email: map['email'] ?? '', // use empty string if null
       name: map['name'] ?? '',
-      createdAt: (map['createdAt'] as Timestamp).toDate(),
+      createdAt: map['createdAt'] is Timestamp ? (map['createdAt'] as Timestamp).toDate() : DateTime.now(),
       invitedBy: map['invitedBy'], // Can be null
+      phone: map['phone'] is String ? map['phone'] as String : null,
     );
   }
 
@@ -51,6 +56,7 @@ class Owner {
     String? name,
     DateTime? createdAt,
     String? invitedBy,
+    String? phone,
   }) {
     return Owner(
       id: id ?? this.id, // Use new value if provided, otherwise keep current
@@ -58,6 +64,7 @@ class Owner {
       name: name ?? this.name,
       createdAt: createdAt ?? this.createdAt,
       invitedBy: invitedBy ?? this.invitedBy,
+      phone: phone ?? this.phone,
     );
   }
 }

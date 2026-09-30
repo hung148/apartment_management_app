@@ -7,16 +7,24 @@ import 'dart:ui';
 
 import 'package:phan_mem_quan_ly_can_ho/main.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/membership_model.dart';
+import 'package:phan_mem_quan_ly_can_ho/models/team_access.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/organization_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/owner_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/auth_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/account_deletion_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/profile_service.dart';
+import 'package:uuid/uuid.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/organization_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/organization_settings_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/widgets/app_logger.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/email_format.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/update_services.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/localizations/app_localizations.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_router.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_theme.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/loading.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -27,6 +35,7 @@ import 'dart:async';
 // lifecycle, shared presentation helpers, and the dashboard layout.
 part 'dashboard_settings_dialogs.dart';
 part 'dashboard_organization_dialogs.dart';
+part 'dashboard_profile_dialogs.dart';
 
 // ─────────────────────────────────────────────────────────────
 // DESIGN TOKENS
@@ -73,27 +82,6 @@ class _DS {
 }
 
 // ─────────────────────────────────────────────────────────────
-// HERO WAVE CLIPPER
-// ─────────────────────────────────────────────────────────────
-class _WaveClipper extends CustomClipper<Path> {
-  @override
-  Path getClip(Size size) {
-    final path = Path();
-    path.lineTo(0, size.height - 40);
-    path.quadraticBezierTo(
-      size.width * 0.5, size.height + 28,
-      size.width, size.height - 40,
-    );
-    path.lineTo(size.width, 0);
-    path.close();
-    return path;
-  }
-
-  @override
-  bool shouldReclip(_WaveClipper old) => false;
-}
-
-// ─────────────────────────────────────────────────────────────
 // SCREEN
 // ─────────────────────────────────────────────────────────────
 class DashboardScreen extends StatefulWidget {
@@ -107,6 +95,10 @@ class _DashboardScreenState extends State<DashboardScreen>
     with WidgetsBindingObserver, TickerProviderStateMixin {
   final AuthService _authService = getIt<AuthService>();
   final OrganizationService _organizationService = getIt<OrganizationService>();
+  // Version-2 organization settings go through the server, never direct writes.
+  final OrganizationSettingsService _organizationSettings = OrganizationSettingsService();
+  // Started when the ⋯ menu opens so Info/Edit usually have data by the tap.
+  final Map<String, Future<OrganizationSettings>> _v2SettingsPrefetch = {};
   final UpdateService _updateService = getIt<UpdateService>();
 
   Future<Owner?>? _ownerFuture;
@@ -120,8 +112,8 @@ class _DashboardScreenState extends State<DashboardScreen>
   final AsyncLock _logoutLock    = AsyncLock();
   final AsyncLock _leaveOrgLock  = AsyncLock();
   final AsyncLock _deleteAccountLock = AsyncLock();
+  final AsyncLock _profileLock = AsyncLock();
 
-  int  _overlayCount    = 0;
   bool _updateAvailable = false;
   bool _checkingUpdate  = false;
   bool _isDisposed      = false;
@@ -148,6 +140,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     _ownerFuture = _authService.getCurrentOwner();
     _ownerFuture?.then((owner) {
       if (owner != null && mounted) {
+        _syncEmailIfChanged(owner);
         setState(() {
           _orgsFuture = _organizationService.getUserOrganizations(owner.id);
         });
@@ -232,16 +225,11 @@ class _DashboardScreenState extends State<DashboardScreen>
     required WidgetBuilder builder,
     bool barrierDismissible = true,
   }) async {
-    _overlayCount++;
-    try {
-      return await showDialog<T>(
-        context: context,
-        barrierDismissible: barrierDismissible,
-        builder: builder,
-      );
-    } finally {
-      if (mounted) _overlayCount--;
-    }
+    return await showDialog<T>(
+      context: context,
+      barrierDismissible: barrierDismissible,
+      builder: builder,
+    );
   }
 
   Future<T?> _showTrackedBottomSheet<T>({
@@ -251,18 +239,13 @@ class _DashboardScreenState extends State<DashboardScreen>
     ShapeBorder? shape,
     BoxConstraints? constraints,
   }) async {
-    _overlayCount++;
-    try {
-      return await showModalBottomSheet<T>(
-        context: context,
-        isScrollControlled: isScrollControlled,
-        shape: shape,
-        constraints: constraints,
-        builder: builder,
-      );
-    } finally {
-      if (mounted) _overlayCount--;
-    }
+    return await showModalBottomSheet<T>(
+      context: context,
+      isScrollControlled: isScrollControlled,
+      shape: shape,
+      constraints: constraints,
+      builder: builder,
+    );
   }
 
   bool   _isSmallScreen(BuildContext ctx) => MediaQuery.of(ctx).size.width < 600;
@@ -454,52 +437,6 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
-  Widget _buildAppBarBtn({
-    required IconData icon,
-    required VoidCallback onTap,
-    required String tooltip,
-    required Color bgColor,
-    required Color borderColor,
-    required Color iconColor,
-    bool showBadge = false,
-  }) {
-      return Container(
-        margin: const EdgeInsets.symmetric(horizontal: 3, vertical: 9),
-        width: 40, height: 40,
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Container(
-              width: 40, height: 40,
-              decoration: BoxDecoration(
-                color: bgColor,
-                shape: BoxShape.circle,
-                border: Border.all(color: borderColor, width: 1.8),
-              ),
-              child: IconButton(
-                onPressed: onTap,
-                tooltip: tooltip,
-                padding: EdgeInsets.zero,
-                icon: Icon(icon, color: iconColor, size: 19),
-              ),
-            ),
-            if (showBadge)
-              Positioned(
-                top: -1, right: -1,
-                child: Container(
-                  width: 12, height: 12,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF16A34A),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 2),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      );
-  }
-
   // ─────────────────────────────────────────────────────────
   // ORG CARD
   // ─────────────────────────────────────────────────────────
@@ -542,12 +479,23 @@ class _DashboardScreenState extends State<DashboardScreen>
           }),
           builder: (context, snapshot) {
             final role    = snapshot.data?.role ?? 'member';
-            final isAdmin = role == 'admin';
+            final isV2    = org.accessVersion == 2;
+            // Version 2 uses owner/administrator instead of the legacy admin role.
+            final isAdmin = isV2
+                ? const {'owner', 'administrator'}.contains(role)
+                : role == 'admin';
+            // No supported role yet (migrated member or removed role): wait for
+            // an owner/administrator. Only decided once the membership has loaded.
+            final waiting = isV2 &&
+                snapshot.connectionState == ConnectionState.done &&
+                _isWaitingMember(snapshot.data);
 
             return InkWell(
               borderRadius: BorderRadius.circular(12),
-              onTap: () => Navigator.pushNamed(context, AppRouter.oranizationScreen,
-                  arguments: {'organization': org}),
+              onTap: () => waiting
+                  ? _showWaitingForRole(org)
+                  : Navigator.pushNamed(context, AppRouter.oranizationScreen,
+                      arguments: {'organization': org}),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(12),
                 child: IntrinsicHeight(
@@ -617,12 +565,15 @@ class _DashboardScreenState extends State<DashboardScreen>
                                     ),
                                   ),
                                   const SizedBox(height: 8),
-                                  _buildRoleBadge(isAdmin),
+                                  _buildRoleBadge(isAdmin,
+                                      label: waiting
+                                          ? AppTranslations.of(context).text('team_waiting_role')
+                                          : isV2 ? _v2RoleLabel(role) : null),
                                 ],
                               ),
                             ),
                             GestureDetector(
-                              onTap: () => _showOrganizationOptions(org, owner.id, isAdmin),
+                              onTap: () => _showOrganizationOptions(org, owner.id, isAdmin, role),
                               child: Container(
                                 width: 36, height: 36,
                                 decoration: BoxDecoration(
@@ -652,7 +603,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   // SMALL UI PIECES
   // ─────────────────────────────────────────────────────────
 
-  Widget _buildRoleBadge(bool isAdmin) {
+  Widget _buildRoleBadge(bool isAdmin, {String? label}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
       decoration: BoxDecoration(
@@ -673,38 +624,14 @@ class _DashboardScreenState extends State<DashboardScreen>
         ),
         const SizedBox(width: 4),
         Text(
-          isAdmin
-              ? AppTranslations.of(context).text('admin')
-              : AppTranslations.of(context).text('member'),
+          label ??
+              (isAdmin
+                  ? AppTranslations.of(context).text('admin')
+                  : AppTranslations.of(context).text('member')),
           style: TextStyle(
             color: isAdmin ? _DS.adminGold : _DS.memberBlue,
             fontWeight: FontWeight.w600,
             fontSize: 11,
-          ),
-        ),
-      ]),
-    );
-  }
-
-  Widget _buildHeroChip(IconData icon, String text) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.25), width: 1),
-      ),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icon, size: 13, color: Colors.white.withValues(alpha: 0.85)),
-        const SizedBox(width: 6),
-        Flexible(
-          child: Text(
-            text,
-            style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.92),
-                fontSize: 12,
-                fontWeight: FontWeight.w500),
-            overflow: TextOverflow.ellipsis,
           ),
         ),
       ]),

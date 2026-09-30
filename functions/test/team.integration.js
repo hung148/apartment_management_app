@@ -823,9 +823,9 @@ test('payment action projection allows reception collection without financial re
   assert.ok(!JSON.stringify(result).includes('PRIVATE'));assert.ok(!JSON.stringify(result).includes('SECRET'));
   await assert.rejects(run('reception','financial'),e=>e.code==='permission-denied');
   await assert.rejects(run('reception','paymentActions','b'),e=>e.code==='permission-denied');
-  await setMember('viewer','viewer');await assert.rejects(run('viewer'),e=>e.code==='permission-denied');
-  await db.doc('memberships/viewer_org').update({permissionOverrides:{refundPayments:true}});
-  const refundOnly=(await run('viewer')).records.find(r=>r.id==='invoice');
+  await setMember('keeper','housekeeper');await assert.rejects(run('keeper'),e=>e.code==='permission-denied');
+  await db.doc('memberships/keeper_org').update({permissionOverrides:{refundPayments:true}});
+  const refundOnly=(await run('keeper')).records.find(r=>r.id==='invoice');
   assert.equal(refundOnly.canRefund,true);assert.equal(refundOnly.canCollect,false);
 });
 
@@ -1020,11 +1020,14 @@ test('workspace enforces all role projections, property boundaries and live susp
   await db.doc('buildings/foreign').set({organizationId:'other',name:'Foreign'});
   await db.doc('bookings/booking').set({organizationId:'org',buildingId:'a',guestName:'Guest',guestPhone:'secret',guestIdNumber:'secret',roomId:'r',status:'confirmed'});
   await db.doc('payments/payment').set({organizationId:'org',buildingId:'a',amount:10,currency:'VND',tenantName:'secret',transactionId:'secret'});
-  for(const role of ['owner','administrator','manager','receptionist','housekeeper','accountant','viewer']){
+  // The removed viewer role (and any unknown role) is refused everywhere.
+  await setMember('viewer','viewer',{buildingIds:['a']});
+  for(const view of ['properties','bookings','financial'])await assert.rejects(run('viewer',view),e=>e.code==='permission-denied');
+  for(const role of ['owner','administrator','manager','receptionist','housekeeper','accountant']){
     await setMember(role,role,{buildingIds:['a','foreign']});
     assert.deepEqual((await run(role,'properties')).records.map(r=>r.id),['a']);
     for(const view of ['bookings','financial']){
-      const permitted=view==='bookings'?['owner','administrator','manager','receptionist','accountant'].includes(role):['owner','administrator','manager','accountant','viewer'].includes(role);
+      const permitted=view==='bookings'?['owner','administrator','manager','receptionist','accountant'].includes(role):['owner','administrator','manager','accountant'].includes(role);
       if(permitted){
         const result=await run(role,view);
         assert.equal(result.records.length,1);
@@ -1036,7 +1039,7 @@ test('workspace enforces all role projections, property boundaries and live susp
     await db.doc(`memberships/${role}_org`).update({status:'suspended'});
     await assert.rejects(run(role,'properties'),e=>e.code==='permission-denied');
   }
-  await setMember('empty','viewer',{buildingIds:[]});
+  await setMember('empty','accountant',{buildingIds:[]});
   assert.deepEqual((await run('empty','properties')).records,[]);
   await assert.rejects(read({data:{}}),e=>e.code==='unauthenticated');
 });
@@ -1409,4 +1412,146 @@ test('property layout suggests new room defaults and preserves existing inventor
  const c={action:'update',revision:r.revision,operationId:'layout',layout:{floors:2,roomPrefix:'R',roomType:'Studio',roomArea:35.5,floorRoomCounts:[2,3]}};
  await run(c);await run(c);assert.deepEqual((await db.doc('rooms/r').get()).data(),before);await assert.rejects(run({...c,operationId:'bad',layout:{...c.layout,floorRoomCounts:[1]}}),e=>e.code==='invalid-argument');
  const room=createRoomDetailsHandler({db,Timestamp:Timestamp,HttpsError:class extends Error{constructor(code,message){super(message);this.code=code;}}});const defaults=(await room({auth:{uid:'owner'},data:{organizationId:'org',buildingId:'a',roomId:'new',action:'prepareCreate'}})).record;assert.equal(defaults.roomType,'Studio');assert.equal(defaults.area,35.5);assert.equal(defaults.roomNumber,'R');
+});
+
+test('organization settings: v2 update, leave and close against the emulator, closed organizations are hidden and unjoinable',async()=>{
+ const {createOrganizationSettingsHandler}=require('../organization_settings');
+ const E=class extends Error{constructor(code,message){super(message);this.code=code;}};
+ const api=createOrganizationSettingsHandler({db,Timestamp:Timestamp,HttpsError:E});
+ const directory=createOrganizationDirectory({db,HttpsError:E});
+ const run=(data,uid='owner')=>api({auth:{uid},data:{organizationId:'org',...data}});
+ await db.doc('organizations/org').update({name:'Sunrise',bankAccountNumber:'PRIVATE'});
+ await setMember('viewer','receptionist');await setMember('admin','administrator',{buildingScope:'all',buildingIds:[]});
+ assert.equal((await run({action:'read'},'viewer')).bankAccountNumber,undefined);
+ assert.equal((await run({action:'read'},'admin')).bankAccountNumber,'PRIVATE');
+ const fields={name:'Sunrise Homes',address:'',phone:'',email:'',taxCode:'',bankName:'',bankAccountNumber:'NEWBANK',bankAccountName:''};
+ await assert.rejects(run({action:'update',operationId:'u0',fields},'viewer'),e=>e.code==='permission-denied');
+ await run({action:'update',operationId:'u1',fields},'admin');
+ assert.equal((await db.doc('organizations/org').get()).data().name,'Sunrise Homes');
+ assert.ok(!JSON.stringify((await db.collection('teamActivity').get()).docs.map(d=>d.data())).includes('NEWBANK'));
+ // Clients can never read or forge the ledger or organization fields directly.
+ const client=env.authenticatedContext('owner').firestore();
+ await assertFails(getDoc(doc(client,'organizationOperations/any')));
+ await assertFails(updateDoc(doc(client,'organizations/org'),{name:'Direct'}));
+ await run({action:'leave',operationId:'l1'},'viewer');
+ assert.equal((await db.doc('memberships/viewer_org').get()).data().status,'revoked');
+ await call(invitation);
+ await assert.rejects(run({action:'close',operationId:'c1',confirmName:'Wrong'}),e=>e.code==='invalid-argument');
+ const closed=await run({action:'close',operationId:'c1',confirmName:'Sunrise Homes'});
+ assert.equal(closed.status,'closed');
+ for(const id of ['owner_org','admin_org','viewer_org'])assert.equal((await db.doc(`memberships/${id}`).get()).data().status,'revoked');
+ assert.ok((await db.doc('organizations/org').get()).exists,'records retained until purgeAfter');
+ assert.deepEqual((await directory({auth:{uid:'owner'},data:{}})).records,[]);
+ const pending=(await db.collection('teamInvitations').where('organizationId','==','org').get()).docs[0];
+ await assert.rejects(call({action:'acceptInvitation',operationId:'accept',invitationId:pending.id},'new'),e=>e.message==='org_closed');
+ await assert.rejects(invitationLookup({auth:{uid:'new',token:{email:'new@example.com',email_verified:true}},data:{invitationId:pending.id}}),e=>e.message==='org_closed');
+});
+
+test('organization copy and purge work against real Firestore queries, subcollections and recursive delete',async()=>{
+ const {createOrganizationSettingsHandler}=require('../organization_settings');
+ const {createOrganizationPurge}=require('../organization_purge');
+ const E=class extends Error{constructor(code,message){super(message);this.code=code;}};
+ const api=createOrganizationSettingsHandler({db,Timestamp:Timestamp,HttpsError:E});
+ const run=(data,uid='owner')=>api({auth:{uid},data:{organizationId:'org',...data}});
+ await db.doc('organizations/org').update({name:'Source'});
+ await db.doc('organizations/dest').set({name:'Dest',createdBy:'owner',accessVersion:2});
+ await db.doc('memberships/owner_dest').set({organizationId:'dest',ownerId:'owner',accessVersion:2,role:'owner',status:'active',buildingScope:'all',buildingIds:[]});
+ await db.doc('rooms/r').set({organizationId:'org',buildingId:'a',roomNumber:'1'});
+ await db.doc('tenants/t').set({organizationId:'org',buildingId:'a',roomId:'r',fullName:'Main'});
+ await db.doc('tenants/t/rentHistory/h').set({organizationId:'org',tenantId:'t'});
+ await db.doc('tenants/old').set({roomId:'r',fullName:'Legacy child'});
+ await db.doc('payments/p').set({organizationId:'org',tenantId:'t',roomId:'r'});
+ const preview=await run({action:'copyPreview',targetOrganizationId:'dest'});
+ assert.deepEqual([preview.buildings,preview.rooms,preview.tenants,preview.payments],[1,1,2,1]);
+ const copy={action:'copy',operationId:'copy1',targetOrganizationId:'dest'};
+ const result=await run(copy);assert.deepEqual(await run(copy),result);
+ const tenants=(await db.collection('tenants').where('organizationId','==','dest').get()).docs;
+ assert.equal(tenants.length,2);
+ const main=tenants.find(t=>t.data().fullName==='Main');
+ const room=(await db.collection('rooms').where('organizationId','==','dest').get()).docs[0];
+ assert.equal(main.data().roomId,room.id);assert.notEqual(room.id,'r');
+ assert.equal((await main.ref.collection('rentHistory').get()).size,1);
+ assert.equal((await db.collection('payments').where('tenantId','==',main.id).get()).docs[0].data().organizationId,'dest');
+ assert.ok((await db.doc('tenants/t').get()).exists,'source kept');
+ // Close the copy target, pass its purge date, then purge: only dest data goes.
+ await run({action:'close',operationId:'close-dest',confirmName:'Dest',organizationId:'dest'});
+ await db.doc('organizations/dest').update({purgeAfter:Timestamp.fromMillis(Date.now()-1000)});
+ const logger={info(){},warn(){},error(){}};
+ const results=await createOrganizationPurge({db,Timestamp:Timestamp,logger})();
+ assert.equal(results.find(r=>r.id==='dest').status,'purged');
+ assert.equal((await db.doc('organizations/dest').get()).exists,false);
+ assert.equal((await db.collection('tenants').where('organizationId','==','dest').get()).size,0);
+ assert.equal((await main.ref.collection('rentHistory').get()).size,0,'subcollections removed');
+ assert.ok((await db.doc('tenants/t').get()).exists&&(await db.doc('tenants/t/rentHistory/h').get()).exists,'source untouched');
+ assert.ok((await db.doc('purgedOrganizations/dest').get()).exists);
+ const client=env.authenticatedContext('owner').firestore();
+ await assertFails(getDoc(doc(client,'purgedOrganizations/dest')));
+});
+
+test('a closed organization can be restored by its owner and reappears with previous member status',async()=>{
+ const {createOrganizationSettingsHandler}=require('../organization_settings');
+ const E=class extends Error{constructor(code,message){super(message);this.code=code;}};
+ const api=createOrganizationSettingsHandler({db,Timestamp:Timestamp,HttpsError:E});
+ const directory=createOrganizationDirectory({db,HttpsError:E});
+ const run=(data,uid='owner')=>api({auth:{uid},data:{organizationId:'org',...data}});
+ await db.doc('organizations/org').update({name:'Sunrise'});
+ await setMember('paused','manager',{status:'suspended'});
+ await run({action:'close',operationId:'close',confirmName:'Sunrise'});
+ assert.deepEqual((await directory({auth:{uid:'owner'},data:{}})).records,[]);
+ assert.deepEqual((await api({auth:{uid:'owner'},data:{action:'closedList'}})).records.map(r=>r.id),['org']);
+ assert.equal((await run({action:'restore',operationId:'restore'})).status,'restored');
+ assert.deepEqual((await directory({auth:{uid:'owner'},data:{}})).records.map(r=>r.id),['org']);
+ assert.equal((await db.doc('memberships/owner_org').get()).data().status,'active');
+ assert.equal((await db.doc('memberships/paused_org').get()).data().status,'suspended');
+ assert.equal((await db.doc('organizations/org').get()).data().closedAt,null);
+});
+
+test('waiting members see their organization marked waiting; removed-role invitations cannot be accepted',async()=>{
+ const E=class extends Error{constructor(code,message){super(message);this.code=code;}};
+ const directory=createOrganizationDirectory({db,HttpsError:E});
+ await db.doc('organizations/org').update({name:'Visible'});
+ await setMember('wait',null,{status:'assignmentRequired',buildingIds:[]});
+ await setMember('old','viewer');
+ for(const uid of ['wait','old']){
+  const rows=(await directory({auth:{uid},data:{}})).records;
+  assert.deepEqual(rows.map(r=>[r.id,r.waiting]),[['org',true]],uid);
+ }
+ assert.equal((await directory({auth:{uid:'owner'},data:{}})).records[0].waiting,undefined);
+ await setMember('gone','manager',{status:'revoked'});
+ assert.deepEqual((await directory({auth:{uid:'gone'},data:{}})).records,[]);
+ // A pending invitation created before viewer was removed.
+ await db.doc('teamInvitations/oldInvite').set({organizationId:'org',staffId:'staff',email:'new@example.com',
+  access:{accessVersion:2,role:'viewer',buildingScope:'selected',buildingIds:['a'],permissionOverrides:{}},
+  status:'pending',invitedBy:'owner',createdAt:Timestamp.now(),expiresAt:Timestamp.fromMillis(Date.now()+86400000)});
+ const preview=await invitationLookup({auth:{uid:'new',token:{email:'new@example.com',email_verified:true}},data:{invitationId:'oldInvite'}});
+ assert.equal(preview.roleRemoved,true);assert.equal(preview.canAccept,false);
+ await assert.rejects(call({action:'acceptInvitation',operationId:'acc',invitationId:'oldInvite'},'new'),e=>e.message==='team_invitation_role_removed');
+ assert.equal((await db.doc('memberships/new_org').get()).exists,false);
+ await assert.rejects(call({...invitation,operationId:'viewer-invite',access:{...invitation.access,role:'viewer'}}),e=>e.code==='invalid-argument');
+});
+
+test('account deletion hands over or closes owned organizations and removes personal records',async()=>{
+ const {createAccountDeletionHandler}=require('../account_deletion');
+ const E=class extends Error{constructor(code,message){super(message);this.code=code;}};
+ const api=createAccountDeletionHandler({db,Timestamp:Timestamp,HttpsError:E});
+ const run=(data,authTime=Math.floor(Date.now()/1000))=>api({auth:{uid:'owner',token:{auth_time:authTime}},data});
+ await db.doc('organizations/org').update({name:'Main'});
+ await setMember('admin','administrator',{buildingScope:'all',buildingIds:[]});
+ await db.doc('organizations/second').set({name:'Second',accessVersion:2,createdBy:'owner'});
+ await db.doc('memberships/owner_second').set({organizationId:'second',ownerId:'owner',accessVersion:2,role:'owner',status:'active',buildingScope:'all',buildingIds:[]});
+ await db.doc('owners/owner').set({name:'Owner'});
+ await db.doc('staffProfiles/staff').update({accountId:'owner'});
+ const preview=await run({action:'preview'});
+ assert.deepEqual(preview.organizations.map(o=>[o.organizationId,o.plan]).sort(),[['org','decide'],['second','close']]);
+ await assert.rejects(run({action:'delete',operationId:'d',decisions:{}},Math.floor(Date.now()/1000)-3600),e=>e.message==='recent_login_required');
+ const result=await run({action:'delete',operationId:'d',decisions:{org:{action:'transfer',to:'admin'}}});
+ assert.equal(result.status,'dataDeleted');
+ assert.equal((await db.doc('memberships/admin_org').get()).data().role,'owner');
+ assert.equal((await db.doc('memberships/owner_org').get()).data().status,'revoked');
+ assert.equal((await db.doc('memberships/owner_org').get()).data().email,null);
+ assert.ok((await db.doc('organizations/second').get()).data().closedAt);
+ assert.equal((await db.doc('owners/owner').get()).exists,false);
+ assert.equal((await db.doc('staffProfiles/staff').get()).data().accountId,null);
+ const client=env.authenticatedContext('owner').firestore();
+ await assertFails(getDoc(doc(client,'accountDeletions/owner')));
 });

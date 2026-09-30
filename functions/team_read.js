@@ -1,5 +1,5 @@
 'use strict';
-const {allows, canManageAccessOf} = require('./team_access');
+const {allows, canManageAccessOf, roles} = require('./team_access');
 
 const FIELDS = Object.freeze({
   buildings: ['organizationId','name'],
@@ -122,6 +122,7 @@ function createInvitationLookupHandler({db,HttpsError}) {
       const invitation=doc.data();
       const org=await tx.get(db.collection('organizations').doc(invitation.organizationId));
       if(!org.exists || org.data().accessVersion!==2)fail('failed-precondition','team_migration_required');
+      if(org.data().closedAt)fail('failed-precondition','org_closed');
       const mine=await tx.get(db.collection('memberships').doc(`${request.auth.uid}_${invitation.organizationId}`));
       const expired=!invitation.expiresAt?.toMillis || invitation.expiresAt.toMillis()<=Date.now();
       const grant=invitation.access ?? {};
@@ -136,7 +137,8 @@ function createInvitationLookupHandler({db,HttpsError}) {
         access:serialize(Object.fromEntries(['accessVersion','role','buildingScope','buildingIds','permissionOverrides'].filter(k=>grant[k]!==undefined).map(k=>[k,grant[k]]))),
         properties,expiresAt:serialize(invitation.expiresAt)??null,
         status:invitation.status==='pending'&&expired?'expired':invitation.status,
-        canAccept:invitation.status==='pending'&&!expired&&!mine.exists};
+        roleRemoved:!Object.hasOwn(roles,grant.role),
+        canAccept:invitation.status==='pending'&&!expired&&!mine.exists&&Object.hasOwn(roles,grant.role)};
     });
   };
 }

@@ -12,13 +12,18 @@ if(f.serviceConfig.serviceAccountEmail!==`${expected}@${project}.iam.gserviceacc
 if(!f.buildConfig.serviceAccount.endsWith(`/app-functions-build@${project}.iam.gserviceaccount.com`))throw Error('Unexpected build identity: '+name);
 const service='https://run.googleapis.com/v2/'+f.serviceConfig.service;
 const policy=await api(service+':getIamPolicy');policy.bindings??=[];
-let invoker=policy.bindings.find(b=>b.role==='roles/run.invoker'&&!b.condition);
-
-if(!invoker?.members.includes('allUsers'))throw Error('Missing callable transport invoker: '+name);
+const invoker=policy.bindings.find(b=>b.role==='roles/run.invoker'&&!b.condition);
+const scheduled=f.labels?.['deployment-scheduled']==='true';
+if(scheduled){
+ // Scheduled jobs are server-only: never public, invoked by their own runtime identity.
+ if(invoker?.members.some(m=>m==='allUsers'||m==='allAuthenticatedUsers'))throw Error('Scheduled function is public: '+name);
+ if(!invoker?.members.includes('serviceAccount:'+f.serviceConfig.serviceAccountEmail))throw Error('Scheduler identity cannot invoke: '+name);
+}else if(!invoker?.members.includes('allUsers'))throw Error('Missing callable transport invoker: '+name);
 // Public transport is required for Firebase callable SDKs; Auth/App Check inside
 // the callable are the access boundary, not a Cloud Run IAM bearer token.
 const response=await fetch(f.serviceConfig.uri,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({data:{}}),signal:AbortSignal.timeout(30000)});
 const body=await response.text();
+if(scheduled){results.push({name,state:f.state,runtime:expected,build:'app-functions-build',scheduled:true,unauthenticatedStatus:response.status,publicAccessDenied:response.status===403});continue;}
 results.push({name,state:f.state,runtime:expected,build:'app-functions-build',unauthenticatedStatus:response.status,callableDenied:body.includes('UNAUTHENTICATED'),providerDisabled:body.includes('staging_provider_not_configured')||body.includes('Staging provider not configured')});
 }
 const indexes=await api(`https://firestore.googleapis.com/v1/projects/${project}/databases/(default)/collectionGroups/-/indexes`);

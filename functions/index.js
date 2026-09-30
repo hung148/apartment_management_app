@@ -48,6 +48,22 @@ exports.mutateHousekeepingTask = secureCallable('mutateHousekeepingTask',{maxIns
 const {createOrganizationDirectory}=require('./organization_directory');
 const organizationDirectory=createOrganizationDirectory({db,HttpsError:functions.https.HttpsError});
 exports.listMyOrganizations = secureCallable('listMyOrganizations',{maxInstances:5},request=>organizationDirectory(request));
+const {createOrganizationSettingsHandler}=require('./organization_settings');
+const organizationSettingsHandler=createOrganizationSettingsHandler({db,Timestamp:Timestamp,HttpsError:functions.https.HttpsError});
+// Copy can walk a whole organization, so it gets the long timeout.
+exports.organizationSettings = secureCallable('organizationSettings',{maxInstances:5,timeoutSeconds:540,memory:'512MiB'},request=>organizationSettingsHandler(request));
+const {createAccountDeletionHandler}=require('./account_deletion');
+const accountDeletionHandler=createAccountDeletionHandler({db,Timestamp:Timestamp,HttpsError:functions.https.HttpsError});
+// Walks every membership of one account; long timeout like organization copy.
+exports.deleteMyAccount = secureCallable('deleteMyAccount',{maxInstances:3,timeoutSeconds:540,memory:'512MiB'},request=>accountDeletionHandler(request));
+const {createMyProfileHandler}=require('./my_profile');
+const myProfileHandler=createMyProfileHandler({db,Timestamp:Timestamp,HttpsError:functions.https.HttpsError});
+// Personal information in Settings: name/phone, and copying a confirmed new sign-in email.
+exports.myProfile = secureCallable('myProfile',{maxInstances:3},request=>myProfileHandler(request));
+const {createOrganizationPurge}=require('./organization_purge');
+const purgeClosedOrganizations=createOrganizationPurge({db,Timestamp:Timestamp,logger:functions.logger});
+// Daily, server-only: permanently removes closed organizations after their 30-day retention.
+exports.purgeClosedOrganizations = functions.scheduler.onSchedule({schedule:'15 3 * * *',timeZone:'Asia/Ho_Chi_Minh',timeoutSeconds:540,memory:'512MiB',maxInstances:1,retryCount:0},async()=>{await purgeClosedOrganizations();});
 const {createPaymentHandler}=require('./payments');
 const paymentHandler=createPaymentHandler({db,Timestamp:Timestamp,HttpsError:functions.https.HttpsError});
 exports.mutateStandalonePayment = secureCallable('mutateStandalonePayment',{maxInstances:5},request=>paymentHandler(request));

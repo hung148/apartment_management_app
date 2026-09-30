@@ -138,7 +138,7 @@ void main() {
       await press(tester, 'Load more tenants');
       expect(find.text('Tenant 26'), findsOneWidget);
       expect(find.text('Load more tenants'), findsNothing);
-      store.workspaceRole = 'viewer';
+      store.workspaceRole = 'housekeeper';
       await press(tester, 'Refresh tenants');
       expect(find.byType(Card), findsNothing);
       store.workspaceRole = 'owner';

@@ -69,3 +69,8 @@ test('Dart and server policies expose the same permission and role names', () =>
   assert.deepEqual(names('TeamRole'),Object.keys(roles));
   assert.deepEqual(names('TeamPermission'),permissions);
 });
+
+test('the removed viewer role is unknown and grants nothing', () => {
+  assert.equal(Object.hasOwn(roles,'viewer'),false);
+  for (const p of permissions) assert.equal(allows({...member('viewer'),role:'viewer'},p),false);
+});

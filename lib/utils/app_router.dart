@@ -38,29 +38,40 @@ class AppRouter {
     );
   }
 
+  /// Inner screens need the organization/building/room they were opened
+  /// with. Without it (e.g. an old link) start over at the splash, which
+  /// sends the user to login or the dashboard.
+  static Route<dynamic> _restart() => MaterialPageRoute(
+        builder: (_) => const SplashScreen(),
+        settings: const RouteSettings(name: splashScreen),
+      );
+
   static Route<dynamic> generateRoute(RouteSettings settings) {
 
     // settings.name tells us which screen they want
     switch (settings.name) {
       case splashScreen:
-        return MaterialPageRoute(builder: (_) => SplashScreen());
+        return MaterialPageRoute(builder: (_) => const SplashScreen(), settings: settings);
       case loginScreen:
-        return MaterialPageRoute(builder: (_) => LoginScreen());
+        return MaterialPageRoute(builder: (_) => const LoginScreen(), settings: settings);
       case dashboardScreen:
         return fadeRoute(const DashboardScreen(), settings: settings);
       case oranizationScreen:
-        final args = settings.arguments as Map<String, dynamic>;
+        final args = settings.arguments;
+        if (args is! Map<String, dynamic>) return _restart();
         return MaterialPageRoute(builder: (_) => OrganizationScreen(
           organization: args['organization'],
         ), settings: settings,);
       case buildingRoomScreen:
-        final args = settings.arguments as Map<String, dynamic>;
+        final args = settings.arguments;
+        if (args is! Map<String, dynamic>) return _restart();
         return MaterialPageRoute(builder: (_) => BuildingRoomScreen(
           building: args['building'],
           organization: args['organization'],
         ), settings: settings,);
       case roomDetailScreen:
-        final args = settings.arguments as Map<String, dynamic>;
+        final args = settings.arguments;
+        if (args is! Map<String, dynamic>) return _restart();
         return MaterialPageRoute(
           builder: (_) => RoomDetailScreen(
             room: args['room'],

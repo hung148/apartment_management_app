@@ -1,5 +1,8 @@
 # Team & access implementation
 
+> **Current release work is tracked in [RELEASE_TASKS.md](RELEASE_TASKS.md).**
+> The sections below are implementation history and evidence.
+
 ## Staging security progress — 2026-09-28
 
 Deployed the separate staging backend with dedicated runtime/build accounts,

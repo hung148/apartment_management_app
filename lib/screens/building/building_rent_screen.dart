@@ -519,6 +519,8 @@ class _BuildingRentScreenState extends State<BuildingRentScreen> {
     final descController = TextEditingController(text: existing?.description ?? '');
     DateTime dueDate = existing?.dueDate ?? DateTime.now().add(const Duration(days: 7));
     String? amountError;
+    // Blocks a second tap while the first save is in flight.
+    bool saving = false;
 
     final dateFormKey = GlobalKey<FormState>();
     final result = await showDialog<bool>(
@@ -660,7 +662,7 @@ class _BuildingRentScreenState extends State<BuildingRentScreen> {
                       Expanded(
                         flex: 2,
                         child: FilledButton.icon(
-                          onPressed: () async {
+                          onPressed: saving ? null : () async {
                             if (!dateFormKey.currentState!.validate()) return;
                             final amount = CurrencyParser.tryParse(amountController.text);
                             if (amount == null || amount <= 0) {
@@ -673,6 +675,8 @@ class _BuildingRentScreenState extends State<BuildingRentScreen> {
                                 : descController.text.trim();
 
                             bool success;
+                            setDialogState(() => saving = true);
+                            try {
                             if (isEditing) {
                               success = await _paymentsNotifier.updatePayment(
                                 existing.id,
@@ -694,6 +698,9 @@ class _BuildingRentScreenState extends State<BuildingRentScreen> {
                                 renterName: building.renterName,
                               );
                               success = id != null;
+                            }
+                            } finally {
+                              if (dialogContext.mounted) setDialogState(() => saving = false);
                             }
 
                             if (dialogContext.mounted) {

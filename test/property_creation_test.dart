@@ -85,7 +85,7 @@ void main() {
         'owner',
         'administrator',
         'receptionist',
-        'viewer',
+        'accountant',
       ]) {
         final store = TeamPreviewStore()..workspaceRole = role;
         store.assignedOnly = [

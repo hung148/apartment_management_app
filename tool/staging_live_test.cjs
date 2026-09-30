@@ -29,7 +29,7 @@ try{
  await member('owner');
  for(const token of [null,'invalid-token']){const r=await invoke('listMyOrganizations',{},token);assert.equal(r.status,401);results.push({case:token?'invalid-AppCheck':'missing-AppCheck',status:r.status});}
  const directory=await invoke('listMyOrganizations',{});assert.equal(directory.status,200);assert(directory.data.result.records.some(r=>r.id===org));results.push({case:'valid-auth-and-AppCheck',status:200});
- for(const role of ['owner','administrator','manager','receptionist','housekeeper','accountant','viewer']){
+ for(const role of ['owner','administrator','manager','receptionist','housekeeper','accountant']){
   await member(role);
   const own=await invoke('readWorkspace',{organizationId:org,view:'properties'});assert.equal(own.status,200);assert.deepEqual(own.data.result.records.map(r=>r.id),[a]);
   const financial=await invoke('readWorkspace',{organizationId:org,buildingId:a,view:'financial'});assert.equal(financial.status,['receptionist','housekeeper'].includes(role)?403:200);

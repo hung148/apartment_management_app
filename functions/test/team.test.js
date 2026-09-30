@@ -85,7 +85,7 @@ test('suspended inviter invalidates outstanding invitations',async()=>{
 });
 test('invitation cannot overwrite existing or revoked membership',async()=>{
   const {db,call}=fixture();const {invitationId}=await call(invite);
-  db.rows.set('memberships/new_org',{...membership('new','viewer'),status:'revoked'});
+  db.rows.set('memberships/new_org',{...membership('new','receptionist'),status:'revoked'});
   await assert.rejects(call({action:'acceptInvitation',invitationId},'new'),/team_existing_access/);
   assert.equal(db.rows.get('memberships/new_org').status,'revoked');
 });
@@ -165,4 +165,31 @@ test('callable wrapper forwards authentication and validates input',async()=>{
   const {mutateTeam}=require('../index');
   await assert.rejects(mutateTeam.run({data:{}}),e=>e.code==='unauthenticated');
   await assert.rejects(mutateTeam.run({auth:{uid:'owner'},data:{}}),e=>e.code==='unauthenticated'&&e.message==='app_check_required');
+});
+test('assigning a role to an account without a staff profile creates and links one',async()=>{
+  const {db,call}=fixture();
+  db.rows.set('memberships/waiter_org',{...membership('waiter',null),status:'assignmentRequired',buildingScope:'selected',displayName:'Lan',email:'lan@example.com'});
+  const req={action:'setAccess',userId:'waiter',status:'active',access:access(),reason:'Assign role'};
+  await call(req,'admin');
+  const m=db.rows.get('memberships/waiter_org');
+  assert.equal(m.role,'receptionist');
+  assert.ok(m.staffId);
+  const staff=db.rows.get(`staffProfiles/${m.staffId}`);
+  assert.deepEqual([staff.organizationId,staff.accountId,staff.displayName,staff.email,staff.employmentStatus],['org','waiter','Lan','lan@example.com','active']);
+  assert.match(staff.code,/^ACC-[0-9A-F]{6}$/);
+  assert.equal(events(db)[0][1].after.staffId,m.staffId);
+  // a later change keeps the same profile, never a second one
+  await call({...req,status:'suspended',reason:'Leave'},'admin');
+  assert.equal(db.rows.get('memberships/waiter_org').staffId,m.staffId);
+  assert.equal([...db.rows.keys()].filter(k=>k.startsWith('staffProfiles/')&&db.rows.get(k).accountId==='waiter').length,1);
+});
+test('an existing profile linked to the account is reused, and revoking creates none',async()=>{
+  const {db,call}=fixture();
+  db.rows.get('staffProfiles/staff').accountId='worker';
+  await call({action:'setAccess',userId:'worker',status:'active',access:access('housekeeper'),reason:'Change'},'admin');
+  assert.equal(db.rows.get('memberships/worker_org').staffId,'staff');
+  db.rows.set('memberships/gone_org',{...membership('gone','receptionist'),displayName:'Gone'});
+  await call({action:'setAccess',userId:'gone',status:'revoked',access:access(),reason:'Left'},'admin');
+  assert.equal(db.rows.get('memberships/gone_org').staffId,undefined);
+  assert.equal([...db.rows.keys()].filter(k=>k.startsWith('staffProfiles/')).length,1);
 });

@@ -25,7 +25,7 @@ extension OperationalPreview on TeamPreviewStore {
         ].contains(workspaceRole),
         book = manager || workspaceRole == 'receptionist';
     if (name == 'propertyLayout' && !manager ||
-        name == 'invoices' && !finance && workspaceRole != 'viewer' ||
+        name == 'invoices' && !finance ||
         name == 'bookingWorkspace' && !book && workspaceRole != 'accountant') {
       reject();
     }

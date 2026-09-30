@@ -215,7 +215,10 @@ class _InvitationAcceptanceState extends State<InvitationAcceptance> {
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
                       Text(
-                        '${t['team_role']}: ${t['team_role_${access.role?.name}']}',
+                        // A role removed after the invitation was sent has no name to show.
+                        access.role == null
+                            ? t['team_invitation_role_removed']
+                            : '${t['team_role']}: ${t['team_role_${access.role!.name}']}',
                       ),
                       Text(t['team_status_${preview['status']}']),
                       Text(
@@ -257,7 +260,9 @@ class _InvitationAcceptanceState extends State<InvitationAcceptance> {
                           ),
                         )
                       else
-                        Text(t['team_invitation_closed']),
+                        Text(t[preview['roleRemoved'] == true
+                            ? 'team_invitation_role_removed'
+                            : 'team_invitation_closed']),
                     ],
                   ],
                 ],

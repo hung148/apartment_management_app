@@ -1,5 +1,6 @@
 /// Versioned access policy. Legacy roles deliberately grant no v2 access.
-enum TeamRole { owner, administrator, manager, receptionist, housekeeper, accountant, viewer }
+// 'viewer' was removed (2026-09-29); a stored 'viewer' parses as no role (waiting).
+enum TeamRole { owner, administrator, manager, receptionist, housekeeper, accountant }
 
 enum TeamPermission {
   manageOrganization, manageTeam, manageProperty, manageLease,
@@ -46,8 +47,6 @@ class TeamAccess {
         return {TeamPermission.readBookings, TeamPermission.collectPayments,
           TeamPermission.refundPayments, TeamPermission.readFinancialReports,
           TeamPermission.readOwnActivity};
-      case TeamRole.viewer:
-        return {TeamPermission.readFinancialReports};
       case null:
         return {};
     }

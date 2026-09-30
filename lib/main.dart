@@ -15,6 +15,7 @@ import 'package:phan_mem_quan_ly_can_ho/services/update_services.dart';
 
 import 'package:phan_mem_quan_ly_can_ho/utils/localizations/app_localizations.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_router.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/auth_redirect.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/chat/chat_manager.dart';
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -143,6 +144,7 @@ void main() async {
   getIt<LocaleNotifier>().setLocale(Locale(savedLang, savedCountry));
 
   runApp(const MyApp());
+  watchAuthChanges(navigatorKey);
 }
 
 class MyApp extends StatelessWidget {
@@ -173,6 +175,13 @@ class MyApp extends StatelessWidget {
             theme: buildAppTheme(getIt<AppThemeNotifier>().primary),
             debugShowCheckedModeBanner: false,
             initialRoute: '/',
+            // Always start at the splash, even when the browser address (after a
+            // reload) points at an inner screen: those screens need arguments
+            // that a reload cannot restore, and the splash decides between login
+            // and dashboard from the current sign-in.
+            onGenerateInitialRoutes: (_) => [
+              AppRouter.generateRoute(const RouteSettings(name: AppRouter.splashScreen)),
+            ],
             onGenerateRoute: AppRouter.generateRoute,
           ),
         );

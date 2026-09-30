@@ -15,8 +15,9 @@ const roles = Object.freeze({
   receptionist: ['readBookings', 'manageBookings', 'collectPayments', 'readOwnActivity'],
   housekeeper: ['readAssignedTasks', 'updateAssignedTasks', 'readOwnActivity'],
   accountant: ['readBookings', 'collectPayments', 'refundPayments', 'readFinancialReports', 'readOwnActivity'],
-  viewer: ['readFinancialReports'],
 });
+// 'viewer' was removed (2026-09-29). Memberships that still hold it, like
+// migrated members with no role, are treated as waiting for an assignment.
 const overrides = Object.freeze(['overridePrices', 'refundPayments', 'exportData', 'importData']);
 const knownRole = role => Object.hasOwn(roles, role);
 

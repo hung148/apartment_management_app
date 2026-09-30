@@ -42,10 +42,32 @@ class DashboardSettingsButton extends StatelessWidget {
               ),
             ),
           ),
+          // Same 40x40 rounded square as the glass behind it, so the hover
+          // and press highlight line up with the visible button. The tap
+          // target stays 48x48.
           IconButton(
             onPressed: onPressed,
             tooltip: tooltip,
-            color: Colors.white,
+            style: IconButton.styleFrom(
+              foregroundColor: Colors.white,
+              fixedSize: const Size.square(40),
+              minimumSize: const Size.square(40),
+              padding: EdgeInsets.zero,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ).copyWith(
+              overlayColor: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.pressed)) {
+                  return Colors.white.withValues(alpha: 0.24);
+                }
+                if (states.contains(WidgetState.hovered) ||
+                    states.contains(WidgetState.focused)) {
+                  return Colors.white.withValues(alpha: 0.14);
+                }
+                return null;
+              }),
+            ),
             icon: Badge(
               isLabelVisible: showBadge,
               child: const Icon(Icons.settings_outlined),

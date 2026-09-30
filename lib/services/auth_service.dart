@@ -1,10 +1,9 @@
 import 'package:phan_mem_quan_ly_can_ho/models/owner_model.dart';
-import 'package:phan_mem_quan_ly_can_ho/services/organization_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/app_logger.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
-/// Thrown by [AuthService.deleteAccount] when Firebase requires the user
+/// Thrown by [AuthService.deleteSignIn] when Firebase requires the user
 /// to have signed in recently before a sensitive operation (like account
 /// deletion) can proceed. Callers should re-prompt for the password and
 /// call [AuthService.reauthenticateWithPassword] before retrying.
@@ -15,7 +14,6 @@ class ReauthenticationRequiredException implements Exception {
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   FirebaseFirestore get _firestore => FirebaseFirestore.instance;
-  final OrganizationService _organizationService = OrganizationService();
 
   // get current user
   User? get currentUser => _auth.currentUser;
@@ -103,6 +101,8 @@ class AuthService {
       );
 
       await _firestore.collection('owners').doc(newOwner.id).set(newOwner.toMap());
+      // Legacy organizations copy the sign-in display name into memberships.
+      await setAuthDisplayName(name);
       logger.i('New Owner registered');
 
       return newOwner;
@@ -139,83 +139,89 @@ class AuthService {
     }
   }
 
-  // ========================================
-  // DELETE ACCOUNT - Permanently delete the signed-in user's account
-  // ========================================
-  //
-  // This satisfies App Store Guideline 5.1.1(v): it fully removes the
-  // account, not just disables it. It cascades through the user's data:
-  //   - Organizations where the user is the *sole* admin are deleted
-  //     entirely (including their buildings/rooms/tenants/payments).
-  //   - Memberships in organizations the user shares with other admins
-  //     are simply removed (the org and its data survive for the others).
-  //   - The owner profile document is deleted.
-  //   - Finally the Firebase Auth user itself is deleted.
-  //
-  // Throws [ReauthenticationRequiredException] if Firebase rejects the
-  // deletion because the sign-in is stale (`requires-recent-login`).
-  // Callers should collect the user's password and call
-  // [reauthenticateWithPassword] before retrying.
-  Future<bool> deleteAccount({Function(String)? onStatusUpdate}) async {
-    final user = currentUser;
-    if (user == null) return false;
-    final uid = user.uid;
-
+  /// Keeps the Firebase sign-in's display name in step with the profile name.
+  /// Best effort: the profile itself is the source of truth.
+  Future<void> setAuthDisplayName(String name) async {
     try {
-      onStatusUpdate?.call('Checking organizations...');
+      await currentUser?.updateDisplayName(name);
+    } catch (e) {
+      logger.w('Could not update the sign-in display name', error: e);
+    }
+  }
 
-      final membershipsSnap = await _firestore
-          .collection('memberships')
-          .where('ownerId', isEqualTo: uid)
-          .where('status', isEqualTo: 'active')
-          .limit(100)
-          .get();
+  Future<void> _reauthenticateOrThrow(String password) async {
+    final user = currentUser;
+    if (user == null || user.email == null) {
+      throw FirebaseAuthException(code: 'no-current-user');
+    }
+    await user.reauthenticateWithCredential(
+      EmailAuthProvider.credential(email: user.email!, password: password),
+    );
+  }
 
-      for (final doc in membershipsSnap.docs) {
-        final orgId = doc.data()['organizationId'] as String?;
-        final role = doc.data()['role'] as String?;
-        if (orgId == null) continue;
+  /// Checks the current password, then sets the new one. Throws
+  /// [FirebaseAuthException] (wrong-password / invalid-credential,
+  /// weak-password, too-many-requests, network-request-failed ...).
+  Future<void> changePassword({required String currentPassword, required String newPassword}) async {
+    await _reauthenticateOrThrow(currentPassword);
+    await currentUser!.updatePassword(newPassword);
+    logger.i('Password changed');
+  }
 
-        if (role == 'admin') {
-          final members = await _organizationService.getOrganizationMembers(orgId);
-          final adminCount = members.where((m) => m.role == 'admin').length;
+  /// Checks the password, then emails a confirmation link to [newEmail].
+  /// The sign-in email only changes after the link is opened; the user then
+  /// signs in again with the new address. Throws [FirebaseAuthException]
+  /// (wrong-password / invalid-credential, email-already-in-use,
+  /// invalid-email, too-many-requests ...).
+  Future<void> requestEmailChange({required String password, required String newEmail}) async {
+    await _reauthenticateOrThrow(password);
+    await currentUser!.verifyBeforeUpdateEmail(newEmail.trim());
+    logger.i('Email change link sent');
+  }
 
-          if (adminCount <= 1) {
-            // Sole admin: the organization and all of its data belong
-            // only to this account, so it must be deleted too.
-            onStatusUpdate?.call('Deleting organization data...');
-            final deleted = await _organizationService.deleteOrganization(uid, orgId);
-            if (!deleted) {
-              logger.e('Failed to delete organization $orgId during account deletion');
-              return false;
-            }
-            continue;
-          }
-        }
+  /// Emails a password reset link. An unknown email is treated as sent, so
+  /// the screen never reveals whether an account exists. Throws
+  /// [FirebaseAuthException] for invalid-email, too-many-requests and
+  /// network-request-failed.
+  Future<void> sendPasswordReset(String email, {String? languageCode}) async {
+    try {
+      if (languageCode != null) await _auth.setLanguageCode(languageCode);
+      await _auth.sendPasswordResetEmail(email: email.trim());
+      logger.i('Password reset email requested');
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'user-not-found' || e.code == 'user-disabled') return;
+      rethrow;
+    }
+  }
 
-        // Shared organization (or a plain member): just remove this
-        // user's membership, leaving the organization intact for others.
-        await _firestore.collection('memberships').doc(doc.id).delete();
-      }
+  /// Forces a fresh ID token so the server sees the new sign-in time right
+  /// after [reauthenticateWithPassword].
+  Future<void> refreshIdToken() async {
+    await currentUser?.getIdToken(true);
+  }
 
-      onStatusUpdate?.call('Deleting profile...');
-      await _firestore.collection('owners').doc(uid).delete();
-
-      onStatusUpdate?.call('Deleting account...');
+  // ========================================
+  // DELETE SIGN-IN - last step of account deletion
+  // ========================================
+  //
+  // The server (deleteMyAccount) removes or hands over everything the
+  // account owns first; this only removes the Firebase Auth user so the
+  // email can no longer sign in. Satisfies App Store Guideline 5.1.1(v).
+  //
+  // Throws [ReauthenticationRequiredException] when Firebase wants a
+  // recent sign-in (`requires-recent-login`).
+  Future<void> deleteSignIn() async {
+    final user = currentUser;
+    if (user == null) return;
+    try {
       await user.delete();
-
-      logger.i('Account deleted successfully');
-      return true;
+      logger.i('Sign-in deleted');
     } on FirebaseAuthException catch (e) {
       if (e.code == 'requires-recent-login') {
-        logger.w('Account deletion requires reauthentication');
+        logger.w('Deleting the sign-in requires reauthentication');
         throw const ReauthenticationRequiredException();
       }
-      logger.e('Error deleting account', error: e);
-      return false;
-    } catch (e, stackTrace) {
-      logger.e('Error deleting account', error: e, stackTrace: stackTrace);
-      return false;
+      rethrow;
     }
   }
 }

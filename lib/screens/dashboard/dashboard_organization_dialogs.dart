@@ -87,8 +87,7 @@ extension _DashboardOrganizationDialogs on _DashboardScreenState {
                             helper: AppTranslations.of(ctx).text('optional_on_invoice'),
                             validator: (v) {
                               if (v != null && v.isNotEmpty) {
-                                final re = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
-                                if (!re.hasMatch(v)) return AppTranslations.of(ctx).text('email_invalid');
+                                if (!isValidEmail(v)) return AppTranslations.of(ctx).text('email_invalid');
                               }
                               return null;
                             }),
@@ -315,7 +314,9 @@ extension _DashboardOrganizationDialogs on _DashboardScreenState {
           barrierDismissible: false,
           builder: (lctx) => _buildLoadingDialog(AppTranslations.of(lctx).text('leaving_org')),
         );
-        final success = await _organizationService.leaveOrganization(ownerId, org.id);
+        final success = org.accessVersion == 2
+            ? await _v2Action(() => _organizationSettings.leave(org.id))
+            : await _organizationService.leaveOrganization(ownerId, org.id);
         if (!mounted) return;
         nav.pop();
         messenger.showSnackBar(SnackBar(
@@ -375,6 +376,11 @@ extension _DashboardOrganizationDialogs on _DashboardScreenState {
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // Version 2 closes now and deletes after 30 days: say that first.
+                        if (org.accessVersion == 2) ...[
+                          _buildWarningBanner(AppTranslations.of(ctx).text('close_org_v2_notice'), Colors.orange),
+                          const SizedBox(height: 12),
+                        ],
                         Text(
                           AppTranslations.of(ctx).textWithParams('delete_org_warning', {'name': org.name}),
                           style: const TextStyle(fontWeight: FontWeight.bold),
@@ -425,12 +431,18 @@ extension _DashboardOrganizationDialogs on _DashboardScreenState {
                       child: Text(AppTranslations.of(ctx).text('cancel')),
                     ),
                     const SizedBox(width: 8),
-                    FilledButton(
-                      onPressed: () {
-                        if (formKey.currentState!.validate()) Navigator.pop(ctx, true);
-                      },
-                      style: FilledButton.styleFrom(backgroundColor: Colors.red),
-                      child: Text(AppTranslations.of(ctx).text('delete_permanently')),
+                    ValueListenableBuilder<TextEditingValue>(
+                      valueListenable: nameCtrl,
+                      builder: (_, typed, _) => FilledButton(
+                        // Disabled until the exact name is typed; the form check stays as a second guard.
+                        onPressed: typed.text.trim() == org.name
+                            ? () {
+                                if (formKey.currentState!.validate()) Navigator.pop(ctx, true);
+                              }
+                            : null,
+                        style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                        child: Text(AppTranslations.of(ctx).text('delete_permanently')),
+                      ),
                     ),
                   ],
                 ),
@@ -458,9 +470,13 @@ extension _DashboardOrganizationDialogs on _DashboardScreenState {
         builder: (ctx) => _buildProgressDialog(ctx, progressNotifier, isGreen: false,
             titleKey: 'deleting_org'),
       );
-      final success = await _organizationService.deleteOrganization(
-          ownerId, org.id,
-          onProgress: (p) => progressNotifier.value = p);
+      final typedName = nameCtrl.text.trim();
+      final success = org.accessVersion == 2
+          // The server checks the typed name again; never send the saved name.
+          ? await _v2Action(() => _organizationSettings.close(org.id, typedName))
+          : await _organizationService.deleteOrganization(
+              ownerId, org.id,
+              onProgress: (p) => progressNotifier.value = p);
       if (!mounted) return;
       nav.pop();
       messenger.showSnackBar(SnackBar(
@@ -662,9 +678,38 @@ extension _DashboardOrganizationDialogs on _DashboardScreenState {
 
   void _showMigrateOrganizationDialog(
       Organization sourceOrg, String ownerId, bool deleteAfter) async {
+    // Holds the chosen target's ID; filled only from the picker below.
     final targetCtrl = TextEditingController();
+    final isV2 = sourceOrg.accessVersion == 2;
+    // Only organizations this account can actually copy into: same kind as the
+    // source, active membership with Owner/Administrator (legacy: admin), and
+    // not the source. The server re-checks everything; this list is for choice.
+    final targets = <Organization>[];
+    try {
+      final orgs = await (_orgsFuture ?? Future.value(<Organization>[]));
+      for (final o in orgs) {
+        if (o.id == sourceOrg.id || o.accessVersion != sourceOrg.accessVersion) continue;
+        final m = await _membershipFutures.putIfAbsent(
+            o.id, () => _organizationService.getUserMembership(ownerId, o.id));
+        final allowed = m != null && m.status == 'active' &&
+            (isV2 ? const {'owner', 'administrator'}.contains(m.role) : m.role == 'admin');
+        if (allowed) targets.add(o);
+      }
+    } catch (e) {
+      logger.e('Could not list copy targets', error: e);
+    }
+    if (!mounted) return;
+    targets.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    // Copy & delete closes the source, so it needs the same typed confirmation.
+    final confirmCtrl = TextEditingController();
+    final needsName = isV2 && deleteAfter;
+    // One copy operation per target, reused on retry so an interrupted copy
+    // resumes instead of duplicating records.
+    String? copyTarget;
+    String? copyOperation;
     Map<String, int>? preview;
     String? status;
+    bool statusIsError = false;
     bool loading = false;
     bool started = false;
     double progress = 0.0;
@@ -760,29 +805,47 @@ extension _DashboardOrganizationDialogs on _DashboardScreenState {
                           ),
                         ),
                         const SizedBox(height: 16),
-                        TextField(
-                          controller: targetCtrl,
-                          maxLength: 50,
-                          enabled: !started,
-                          decoration: InputDecoration(
-                            counterText: '',
-                            labelText: AppTranslations.of(ctx).text('target_org_id'),
-                            hintText: AppTranslations.of(ctx).text('enter_target_org_id'),
-                            helperText: AppTranslations.of(ctx).text('target_org_id_placeholder'),
-                            prefixIcon: const Icon(Icons.business_outlined),
-                            filled: true,
-                            fillColor: _DS.surface,
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.25)),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(color: _DS.primary, width: 1.8),
+                        if (targets.isEmpty)
+                          _buildWarningBanner(
+                              AppTranslations.of(ctx).text('copy_no_target_orgs'), Colors.orange)
+                        else ...[
+                          DropdownButtonFormField<String>(
+                            initialValue: targetCtrl.text.isEmpty ? null : targetCtrl.text,
+                            isExpanded: true,
+                            items: [
+                              for (final o in targets)
+                                DropdownMenuItem(
+                                  value: o.id,
+                                  child: Text(o.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                                ),
+                            ],
+                            // A preview or error belongs to the previous choice, so clear it.
+                            onChanged: started ? null : (id) => setDialogState(() {
+                              targetCtrl.text = id ?? '';
+                              preview = null;
+                              status = null;
+                              statusIsError = false;
+                            }),
+                            decoration: InputDecoration(
+                              labelText: AppTranslations.of(ctx).text('copy_target_org'),
+                              prefixIcon: const Icon(Icons.business_outlined),
+                              filled: true,
+                              fillColor: _DS.surface,
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.25)),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(color: _DS.primary, width: 1.8),
+                              ),
                             ),
                           ),
-                        ),
+                          const SizedBox(height: 6),
+                          Text(AppTranslations.of(ctx).text('copy_repeat_note'),
+                              style: const TextStyle(fontSize: 12, color: _DS.textSecondary)),
+                        ],
                         if (preview != null) ...[
                           const SizedBox(height: 14),
                           Container(
@@ -819,20 +882,6 @@ extension _DashboardOrganizationDialogs on _DashboardScreenState {
                             ),
                           ),
                         ],
-                        if (status != null) ...[
-                          const SizedBox(height: 12),
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                            decoration: BoxDecoration(
-                              color: _DS.surface,
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: Colors.grey.withValues(alpha: 0.2)),
-                            ),
-                            child: Text(status!,
-                                style: const TextStyle(fontSize: 13, color: _DS.textSecondary)),
-                          ),
-                        ],
                         if (loading) ...[
                           const SizedBox(height: 16),
                           ClipRRect(
@@ -856,12 +905,47 @@ extension _DashboardOrganizationDialogs on _DashboardScreenState {
                         if (deleteAfter && !started) ...[
                           const SizedBox(height: 14),
                           _buildWarningBanner(
-                              AppTranslations.of(ctx).text('warning_cannot_undo'), Colors.red),
+                              AppTranslations.of(ctx).text(isV2 ? 'close_org_v2_notice' : 'warning_cannot_undo'),
+                              isV2 ? Colors.orange : Colors.red),
+                        ],
+                        if (needsName && !started) ...[
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: confirmCtrl,
+                            maxLength: 120,
+                            onChanged: (_) => setDialogState(() {}),
+                            decoration: InputDecoration(
+                              counterText: '',
+                              labelText: AppTranslations.of(ctx).text('type_name_to_confirm'),
+                              hintText: sourceOrg.name,
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                              prefixIcon: const Icon(Icons.edit),
+                            ),
+                          ),
                         ],
                       ],
                     ),
                   ),
                 ),
+                // Outside the scroll area so the result is always visible.
+                if (status != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: statusIsError ? Colors.red.withValues(alpha: 0.07) : _DS.surface,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: statusIsError
+                            ? Colors.red.withValues(alpha: 0.35) : Colors.grey.withValues(alpha: 0.2)),
+                      ),
+                      child: Text(status!,
+                          style: TextStyle(fontSize: 13,
+                              color: statusIsError ? Colors.red[700] : _DS.textSecondary,
+                              fontWeight: statusIsError ? FontWeight.w600 : FontWeight.normal)),
+                    ),
+                  ),
                 if (!started) ...[
                   const Divider(height: 1),
                   Padding(
@@ -882,27 +966,40 @@ extension _DashboardOrganizationDialogs on _DashboardScreenState {
                       ),
                       const SizedBox(width: 8),
                       OutlinedButton(
-                        onPressed: () async {
-                          setDialogState(() => status = null);
+                        onPressed: loading || targetCtrl.text.trim().isEmpty ? null : () async {
+                          setDialogState(() { status = null; statusIsError = false; });
                           final id = targetCtrl.text.trim();
                           if (id.isEmpty) {
-                            setDialogState(() =>
-                                status = AppTranslations.of(ctx).text('please_enter_target_id'));
+                            setDialogState(() {
+                                statusIsError = true;
+                                status = AppTranslations.of(ctx).text('please_enter_target_id');
+                              });
                             return;
                           }
-                          setDialogState(() =>
-                              status = AppTranslations.of(ctx).text('fetching_preview'));
+                          setDialogState(() {
+                            loading = true;
+                            statusIsError = false;
+                            status = AppTranslations.of(ctx).text('fetching_preview');
+                          });
                           try {
-                            final result =
-                                await _organizationService.getMigrationPreview(sourceOrg.id);
+                            final result = isV2
+                                ? await _organizationSettings.copyPreview(sourceOrg.id, id)
+                                : await _organizationService.getMigrationPreview(sourceOrg.id);
                             setDialogState(() {
                               preview = result;
+                              statusIsError = false;
                               status = AppTranslations.of(ctx).text('fetched_preview');
                             });
                           } catch (e) {
-                            setDialogState(() => status = AppTranslations.of(ctx)
-                                .textWithParams('preview_error', {'error': e}));
+                            logger.e('Organization copy preview failed', error: e);
+                            setDialogState(() {
+                              statusIsError = true;
+                              status = isV2
+                                  ? AppTranslations.of(ctx).text(_copyErrorKey(e))
+                                  : AppTranslations.of(ctx).textWithParams('preview_error', {'error': e});
+                            });
                           }
+                          setDialogState(() => loading = false);
                         },
                         style: OutlinedButton.styleFrom(
                           foregroundColor: _DS.primary,
@@ -916,16 +1013,22 @@ extension _DashboardOrganizationDialogs on _DashboardScreenState {
                       const SizedBox(width: 8),
                       Expanded(
                         child: FilledButton.icon(
-                          onPressed: () async {
+                          // Needs the target ID, and for copy & delete also the exact source name.
+                          onPressed: loading || targetCtrl.text.trim().isEmpty ||
+                                  (needsName && confirmCtrl.text.trim() != sourceOrg.name)
+                              ? null : () async {
                             final targetId = targetCtrl.text.trim();
                             if (targetId.isEmpty) {
-                              setDialogState(() => status =
-                                  AppTranslations.of(ctx).text('please_enter_target_id'));
+                              setDialogState(() {
+                                  statusIsError = true;
+                                  status = AppTranslations.of(ctx).text('please_enter_target_id');
+                                });
                               return;
                             }
                             setDialogState(() {
                               loading  = true;
                               started  = true;
+                              statusIsError = false;
                               status   = deleteAfter
                                   ? AppTranslations.of(ctx).text('migrating_and_deleting')
                                   : AppTranslations.of(ctx).text('migrating_data');
@@ -934,8 +1037,23 @@ extension _DashboardOrganizationDialogs on _DashboardScreenState {
                             // Capture before async
                             final dialogNav = Navigator.of(ctx);
                             bool success = false;
+                            String? failKey;
                             try {
-                              if (deleteAfter) {
+                              if (isV2) {
+                                if (copyTarget != targetId) {
+                                  copyTarget = targetId;
+                                  copyOperation = _organizationSettings.newOperation();
+                                }
+                                setDialogState(() => progress = 0.3);
+                                await _organizationSettings.copy(
+                                    sourceOrg.id, targetId, operationId: copyOperation!);
+                                setDialogState(() => progress = deleteAfter ? 0.8 : 1.0);
+                                // Only the owner may close; the copy above is kept either way.
+                                if (deleteAfter) {
+                                  await _organizationSettings.close(sourceOrg.id, confirmCtrl.text.trim());
+                                }
+                                success = true;
+                              } else if (deleteAfter) {
                                 success = await _organizationService.migrateAndDeleteOrganization(
                                   ownerId: ownerId,
                                   sourceOrgId: sourceOrg.id,
@@ -953,8 +1071,8 @@ extension _DashboardOrganizationDialogs on _DashboardScreenState {
                                 );
                               }
                             } catch (e) {
-                              setDialogState(() => status = AppTranslations.of(ctx)
-                                  .textWithParams('error', {'error': e}));
+                              logger.e('Organization copy failed', error: e);
+                              if (isV2) failKey = _copyErrorKey(e);
                             }
                             setDialogState(() { loading = false; started = false; });
                             if (success && mounted) {
@@ -964,8 +1082,10 @@ extension _DashboardOrganizationDialogs on _DashboardScreenState {
                                   : AppTranslations.of(context).text('migrated_data_success'));
                               _refreshOrgs(ownerId);
                             } else {
-                              setDialogState(() =>
-                                  status = AppTranslations.of(ctx).text('operation_failed'));
+                              setDialogState(() {
+                                statusIsError = true;
+                                status = AppTranslations.of(ctx).text(failKey ?? 'operation_failed');
+                              });
                             }
                           },
                           icon: Icon(
@@ -1087,8 +1207,7 @@ extension _DashboardOrganizationDialogs on _DashboardScreenState {
                             helper: AppTranslations.of(ctx).text('optional_on_invoice'),
                             validator: (v) {
                               if (v != null && v.isNotEmpty) {
-                                final re = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
-                                if (!re.hasMatch(v)) return AppTranslations.of(ctx).text('email_invalid');
+                                if (!isValidEmail(v)) return AppTranslations.of(ctx).text('email_invalid');
                               }
                               return null;
                             }),
@@ -1166,7 +1285,18 @@ extension _DashboardOrganizationDialogs on _DashboardScreenState {
                                   _buildLoadingDialog(AppTranslations.of(lctx).text('saving')),
                             );
                             try {
-                              final success = await _organizationService.updateOrganization(
+                              final success = org.accessVersion == 2
+                                  ? await _v2Action(() => _organizationSettings.update(org.id, {
+                                      'name': nameCtrl.text,
+                                      'address': addressCtrl.text,
+                                      'phone': phoneCtrl.text,
+                                      'email': emailCtrl.text,
+                                      'taxCode': taxCtrl.text,
+                                      'bankName': bankNameCtrl.text,
+                                      'bankAccountNumber': bankAccountCtrl.text,
+                                      'bankAccountName': bankAccountNameCtrl.text,
+                                    }))
+                                  : await _organizationService.updateOrganization(
                                 ownerId: ownerId,
                                 orgId: org.id,
                                 name: nameCtrl.text.trim(),
@@ -1255,7 +1385,13 @@ extension _DashboardOrganizationDialogs on _DashboardScreenState {
     );
   }
 
-  void _showOrganizationOptions(Organization org, String ownerId, bool isAdmin) {
+  void _showOrganizationOptions(Organization org, String ownerId, bool isAdmin, String role) {
+    final isV2 = org.accessVersion == 2;
+    // Legacy: admins cannot leave. Version 2: only the owner cannot leave.
+    final canLeave = isV2 ? role != 'owner' : !isAdmin;
+    // Waiting members can only leave; there is nothing else they may open yet.
+    final waiting = isV2 && !TeamRole.values.any((r) => r.name == role);
+    if (isV2 && !waiting) _prefetchV2Settings(org);
     final screenWidth = MediaQuery.sizeOf(context).width;
     final isLarge = screenWidth >= 600;
     final gradient = _DS.orgGradient(org.id);
@@ -1319,7 +1455,10 @@ extension _DashboardOrganizationDialogs on _DashboardScreenState {
               overflow: TextOverflow.ellipsis,
             ),
             const SizedBox(height: 8),
-            _buildRoleBadgeLight(isAdmin),
+            _buildRoleBadgeLight(isAdmin,
+                label: !isV2 ? null : TeamRole.values.any((r) => r.name == role)
+                    ? _v2RoleLabel(role)
+                    : AppTranslations.of(context).text('team_waiting_role')),
           ]),
         ),
         const SizedBox(height: 8),
@@ -1327,6 +1466,7 @@ extension _DashboardOrganizationDialogs on _DashboardScreenState {
     );
 
     List<Widget> menuItems = [
+      if (!waiting) ...[
       _buildOptionTile(
         icon: Icons.open_in_new_rounded,
         iconColor: _DS.primary,
@@ -1344,9 +1484,14 @@ extension _DashboardOrganizationDialogs on _DashboardScreenState {
         subtitle: AppTranslations.of(context).text('org_details_and_id'),
         onTap: () {
           Navigator.pop(context);
-          _showOrganizationInfo(org);
+          if (isV2) {
+            _openV2Settings(org, (s) => _showOrganizationInfo(s.organization));
+          } else {
+            _showOrganizationInfo(org);
+          }
         },
       ),
+      ],
       if (isAdmin) ...[
         _buildOptionTile(
           icon: Icons.edit_rounded,
@@ -1355,9 +1500,14 @@ extension _DashboardOrganizationDialogs on _DashboardScreenState {
           subtitle: AppTranslations.of(context).text('edit_org_details'),
           onTap: () {
             Navigator.pop(context);
-            _showEditOrganizationDialog(org, ownerId);
+            if (isV2) {
+              _openV2Settings(org, (s) => _showEditOrganizationDialog(s.organization, ownerId));
+            } else {
+              _showEditOrganizationDialog(org, ownerId);
+            }
           },
         ),
+        // Version 2 copies on the server; closing the source needs the owner.
         _buildOptionTile(
           icon: Icons.compare_arrows_rounded,
           iconColor: AppThemePalette.primary,
@@ -1368,6 +1518,7 @@ extension _DashboardOrganizationDialogs on _DashboardScreenState {
             _showMigrateOrganizationDialog(org, ownerId, false);
           },
         ),
+        if (!isV2 || role == 'owner')
         _buildOptionTile(
           icon: Icons.delete_sweep_rounded,
           iconColor: Colors.red[600]!,
@@ -1378,6 +1529,7 @@ extension _DashboardOrganizationDialogs on _DashboardScreenState {
             _showMigrateOrganizationDialog(org, ownerId, true);
           },
         ),
+        if (!isV2 || role == 'owner')
         _buildOptionTile(
           icon: Icons.delete_forever_rounded,
           iconColor: Colors.red[700]!,
@@ -1389,7 +1541,8 @@ extension _DashboardOrganizationDialogs on _DashboardScreenState {
             _showDeleteOrganizationDialog(org, ownerId);
           },
         ),
-      ] else ...[
+      ],
+      if (canLeave) ...[
         _buildOptionTile(
           icon: Icons.exit_to_app_rounded,
           iconColor: Colors.orange[700]!,
@@ -1456,7 +1609,209 @@ extension _DashboardOrganizationDialogs on _DashboardScreenState {
     }
   }
 
-  Widget _buildRoleBadgeLight(bool isAdmin) {
+  // ── Version-2 organization helpers ──────────────────────────
+  /// True when a version-2 membership has no supported role yet: status
+  /// assignmentRequired, or a role that no longer exists (e.g. viewer).
+  bool _isWaitingMember(Membership? m) =>
+      m != null &&
+      (m.status == 'assignmentRequired' ||
+          (m.status == 'active' && !TeamRole.values.any((r) => r.name == m.role)));
+
+  void _showWaitingForRole(Organization org) {
+    _showTrackedDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.hourglass_top_rounded),
+        title: Text(org.name, maxLines: 2, overflow: TextOverflow.ellipsis),
+        content: Text(AppTranslations.of(ctx).text('org_waiting_message')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(AppTranslations.of(ctx).text('close')),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Organizations this account closed in the last 30 days, with Restore.
+  Future<void> _showRecentlyDeletedDialog() => _dialogLock.run(() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final nav = Navigator.of(context);
+    final t = AppTranslations.of(context);
+    final ownerId = FirebaseAuth.instance.currentUser?.uid;
+    if (ownerId == null) return;
+    _showTrackedDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _buildLoadingDialog(t.text('loading')),
+    );
+    List<ClosedOrganization>? items;
+    try {
+      items = await _organizationSettings.closedList();
+    } catch (e) {
+      logger.e('Could not load closed organizations', error: e);
+    }
+    if (!mounted) return;
+    nav.pop();
+    if (items == null) {
+      messenger.showSnackBar(SnackBar(content: Text(t.text('org_settings_load_failed')), backgroundColor: Colors.red));
+      return;
+    }
+    final list = items;
+    String? restoring; // one restore at a time
+    await _showTrackedDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AppDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: _getDialogWidth(ctx), maxHeight: MediaQuery.of(ctx).size.height * 0.8),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 8, 12),
+                child: Row(children: [
+                  Icon(Icons.restore_from_trash_rounded, color: _DS.primary),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text(t.text('recently_deleted_orgs'),
+                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: _DS.textPrimary))),
+                  IconButton(
+                    tooltip: t.text('close'),
+                    onPressed: restoring == null ? () => Navigator.pop(ctx) : null,
+                    icon: const Icon(Icons.close),
+                  ),
+                ]),
+              ),
+              const Divider(height: 1),
+              Flexible(
+                child: list.isEmpty
+                    ? Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Text(t.text('recently_deleted_empty'), textAlign: TextAlign.center,
+                            style: const TextStyle(color: _DS.textSecondary)),
+                      )
+                    : ListView.separated(
+                        shrinkWrap: true,
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        itemCount: list.length,
+                        separatorBuilder: (_, _) => const Divider(height: 1),
+                        itemBuilder: (_, i) {
+                          final org = list[i];
+                          return ListTile(
+                            leading: const Icon(Icons.apartment_outlined),
+                            title: Text(org.name, maxLines: 2, overflow: TextOverflow.ellipsis),
+                            subtitle: Text(t.textWithParams('restore_days_left',
+                                {'days': org.daysLeft(DateTime.now().toUtc())})),
+                            trailing: restoring == org.id
+                                ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
+                                : FilledButton(
+                                    onPressed: restoring != null ? null : () async {
+                                      setDialogState(() => restoring = org.id);
+                                      final ok = await _v2Action(() => _organizationSettings.restore(org.id));
+                                      if (!ctx.mounted) return;
+                                      setDialogState(() {
+                                        restoring = null;
+                                        if (ok) list.removeAt(i);
+                                      });
+                                      messenger.showSnackBar(SnackBar(
+                                        content: Text(t.text(ok ? 'org_restored_success' : 'org_restore_failed')),
+                                        backgroundColor: ok ? Colors.green : Colors.red,
+                                      ));
+                                      if (ok) _refreshOrgs(ownerId);
+                                    },
+                                    child: Text(t.text('restore_action')),
+                                  ),
+                          );
+                        },
+                      ),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    );
+  });
+
+  /// Friendly message for a failed v2 copy. Checks both the server reason and
+  /// the error code, since platforms report callable errors slightly differently.
+  String _copyErrorKey(Object e) {
+    final code = e is FirebaseFunctionsException ? e.code : '';
+    final text = e is FirebaseFunctionsException ? '${e.message} ${e.details}' : '$e';
+    if (text.contains('org_copy_cross_link')) return 'org_copy_cross_link';
+    if (const ['org_copy_access_required', 'team_migration_required', 'org_copy_target', 'org_closed']
+            .any(text.contains) ||
+        const {'permission-denied', 'failed-precondition', 'not-found', 'invalid-argument'}.contains(code)) {
+      return 'org_copy_target_not_allowed';
+    }
+    if (const {'unavailable', 'deadline-exceeded', 'internal'}.contains(code)) return 'org_copy_try_again';
+    return 'operation_failed';
+  }
+
+  String _v2RoleLabel(String role) {
+    final t = AppTranslations.of(context);
+    final key = 'team_role_$role';
+    return t.translationKeys.contains(key) ? t[key] : t['member'];
+  }
+
+  /// Runs a server action; false on any failure so dialogs show their error.
+  Future<bool> _v2Action(Future<void> Function() action) async {
+    try {
+      await action();
+      return true;
+    } catch (e) {
+      logger.e('Organization settings request failed', error: e);
+      return false;
+    }
+  }
+
+  void _prefetchV2Settings(Organization org) {
+    final pending = _organizationSettings.read(org.id);
+    pending.ignore(); // errors are reported when the result is actually used
+    _v2SettingsPrefetch[org.id] = pending;
+  }
+
+  /// The dashboard list omits private details, so load them with the
+  /// caller's current permissions before opening info or edit. Uses the
+  /// request started when the menu opened, shows a loader while waiting, and
+  /// ignores further taps until this one finishes.
+  Future<void> _openV2Settings(
+      Organization org, void Function(OrganizationSettings settings) open) {
+    return _dialogLock.run(() async {
+      final messenger = ScaffoldMessenger.of(context);
+      final nav = Navigator.of(context);
+      final t = AppTranslations.of(context);
+      // Taken once: the next open fetches fresh data (e.g. after an edit).
+      final pending = _v2SettingsPrefetch.remove(org.id) ?? _organizationSettings.read(org.id);
+      // Only show the loader if the data is not already there (no flash).
+      var done = false, loaderShown = false;
+      Future.delayed(const Duration(milliseconds: 150), () {
+        if (done || !mounted) return;
+        loaderShown = true;
+        _showTrackedDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => _buildLoadingDialog(t.text('loading')),
+        );
+      });
+      OrganizationSettings? settings;
+      try {
+        settings = await pending;
+      } catch (e) {
+        logger.e('Could not load organization settings', error: e);
+      }
+      done = true;
+      if (!mounted) return;
+      if (loaderShown) nav.pop();
+      if (settings == null) {
+        messenger.showSnackBar(SnackBar(
+            content: Text(t.text('org_settings_load_failed')), backgroundColor: Colors.red));
+        return;
+      }
+      open(settings);
+    });
+  }
+
+  Widget _buildRoleBadgeLight(bool isAdmin, {String? label}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
@@ -1471,9 +1826,10 @@ extension _DashboardOrganizationDialogs on _DashboardScreenState {
         ),
         const SizedBox(width: 4),
         Text(
-          isAdmin
-              ? AppTranslations.of(context).text('admin')
-              : AppTranslations.of(context).text('member'),
+          label ??
+              (isAdmin
+                  ? AppTranslations.of(context).text('admin')
+                  : AppTranslations.of(context).text('member')),
           style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 11),
         ),
       ]),

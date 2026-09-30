@@ -3,6 +3,23 @@
 These rules apply to all work in this repository. Apply checks relevant to the
 changed behavior; passing unrelated tests is not evidence that a change works.
 
+## Think through every situation first
+
+Before handing over any feature or fix, write out the full list of situations
+it has to handle and cover all of them, not just the path being tested:
+
+- Who can use it (each role, suspended/revoked accounts, other organizations)
+  and what the server re-checks regardless of the UI.
+- Empty, loading and error states; what the user sees and can do next.
+- Retries, interrupted operations, double taps and simultaneous actions.
+- Legacy (v1) organizations and records alongside version-2 ones.
+- Every field and button the change touches, and what else reads or writes
+  the same data.
+- Layout: English and Vietnamese, narrow phones, desktop, large text.
+
+Include this list with the change so it can be reviewed, and state which
+items were verified and which were not.
+
 ## Bug fixes
 
 - Reproduce a reported bug before changing the implementation. For a testable

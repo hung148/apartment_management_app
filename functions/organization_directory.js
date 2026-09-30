@@ -16,13 +16,21 @@ function createOrganizationDirectory({db,HttpsError}) {
       const records=[];
       for(const membership of page.docs.slice(0,50)){
         const m=membership.data();
-        if(m.status!=='active'||typeof m.organizationId!=='string'||!/^[A-Za-z0-9_-]{1,128}$/.test(m.organizationId)||membership.id!==`${uid}_${m.organizationId}`)continue;
+        // Waiting members (no supported role yet) still see the organization, marked waiting.
+        const waitingStatus=m.status==='assignmentRequired';
+        if((m.status!=='active'&&!waitingStatus)||typeof m.organizationId!=='string'||!/^[A-Za-z0-9_-]{1,128}$/.test(m.organizationId)||membership.id!==`${uid}_${m.organizationId}`)continue;
         const org=await tx.get(db.collection('organizations').doc(m.organizationId));
-        if(!org.exists)continue;
+        // Closed organizations disappear from every dashboard immediately.
+        if(!org.exists||org.data().closedAt)continue;
         const data=org.data(),version=data.accessVersion??1;
-        if(version===2 && (m.accessVersion!==2||!Object.hasOwn(roles,m.role)||!['all','selected'].includes(m.buildingScope)))continue;
         if(version!==1&&version!==2)continue;
-        records.push({id:org.id,accessVersion:version,...serialize(Object.fromEntries(
+        let waiting=false;
+        if(version===2){
+          if(m.accessVersion!==2)continue;
+          waiting=waitingStatus||!Object.hasOwn(roles,m.role);
+          if(!waiting&&!['all','selected'].includes(m.buildingScope))continue;
+        }else if(waitingStatus)continue;
+        records.push({id:org.id,accessVersion:version,...(waiting?{waiting:true}:{}),...serialize(Object.fromEntries(
           ['name','createdBy','createdAt','updatedAt'].filter(k=>data[k]!==undefined).map(k=>[k,data[k]])))});
       }
       return {records,nextCursor:page.docs.length>50?page.docs[49].id:null};

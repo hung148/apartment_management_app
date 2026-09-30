@@ -5,6 +5,7 @@ import 'package:phan_mem_quan_ly_can_ho/services/auth_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/localizations/app_localizations.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_router.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_theme.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/email_format.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/responsive.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/loading.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/shared.dart';
@@ -243,6 +244,26 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
     _switching = false;
   }
 
+  /// "Forgot password?": asks for the email (prefilled from the login form)
+  /// and sends a reset link. Opens once even on double taps.
+  bool _forgotOpen = false;
+  Future<void> _showForgotPassword() async {
+    if (_forgotOpen) return;
+    _forgotOpen = true;
+    try {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => _ForgotPasswordDialog(
+          initialEmail: loginEmailController.text.trim(),
+          authService: _authService,
+        ),
+      );
+    } finally {
+      _forgotOpen = false;
+    }
+  }
+
   // login function
   Future<void> _handleLogin() async {
     if(!_formKey1.currentState!.validate()) return;
@@ -270,7 +291,7 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
         print('🔍 Current user after login: ${currentUser?.uid}');
         // Navidate to dashboard
         if (mounted) {
-          Navigator.pushReplacementNamed(context, AppRouter.dashboardScreen);
+          Navigator.pushNamedAndRemoveUntil(context, AppRouter.dashboardScreen, (_) => false);
         }
       } else {
         // login fail
@@ -316,7 +337,7 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
       if (owner != null) {
         // Registration successful - navigate to dashboard
         if (mounted) {
-          Navigator.pushReplacementNamed(context, AppRouter.dashboardScreen);
+          Navigator.pushNamedAndRemoveUntil(context, AppRouter.dashboardScreen, (_) => false);
         }
       } else {
         // Registration failed
@@ -415,6 +436,18 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
                 obscureText: true, 
               ),
             ],
+          ),
+        ),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 400),
+          child: Align(
+            alignment: AlignmentDirectional.centerEnd,
+            child: TextButton(
+              onPressed: loading ? null : _showForgotPassword,
+              style: TextButton.styleFrom(foregroundColor: Colors.white),
+              child: Text(t['auth_forgot_password'],
+                  style: TextStyle(fontSize: widget.textSize, decoration: TextDecoration.underline, decorationColor: Colors.white)),
+            ),
           ),
         ),
         if (login_error != null)
@@ -721,4 +754,107 @@ class _SwitchAuthLinkState extends State<SwitchAuthLink> {
 
 enum Choices { login, register }
 
+/// Password reset request from the login screen. The confirmation text is the
+/// same whether or not the email has an account.
+class _ForgotPasswordDialog extends StatefulWidget {
+  const _ForgotPasswordDialog({required this.initialEmail, required this.authService});
+  final String initialEmail;
+  final AuthService authService;
+
+  @override
+  State<_ForgotPasswordDialog> createState() => _ForgotPasswordDialogState();
+}
+
+class _ForgotPasswordDialogState extends State<_ForgotPasswordDialog> {
+  late final TextEditingController _email = TextEditingController(text: widget.initialEmail);
+  bool _busy = false;
+  bool _touched = false;
+  String? _error;
+  String? _sentTo;
+
+  @override
+  void dispose() {
+    _email.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send() async {
+    setState(() => _touched = true);
+    if (_busy || !isValidEmail(_email.text)) return;
+    final t = AppTranslations.of(context);
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await widget.authService.sendPasswordReset(_email.text, languageCode: t.locale.languageCode);
+      if (mounted) setState(() => _sentTo = _email.text.trim());
+    } on FirebaseAuthException catch (e) {
+      if (mounted) {
+        const keys = {
+          'invalid-email': 'profile_email_invalid',
+          'too-many-requests': 'profile_too_many_attempts',
+          'network-request-failed': 'profile_network_error',
+        };
+        setState(() => _error = t[keys[e.code] ?? 'auth_reset_failed']);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _error = t['auth_reset_failed']);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppTranslations.of(context);
+    final invalid = _touched && !isValidEmail(_email.text);
+    return PopScope(
+      canPop: !_busy,
+      child: AlertDialog(
+        title: Text(t['auth_reset_title']),
+        content: SizedBox(
+          width: 400,
+          child: SingleChildScrollView(
+            child: _sentTo != null
+                ? Text(t.textWithParams('auth_reset_sent', {'email': _sentTo}), style: const TextStyle(height: 1.5))
+                : Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    Text(t['auth_reset_intro'], style: const TextStyle(height: 1.4)),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _email,
+                      enabled: !_busy,
+                      autofocus: true,
+                      keyboardType: TextInputType.emailAddress,
+                      autocorrect: false,
+                      decoration: InputDecoration(
+                        labelText: t['email'],
+                        errorText: invalid ? t['profile_email_invalid'] : null,
+                        border: const OutlineInputBorder(),
+                      ),
+                      onChanged: (_) => setState(() => _error = null),
+                      onSubmitted: (_) => _send(),
+                    ),
+                    if (_error != null) ...[
+                      const SizedBox(height: 12),
+                      Text(_error!, style: const TextStyle(color: Color(0xFFB91C1C), fontWeight: FontWeight.w600)),
+                    ],
+                  ]),
+          ),
+        ),
+        actions: _sentTo != null
+            ? [FilledButton(onPressed: () => Navigator.pop(context), child: Text(t['close']))]
+            : [
+                TextButton(onPressed: _busy ? null : () => Navigator.pop(context), child: Text(t['cancel'])),
+                FilledButton(
+                  onPressed: _busy ? null : _send,
+                  child: _busy
+                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                      : Text(t['auth_reset_send']),
+                ),
+              ],
+      ),
+    );
+  }
+}
 

@@ -199,7 +199,7 @@ void main() {
                     : 'second@example.com',
                 'status': 'revoked',
                 'canRevoke': false,
-                'access': {'role': 'viewer'},
+                'access': {'role': 'receptionist'},
               },
             ],
             'nextCursor': data['cursor'] == null ? 'one' : null,

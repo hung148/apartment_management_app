@@ -48,6 +48,7 @@ function createTeamHandler({db, Timestamp, HttpsError}) {
       const org = await tx.get(db.collection('organizations').doc(orgId));
       // A coordinated migration must explicitly enable v2. Never bootstrap from createdBy.
       if (!org.exists || org.data().accessVersion !== 2) fail('failed-precondition', 'team_migration_required');
+      if (org.data().closedAt) fail('failed-precondition', 'org_closed');
       const actorRef = db.collection('memberships').doc(`${uid}_${orgId}`);
       const actorDoc = await tx.get(actorRef);
       const actor = actorDoc.exists ? actorDoc.data() : null;
@@ -142,6 +143,8 @@ function createTeamHandler({db, Timestamp, HttpsError}) {
         if (actorDoc.exists) fail('already-exists', 'team_existing_access');
         const inviterDoc = await tx.get(db.collection('memberships').doc(`${invitation.data.invitedBy}_${orgId}`));
         const inviter = inviterDoc.exists ? inviterDoc.data() : null;
+        // A role removed after the invitation was sent (e.g. viewer) cannot be accepted.
+        if (!Object.hasOwn(roles, invitation.data.access?.role)) fail('failed-precondition', 'team_invitation_role_removed');
         const grant = access(invitation.data.access);
         if (!canManageAccessOf(inviter, grant.role, {organizationId:orgId,userId:invitation.data.invitedBy}) || inviter.buildingScope !== 'all' ||
             permissions.some(p=>allows({...grant,status:'active'},p) && !allows(inviter,p))) fail('permission-denied', 'team_inviter_access_changed');
@@ -191,6 +194,34 @@ function createTeamHandler({db, Timestamp, HttpsError}) {
         const reason = text(input.reason,500,true);
         before = {role:target.data.role,status:target.data.status,buildingScope:target.data.buildingScope ?? null,buildingIds:target.data.buildingIds ?? [],permissionOverrides:target.data.permissionOverrides ?? {}};
         after = {...grant,status:input.status};
+        // Members who joined before v2 (or any account without a staff record)
+        // get a linked staff profile, so they appear in the staff list like
+        // invited staff. Reuses a profile already linked to the account.
+        let staffLink = {};
+        if (input.status !== 'revoked') {
+          const current = target.data.staffId && id(target.data.staffId)
+            ? await tx.get(db.collection('staffProfiles').doc(target.data.staffId)) : null;
+          const valid = current?.exists && current.data().organizationId === orgId && current.data().accountId === input.userId;
+          if (!valid) {
+            const linked = await tx.get(db.collection('staffProfiles').where('organizationId','==',orgId).where('accountId','==',input.userId));
+            if (linked.docs.length) {
+              staffLink = {staffId: linked.docs[0].id};
+            } else {
+              const staffId = digest(['staffFor', orgId, input.userId]).slice(0, 28);
+              const base = 'ACC-' + staffId.slice(0, 6).toUpperCase();
+              const taken = await tx.get(db.collection('staffProfiles').where('organizationId','==',orgId).where('code','==',base));
+              const code = taken.docs.some(d => d.id !== staffId) ? 'ACC-' + staffId.slice(0, 12).toUpperCase() : base;
+              const name = typeof target.data.displayName === 'string' && target.data.displayName.trim()
+                ? target.data.displayName.trim().slice(0, 120)
+                : (typeof target.data.email === 'string' && target.data.email) || 'Staff';
+              writes.push(['set', db.collection('staffProfiles').doc(staffId), {organizationId: orgId, code, displayName: name,
+                email: typeof target.data.email === 'string' ? target.data.email.slice(0, 254) : '', phone: '', color: '',
+                employmentStatus: 'active', accountId: input.userId, createdAt: now, createdBy: uid, updatedAt: now}]);
+              staffLink = {staffId};
+            }
+            after = {...after, ...staffLink};
+          }
+        }
         writes.push(['update',target.ref,{...after,updatedAt:now,updatedBy:uid}]);
         targetId = target.ref.id; result = {status:input.status};
         writes.push(['create',eventRef,{organizationId:orgId,actorId:uid,action,targetId,before,after,reason,createdAt:now}]);

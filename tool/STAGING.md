@@ -42,3 +42,34 @@ Provider endpoints deliberately return unavailable. Staging Firestore enforcemen
 is enabled following genuine browser verification. The existing project's
 enforcement and Editor retirement still require the remaining verification in
 IAM_ROLLOUT.md. No service-account private keys are needed.
+
+## Fresh backend release (current procedure)
+
+`deploy_staging.cjs` only replays the first rollout. For changed code use
+`staging_release.cjs`, which bundles the current `functions` source with
+`main=staging_index.js`, reads identities/memory/triggers from the staging
+entrypoint, and keeps a journal under `.dart_tool/staging-release/<id>/`.
+
+```powershell
+node tool/staging_release.cjs prepare
+node tool/staging_release.cjs deploy     # starts 3; repeat after polling
+node tool/staging_release.cjs poll       # repeat until running is 0
+node tool/staging_release.cjs finish     # invoker access + Cloud Scheduler job
+node tool/staging_verify.cjs
+```
+
+Callables get public transport (Auth/App Check inside are the boundary).
+Scheduled functions stay private: only their runtime identity may invoke them,
+through a Cloud Scheduler job with an OIDC token. `finish` enables the Cloud
+Scheduler API in staging if needed; if job creation fails right after enabling,
+wait a minute and run `finish` again (it is idempotent).
+
+## Synthetic v2 organizations for manual tests
+
+`staging_seed_v2.cjs create --owner EMAIL --viewer EMAIL` creates
+`stagingSeedSource` (with one property, room, two tenants and an invoice) and
+`stagingSeedTarget`, owned by the first account; the second account is a Viewer
+in the source. Both accounts must be registered in the staging web app first.
+`status` shows state and counts, `expire` makes a closed test organization due
+for purge, `node tool/staging_release.cjs run-purge` runs the schedule once, and
+`delete` removes everything the tool created.

@@ -71,6 +71,16 @@ extension _DashboardSettingsDialogs on _DashboardScreenState {
                         },
                       ),
                     _buildSettingsTile(
+                      icon: Icons.person_outline_rounded,
+                      iconBg: _DS.primaryLight,
+                      iconColor: _DS.primary,
+                      label: AppTranslations.of(ctx).text('personal_info'),
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _showPersonalInfoDialog();
+                      },
+                    ),
+                    _buildSettingsTile(
                       icon: Icons.language_rounded,
                       iconBg: _DS.primaryLight,
                       iconColor: _DS.primary,
@@ -88,6 +98,16 @@ extension _DashboardSettingsDialogs on _DashboardScreenState {
                       onTap: () {
                         Navigator.pop(ctx);
                         _showThemeColorDialog();
+                      },
+                    ),
+                    _buildSettingsTile(
+                      icon: Icons.restore_from_trash_rounded,
+                      iconBg: _DS.primaryLight,
+                      iconColor: _DS.primary,
+                      label: AppTranslations.of(ctx).text('recently_deleted_orgs'),
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _showRecentlyDeletedDialog();
                       },
                     ),
                     _buildSettingsTile(
@@ -158,6 +178,7 @@ extension _DashboardSettingsDialogs on _DashboardScreenState {
   void _showLanguageDialog() {
     final notifier = getIt<LocaleNotifier>();
     Locale tempLocale = notifier.locale;
+    bool savingLocale = false; // a double tap must not close two screens
     _showTrackedDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -245,7 +266,8 @@ extension _DashboardSettingsDialogs on _DashboardScreenState {
                     const SizedBox(width: 12),
                     Expanded(
                       child: FilledButton(
-                        onPressed: () async {
+                        onPressed: savingLocale ? null : () async {
+                          setDialogState(() => savingLocale = true);
                           await notifier.setLocale(tempLocale);  // ✅ await the async call
                           if (ctx.mounted) Navigator.pop(ctx);
                         },
@@ -346,7 +368,7 @@ extension _DashboardSettingsDialogs on _DashboardScreenState {
                               _buildThemeColorChoice(
                                 color: AppThemeColors.presets[i],
                                 label: t.text('theme_color_${names[i]}'),
-                                selected: notifier.primary.value == AppThemeColors.presets[i].value,
+                                selected: notifier.primary.toARGB32() == AppThemeColors.presets[i].toARGB32(),
                                 onTap: () => notifier.setPrimary(AppThemeColors.presets[i]),
                               ),
                           ],
@@ -864,7 +886,7 @@ extension _DashboardSettingsDialogs on _DashboardScreenState {
         }
         await _authService.signOut();
         if (mounted) {
-          Navigator.pushReplacementNamed(context, AppRouter.loginScreen);
+          Navigator.pushNamedAndRemoveUntil(context, AppRouter.loginScreen, (_) => false);
         }
       });
     }
@@ -874,22 +896,292 @@ extension _DashboardSettingsDialogs on _DashboardScreenState {
   // DELETE ACCOUNT
   // ─────────────────────────────────────────────────────────
 
+  /// Account deletion, carried out by the server (deleteMyAccount):
+  /// 1. preview what happens to each organization;
+  /// 2. owners choose per organization (hand over to an administrator, or close);
+  /// 3. a recent sign-in is required (password asked when needed);
+  /// 4. the server deletes/hands over; the app deletes the login last.
+  /// The lock keeps double taps from starting two runs.
   Future<void> _handleDeleteAccount() async {
-    final confirm = await _showTrackedDialog<bool>(
+    if (_deleteAccountLock.isLocked) return;
+    await _deleteAccountLock.run(_runAccountDeletion);
+  }
+
+  Future<void> _runAccountDeletion() async {
+    final service = AccountDeletionService();
+    // A changed situation (an administrator lost the role, a new member...)
+    // sends the user back to a fresh preview; never more than a few times.
+    for (var attempt = 0; attempt < 3; attempt++) {
+      if (!mounted) return;
+      final preview = await _withDeletionLoader(() => service.preview());
+      if (!mounted) return;
+      if (preview == null) {
+        _deletionSnack('account_deletion_failed');
+        return;
+      }
+      final decisions = await _showDeletionPlanDialog(preview);
+      if (decisions == null || !mounted) return;
+
+      if (!preview.recentLogin && !await _confirmPasswordForDeletion()) return;
+
+      final operationId = const Uuid().v4();
+      var reauthTried = false;
+      while (true) {
+        Object? error;
+        final result = await _withDeletionLoader(
+          () => service.delete(decisions, operationId: operationId),
+          onError: (e) => error = e,
+        );
+        if (!mounted) return;
+        if (result != null && result['status'] == 'dataDeleted') {
+          await _finishAccountDeletion();
+          return;
+        }
+        final reason = _deletionErrorReason(error);
+        if (reason == 'recent_login_required' && !reauthTried) {
+          reauthTried = true;
+          if (!await _confirmPasswordForDeletion()) return;
+          continue;
+        }
+        if (reason == 'account_deletion_plan_changed' || reason == 'account_deletion_decision_required') {
+          _deletionSnack('account_delete_plan_changed');
+          break; // back to a fresh preview
+        }
+        _deletionSnack(reason == 'recent_login_required' ? 'incorrect_password' : 'account_deletion_failed');
+        return;
+      }
+    }
+  }
+
+  /// The server has removed the data; now remove the login itself.
+  Future<void> _finishAccountDeletion() async {
+    var deleted = false;
+    try {
+      await _authService.deleteSignIn();
+      deleted = true;
+    } on ReauthenticationRequiredException {
+      if (mounted && await _confirmPasswordForDeletion()) {
+        try {
+          await _authService.deleteSignIn();
+          deleted = true;
+        } catch (e) {
+          logger.e('Deleting the sign-in failed after reauthentication', error: e);
+        }
+      }
+    } catch (e) {
+      logger.e('Deleting the sign-in failed', error: e);
+    }
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final nav = Navigator.of(context);
+    final message = AppTranslations.of(context)
+        .text(deleted ? 'account_deleted_success' : 'account_delete_login_left');
+    if (!deleted) {
+      // Data is gone; signing out avoids a half-empty dashboard. Signing in
+      // again and deleting again finishes the job (the server run is repeatable).
+      await _authService.signOut();
+    }
+    if (mounted) {
+      _updateDashboardState(() {
+        _ownerFuture = null;
+        _orgsFuture = null;
+        _membershipFutures.clear();
+      });
+    }
+    nav.pushNamedAndRemoveUntil(AppRouter.loginScreen, (_) => false);
+    messenger.showSnackBar(SnackBar(
+      content: Text(message),
+      backgroundColor: deleted ? Colors.green : Colors.orange.shade800,
+      duration: Duration(seconds: deleted ? 4 : 8),
+    ));
+  }
+
+  /// Asks for the password, signs in again and refreshes the token so the
+  /// server sees the new sign-in time. False when cancelled or wrong.
+  Future<bool> _confirmPasswordForDeletion() async {
+    final password = await _promptPasswordForReauth();
+    if (password == null || password.isEmpty || !mounted) return false;
+    final ok = await _withDeletionLoader(() async {
+      if (!await _authService.reauthenticateWithPassword(password)) return false;
+      await _authService.refreshIdToken();
+      return true;
+    });
+    if (ok != true) {
+      if (mounted) _deletionSnack('incorrect_password');
+      return false;
+    }
+    return true;
+  }
+
+  /// Runs [action] behind a blocking loader. Returns null on failure.
+  Future<T?> _withDeletionLoader<T>(Future<T> Function() action, {void Function(Object e)? onError}) async {
+    final nav = Navigator.of(context, rootNavigator: true);
+    final text = AppTranslations.of(context).text('loading');
+    _showTrackedDialog(
       context: context,
-      builder: (ctx) => AppDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        elevation: 0,
-        backgroundColor: Colors.white,
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: _getDialogWidth(ctx)),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
+      barrierDismissible: false,
+      builder: (ctx) => PopScope(
+        canPop: false,
+        child: AppDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          elevation: 0,
+          backgroundColor: Colors.white,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(28, 32, 28, 28),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const SizedBox(
+                width: 40, height: 40,
+                child: CircularProgressIndicator(strokeWidth: 3, color: Color(0xFFB91C1C)),
+              ),
+              const SizedBox(height: 16),
+              Text(text,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: _DS.textPrimary)),
+            ]),
+          ),
+        ),
+      ),
+    );
+    try {
+      return await action();
+    } catch (e) {
+      logger.e('Account deletion step failed', error: e);
+      onError?.call(e);
+      return null;
+    } finally {
+      if (nav.mounted) nav.pop();
+    }
+  }
+
+  String _deletionErrorReason(Object? e) {
+    final text = e is FirebaseFunctionsException ? '${e.message} ${e.details}' : '$e';
+    for (final key in const ['recent_login_required', 'account_deletion_plan_changed', 'account_deletion_decision_required']) {
+      if (text.contains(key)) return key;
+    }
+    return 'failed';
+  }
+
+  void _deletionSnack(String key) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(AppTranslations.of(context).text(key)),
+      backgroundColor: Colors.red,
+    ));
+  }
+
+  /// Shows what happens to each organization and collects the owner's
+  /// choices. Returns organizationId -> null (close) or userId (hand over),
+  /// or null when cancelled.
+  Future<Map<String, String?>?> _showDeletionPlanDialog(DeletionPreview preview) {
+    const closeChoice = '';
+    final choices = <String, String>{};
+    final decide = preview.organizations.where((o) => o.plan == 'decide').toList();
+
+    return _showTrackedDialog<Map<String, String?>>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setLocal) {
+        final t = AppTranslations.of(ctx);
+        final ready = decide.every((o) => choices.containsKey(o.organizationId));
+
+        Widget option({required bool selected, required String label, String? hint, required VoidCallback onTap}) {
+          return InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(10),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Icon(selected ? Icons.radio_button_checked_rounded : Icons.radio_button_unchecked_rounded,
+                    size: 20, color: selected ? const Color(0xFFB91C1C) : _DS.textSecondary),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(label,
+                        style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                            color: _DS.textPrimary)),
+                    if (hint != null)
+                      Text(hint, style: const TextStyle(fontSize: 12, color: _DS.textSecondary, height: 1.3)),
+                  ]),
+                ),
+              ]),
+            ),
+          );
+        }
+
+        String closeText(DeletionPlanItem o) => o.otherMembers > 0
+            ? t.textWithParams('account_delete_plan_close_members', {'count': o.otherMembers})
+            : t.text('account_delete_plan_close');
+
+        Widget orgCard(DeletionPlanItem o) {
+          final icon = o.plan == 'decide'
+              ? Icons.swap_horiz_rounded
+              : o.plan == 'close'
+                  ? Icons.block_rounded
+                  : Icons.logout_rounded;
+          return Container(
+            margin: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: o.plan == 'leave' ? const Color(0xFFF8FAFC) : const Color(0xFFFEF2F2),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: o.plan == 'leave' ? const Color(0xFFE2E8F0) : const Color(0xFFFECACA)),
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Icon(icon, size: 18, color: o.plan == 'leave' ? _DS.textSecondary : const Color(0xFFB91C1C)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(o.name.isEmpty ? o.organizationId : o.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: _DS.textPrimary)),
+                ),
+              ]),
+              const SizedBox(height: 6),
+              if (o.plan == 'leave')
+                Text(t.text('account_delete_plan_leave'),
+                    style: const TextStyle(fontSize: 13, color: _DS.textSecondary, height: 1.4)),
+              if (o.plan == 'close')
+                Text(closeText(o), style: const TextStyle(fontSize: 13, color: Color(0xFF991B1B), height: 1.4)),
+              if (o.plan == 'decide') ...[
+                Text(t.text('account_delete_plan_decide'),
+                    style: const TextStyle(fontSize: 13, color: _DS.textSecondary, height: 1.4)),
+                const SizedBox(height: 4),
+                for (final c in o.candidates)
+                  option(
+                    selected: choices[o.organizationId] == c.userId,
+                    label: t.textWithParams('account_delete_hand_over',
+                        {'name': c.name.isEmpty ? t.text('team_role_administrator') : c.name}),
+                    hint: t.text('account_delete_hand_over_hint'),
+                    onTap: () => setLocal(() => choices[o.organizationId] = c.userId),
+                  ),
+                option(
+                  selected: choices[o.organizationId] == closeChoice,
+                  label: t.text('account_delete_close_for_everyone'),
+                  hint: closeText(o),
+                  onTap: () => setLocal(() => choices[o.organizationId] = closeChoice),
+                ),
+              ],
+            ]),
+          );
+        }
+
+        return AppDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          elevation: 0,
+          backgroundColor: Colors.white,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: _getDialogWidth(ctx),
+              maxHeight: MediaQuery.of(ctx).size.height * 0.85,
+            ),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 28),
-                decoration: BoxDecoration(
+                padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 20),
+                decoration: const BoxDecoration(
                   gradient: LinearGradient(
                     colors: [Color(0xFFEF4444), Color(0xFFB91C1C)],
                     begin: Alignment.topLeft,
@@ -898,55 +1190,62 @@ extension _DashboardSettingsDialogs on _DashboardScreenState {
                   borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
                 ),
                 child: Column(children: [
-                  Container(
-                    width: 56, height: 56,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.2),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.delete_forever_rounded, color: Colors.white, size: 28),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    AppTranslations.of(ctx).text('confirm_delete_account'),
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Colors.white, fontSize: 18,
-                      fontWeight: FontWeight.w800, letterSpacing: -0.3,
-                    ),
-                  ),
+                  const Icon(Icons.delete_forever_rounded, color: Colors.white, size: 30),
+                  const SizedBox(height: 8),
+                  Text(t.text('confirm_delete_account'),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                          color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: -0.3)),
                 ]),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
-                child: Text(
-                  AppTranslations.of(ctx).text('confirm_delete_account_message'),
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 14, color: _DS.textSecondary, height: 1.5),
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(t.text('account_delete_intro'),
+                        style: const TextStyle(fontSize: 14, color: _DS.textSecondary, height: 1.5)),
+                    const SizedBox(height: 12),
+                    for (final o in preview.organizations) orgCard(o),
+                    Text(t.text('account_delete_personal_data'),
+                        style: const TextStyle(fontSize: 13, color: _DS.textSecondary, height: 1.4)),
+                  ]),
                 ),
               ),
+              if (!ready)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                  child: Text(t.text('account_delete_choose_first'),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 13, color: Color(0xFFB91C1C), fontWeight: FontWeight.w600)),
+                ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
                 child: Row(children: [
                   Expanded(
                     child: OutlinedButton(
-                      onPressed: () => Navigator.pop(ctx, false),
+                      onPressed: () => Navigator.pop(ctx),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: _DS.textSecondary,
                         side: BorderSide(color: Colors.grey.withValues(alpha: 0.3)),
                         padding: const EdgeInsets.symmetric(vertical: 13),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                       ),
-                      child: Text(AppTranslations.of(ctx).text('cancel'),
-                          style: const TextStyle(fontWeight: FontWeight.w600)),
+                      child: Text(t.text('cancel'), style: const TextStyle(fontWeight: FontWeight.w600)),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: FilledButton.icon(
-                      onPressed: () => Navigator.pop(ctx, true),
+                      onPressed: ready
+                          ? () => Navigator.pop(ctx, <String, String?>{
+                                for (final o in decide)
+                                  o.organizationId:
+                                      choices[o.organizationId] == closeChoice ? null : choices[o.organizationId],
+                              })
+                          : null,
                       icon: const Icon(Icons.delete_forever_rounded, size: 16),
-                      label: Text(AppTranslations.of(ctx).text('delete_account_action'),
+                      label: Text(t.text('delete_account_action'),
+                          overflow: TextOverflow.ellipsis,
                           style: const TextStyle(fontWeight: FontWeight.w600)),
                       style: FilledButton.styleFrom(
                         backgroundColor: const Color(0xFFB91C1C),
@@ -958,15 +1257,11 @@ extension _DashboardSettingsDialogs on _DashboardScreenState {
                   ),
                 ]),
               ),
-            ],
+            ]),
           ),
-        ),
-      ),
+        );
+      }),
     );
-
-    if (confirm == true && mounted) {
-      _deleteAccountLock.run(() => _performAccountDeletion());
-    }
   }
 
   /// Prompts the user for their password inside the given dialog context,
@@ -1052,104 +1347,4 @@ extension _DashboardSettingsDialogs on _DashboardScreenState {
         ),
     );
   }
-
-  Future<void> _performAccountDeletion({String? password}) async {
-    if (!mounted) return;
-    final nav = Navigator.of(context);
-    final messenger = ScaffoldMessenger.of(context);
-    final successText = AppTranslations.of(context).text('account_deleted_success');
-    final failText = AppTranslations.of(context).text('account_deletion_failed');
-    final incorrectPwText = AppTranslations.of(context).text('incorrect_password');
-
-    if (password != null) {
-      final reauthed = await _authService.reauthenticateWithPassword(password);
-      if (!reauthed) {
-        if (!mounted) return;
-        messenger.showSnackBar(SnackBar(
-          content: Text(incorrectPwText),
-          backgroundColor: Colors.red,
-        ));
-        return;
-      }
-      if (!mounted) return;
-    }
-
-    final statusNotifier = ValueNotifier<String>(
-      AppTranslations.of(context).text('deleting_account'),
-    );
-    _showTrackedDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AppDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        elevation: 0,
-        backgroundColor: Colors.white,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(28, 32, 28, 28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(
-                width: 40, height: 40,
-                child: CircularProgressIndicator(strokeWidth: 3, color: Color(0xFFB91C1C)),
-              ),
-              const SizedBox(height: 16),
-              ValueListenableBuilder<String>(
-                valueListenable: statusNotifier,
-                builder: (ctx, status, _) => Text(
-                  status,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: _DS.textPrimary),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-
-    bool success = false;
-    bool needsReauth = false;
-    try {
-      success = await _authService.deleteAccount(
-        onStatusUpdate: (s) => statusNotifier.value = s,
-      );
-    } on ReauthenticationRequiredException {
-      needsReauth = true;
-    } catch (_) {
-      success = false;
-    }
-
-    if (!mounted) return;
-    nav.pop(); // close loading dialog
-
-    if (needsReauth) {
-      final enteredPassword = await _promptPasswordForReauth();
-      if (enteredPassword != null && enteredPassword.isNotEmpty && mounted) {
-        await _performAccountDeletion(password: enteredPassword);
-      }
-      return;
-    }
-
-    if (success) {
-      if (mounted) {
-        _updateDashboardState(() {
-          _ownerFuture = null;
-          _orgsFuture  = null;
-          _membershipFutures.clear();
-        });
-      }
-      nav.pushReplacementNamed(AppRouter.loginScreen);
-      messenger.showSnackBar(SnackBar(
-        content: Text(successText),
-        backgroundColor: Colors.green,
-      ));
-    } else {
-      messenger.showSnackBar(SnackBar(
-        content: Text(failText),
-        backgroundColor: Colors.red,
-      ));
-    }
-  }
-
 }

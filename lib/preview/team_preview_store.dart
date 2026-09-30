@@ -1449,7 +1449,6 @@ class TeamPreviewStore {
             'administrator',
             'manager',
             'accountant',
-            'viewer',
           ].contains(workspaceRole)) {
         reject();
       }
