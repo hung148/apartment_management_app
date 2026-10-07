@@ -975,6 +975,20 @@ class _RoomCalendarState extends State<RoomCalendar> {
     // One building at a time: its name, or a picker when there are several,
     // then its settings gear (2026-10-04, Tom: moved here from the grid).
     final current = _current;
+    double nameWidth(String name) {
+      final painter = TextPainter(
+        text: TextSpan(text: name, style: theme.textTheme.titleSmall),
+        textDirection: Directionality.of(context),
+        textScaler: MediaQuery.textScalerOf(context).clamp(maxScaleFactor: 1.3),
+        maxLines: 1,
+      )..layout();
+      return painter.width.ceilToDouble() + 112;
+    }
+
+    final pickerWidth = _properties.fold<double>(
+      240,
+      (width, p) => math.max(width, nameWidth(p.name)),
+    );
     final Widget? buildingName = current == null
         ? null
         : _properties.length < 2
@@ -997,11 +1011,12 @@ class _RoomCalendarState extends State<RoomCalendar> {
             ],
           )
         : SizedBox(
-            width: 240,
+            width: pickerWidth,
             child: DropdownButtonFormField<String>(
               key: ValueKey('calendar-building-${current.id}'),
               initialValue: current.id,
               isExpanded: true,
+              style: theme.textTheme.titleSmall,
               decoration: const InputDecoration(
                 prefixIcon: Icon(Icons.apartment_outlined, size: 18),
               ),
@@ -1009,11 +1024,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
                 for (final p in _properties)
                   DropdownMenuItem<String>(
                     value: p.id,
-                    child: Text(
-                      p.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                    child: Text(p.name, maxLines: 1, softWrap: false),
                   ),
               ],
               onChanged: (v) {
@@ -1048,12 +1059,12 @@ class _RoomCalendarState extends State<RoomCalendar> {
               if (_buildingPages(current).isNotEmpty)
                 IconButton(
                   key: ValueKey('calendar-building-pages-${current.id}'),
-                  visualDensity: VisualDensity.compact,
+                  iconSize: 28,
                   tooltip: current.name,
                   onPressed: () => _openBuilding(current),
                   icon: Icon(
                     Icons.settings_outlined,
-                    size: 18,
+                    size: 28,
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
@@ -1134,6 +1145,53 @@ class _RoomCalendarState extends State<RoomCalendar> {
           icon: const Icon(Icons.event_available_outlined, size: 20),
         ),
     ];
+    final availableWidth = MediaQuery.sizeOf(context).width;
+    final compactActions =
+        availableWidth < pickerWidth + 64 + buttons.length * 48 + 32;
+    final actionWidgets = compactActions && buttons.isNotEmpty
+        ? <Widget>[
+            PopupMenuButton<int>(
+              key: const ValueKey('calendar-actions-menu'),
+              tooltip: vi ? 'Thao tác' : 'Actions',
+              icon: const Icon(Icons.more_vert),
+              onSelected: (index) =>
+                  (buttons[index] as IconButton).onPressed?.call(),
+              itemBuilder: (_) => [
+                for (var i = 0; i < buttons.length; i++)
+                  PopupMenuItem(
+                    key: buttons[i].key,
+                    value: i,
+                    child: Row(
+                      children: [
+                        (buttons[i] as IconButton).icon,
+                        const SizedBox(width: 12),
+                        Flexible(
+                          child: Text((buttons[i] as IconButton).tooltip!),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ]
+        : buttons;
+    final buildingWidth = _properties.length < 2 && current != null
+        ? nameWidth(current.name) + 48
+        : pickerWidth + 48;
+    final propertyActions = Row(
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: building == null
+                ? const SizedBox.shrink()
+                : SizedBox(width: buildingWidth, child: building),
+          ),
+        ),
+        for (final button in actionWidgets)
+          Padding(padding: const EdgeInsets.only(left: 8), child: button),
+      ],
+    );
     // Like the workspace bars: keeps its size; very large text is capped here.
     return MediaQuery.withClampedTextScaling(
       maxScaleFactor: 1.3,
@@ -1156,13 +1214,13 @@ class _RoomCalendarState extends State<RoomCalendar> {
                           // Name (or picker) and the settings gear.
                           ConstrainedBox(
                             constraints: BoxConstraints(
-                              maxWidth: _properties.length < 2 ? 270 : 300,
+                              maxWidth: buildingWidth,
                             ),
                             child: building,
                           ),
                           const SizedBox(width: 12),
                         ],
-                        for (final b in buttons)
+                        for (final b in actionWidgets)
                           Padding(
                             padding: const EdgeInsets.only(right: 8),
                             child: b,
@@ -1179,13 +1237,11 @@ class _RoomCalendarState extends State<RoomCalendar> {
                       // Building, then its create buttons; buttons move to the
                       // next line when the name needs the room.
                       if (building != null || buttons.isNotEmpty || narrow)
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          // Phones: Ngày/Tháng here, so the month row keeps
-                          // room for Today, ‹ month ›.
-                          children: [?building, ...buttons, if (narrow) modes],
+                        propertyActions,
+                      if (narrow)
+                        Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: modes,
                         ),
                       if (building != null || buttons.isNotEmpty || narrow)
                         const SizedBox(height: 6),

@@ -547,3 +547,37 @@ The six buttons at the end of the lease page (each a separate page) are gone. No
     The plan stays in the hover. Every "buồng phòng" text is now "dọn phòng"
     (role name Dọn phòng). Form fields got gaps (Dọn phòng, Sự cố, rename fee);
     checked the whole app with a scan for fields that touch.
+# Property selector and compact actions (2026-10-06)
+
+Tom requested a wider one-line property selector and dropdown without ellipsis,
+a three-dot menu for the five calendar actions when the screen is too narrow,
+and a larger property settings gear. The selector measures the longest property
+name with the actual title style instead of using the old fixed 240px width.
+The gear is 28px. Compact actions retain the existing permission conditions and
+callbacks, including new property, new room, problems, cleaning and new stay.
+On phones narrower than the full name, the selector row can scroll sideways;
+the actions menu stays visible. Landscape retains the scrolling toolbar.
+
+Situations to verify: one/multiple properties; long EN/VI names; owner versus
+restricted staff; absent properties; missing time zone; loading/error; five or
+fewer permitted actions; selector/menu selection and disabled loading actions;
+embedded/standalone calendar; populated empty/occupied rooms, hourly/long stays,
+overlaps; phone/landscape/desktop at 100/130/200% text and relevant themes.
+The ellipsis regression failed before the fix. Targeted calendar tests passed
+27/27 before adding compact-menu coverage. Actual-font desktop and narrow
+Vietnamese screenshots were inspected. Full-suite and staging evidence follows
+after completion; untested combinations must not be inferred from these renders.
+
+Final evidence: full Flutter run passed 621 tests with one obsolete navigation
+helper failure. The helper now opens the compact menu; all 34 calendar and
+property-creation tests passed on rerun. The compact-menu test checks five
+authorized entries and a reachable menu; the existing populated matrix covers
+EN/VI, narrow phones, landscape, desktop and 100/130/200% text. Analysis reports
+no errors (422 warning/info items). Desktop and narrow Vietnamese actual-font
+renders were inspected. Every possible permission/theme/content combination was
+not visually reviewed; provider/server logic was unchanged.
+
+Staging hosting updated and live-checked: the exact Utility verification long
+name fits on one line in selector and dropdown, gear is larger, the compact menu
+shows all five actions, and create-building opens its existing form. No record was
+created during this check. Screenshot: `.dart_tool/calendar-layout/staging-toolbar.jpg`.

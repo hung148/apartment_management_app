@@ -391,6 +391,40 @@ Future<void> tapBar(WidgetTester tester, String id) async {
 }
 
 void main() {
+  testWidgets('small toolbar exposes authorized actions through three dots', (
+    tester,
+  ) async {
+    await mountCalendar(
+      tester,
+      calendarService(Calls()),
+      size: const Size(390, 844),
+      access: TeamAccess.fromMap(TeamPreviewStore.grant('owner')),
+    );
+    await tester.pumpAndSettle();
+    final menu = find.byKey(const ValueKey('calendar-actions-menu'));
+    expect(menu.hitTestable(), findsOneWidget);
+    expect(find.byKey(const ValueKey('calendar-new-stay')), findsNothing);
+    await tester.tap(menu);
+    await tester.pumpAndSettle();
+    expect(find.byType(PopupMenuItem<int>), findsNWidgets(5));
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('property picker preserves the complete one-line name', (
+    tester,
+  ) async {
+    await mountCalendar(tester, calendarService(Calls()));
+    await tester.pumpAndSettle();
+    final label = find.text('Riverside — Khu căn hộ phía Đông').first;
+    expect(tester.widget<Text>(label).overflow, isNot(TextOverflow.ellipsis));
+    await tester.tap(find.byKey(const ValueKey('calendar-building-riverside')));
+    await tester.pumpAndSettle();
+    for (final text in tester.widgetList<Text>(
+      find.text('Riverside — Khu căn hộ phía Đông'),
+    )) {
+      expect(text.overflow, isNot(TextOverflow.ellipsis));
+    }
+    expect(tester.takeException(), isNull);
+  });
   testWidgets(
     'populated calendar fits languages, screens, landscape and large text',
     (tester) async {

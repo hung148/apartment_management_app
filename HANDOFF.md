@@ -8,6 +8,18 @@ build next, decisions, design notes) and [tool/STAGING.md](tool/STAGING.md).
 
 ## What to do next (read this first)
 
+2026-10-06 toolbar follow-up: widened the one-line calendar property selector and
+dropdown based on the longest name; removed ellipsis, enlarged settings gear to
+28px, and put the five permitted actions in a three-dot menu when space is tight.
+Staging hosting updated and live-checked with “Utility verification — Tòa nhà
+kiểm tra điện nước”: full selector/dropdown name, larger gear, all five menu
+entries, and create-building form opens without writing data. Extremely narrow
+phones use horizontal scrolling for names wider than the viewport. Full Flutter
+run: 621 pass / one obsolete navigation helper failure; after updating that
+helper, all 34 calendar/property-creation tests passed. Analysis: zero errors.
+Actual-font populated EN/VI phone/landscape/desktop renders inspected; see latest
+CALENDAR.md section for scenarios and gaps. No backend or production deployment.
+
 ### >>> PICK UP HERE (2026-10-06: single organization accounts) <<<
 
 Tom approved one account / one organization, no staff organization creation,

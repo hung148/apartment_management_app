@@ -7,13 +7,23 @@ import '../staff_editor_test.dart' show openSection, reveal;
 /// get a test there from a mounted RoleWorkspace.
 
 /// Shows [buildingName] in the calendar (picks it when there are several).
-Future<void> showCalendarBuilding(WidgetTester tester, String buildingId, String buildingName) async {
+Future<void> showCalendarBuilding(
+  WidgetTester tester,
+  String buildingId,
+  String buildingName,
+) async {
   await closeAllDialogs(tester);
   if (find.byKey(const ValueKey('calendar-month')).evaluate().isEmpty) {
     await openSection(tester, 'calendar');
   }
-  if (find.byKey(ValueKey('calendar-building-pages-$buildingId')).evaluate().isNotEmpty) return;
-  final picker = find.byWidgetPredicate((w) => w is DropdownButtonFormField<String>);
+  if (find
+      .byKey(ValueKey('calendar-building-pages-$buildingId'))
+      .evaluate()
+      .isNotEmpty)
+    return;
+  final picker = find.byWidgetPredicate(
+    (w) => w is DropdownButtonFormField<String>,
+  );
   await reveal(tester, picker.first);
   await tester.tap(picker.first);
   await tester.pumpAndSettle();
@@ -66,7 +76,15 @@ Future<void> openNewBuilding(WidgetTester tester) async {
     await openSection(tester, 'calendar');
   }
   var button = find.byKey(const ValueKey('calendar-new-building'));
-  if (button.evaluate().isEmpty) button = find.byKey(const ValueKey('calendar-first-building'));
+  final actions = find.byKey(const ValueKey('calendar-actions-menu'));
+  if (button.evaluate().isEmpty && actions.evaluate().isNotEmpty) {
+    await tester.ensureVisible(actions);
+    await tester.tap(actions);
+    await tester.pumpAndSettle();
+    button = find.byKey(const ValueKey('calendar-new-building'));
+  }
+  if (button.evaluate().isEmpty)
+    button = find.byKey(const ValueKey('calendar-first-building'));
   await tester.ensureVisible(button);
   await tester.pumpAndSettle();
   await tester.tap(button);
