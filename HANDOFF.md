@@ -8,6 +8,11 @@ build next, decisions, design notes) and [tool/STAGING.md](tool/STAGING.md).
 
 ## What to do next (read this first)
 
+Calendar tooltip/spacing follow-up: compact options tooltip now names both
+“Chú thích và tải lại” / “Legend and refresh”. When the toggle moves below date
+navigation, an explicit 6px row gap matches the gap above navigation. Calendar
+suite 28/28 passed; narrow Vietnamese render inspected; staging web build passed.
+
 Toolbar spacing refinement: reduced name-to-arrow allowance by 24px; compact
 calendar options are now aligned directly below the actions menu on the right
 edge, including when date controls need two rows. Calendar suite 28/28 passed

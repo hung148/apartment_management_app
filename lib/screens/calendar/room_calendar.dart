@@ -917,7 +917,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
     // Phones: legend and reload share one "…" menu to leave room for the month.
     final menu = PopupMenuButton<String>(
       key: const ValueKey('calendar-menu'),
-      tooltip: c('legend'),
+      tooltip: vi ? 'Chú thích và tải lại' : 'Legend and refresh',
       icon: const Icon(Icons.tune),
       onSelected: (v) {
         if (v == 'legend') _showLegend(context);
@@ -1247,6 +1247,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
                           }
                           return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                             Align(alignment: AlignmentDirectional.centerStart, child: nav),
+                            const SizedBox(height: 6),
                             Row(children: [modes, const Spacer(), menu]),
                           ]);
                         })
