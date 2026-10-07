@@ -982,7 +982,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
         textScaler: MediaQuery.textScalerOf(context).clamp(maxScaleFactor: 1.3),
         maxLines: 1,
       )..layout();
-      return painter.width.ceilToDouble() + 88;
+      return painter.width.ceilToDouble() + 112;
     }
 
     final pickerWidth = _properties.fold<double>(
@@ -1016,6 +1016,8 @@ class _RoomCalendarState extends State<RoomCalendar> {
               key: ValueKey('calendar-building-${current.id}'),
               initialValue: current.id,
               isExpanded: true,
+              isDense: false,
+              itemHeight: null,
               style: theme.textTheme.titleSmall,
               decoration: const InputDecoration(
                 prefixIcon: Icon(Icons.apartment_outlined, size: 18),
@@ -1024,7 +1026,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
                 for (final p in _properties)
                   DropdownMenuItem<String>(
                     value: p.id,
-                    child: Text(p.name, maxLines: 1, softWrap: false),
+                    child: Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Text(p.name)),
                   ),
               ],
               onChanged: (v) {
@@ -1181,12 +1183,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
     final propertyActions = Row(
       children: [
         Expanded(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: building == null
-                ? const SizedBox.shrink()
-                : SizedBox(width: buildingWidth, child: building),
-          ),
+          child: building ?? const SizedBox.shrink(),
         ),
         for (final button in actionWidgets)
           Padding(padding: const EdgeInsets.only(left: 8), child: button),

@@ -8,6 +8,16 @@ build next, decisions, design notes) and [tool/STAGING.md](tool/STAGING.md).
 
 ## What to do next (read this first)
 
+Responsive selector correction: removed the horizontal scroller around property
+selector/gear. The box now shrinks to available row width and text wraps only
+when necessary; non-dense dropdown and variable item heights prevent clipping.
+Preferred desktop width accommodates one-line names. Regression reproduced the
+offscreen selector; final calendar suite 29/29 passed with actual fonts. Inspected
+desktop one-line and narrow Vietnamese wrapped renders, full border/arrow/gear.
+This supersedes the earlier horizontal-scroll workaround, which was visually
+clipped and should not have been accepted. Other visual states remain subject to
+the coverage limits in CALENDAR.md; no blanket no-visual-bug claim is warranted.
+
 Calendar tooltip/spacing follow-up: compact options tooltip now names both
 “Chú thích và tải lại” / “Legend and refresh”. When the toggle moves below date
 navigation, an explicit 6px row gap matches the gap above navigation. Calendar

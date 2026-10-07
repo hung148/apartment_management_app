@@ -391,6 +391,20 @@ Future<void> tapBar(WidgetTester tester, String id) async {
 }
 
 void main() {
+  setUpAll(() async {
+    await (FontLoader('Roboto')..addFont(rootBundle.load('assets/fonts/Roboto-Regular.ttf'))).load();
+    await (FontLoader('Ahem')..addFont(rootBundle.load('assets/fonts/Roboto-Regular.ttf'))).load();
+    await (FontLoader('MaterialIcons')..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'))).load();
+  });
+  testWidgets('narrow property selector stays entirely inside the viewport', (tester) async {
+    await mountCalendar(tester, calendarService(Calls()), size: const Size(320,740),
+      access: TeamAccess.fromMap(TeamPreviewStore.grant('owner')));
+    await tester.pumpAndSettle();
+    final rect=tester.getRect(find.byKey(const ValueKey('calendar-building-riverside')));
+    expect(rect.right, lessThanOrEqualTo(320));
+    expect(find.byKey(const ValueKey('calendar-building-pages-riverside')).hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets('small toolbar exposes authorized actions through three dots', (
     tester,
   ) async {
