@@ -9,6 +9,9 @@ build next, decisions, design notes) and [tool/STAGING.md](tool/STAGING.md).
 ## What to do next (read this first)
 
 Toolbar spacing refinement: reduced name-to-arrow allowance by 24px; compact
+calendar options are now aligned directly below the actions menu on the right
+edge, including when date controls need two rows. Calendar suite 28/28 passed
+after this alignment refinement; staging release web build passed.
 date navigation, Ngày/Tháng and calendar options share a wrapping row instead
 of reserving a whole row for the toggle. Calendar options now use `Icons.tune`,
 while the five-action menu keeps three dots. Targeted populated calendar suite

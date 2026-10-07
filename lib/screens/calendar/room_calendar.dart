@@ -1241,12 +1241,15 @@ class _RoomCalendarState extends State<RoomCalendar> {
                       if (building != null || buttons.isNotEmpty || narrow)
                         const SizedBox(height: 6),
                       if (narrow)
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 6,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [nav, modes, menu],
-                        )
+                        LayoutBuilder(builder: (context, constraints) {
+                          if (constraints.maxWidth >= 480) {
+                            return Row(children: [Expanded(child: nav), modes, menu]);
+                          }
+                          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                            Align(alignment: AlignmentDirectional.centerStart, child: nav),
+                            Row(children: [modes, const Spacer(), menu]),
+                          ]);
+                        })
                       else Row(
                         children: [
                           Expanded(
