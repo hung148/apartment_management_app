@@ -544,6 +544,28 @@ test('property creation requires organization-wide management, validates inputs 
   function docRefForClient(id){return doc(env.authenticatedContext('owner').firestore(),`buildings/${id}`);}
 });
 
+test('bulk building creation is atomic, exact on retry, scoped and race safe',async()=>{
+ const api=createPropertyDetailsHandler({db,Timestamp,HttpsError:class extends Error{constructor(code,message){super(message);this.code=code;}}});
+ const command={action:'create',organizationId:'org',buildingId:'bulk',operationId:'bulk',name:'Bulk test',address:'Synthetic',timeZone:'UTC',currency:'USD',exploitationCostMinor:123456,
+  rooms:[{roomNumber:'101',roomType:'Studio',area:25,ratesMinor:{roomPrice:125099,nightlyPrice:3500,hourlyPrice:null}},{roomNumber:'102',roomType:'',area:null,ratesMinor:{roomPrice:null,nightlyPrice:null,hourlyPrice:1050}}]};
+ const run=(d=command,uid='owner')=>api({auth:{uid},data:d});
+ await assert.rejects(run({...command,rooms:[command.rooms[0],{...command.rooms[1],roomNumber:' １０１ '}]}),e=>e.code==='invalid-argument');
+ assert.equal((await db.doc('buildings/bulk').get()).exists,false);assert.equal((await db.collection('rooms').get()).size,0);
+ const both=await Promise.all([run(),run()]);assert.deepEqual(both[0],both[1]);
+ const rooms=(await db.collection('rooms').where('buildingId','==','bulk').get()).docs.map(r=>r.data());
+ assert.equal(rooms.length,2);assert.equal(rooms.find(r=>r.roomNumber==='101').roomPrice,1250.99);assert.equal(rooms.find(r=>r.roomNumber==='102').hourlyPrice,10.5);
+ assert.equal((await db.doc('buildings/bulk').get()).data().exploitationCostMinor,123456);
+ await assert.rejects(run({...command,operationId:'other'}),e=>e.code==='already-exists');
+ await setMember('manager','manager',{buildingScope:'all',permissionOverrides:{overridePrices:false}});
+ await assert.rejects(run({...command,buildingId:'denied'},'manager'),e=>e.code==='permission-denied');
+ await run({...command,buildingId:'no-prices',operationId:'no-prices',rooms:command.rooms.map(r=>({...r,ratesMinor:{roomPrice:null,nightlyPrice:null,hourlyPrice:null}}))},'manager');
+ await db.doc('memberships/manager_org').update({status:'suspended'});
+ await assert.rejects(run({...command,buildingId:'denied'},'manager'),e=>e.code==='permission-denied');
+ const fresh={...command,buildingId:'race'};
+ const raced=await Promise.allSettled([run({...fresh,operationId:'first'}),run({...fresh,operationId:'second'})]);
+ assert.equal(raced.filter(r=>r.status==='fulfilled').length,1);assert.equal((await db.collection('rooms').where('buildingId','==','race').get()).size,2);
+});
+
 test('concurrent property creation cannot overwrite an existing or foreign property',async()=>{
   const property=createPropertyDetailsHandler({db,Timestamp:Timestamp,HttpsError:class extends Error{constructor(code,message){super(message);this.code=code;}}});
   const run=operationId=>property({auth:{uid:'owner'},data:{action:'create',organizationId:'org',buildingId:'shared-id',operationId,name:operationId,address:'Address',timeZone:'UTC',currency:'VND'}});
@@ -751,7 +773,8 @@ test('property details preserve other fields, prevent stale edits and enforce sc
   await db.doc('buildings/b').set({organizationId:'org',name:'Other'});
   await db.doc('buildings/foreign').set({organizationId:'other',name:'Secret'});
   const row=(await run({action:'read'},'manager')).record;
-  assert.deepEqual(Object.keys(row).sort(),['address','id','name','revision','timeZone']);
+  assert.deepEqual(Object.keys(row).sort(),['address','currency','exploitationCostMinor','id','name','revision','timeZone']);
+  assert.equal(row.currency,'USD');assert.equal(row.exploitationCostMinor,null);
   await assert.rejects(run({action:'read'},'reception'),e=>e.code==='permission-denied');
   await assert.rejects(run({action:'read',buildingId:'b'},'manager'),e=>e.code==='permission-denied');
   await assert.rejects(run({action:'read',buildingId:'foreign'}),e=>e.code==='not-found');

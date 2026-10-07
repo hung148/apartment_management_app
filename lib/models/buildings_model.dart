@@ -7,6 +7,7 @@ enum BuildingManagementType {
 
 class Building {
   final String currency;
+  final int? exploitationCostMinor;
   final String id;
   final String organizationId;
   final String name;
@@ -37,6 +38,7 @@ class Building {
 
   Building({
     this.currency = 'VND',
+    this.exploitationCostMinor,
     required this.id,
     required this.organizationId,
     required this.name,
@@ -64,6 +66,7 @@ class Building {
   Map<String, dynamic> toMap() {
     return {
       'currency': currency,
+      'exploitationCostMinor': exploitationCostMinor,
       'organizationId': organizationId,
       'name': name,
       'address': address,
@@ -94,6 +97,7 @@ class Building {
   factory Building.fromMap(String id, Map<String, dynamic> map) {
     return Building(
       currency: map['currency'] as String? ?? 'VND',
+      exploitationCostMinor: (map['exploitationCostMinor'] as num?)?.toInt(),
       id: id,
       organizationId: map['organizationId'] ?? '',
       name: map['name'] ?? '',
@@ -154,6 +158,8 @@ class Building {
   }) {
     return Building(
       id: id ?? this.id,
+      currency: currency,
+      exploitationCostMinor: exploitationCostMinor,
       organizationId: organizationId ?? this.organizationId,
       name: name ?? this.name,
       address: address ?? this.address,

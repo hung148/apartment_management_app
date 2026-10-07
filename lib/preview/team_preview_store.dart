@@ -1516,6 +1516,8 @@ class TeamPreviewStore {
             'timeZone': 'Asia/Ho_Chi_Minh',
             'currency': 'VND',
             'revision': 'new',
+            'canSetRoomPrices': true,
+            'exploitationCostMinor': null,
           },
         };
       }
@@ -1534,8 +1536,17 @@ class TeamPreviewStore {
           'address': d['address'],
           'timeZone': d['timeZone'],
           'currency': d['currency'],
+          'exploitationCostMinor': d['exploitationCostMinor'],
           'revision': '1:0',
         });
+        for(final (index,room) in ((d['rooms'] as List?)??[]).indexed) {
+          final r=Map<String,dynamic>.from(room as Map);
+          rooms.add({'id':'${d['buildingId']}-initial-$index','buildingId':d['buildingId'],
+            'organizationId':'preview','roomNumber':r['roomNumber'],'roomType':r['roomType'],
+            'area':r['area']??0,'currency':d['currency'],'rentalMode':'both',
+            for(final k in ['roomPrice','nightlyPrice','hourlyPrice']) k:
+              r['ratesMinor'][k]==null?null:(r['ratesMinor'][k] as num)/(d['currency']=='USD'?100:1)});
+        }
         activity.insert(0, {
           'id': key,
           'actorId': 'preview-$workspaceRole',
@@ -1562,6 +1573,7 @@ class TeamPreviewStore {
             'address': row['address'] ?? '14 Tân Thái, Đà Nẵng',
             'timeZone': row['timeZone'],
             'currency': row['currency'] ?? 'VND',
+            'exploitationCostMinor': row['exploitationCostMinor'],
             'revision': row['revision'] ?? '1:0',
           },
         };
@@ -1587,6 +1599,7 @@ class TeamPreviewStore {
         }
         row['timeZone'] = d['timeZone'];
       }
+      if(d.containsKey('exploitationCostMinor')) row['exploitationCostMinor']=d['exploitationCostMinor'];
       row['name'] = d['name'];
       row['address'] = d['address'];
       row['revision'] =

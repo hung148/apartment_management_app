@@ -9,6 +9,70 @@ build next, decisions, design notes) and [tool/STAGING.md](tool/STAGING.md).
 ## What to do next (read this first)
 
 
+Building cost and initial rooms (Tom, 2026-10-07, completed): optional
+`exploitationCostMinor`, labelled Giá thầu / Giá khai thác tòa nhà, is an amount
+in the building currency with NO billing period. It does not post an expense or
+modify whole-building rental contracts. Owner/authorized manageProperty users can
+edit it; omitted old-client fields preserve existing value, null explicitly clears.
+Existing records without it read as blank. Building model serialization/copy
+preserves the new field and currency.
+
+Building creation accepts an editable list of up to 50 rooms, each with name,
+optional type/area and optional monthly/nightly/hourly prices using existing room
+rate semantics. manageProperty must cover all buildings to create; overridePrices
+is additionally required for any non-null room price. prepareCreate returns that
+permission for hiding price inputs; server checks it again. One transaction creates
+building, rooms, operation receipt and audit events. Deterministic server room IDs,
+read-before-write collision checks, normalized unique names and immutable retry
+payloads prevent partial results, overwrites and duplicate retries. Existing single
+room creation is unchanged. The v2 building form is the new entry point; legacy v1
+creation UI is unchanged, while optional-field model reads remain compatible.
+
+Review matrix: owner/admin/manager/custom permissions, selected scope, foreign org,
+suspended/revoked and lost access; zero/one/many/50/51 rooms; missing/duplicate/
+Unicode-equivalent/long names; optional area/type/prices; positive room prices,
+zero/blank building cost, invalid/overflow/fractional amounts and VND/USD; currency
+change; old clients and records missing optional fields; create/update/clear cost;
+exact retry/double tap/concurrent same and different operations; late response and
+form switching; calendar and pricing read compatibility; loading/error/reload;
+EN/VI phone/landscape/desktop 100/130/200%, actual fonts and relevant themes.
+Verification: server unit suite 354/354 and full team Firestore emulator suite
+79/79 passed. These cover permission/scope/status enforcement, invalid data,
+legacy optional fields, maximum 50 rooms, exact retry, target collision and real
+concurrent writes. Initial emulator run had an outdated exact read-key assertion
+(updated for the two intended fields) and transient rate-bucket contention; the
+complete rerun passed without relaxing rate-limit expectations. The orphaned
+local demo emulator on port 8092 was reused; production is forbidden by the tests.
+
+New form tests 25/25 passed: two priced rooms, exact lost-response retry, duplicate
+names/removal, no-price permission, EN/VI 320px phone/812px landscape/1440px desktop
+at 100/130/200%, plus actual calendar dialogs in light/dark VI200. Actual Roboto
+renders visually inspected: room list EN desktop and VI320/200, cost helper in
+both themes at 320/200 and 812/200. Artifacts: `.dart_tool/property-bulk-layout/`.
+Narrow VI200 room type/area labels and the cost helper were visibly truncated;
+retained didExceedMaxLines tests failed before moving them outside InputDecoration
+with unrestricted wrapping. Scroll viewport edges are intentional; Save/Remove/
+Close reachability and absence of layout exceptions are separately asserted.
+
+Full sequential Flutter regression passed 823/823. Three additional cost tests
+passed for model round-trip/copy, existing USD edit/zero/clear, and rejecting
+fractional amounts after switching to VND; the 25 new UI tests also passed again
+after brace-only cleanup. Full analysis had zero errors; targeted feature analysis
+is clean after removing the new style notices (baseline 454 warnings/infos remain).
+Release web build passed. Staging app backend release 2026-10-07t18-13-44-132z
+completed in asia-southeast1 using fresh source; staging hosting deployed. Live
+owner created “Building cost & rooms verification 2026-10-07” with 25,000,000 VND
+and QA101/QA102 together. Both appear in the calendar. Reopened property shows
+the saved amount; reopened room pricing shows QA101 monthly 5,000,000 VND and
+QA102 nightly 750,000 VND. Synthetic fixture retained for review. Screenshots:
+`staging-saved-cost.jpg` and `staging-created-rooms.jpg` in the artifact directory.
+No production changes.
+Remaining live gaps: staff/custom-role login, 50-room UI interaction, browser
+keyboard/mobile OS keyboard, real network interruption and legacy-v1 create UI
+(the new creation flow deliberately targets v2; optional model reads cover v1).
+
+
+
 Account dialog navigation follow-up (Tom, 2026-10-06): Tom explicitly chose
 close Account -> open child -> reopen a fresh Account after child Close/Cancel/
 Back, rather than keeping Account underneath. The common openAccountChild helper

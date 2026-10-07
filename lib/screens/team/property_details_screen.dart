@@ -5,6 +5,8 @@ import 'ws_ui.dart';
 import 'package:uuid/uuid.dart';
 import '../../services/team_service.dart';
 import '../../utils/localizations/app_localizations.dart';
+import '../../utils/app_number.dart';
+import 'property_initial_rooms.dart';
 
 class PropertyDetailsScreen extends StatefulWidget {
   final String organizationId, buildingId;
@@ -32,6 +34,16 @@ class PropertyDetailsScreen extends StatefulWidget {
 class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
   final _name = TextEditingController(), _address = TextEditingController();
   final _zone = TextEditingController();
+  final _cost = TextEditingController();
+  final _rooms = <InitialRoomDraft>[];
+  bool _canSetRoomPrices = false;
+  void _clearRooms() {
+    for (final room in _rooms) {
+      room.dispose();
+    }
+    _rooms.clear();
+  }
+
   final _form = GlobalKey<FormState>();
   String? _revision, _message;
   bool _loading = true, _saving = false;
@@ -70,6 +82,8 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
     _name.dispose();
     _address.dispose();
     _zone.dispose();
+    _cost.dispose();
+    _clearRooms();
     super.dispose();
   }
 
@@ -83,6 +97,8 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
       _name.clear();
       _address.clear();
       _zone.clear();
+      _cost.clear();
+      _clearRooms();
     });
     try {
       final result = await widget.service.propertyDetails({
@@ -99,6 +115,10 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
         _address.text = row['address'] as String;
         _zone.text = row['timeZone'] as String? ?? '';
         _currency = row['currency'] as String? ?? 'VND';
+        _canSetRoomPrices = row['canSetRoomPrices'] == true;
+        _cost.text = row['exploitationCostMinor'] == null
+            ? ''
+            : appMoneyInputText(row['exploitationCostMinor'] as num, _currency);
         _loading = false;
         _message = saved ? 'property_saved' : null;
       });
@@ -142,6 +162,10 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
       'name': _name.text.trim(),
       'address': _address.text.trim(),
       'timeZone': _zone.text.trim().isEmpty ? null : _zone.text.trim(),
+      'exploitationCostMinor': _cost.text.trim().isEmpty
+          ? null
+          : appParseMoney(_cost.text, _currency),
+      if (_creating) 'rooms': _rooms.map((r) => r.toMap(_currency)).toList(),
     });
     final generation = _generation;
     setState(() {
@@ -170,6 +194,8 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
           _name.clear();
           _address.clear();
           _zone.clear();
+          _cost.clear();
+          _clearRooms();
           _message = 'property_deleted';
         });
       } else {
@@ -192,6 +218,8 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
             _name.clear();
             _address.clear();
             _zone.clear();
+            _cost.clear();
+            _clearRooms();
             _message = 'property_unavailable';
           } else if (error.code == 'aborted') {
             _pending = null;
@@ -337,6 +365,47 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
                         Text(t['property_create_currency_hint']),
                         const SizedBox(height: 16),
                       ],
+                      Text('${t['property_exploitation_cost']} ($_currency)'),
+                      const SizedBox(height: 8),
+                      Semantics(
+                        label:
+                            '${t['property_exploitation_cost']} ($_currency)',
+                        child: TextFormField(
+                          key: const ValueKey('property-exploitation-cost'),
+                          controller: _cost,
+                          enabled: !locked,
+                          readOnly: _revision == null,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          inputFormatters: appMoneyInput(_currency),
+                          decoration: InputDecoration(errorMaxLines: 4),
+                          validator: (v) => v == null || v.trim().isEmpty
+                              ? null
+                              : appParseMoney(v, _currency) == null
+                              ? t['property_invalid_amount']
+                              : null,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        t['property_cost_hint'],
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      const SizedBox(height: 24),
+                      if (_creating)
+                        PropertyInitialRooms(
+                          rooms: _rooms,
+                          currency: _currency,
+                          locked: locked,
+                          canSetPrices: _canSetRoomPrices,
+                          onAdd: () =>
+                              setState(() => _rooms.add(InitialRoomDraft())),
+                          onRemove: (room) => setState(() {
+                            _rooms.remove(room);
+                            room.dispose();
+                          }),
+                        ),
                       if (_revision != null)
                         WsActions(
                           children: [
