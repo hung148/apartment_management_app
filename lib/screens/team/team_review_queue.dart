@@ -1,5 +1,7 @@
+import 'workspace_page_scope.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
+import 'ws_ui.dart';
 import '../../models/team_access.dart';
 import '../../services/team_service.dart';
 import '../../utils/localizations/app_localizations.dart';
@@ -154,6 +156,61 @@ class _TeamReviewQueueState extends State<TeamReviewQueue> {
     }
   }
 
+  /// R2: fix a typo in a Gmail before the person's first sign-in.
+  Future<void> _changeEmail(Map<String, dynamic> record) async {
+    if (_locked) return;
+    final t = AppTranslations.of(context);
+    final controller = TextEditingController(
+      text: record['email'] as String? ?? '',
+    );
+    final form = GlobalKey<FormState>();
+    final email = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(t['team_change_gmail']),
+        content: Form(
+          key: form,
+          child: TextFormField(
+            key: const ValueKey('invitation-email-field'),
+            controller: controller,
+            autofocus: true,
+            maxLength: 254,
+            keyboardType: TextInputType.emailAddress,
+            decoration: InputDecoration(
+              labelText: t['team_gmail_field'],
+              errorMaxLines: 3,
+            ),
+            validator: (v) =>
+                RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(v?.trim() ?? '')
+                ? null
+                : t['team_invite_email_required'],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(t['team_cancel']),
+          ),
+          FilledButton(
+            key: const ValueKey('invitation-email-save'),
+            onPressed: () {
+              if (form.currentState!.validate()) {
+                Navigator.pop(context, controller.text.trim().toLowerCase());
+              }
+            },
+            child: Text(t['save']),
+          ),
+        ],
+      ),
+    );
+    // Not disposed here: the dialog's closing animation still uses it.
+    if (email == null || !mounted || email == record['email']) return;
+    await _run(TeamAction.changeInvitationEmail, {
+      'invitationId': record['id'],
+      'email': email,
+    });
+  }
+
   Future<void> _run([
     TeamAction? action,
     Map<String, dynamic> fields = const {},
@@ -193,9 +250,23 @@ class _TeamReviewQueueState extends State<TeamReviewQueue> {
             'not-found',
             'already-exists',
           ].contains(error.code);
+      final emailReason = serverReason(error, const [
+        'team_other_employer',
+        'team_same_owner_approval',
+        'team_owner_account',
+        'team_email_already_member',
+        'team_email_already_invited',
+        'team_invalid_email',
+      ]);
       setState(() {
         _busy = false;
-        _error = rejected ? 'team_access_rejected' : 'team_save_uncertain';
+        _error = emailReason.isNotEmpty
+            ? (emailReason == 'team_invalid_email'
+                  ? 'team_gmail_invalid'
+                  : emailReason)
+            : rejected
+            ? 'team_access_rejected'
+            : 'team_save_uncertain';
         if (rejected) _operation = null;
       });
       if (_scroll.hasClients) _scroll.jumpTo(0);
@@ -231,7 +302,7 @@ class _TeamReviewQueueState extends State<TeamReviewQueue> {
         child: Align(
           alignment: Alignment.topCenter,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 960),
+            constraints: WorkspacePageScope.constraints(context, 960),
             child: ListView(
               controller: _scroll,
               padding: const EdgeInsets.all(16),
@@ -296,9 +367,13 @@ class _TeamReviewQueueState extends State<TeamReviewQueue> {
                     child: Semantics(liveRegion: true, child: Text(t[_error!])),
                   ),
                 if (_operation != null && !_busy)
-                  FilledButton(
-                    onPressed: () => _run(),
-                    child: Text(t['team_retry_save']),
+                  WsActions(
+                    children: [
+                      FilledButton(
+                        onPressed: () => _run(),
+                        child: Text(t['team_retry_save']),
+                      ),
+                    ],
                   ),
                 if (_request != null) ...[
                   const SizedBox(height: 16),
@@ -343,22 +418,44 @@ class _TeamReviewQueueState extends State<TeamReviewQueue> {
                                 '${t['team_invite_reference']}: ${record['id']}',
                               ),
                               Text(
-                                '${t['team_role']}: ${t['team_role_${(record['access'] as Map?)?['role']}']}',
+                                '${t['team_role']}: ${teamRoleLabel(t, (record['access'] as Map?)?['role'], (record['access'] as Map?)?['roleName'])}',
                               ),
-                              Text(
-                                '${t['team_expires']}: ${teamDate(record['expiresAt'], t)}',
-                              ),
+                              // Gmail pre-approvals (R2) wait until the first sign-in.
+                              // Only a pending one is waiting; accepted/revoked show no wait line.
+                              if (record['status'] == 'pending')
+                                Text(
+                                  record['expiresAt'] == null
+                                      ? t['team_waiting_first_sign_in']
+                                      : '${t['team_expires']}: ${teamDate(record['expiresAt'], t)}',
+                                ),
                               if (record['canRevoke'] == true)
                                 Padding(
                                   padding: const EdgeInsets.only(top: 12),
-                                  child: OutlinedButton(
-                                    onPressed: _locked
-                                        ? null
-                                        : () => _run(
-                                            TeamAction.revokeInvitation,
-                                            {'invitationId': record['id']},
-                                          ),
-                                    child: Text(t['team_revoke_invitation']),
+                                  child: Wrap(
+                                    spacing: 12,
+                                    runSpacing: 12,
+                                    children: [
+                                      OutlinedButton(
+                                        key: ValueKey(
+                                          'invitation-email-${record['id']}',
+                                        ),
+                                        onPressed: _locked
+                                            ? null
+                                            : () => _changeEmail(record),
+                                        child: Text(t['team_change_gmail']),
+                                      ),
+                                      OutlinedButton(
+                                        onPressed: _locked
+                                            ? null
+                                            : () => _run(
+                                                TeamAction.revokeInvitation,
+                                                {'invitationId': record['id']},
+                                              ),
+                                        child: Text(
+                                          t['team_revoke_invitation'],
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                             ] else if (record['canReview'] == true)
@@ -392,9 +489,13 @@ class _TeamReviewQueueState extends State<TeamReviewQueue> {
                       ),
                     ),
                   if (_cursor != null)
-                    OutlinedButton(
-                      onPressed: _locked ? null : () => _load(more: true),
-                      child: Text(t['team_queue_more']),
+                    WsActions(
+                      children: [
+                        OutlinedButton(
+                          onPressed: _locked ? null : () => _load(more: true),
+                          child: Text(t['team_queue_more']),
+                        ),
+                      ],
                     ),
                 ],
               ],

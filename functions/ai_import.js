@@ -1,4 +1,5 @@
 const crypto=require('node:crypto');
+const {accountPolicy,policyLocks}=require('./account_policy');
 const {validId}=require('./ai');
 const TYPES=['organization','building','room','tenant','payment'];
 const COLLECTIONS={organization:'organizations',building:'buildings',room:'rooms',tenant:'tenants',payment:'payments'};
@@ -51,6 +52,11 @@ function createImport({db,Timestamp,FieldValue,ai,generate}){
   return db.runTransaction(async tx=>{
    const draft=await tx.get(draftRef);if(!draft.exists||draft.data().ownerId!==user)fail('permission-denied','ai_access_denied');if(draft.data().status==='saved')return draft.data().result;if(draft.data().expiresAt.toMillis()<=Date.now())fail('failed-precondition','ai_import_expired');
    const original=new Map(draft.data().records.map(r=>[r.key,r.type]));if(records.some(r=>original.get(r.key)!==r.type))fail('invalid-argument','ai_import_invalid');
+   let commitPolicy=()=>{};
+   if(records.some(r=>r.type==='organization')){
+    commitPolicy=await policyLocks(db,tx,user,request.auth?.token?.email);
+    if((await accountPolicy(db,tx,user,request.auth?.token?.email_verified===true?request.auth.token.email:'')).hasStaff)fail('failed-precondition','org_staff_account');
+   }
    const pending=new Map(),writes=[],locks=new Map(),result=[];
    const ordered=[...records].sort((a,b)=>TYPES.indexOf(a.type)-TYPES.indexOf(b.type));
    async function resolve(reference,type){
@@ -89,6 +95,7 @@ function createImport({db,Timestamp,FieldValue,ai,generate}){
     for(const key of ['roomPrice','monthlyRent','deposit','amount','paidAmount'])if(data[key]!=null){const scale=data.currency==='USD'?100:1;if(Math.abs(data[key]*scale-Math.round(data[key]*scale))>0.000001)fail('invalid-argument','ai_import_currency');}
     pending.set(record.key,{id,ref,type:record.type,data});writes.push([ref,data]);result.push({key:record.key,type:record.type,id});
    }
+   commitPolicy();
    for(const ref of locks.values())tx.update(ref,{bookingRevision:FieldValue.increment(1)});
    for(const [ref,data] of writes)tx.create(ref,data);
    const response={created:result};tx.update(draftRef,{status:'saved',result:response,savedAt:Timestamp.now()});return response;

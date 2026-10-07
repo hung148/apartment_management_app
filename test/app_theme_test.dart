@@ -14,8 +14,11 @@ void main() {
         for (final color in gradient) {
           expect(color.a, 1);
           expect(1.05 / (color.computeLuminance() + .05), greaterThanOrEqualTo(4.5));
+          // Low-saturation presets (the grey default) round to whole RGB
+          // steps, so their hue drifts a little more when darkened.
+          final base = HSLColor.fromColor(primary);
           expect(HSLColor.fromColor(color).hue,
-              closeTo(HSLColor.fromColor(primary).hue, 1));
+              closeTo(base.hue, base.saturation < 0.3 ? 3 : 1));
         }
       }
     }

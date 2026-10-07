@@ -4,19 +4,28 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import '../../services/team_service.dart';
+import 'back_steps.dart';
 import 'operational_widgets.dart';
+import 'ws_ui.dart';
+import 'service_fee_text.dart';
+import 'period_invoice_form.dart';
+import '../../utils/app_number.dart';
+import '../../utils/localizations/app_localizations.dart';
 
 class InvoiceScreen extends StatefulWidget {
   final String organizationId, buildingId, accountId;
   final TeamService service;
-  final VoidCallback onBack;
+
+  /// Null inside the organization workspace sections (U1): no Back button
+  /// on the list; Back still returns from a booking/invoice to the list.
+  final VoidCallback? onBack;
   const InvoiceScreen({
     super.key,
     required this.organizationId,
     required this.buildingId,
     required this.accountId,
     required this.service,
-    required this.onBack,
+    this.onBack,
   });
   @override
   State<InvoiceScreen> createState() => _InvoiceScreenState();
@@ -55,6 +64,8 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
       _method = 'cash',
       _currency = 'VND';
   bool _busy = true, _canCreate = false, _canPrice = false;
+  // B6: the period invoice form is open.
+  bool _period = false;
   int _generation = 0;
   String get _journal =>
       'invoice-pending:${jsonEncode([widget.accountId, widget.organizationId, widget.buildingId])}';
@@ -248,8 +259,50 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
     }
   }
 
-  String _money(int minor) =>
-      _currency == 'USD' ? (minor / 100).toStringAsFixed(2) : '$minor';
+  // Grouped: 5,000,000 (2026-10-05, Tom); the currency follows where shown.
+  String _money(int minor) => appMoneyInputText(minor, _currency);
+
+  /// What the invoice is for, in words ("Thu · Hóa đơn kỳ").
+  String _kindText(BuildContext context, Map row) {
+    final x = FeeText(context), calc = row['calculation'] as Map?;
+    final what = switch (row['kind']) {
+      'period' => x.tr('Period invoice', 'Hóa đơn kỳ'),
+      'settlement' => x.tr('Move-out settlement', 'Quyết toán trả phòng'),
+      'tenantRent' => x.tr('Rent', 'Tiền thuê'),
+      'buildingRent' => x.tr('Property rent', 'Thuê tòa nhà'),
+      'service' => '${calc?['feeName'] ?? x.tr('Service fee', 'Phí dịch vụ')}',
+      'utility' => utilityName(
+        x,
+        '${calc?['chargeType'] ?? row['type'] ?? 'electricity'}',
+      ),
+      // Sheet import (2026-10-05): an expense from the old app ("Chi phí").
+      'expense' => [
+        '${calc?['category'] ?? ''}',
+        '${calc?['content'] ?? ''}',
+      ].where((s) => s.isNotEmpty).join(': '),
+      // B7: a repair recorded from a technical problem.
+      'repair' =>
+        '${x.tr('Repair', 'Sửa chữa')}: ${calc?['title'] ?? ''}${calc?['roomNumber'] == null ? '' : ' (${calc?['roomNumber']})'}',
+      _ => '',
+    };
+    final direction = opsText(context, '${row['direction'] ?? 'income'}');
+    return what.isEmpty ? direction : '$direction · $what';
+  }
+
+  /// Dates as people read them: the last day included (meter readings keep
+  /// their reading dates).
+  String _dates(Map row) {
+    final s = row['startDate'] as String?, e = row['endDate'] as String?;
+    if (s == null || e == null) return '';
+    // A move-out settlement with no rent left to charge covers no days: show
+    // the move-out date alone instead of an end before the start.
+    if (s == e) return s;
+    return row['kind'] == 'utility' ? '$s – $e' : periodText(s, e);
+  }
+
+  /// Status shown: unpaid invoices past their due date are "Quá hạn".
+  String _status(Map row) =>
+      row['overdue'] == true ? 'overdue' : '${row['status']}';
   Future<void> _new() async {
     final generation = ++_generation;
     setState(() {
@@ -353,12 +406,17 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
           _busy = false;
         });
       }
-    } catch (_) {
+    } catch (e) {
       if (mounted && generation == _generation) {
         setState(() {
           _quote = null;
           _busy = false;
-          _message = 'unavailable';
+          // Overlapping periods are now refused at review (B6).
+          _message =
+              serverReason(e, const ['invoice_period_exists']) ==
+                  'invoice_period_exists'
+              ? 'periodExists'
+              : 'unavailable';
         });
       }
     }
@@ -450,9 +508,39 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
     }
   }
 
+  WsTone _tone(Object? status) => switch (status) {
+    'paid' => WsTone.good,
+    'pending' || 'partial' => WsTone.warning,
+    'overdue' => WsTone.bad,
+    _ => WsTone.neutral,
+  };
+
+  String _statusLabel(BuildContext context, Object? status) {
+    final tr = AppTranslations.of(context);
+    return tr.translationKeys.contains('payment_status_$status')
+        ? tr['payment_status_$status']
+        : '$status';
+  }
+
   @override
   Widget build(BuildContext context) {
     String t(String k) => opsText(context, k);
+    if (_period) {
+      return BackStep(
+        onBack: () => setState(() => _period = false),
+        child: PeriodInvoiceForm(
+          service: widget.service,
+          organizationId: widget.organizationId,
+          buildingId: widget.buildingId,
+          backLabel: t('back'),
+          onCancel: () => setState(() => _period = false),
+          onDone: () {
+            setState(() => _period = false);
+            _list();
+          },
+        ),
+      );
+    }
     Widget button(String key, VoidCallback? on) =>
         OutlinedButton(onPressed: on, child: Text(t(key)));
     Widget field(String k, {bool required = true}) => opsField(
@@ -461,236 +549,334 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
       _fields[k]!,
       enabled: !_locked && _quote == null && (!fees.contains(k) || _canPrice),
       required: required,
+      // Money boxes group the digits as you type (2026-10-05, Tom).
+      formatters: k == 'unitPrice' || k == 'amount' || fees.contains(k)
+          ? appMoneyInput(_currency)
+          : null,
     );
-    return opsPage(context, [
-      Form(
-        key: _form,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            button(
-              'back',
-              _locked
-                  ? null
-                  : (_mode == 'list' ? widget.onBack : () => _list()),
-            ),
-            Text(
-              t('invoices'),
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
-            Text(t('invoiceHelp')),
-            if (_busy) const LinearProgressIndicator(),
-            if (_message != null)
-              Semantics(liveRegion: true, child: Text(t(_message!))),
-            if (_pending != null)
-              button(
-                'retry',
-                _busy ? null : () => _mutate(_pending!['action'] as String),
+    return BackStep(
+      enabled: _mode != 'list',
+      onBack: () {
+        if (!_locked) _list();
+      },
+      child: opsPage(context, [
+        Form(
+          key: _form,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              WsHeader(
+                back: _mode != 'list' || widget.onBack != null
+                    ? WsBack(
+                        label: t('back'),
+                        onPressed: _locked
+                            ? null
+                            : (_mode == 'list' ? widget.onBack : () => _list()),
+                      )
+                    : null,
+                title: t('invoices'),
+                help: t('invoiceHelp'),
+                actions: [
+                  // B6: the usual next step for leases is the period invoice.
+                  if (_mode == 'list' && _pending == null && _canCreate)
+                    FilledButton.icon(
+                      key: const ValueKey('invoice-period'),
+                      onPressed: _busy
+                          ? null
+                          : () => setState(() => _period = true),
+                      icon: const Icon(Icons.receipt_long_outlined, size: 18),
+                      label: Text(
+                        FeeText(context).tr('Period invoice', 'Hóa đơn kỳ'),
+                      ),
+                    ),
+                  if (_mode == 'list' && _pending == null && _canCreate)
+                    OutlinedButton.icon(
+                      onPressed: _busy ? null : _new,
+                      icon: const Icon(Icons.add, size: 18),
+                      label: Text(t('create')),
+                    ),
+                ],
               ),
-            if (_mode == 'list' && _pending == null) ...[
-              if (_canCreate) button('create', _busy ? null : _new),
-              for (final row in _rows)
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Text('${row['tenantName']} / ${row['id']}'),
-                        Text(
-                          '${t(row['direction'] as String)} • ${row['status']}',
-                        ),
-                        Text(
-                          '${row['startDate'] ?? ''} – ${row['endDate'] ?? ''}',
-                        ),
-                        Text(
-                          '${t('total')}: ${row['totalMinor'] == null
-                              ? '—'
-                              : row['currency'] == 'USD'
-                              ? ((row['totalMinor'] as num) / 100).toStringAsFixed(2)
-                              : row['totalMinor']} ${row['currency']}',
-                        ),
-                        button(
-                          'edit',
-                          _busy ? null : () => _read(row['id'] as String),
-                        ),
-                      ],
+              if (_busy)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 8),
+                  child: LinearProgressIndicator(),
+                ),
+              if (_message != null)
+                Semantics(
+                  liveRegion: true,
+                  child: WsNotice(t(_message!), tone: WsTone.info),
+                ),
+              if (_pending != null)
+                button(
+                  'retry',
+                  _busy ? null : () => _mutate(_pending!['action'] as String),
+                ),
+              if (_mode == 'list' && _pending == null) ...[
+                for (final row in _rows)
+                  WsRecord(
+                    tone: _tone(_status(row)),
+                    title: '${row['tenantName'] ?? ''}',
+                    pill: WsPill(
+                      _statusLabel(context, _status(row)),
+                      tone: _tone(_status(row)),
+                    ),
+                    details: [
+                      _kindText(context, row),
+                      _dates(row),
+                      row['totalMinor'] == null
+                          ? '${t('total')}: —'
+                          : '${t('total')}: ${FeeText(context).money(row['totalMinor'] as num, '${row['currency']}')}'
+                                '${row['status'] == 'partial' ? ' · ${t('paid')}: ${FeeText(context).money(row['paidMinor'] as num, '${row['currency']}')}' : ''}',
+                    ],
+                    actions: [
+                      button(
+                        'edit',
+                        _busy ? null : () => _read(row['id'] as String),
+                      ),
+                    ],
+                  ),
+                if (_rows.isEmpty && !_busy)
+                  WsEmpty(
+                    icon: Icons.receipt_long_outlined,
+                    message: t('empty'),
+                  ),
+                if (_cursor != null)
+                  Center(
+                    child: TextButton(
+                      onPressed: _busy ? null : () => _list(more: true),
+                      child: Text(t('more')),
                     ),
                   ),
-                ),
-              if (_rows.isEmpty && !_busy) Text(t('empty')),
-              if (_cursor != null)
-                button('more', _busy ? null : () => _list(more: true)),
-            ],
-            if (_mode == 'create' && _pending == null) ...[
-              for (final kind in [
-                'tenantRent',
-                'buildingRent',
-                if (_canPrice) 'charge',
-              ])
-                CheckboxListTile(
-                  value: _kind == kind,
-                  onChanged: _locked || _quote != null
-                      ? null
-                      : (_) => setState(() {
-                          _kind = kind;
-                          _currency = kind == 'buildingRent'
-                              ? _propertyCurrency
-                              : (_tenants
-                                            .where((v) => v['id'] == _tenant)
-                                            .firstOrNull?['currency']
-                                        as String? ??
-                                    'VND');
-                          for (final k in fees) {
-                            _fields[k]!.text = '0';
-                          }
-                        }),
-                  title: Text(t(kind)),
-                ),
-              if (_kind != 'buildingRent')
-                for (final tenant in _tenants)
+              ],
+              if (_mode == 'create' && _pending == null) ...[
+                for (final kind in [
+                  'tenantRent',
+                  'buildingRent',
+                  if (_canPrice) 'charge',
+                ])
                   CheckboxListTile(
-                    value: _tenant == tenant['id'],
+                    value: _kind == kind,
                     onChanged: _locked || _quote != null
                         ? null
                         : (_) => setState(() {
-                            _tenant = tenant['id'] as String;
-                            _currency = tenant['currency'] as String? ?? 'VND';
+                            _kind = kind;
+                            _currency = kind == 'buildingRent'
+                                ? _propertyCurrency
+                                : (_tenants
+                                              .where((v) => v['id'] == _tenant)
+                                              .firstOrNull?['currency']
+                                          as String? ??
+                                      'VND');
                             for (final k in fees) {
                               _fields[k]!.text = '0';
                             }
                           }),
-                    title: Text('${tenant['fullName']} (${tenant['roomId']})'),
+                    title: Text(t(kind)),
                   ),
-              if (_kind == 'charge') ...[
-                for (final type in [
-                  'electricity',
-                  'water',
-                  'internet',
-                  'parking',
-                  'maintenance',
-                  'deposit',
-                  'penalty',
-                  'other',
-                ])
-                  CheckboxListTile(
-                    value: _chargeType == type,
-                    onChanged: _locked || _quote != null
-                        ? null
-                        : (_) => setState(() => _chargeType = type),
-                    title: Text(t(type)),
-                  ),
-                field('unitPrice'),
-                field('quantity'),
-              ],
-              field('start'),
-              field('end'),
-              field('due'),
-              Text('${t('currency')}: $_currency'),
-              for (final k in fees) field(k),
-              field('reason'),
-              if (_quote == null)
-                button('review', _busy ? null : _review)
-              else ...[
-                Text(
-                  '${t('total')}: ${_money(_quote!['totalMinor'] as int)} $_currency',
-                ),
-                Text(
-                  '${t(_quote!['direction'] as String)} / ${_quote!['days']} ${t('days')}',
-                ),
-                for (final line in _quote!['lines'] as List)
+                if (_kind != 'buildingRent')
+                  for (final tenant in _tenants)
+                    CheckboxListTile(
+                      value: _tenant == tenant['id'],
+                      onChanged: _locked || _quote != null
+                          ? null
+                          : (_) => setState(() {
+                              _tenant = tenant['id'] as String;
+                              _currency =
+                                  tenant['currency'] as String? ?? 'VND';
+                              for (final k in fees) {
+                                _fields[k]!.text = '0';
+                              }
+                            }),
+                      title: Text(
+                        '${tenant['fullName']} (${tenant['roomId']})',
+                      ),
+                    ),
+                if (_kind == 'charge') ...[
+                  for (final type in [
+                    'electricity',
+                    'water',
+                    'internet',
+                    'parking',
+                    'maintenance',
+                    'deposit',
+                    'penalty',
+                    'other',
+                  ])
+                    CheckboxListTile(
+                      value: _chargeType == type,
+                      onChanged: _locked || _quote != null
+                          ? null
+                          : (_) => setState(() => _chargeType = type),
+                      title: Text(t(type)),
+                    ),
+                  field('unitPrice'),
+                  field('quantity'),
+                ],
+                field('start'),
+                field('end'),
+                field('due'),
+                Text('${t('currency')}: $_currency'),
+                for (final k in fees) field(k),
+                field('reason'),
+                if (_quote == null)
+                  button('review', _busy ? null : _review)
+                else ...[
                   Text(
-                    '${line['startDate']} – ${line['endDate']}: ${_money(line['rateMinor'] as int)} $_currency / ${line['monthDays']}',
+                    '${t('total')}: ${_money(_quote!['totalMinor'] as int)} $_currency',
                   ),
-                button('confirm', _busy ? null : () => _mutate('create')),
-                button(
-                  'edit',
-                  _busy ? null : () => setState(() => _quote = null),
-                ),
+                  Text(
+                    '${t(_quote!['direction'] as String)} / ${_quote!['days']} ${t('days')}',
+                  ),
+                  for (final line in _quote!['lines'] as List)
+                    Text(
+                      '${line['startDate']} – ${line['endDate']}: ${_money(line['rateMinor'] as int)} $_currency / ${line['monthDays']}',
+                    ),
+                  button('confirm', _busy ? null : () => _mutate('create')),
+                  button(
+                    'edit',
+                    _busy ? null : () => setState(() => _quote = null),
+                  ),
+                ],
               ],
-            ],
-            if (_showHistory) ...[
-              for (final row in _history)
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Text('${row['createdAt']} / ${row['actorId']}'),
-                        Text(t(row['action'] as String)),
-                        Text('${row['reason']}'),
-                        for (final side in ['before', 'after'])
-                          if (row[side] != null) ...[
-                            Text(t(side)),
-                            Text(
-                              '${t('total')}: ${_money((row[side] as Map)['totalMinor'] as int)} $_currency',
-                            ),
-                            Text(
-                              '${t('paid')}: ${(row[side] as Map)['paidAmount']} $_currency',
-                            ),
-                            Text(
-                              '${t('status')}: ${(row[side] as Map)['status']}',
-                            ),
-                          ],
-                      ],
+              if (_showHistory) ...[
+                for (final row in _history)
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text('${row['createdAt']} / ${row['actorId']}'),
+                          Text(t(row['action'] as String)),
+                          Text('${row['reason']}'),
+                          for (final side in ['before', 'after'])
+                            if (row[side] != null) ...[
+                              Text(t(side)),
+                              Text(
+                                '${t('total')}: ${_money((row[side] as Map)['totalMinor'] as int)} $_currency',
+                              ),
+                              Text(
+                                '${t('paid')}: ${(row[side] as Map)['paidAmount']} $_currency',
+                              ),
+                              Text(
+                                '${t('status')}: ${(row[side] as Map)['status']}',
+                              ),
+                            ],
+                        ],
+                      ),
                     ),
                   ),
+                if (_historyCursor != null)
+                  button('more', _busy ? null : () => _readHistory(more: true)),
+                button(
+                  'back',
+                  _busy ? null : () => setState(() => _showHistory = false),
                 ),
-              if (_historyCursor != null)
-                button('more', _busy ? null : () => _readHistory(more: true)),
-              button(
-                'back',
-                _busy ? null : () => setState(() => _showHistory = false),
+              ],
+              if (_record != null && _mode != 'create' && !_showHistory) ...[
+                // No internal IDs: the tenant, what it is for, and the dates.
+                Text(
+                  '${_record!['tenantName']}',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                Text('${_kindText(context, _record!)} · ${_dates(_record!)}'),
+                if (const ['period', 'settlement'].contains(_record!['kind']) &&
+                    _record!['calculation'] is Map)
+                  for (final line
+                      in ((_record!['calculation'] as Map)['lines'] as List? ??
+                              const [])
+                          .cast<Map>())
+                    Builder(
+                      builder: (context) {
+                        final (label, amount) = describePeriodLine(
+                          FeeText(context),
+                          line,
+                        );
+                        return Text(
+                          '$label: ${signedMoney(FeeText(context), amount, _currency)}',
+                        );
+                      },
+                    ),
+                // B5: which fee, and how each person's share was worked out.
+                if (_record!['kind'] == 'service' &&
+                    _record!['calculation'] is Map) ...[
+                  Text(
+                    '${(_record!['calculation'] as Map)['feeName'] ?? ''}',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                  for (final line
+                      in ((_record!['calculation'] as Map)['lines'] as List? ??
+                              const [])
+                          .cast<Map>())
+                    Text(
+                      FeeText(context).line(
+                        line,
+                        _currency,
+                        unitLabel:
+                            '${(_record!['calculation'] as Map)['unitLabel'] ?? ''}',
+                      ),
+                    ),
+                ],
+                if ('${_record!['notes'] ?? ''}'.trim().isNotEmpty)
+                  Text('${_record!['notes']}'),
+                const SizedBox(height: WsSpace.xs),
+                // Align: a pill sized to its text, not stretched across the page.
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: WsPill(
+                    _statusLabel(context, _status(_record!)),
+                    tone: _tone(_status(_record!)),
+                  ),
+                ),
+                const SizedBox(height: WsSpace.xs),
+                Text(
+                  '${t('total')}: ${_record!['totalMinor'] == null ? '—' : FeeText(context).money(_record!['totalMinor'] as num, _currency)}',
+                ),
+                Text(
+                  '${t('paid')}: ${FeeText(context).money(_record!['paidMinor'] as num, _currency)}',
+                ),
+                button('history', _locked ? null : () => _readHistory()),
+                field('reason'),
+                if (_record!['canEdit'] == true) ...[
+                  field('due'),
+                  for (final k in fees) field(k),
+                  button('save', _locked ? null : () => _mutate('edit')),
+                  button('void', _locked ? null : () => _mutate('void')),
+                ],
+                if (_record!['canSettle'] == true ||
+                    _record!['canReverse'] == true) ...[
+                  field('amount'),
+                  for (final method in ['cash', 'bankTransfer'])
+                    CheckboxListTile(
+                      value: _method == method,
+                      onChanged: _locked
+                          ? null
+                          : (_) => setState(() => _method = method),
+                      title: Text(t(method)),
+                    ),
+                  Text(t('reviewWarning')),
+                  if (_record!['canSettle'] == true)
+                    button(
+                      'payExpense',
+                      _locked ? null : () => _mutate('payExpense'),
+                    ),
+                  if (_record!['canReverse'] == true)
+                    button(
+                      'reverseExpense',
+                      _locked ? null : () => _mutate('reverseExpense'),
+                    ),
+                ],
+              ],
+              // Only as wide as its label (not a full-width bar).
+              Align(
+                alignment: AlignmentDirectional.centerEnd,
+                child: button('reload', _locked ? null : () => _list()),
               ),
             ],
-            if (_record != null && _mode != 'create' && !_showHistory) ...[
-              Text('${_record!['tenantName']} / ${_record!['id']}'),
-              Text(
-                '${t(_record!['direction'] as String)} • ${_record!['status']}',
-              ),
-              Text(
-                '${t('total')}: ${_record!['totalMinor'] == null ? '—' : _money(_record!['totalMinor'] as int)} $_currency',
-              ),
-              Text(
-                '${t('paid')}: ${_money(_record!['paidMinor'] as int)} $_currency',
-              ),
-              button('history', _locked ? null : () => _readHistory()),
-              field('reason'),
-              if (_record!['canEdit'] == true) ...[
-                field('due'),
-                for (final k in fees) field(k),
-                button('save', _locked ? null : () => _mutate('edit')),
-                button('void', _locked ? null : () => _mutate('void')),
-              ],
-              if (_record!['canSettle'] == true ||
-                  _record!['canReverse'] == true) ...[
-                field('amount'),
-                for (final method in ['cash', 'bankTransfer'])
-                  CheckboxListTile(
-                    value: _method == method,
-                    onChanged: _locked
-                        ? null
-                        : (_) => setState(() => _method = method),
-                    title: Text(t(method)),
-                  ),
-                Text(t('reviewWarning')),
-                if (_record!['canSettle'] == true)
-                  button(
-                    'payExpense',
-                    _locked ? null : () => _mutate('payExpense'),
-                  ),
-                if (_record!['canReverse'] == true)
-                  button(
-                    'reverseExpense',
-                    _locked ? null : () => _mutate('reverseExpense'),
-                  ),
-              ],
-            ],
-            button('reload', _locked ? null : () => _list()),
-          ],
+          ),
         ),
-      ),
-    ]);
+      ]),
+    );
   }
 }

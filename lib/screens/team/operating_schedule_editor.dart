@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'ws_ui.dart';
 import '../../utils/localizations/app_localizations.dart';
 
 int? scheduleMinute(String text, {bool closing = false}) {
@@ -199,11 +200,15 @@ class _OperatingScheduleEditorState extends State<OperatingScheduleEditor> {
           style: Theme.of(context).textTheme.titleMedium,
         ),
         if (_exception != null) ...[
-          OutlinedButton(
-            onPressed: widget.enabled
-                ? () => change(() => _exception = null)
-                : null,
-            child: Text(t['schedule_back_week']),
+          WsActions(
+            children: [
+              OutlinedButton(
+                onPressed: widget.enabled
+                    ? () => change(() => _exception = null)
+                    : null,
+                child: Text(t['schedule_back_week']),
+              ),
+            ],
           ),
           TextFormField(
             key: ValueKey('schedule-date-${_exception!.key}'),
@@ -344,19 +349,23 @@ class _OperatingScheduleEditorState extends State<OperatingScheduleEditor> {
               ),
             ),
           ),
-        OutlinedButton(
-          key: const ValueKey('schedule-add-exception'),
-          onPressed: widget.enabled && draft.exceptions.length < 60
-              ? () {
-                  change(() {
-                    final e = ScheduleException('', []);
-                    draft.exceptions.add(e);
-                    _exception = e;
-                  });
-                  _showEditor();
-                }
-              : null,
-          child: Text(t['schedule_add_exception']),
+        WsActions(
+          children: [
+            OutlinedButton(
+              key: const ValueKey('schedule-add-exception'),
+              onPressed: widget.enabled && draft.exceptions.length < 60
+                  ? () {
+                      change(() {
+                        final e = ScheduleException('', []);
+                        draft.exceptions.add(e);
+                        _exception = e;
+                      });
+                      _showEditor();
+                    }
+                  : null,
+              child: Text(t['schedule_add_exception']),
+            ),
+          ],
         ),
       ],
     );

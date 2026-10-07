@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:uuid/uuid.dart';
+import 'app_functions.dart';
+import 'read_cache.dart';
 
 typedef TeamTransport =
     Future<Map<String, dynamic>> Function(
@@ -22,6 +24,8 @@ enum TeamView {
 enum TeamAction {
   saveStaff,
   invite,
+  addStaff,
+  changeInvitationEmail,
   revokeInvitation,
   acceptInvitation,
   requestAccess,
@@ -43,6 +47,18 @@ class TeamPage {
       nextCursor = data['nextCursor'] as String?;
 }
 
+/// The server's reason key (e.g. 'role_changed') from a callable error, or ''.
+/// Platforms report it differently (web may wrap the message or put it in
+/// details), so this searches both for one of the expected keys.
+String serverReason(Object error, Iterable<String> known) {
+  if (error is! FirebaseFunctionsException) return '';
+  final text = '${error.message ?? ''} ${error.details ?? ''}';
+  for (final key in known) {
+    if (RegExp('(^|[^A-Za-z0-9_-])${RegExp.escape(key)}(\$|[^A-Za-z0-9_-])').hasMatch(text)) return key;
+  }
+  return '';
+}
+
 /// Keep this object for retries. Editing input means preparing a new operation.
 class TeamOperation {
   final String id;
@@ -54,26 +70,113 @@ class TeamOperation {
 }
 
 /// No direct Firestore access: server controls role-specific projections.
-/// Instances hold no organization data or permission cache.
+/// Instances hold no organization data or permission cache. The only copy is
+/// the device copy ([ReadCache], 2026-10-06): used to SHOW a screen right away
+/// while the server is asked again; never for deciding what may be changed.
 class TeamService {
   final TeamTransport _transport;
-  TeamService({TeamTransport? transport}) : _transport = transport ?? _firebase;
+  final ReadCache? _cache;
+
+  /// The app's own service uses the device copy; a service with a test
+  /// transport does not, unless a test passes [cache].
+  TeamService({TeamTransport? transport, ReadCache? cache})
+    : _transport = transport ?? _firebase,
+      _cache = cache ?? (transport == null ? ReadCache.shared : null);
+
+  /// The saved copy first (when there is one), then the server's answer, which
+  /// replaces the copy. An access error wipes the organization's copy.
+  Stream<Saved<Map<String, dynamic>>> _live(
+    String call,
+    Map<String, dynamic> payload,
+  ) async* {
+    final cache = _cache;
+    final saved = await cache?.read(call, payload);
+    if (saved != null) yield saved;
+    final fresh = await _fresh(call, payload);
+    yield Saved(fresh, saved: false, at: DateTime.now());
+  }
+
+  Future<Map<String, dynamic>> _fresh(
+    String call,
+    Map<String, dynamic> payload,
+  ) async {
+    final org = payload['organizationId'] as String?;
+    try {
+      final data = await _transport(call, payload);
+      _cache?.write(call, payload, data, organizationId: org);
+      return data;
+    } catch (e) {
+      if (org != null && ReadCache.isAccessError(e)) {
+        await _cache?.forgetOrganization(org);
+      }
+      rethrow;
+    }
+  }
+
+  /// The saved copy of a read this screen assembles itself (e.g. all pages of
+  /// the building list), or null.
+  Future<Map<String, dynamic>?> saved(
+    String what,
+    String organizationId,
+  ) async => (await _cache?.read(what, {'organizationId': organizationId}))?.data;
+
+  /// Saves such a read after the server answered it.
+  void save(String what, String organizationId, Map<String, dynamic> data) =>
+      _cache?.write(what, {'organizationId': organizationId}, data,
+          organizationId: organizationId);
+
+  /// Wipes the organization's copy (e.g. the server refused access).
+  Future<void> forgetSaved(String organizationId) async =>
+      _cache?.forgetOrganization(organizationId);
 
   static Future<Map<String, dynamic>> _firebase(
     String callable,
     Map<String, dynamic> data,
   ) async {
-    final response = await FirebaseFunctions.instance
-        .httpsCallable(callable)
+    final response = await appCallable(callable)
         .call(data);
     return Map<String, dynamic>.from(response.data as Map);
   }
 
+  Future<Map<String, dynamic>> agreements(Map<String, dynamic> data) =>
+      _transport('ownershipAgreements', data);
+
+  /// The organizations this account owns or co-owns (version 2), for the home
+  /// screen's co-ownership page (2026-10-06).
+  Future<List<({String id, String name})>> ownedOrganizations() async {
+    final out = <({String id, String name})>[];
+    String? cursor;
+    do {
+      final page = await _transport('listMyOrganizations', {'cursor': ?cursor});
+      for (final raw in page['records'] as List? ?? const []) {
+        final r = Map<String, dynamic>.from(raw as Map);
+        if (r['owner'] == true && r['accessVersion'] == 2) {
+          out.add((id: '${r['id']}', name: '${r['name'] ?? ''}'));
+        }
+      }
+      cursor = page['nextCursor'] as String?;
+    } while (cursor != null);
+    return out;
+  }
+
   Future<Map<String, dynamic>?> myAccess(String organizationId) async {
-    final data = await _transport('readTeam', {
+    final data = await _fresh('readTeam', {
       'organizationId': organizationId,
       'view': TeamView.myAccess.name,
     });
+    return _accessRecord(data);
+  }
+
+  /// The saved copy of [myAccess], or null (2026-10-06, device copy).
+  Future<Map<String, dynamic>?> savedMyAccess(String organizationId) async {
+    final saved = await _cache?.read('readTeam', {
+      'organizationId': organizationId,
+      'view': TeamView.myAccess.name,
+    });
+    return saved == null ? null : _accessRecord(saved.data);
+  }
+
+  static Map<String, dynamic>? _accessRecord(Map<String, dynamic> data) {
     final record = data['record'];
     return record == null
         ? null
@@ -81,6 +184,11 @@ class TeamService {
             Map<String, dynamic>.from(record as Map),
           );
   }
+
+  /// R2: joins every organization that pre-approved this account's verified
+  /// email. Results: [{organizationId, organizationName, status: joined|skipped}].
+  Future<Map<String, dynamic>> claimMyInvitations() =>
+      _transport('claimMyInvitations', {});
 
   Future<Map<String, dynamic>> invitation(String invitationId) =>
       _transport('lookupTeamInvitation', {'invitationId': invitationId.trim()});
@@ -145,6 +253,34 @@ class TeamService {
   Future<Map<String, dynamic>> execute(TeamOperation operation) =>
       _transport('mutateTeam', operation.payload);
 
+  /// Organization roles (R1): templates + organization roles with member counts
+  /// and what this account may do with each (canEdit / canDelete / canAssign).
+  Future<Map<String, dynamic>> roles(String organizationId) =>
+      _transport('orgRoles', {'organizationId': organizationId, 'action': 'list'});
+
+  /// action: 'save' (roleId absent = create) or 'delete'. Keep the operation
+  /// for retries; editing the form means preparing a new one.
+  TeamOperation prepareRole(
+    String organizationId,
+    String action,
+    Map<String, dynamic> fields,
+  ) {
+    if (!{'save', 'delete'}.contains(action) ||
+        fields.keys.any({'organizationId', 'action', 'operationId'}.contains)) {
+      throw ArgumentError('Invalid role operation');
+    }
+    final id = const Uuid().v4();
+    return TeamOperation._(id, {
+      ...fields,
+      'organizationId': organizationId,
+      'action': action,
+      'operationId': id,
+    });
+  }
+
+  Future<Map<String, dynamic>> executeRole(TeamOperation operation) =>
+      _transport('orgRoles', operation.payload);
+
   Future<Map<String, dynamic>> mutatePayment(Map<String, dynamic> payload) =>
       _transport('mutateStandalonePayment', payload);
 
@@ -163,6 +299,19 @@ class TeamService {
   Future<Map<String, dynamic>> leaseLifecycle(Map<String, dynamic> payload) =>
       _transport('leaseLifecycle', payload);
 
+  /// B7 technical problems (list, report, update, fix, reopen; B7b photos:
+  /// addPhoto, photo, removePhoto).
+  Future<Map<String, dynamic>> technicalProblems(Map<String, dynamic> payload) =>
+      _transport('technicalProblems', payload);
+
+  /// B7b Google Drive connection (status, connect, disconnect).
+  Future<Map<String, dynamic>> googleDrive(Map<String, dynamic> payload) =>
+      _transport('googleDrive', payload);
+
+  /// Sheet import (2026-10-05): preview, apply, saveSheet. Owner only.
+  Future<Map<String, dynamic>> importSheet(Map<String, dynamic> payload) =>
+      _transport('importSheet', payload);
+
   Future<Map<String, dynamic>> invoices(Map<String, dynamic> payload) =>
       _transport('invoices', payload);
 
@@ -171,6 +320,16 @@ class TeamService {
 
   Future<Map<String, dynamic>> bookingWorkspace(Map<String, dynamic> payload) =>
       _transport('bookingWorkspace', payload);
+
+  /// C1–C3 calendar: rooms of every visible property and the stays in
+  /// {organizationId, from, to} (property-local dates, `to` exclusive).
+  Future<Map<String, dynamic>> calendarView(Map<String, dynamic> payload) =>
+      _transport('calendarView', payload);
+
+  /// [calendarView], saved copy first (2026-10-06, device copy).
+  Stream<Saved<Map<String, dynamic>>> calendarViewLive(
+    Map<String, dynamic> payload,
+  ) => _live('calendarView', payload);
 
   Future<Map<String, dynamic>> tenantRent(Map<String, dynamic> payload) =>
       _transport('tenantRent', payload);
@@ -183,6 +342,12 @@ class TeamService {
 
   Future<Map<String, dynamic>> roomDetails(Map<String, dynamic> payload) =>
       _transport('roomDetails', payload);
+  Future<Map<String, dynamic>> utilityReadings(Map<String, dynamic> payload) =>
+      _transport('utilityReadings', payload);
+
+  /// B5 service fee definitions and room rates (billing goes through invoices).
+  Future<Map<String, dynamic>> serviceFees(Map<String, dynamic> payload) =>
+      _transport('serviceFees', payload);
 
   Future<Map<String, dynamic>> roomRates(Map<String, dynamic> payload) =>
       _transport('roomRates', payload);
@@ -190,4 +355,6 @@ class TeamService {
   Future<Map<String, dynamic>> roomBookingSettings(
     Map<String, dynamic> payload,
   ) => _transport('roomBookingSettings', payload);
+
+  Future<Map<String, dynamic>> transferOrganization(Map<String, dynamic> payload) => _transport('transferOrganization', payload);
 }

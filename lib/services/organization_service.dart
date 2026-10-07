@@ -6,6 +6,9 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
+import 'package:phan_mem_quan_ly_can_ho/config/release_flags.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/organization_settings_service.dart';
+import 'app_functions.dart';
 
 class OrganizationService {
   FirebaseFirestore get _firestore => FirebaseFirestore.instance;
@@ -57,64 +60,27 @@ class OrganizationService {
     String? bankAccountName,
     String? taxCode,
   }) async {
+    final settings = OrganizationSettingsService();
+    final fields = {
+      'name': name, 'address': address, 'phone': phone, 'email': email,
+      'taxCode': taxCode, 'bankName': bankName,
+      'bankAccountNumber': bankAccountNumber, 'bankAccountName': bankAccountName,
+    };
+    final operationId = settings.newOperation();
+    final legacy = !ReleaseFlags.v2OrganizationCreation;
+    String id;
     try {
-      final orgRef = _firestore.collection("organizations").doc();
-      final membershipId = '${ownerId}_${orgRef.id}';
-      final user = FirebaseAuth.instance.currentUser; 
-
-      Organization? organization;
-
-      while (true) {
-        final inviteCode = _generateRawCode();
-
-
-        organization = Organization(
-          id: orgRef.id,
-          name: name,
-          address: address,
-          phone: phone,
-          email: email,
-          bankName: bankName,
-          bankAccountNumber: bankAccountNumber,
-          bankAccountName: bankAccountName,
-          taxCode: taxCode,
-          createdBy: ownerId,
-          createdAt: DateTime.now(),
-          inviteCode: inviteCode,
-        );
-
-        final batch = _firestore.batch();
-
-        batch.set(orgRef, organization.toMap());
-        batch.set(_firestore.collection('invite_codes').doc(inviteCode), {
-          'orgId': orgRef.id,
-          'claimedAt': FieldValue.serverTimestamp(),
-        });
-
-        batch.set(
-          _firestore.collection('memberships').doc(membershipId),
-          Membership(
-            id: membershipId,
-            organizationId: orgRef.id,
-            ownerId: ownerId,
-            role: 'admin',
-            status: 'active',
-            joinedAt: DateTime.now(),
-            displayName: user?.displayName ?? '', 
-            email: user?.email ?? '',             
-          ).toMap(),
-        );
-
-        await batch.commit();
-        break;
-      }
-
-      logger.i('Organization created: ${organization.name}');
-      return organization;
-    } catch (e) {
-      logger.e('Error creating organization', error: e);
-      return null;
+      id = await settings.create(fields, operationId: operationId, legacy: legacy);
+    } on FirebaseFunctionsException catch (e) {
+      if (e.code != 'unavailable' && e.code != 'deadline-exceeded') rethrow;
+      id = await settings.create(fields, operationId: operationId, legacy: legacy);
     }
+    // Legacy screens still need the server-generated invitation code.
+    if (legacy) return getOrganizationById(id);
+    return Organization(id: id, name: name, address: address, phone: phone,
+        email: email, bankName: bankName, bankAccountNumber: bankAccountNumber,
+        bankAccountName: bankAccountName, taxCode: taxCode, createdBy: ownerId,
+        createdAt: DateTime.now(), inviteCode: '', accessVersion: 2);
   }
 
   // ========================================
@@ -388,7 +354,7 @@ class OrganizationService {
       final organizations = <Organization>[];
       String? cursor;
       do {
-        final response = await FirebaseFunctions.instance.httpsCallable('listMyOrganizations').call({'cursor': ?cursor});
+        final response = await appCallable('listMyOrganizations').call({'cursor': ?cursor});
         final page = Map<String, dynamic>.from(response.data as Map);
         for (final raw in page['records'] as List) {
           final row = Map<String, dynamic>.from(raw as Map);
@@ -574,9 +540,13 @@ class OrganizationService {
   // ========================================
   Future<bool> deleteOrganization(String ownerId, String orgId, {Function(double)? onProgress}) async {
     try {
+      if (FirebaseAuth.instance.currentUser?.uid != ownerId) return false;
+      final organization = await _firestore.collection('organizations').doc(orgId).get(const GetOptions(source: Source.server));
+      final data = organization.data();
+      if (data == null || (data['ownerTransferredTo'] ?? data['createdBy']) != ownerId || data['mergedInto'] != null) return false;
       final membership = await getUserMembership(ownerId, orgId);
 
-      if (membership == null || membership.role != 'admin') {
+      if (membership == null || membership.role != 'admin' || membership.status != 'active') {
         logger.w('User is not admin');
         return false;
       }

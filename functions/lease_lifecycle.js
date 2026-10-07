@@ -4,13 +4,18 @@ const {allows}=require('./team_access');
 const {validDate}=require('./property_contract');
 const {validZone}=require('./booking_settings');
 const {propertyDate,propertyDayStart}=require('./lease_dates');
+const {createSettlementHandler}=require('./move_out_settlement');
+const {roomBlocked}=require('./technical_problems');
 const id=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(v);
 const revision=d=>`${d.updateTime.seconds}:${d.updateTime.nanoseconds}`;
 const hash=v=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
 const active=t=>['active','suspended'].includes(t.status)&&t.moveOutDate==null;
 function createLeaseLifecycleHandler({db,Timestamp,HttpsError}){
  const fail=(code,key='lease_lifecycle_'+code)=>{throw new HttpsError(code,key);};
+ // B6b: "Trả phòng và quyết toán" (move_out_settlement.js) shares this callable.
+ const settlement=createSettlementHandler({db,Timestamp,HttpsError});
  return async request=>{
+  if(['settlementPreview','settlementQuote','settle'].includes(request.data?.action))return settlement(request);
   const d=request.data||{},uid=request.auth?.uid,write=['terms','move','moveOut'].includes(d.action);
   if(!uid)fail('unauthenticated');
   const keys=['action','organizationId','buildingId','tenantId',...(write?['operationId','revision','timeZone','reason']:[]),...(d.action==='terms'?['contractEndDate']:[]),...(['move','moveOut'].includes(d.action)?['effectiveDate']:[]),...(d.action==='move'?['destinationRoomId','destinationMainTenantId']:[])];
@@ -37,11 +42,11 @@ function createLeaseLifecycleHandler({db,Timestamp,HttpsError}){
    const roommates=linked.docs.filter(v=>active(v.data())).map(v=>({id:v.id,fullName:v.data().fullName??'',roomId:v.data().roomId}));
    const start=t.occupancyStartDate??t.moveInDate,startMillis=start?.toMillis?.(),startDate=Number.isFinite(startMillis)?propertyDate(startMillis,zone):null;
    if(!startDate)fail('failed-precondition');
-   if(d.action==='read')return {record:{fullName:t.fullName??'',roomId:t.roomId,isMainTenant:t.isMainTenant===true,status:t.status,revision:revision(doc),timeZone:zone,today,startDate,contractEndDate:t.contractEndLocalDate??(t.contractEndDate?propertyDate(t.contractEndDate.toMillis(),zone):null),roommates,canBackdate:['owner','administrator'].includes(m.role)}};
+   if(d.action==='read')return {record:{fullName:t.fullName??'',roomId:t.roomId,isMainTenant:t.isMainTenant===true,status:t.status,revision:revision(doc),timeZone:zone,today,startDate,contractEndDate:t.contractEndLocalDate??(t.contractEndDate?propertyDate(t.contractEndDate.toMillis(),zone):null),roommates,canBackdate:allows(m,'backdateRecords',{organizationId:d.organizationId,userId:uid})}};
    if(d.action==='destinations'){
     const rooms=await tx.get(db.collection('rooms').where('organizationId','==',d.organizationId));
     const mains=await tx.get(db.collection('tenants').where('organizationId','==',d.organizationId));
-    return {records:rooms.docs.filter(v=>v.id!==t.roomId&&allows(m,'manageLease',scope(v.data().buildingId))&&['monthly','both'].includes(v.data().rentalMode??'monthly')).map(v=>({id:v.id,buildingId:v.data().buildingId,roomNumber:v.data().roomNumber??v.id,mainTenants:mains.docs.filter(x=>x.data().roomId===v.id&&x.data().isMainTenant===true&&active(x.data())).map(x=>({id:x.id,fullName:x.data().fullName??''}))}))};
+    return {records:rooms.docs.filter(v=>v.id!==t.roomId&&allows(m,'manageLease',scope(v.data().buildingId))&&!v.data().deletedAt).map(v=>({id:v.id,buildingId:v.data().buildingId,roomNumber:v.data().roomNumber??v.id,mainTenants:mains.docs.filter(x=>x.data().roomId===v.id&&x.data().isMainTenant===true&&active(x.data())).map(x=>({id:x.id,fullName:x.data().fullName??''}))}))};
    }
    if(!active(t))fail('failed-precondition');
    if(d.revision!==revision(doc)||d.timeZone!==zone)fail('aborted');
@@ -51,14 +56,14 @@ function createLeaseLifecycleHandler({db,Timestamp,HttpsError}){
     if(t.isMainTenant!==true)fail('failed-precondition');
     if(d.contractEndDate!==null){
      if(d.contractEndDate<propertyDate(t.moveInDate.toMillis(),zone))fail('invalid-argument');
-     if(d.contractEndDate<today&&!['owner','administrator'].includes(m.role))fail('permission-denied');
+     if(d.contractEndDate<today&&!allows(m,'backdateRecords',{organizationId:d.organizationId,userId:uid}))fail('permission-denied');
      const end=propertyDayStart(d.contractEndDate,zone);if(end===null)fail('invalid-argument');
      patch={contractEndDate:Timestamp.fromMillis(end),contractEndLocalDate:d.contractEndDate,contractEndTimeZone:zone};
     }else patch={contractEndDate:null,contractEndLocalDate:null,contractEndTimeZone:zone};
    }else{
     // A move is a recorded actual event. Future occupancy changes need a separate scheduling workflow.
     if(d.effectiveDate>today||d.effectiveDate<startDate)fail('invalid-argument','lease_actual_date_required');
-    if(d.effectiveDate<today&&!['owner','administrator'].includes(m.role))fail('permission-denied');
+    if(d.effectiveDate<today&&!allows(m,'backdateRecords',{organizationId:d.organizationId,userId:uid}))fail('permission-denied');
     at=propertyDayStart(d.effectiveDate,zone);if(at===null||at<=startMillis)fail('invalid-argument');
     if(t.isMainTenant===true&&roommates.length)fail('failed-precondition','lease_handle_roommates_first');
     source=await tx.get(db.doc(`rooms/${t.roomId}`));if(!source.exists||source.data().organizationId!==d.organizationId||source.data().buildingId!==d.buildingId)fail('failed-precondition');
@@ -66,7 +71,8 @@ function createLeaseLifecycleHandler({db,Timestamp,HttpsError}){
     else{
      room=await tx.get(db.doc(`rooms/${d.destinationRoomId}`));const r=room.data();
      if(!r||r.organizationId!==d.organizationId||!allows(m,'manageLease',scope(r.buildingId)))fail('permission-denied');
-     if(room.id===t.roomId||!['monthly','both'].includes(r.rentalMode??'monthly')||(r.currency??'VND')!==(t.currency??'VND'))fail('failed-precondition');
+     if(room.id===t.roomId||(r.currency??'VND')!==(t.currency??'VND'))fail('failed-precondition');
+     if(roomBlocked(r))fail('failed-precondition','room_has_open_problem');
      destinationBuilding=await tx.get(db.doc(`buildings/${r.buildingId}`));
      if(!destinationBuilding.exists||destinationBuilding.data().organizationId!==d.organizationId||!validZone(destinationBuilding.data().timeZone))fail('failed-precondition');
      const occupants=await tx.get(db.collection('tenants').where('roomId','==',room.id));

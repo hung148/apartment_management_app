@@ -11,7 +11,7 @@ import 'package:phan_mem_quan_ly_can_ho/widgets/suggested_text_field.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/searchable_select_field.dart';
 import 'calendar_screen_test.dart'
     show RoomsFake, BuildingsFake, TenantsFake, ThemeOrganizationsFake;
-import 'ai_import_test.dart' show AuthFake;
+import 'support/auth_fake.dart' show AuthFake;
 
 class EditableTenantFake extends TenantsFake {
   Map<String, dynamic>? update;

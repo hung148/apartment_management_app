@@ -1,4 +1,5 @@
 const {test} = require('node:test');
+const {via}=require('./call_group');
 const assert = require('node:assert/strict');
 const {createTeamHandler} = require('../team');
 class Stamp {constructor(v){this.v=v;} toMillis(){return this.v;} static now(){return new Stamp(1000000);} static fromMillis(v){return new Stamp(v);}}
@@ -83,11 +84,19 @@ test('suspended inviter invalidates outstanding invitations',async()=>{
   db.rows.get('memberships/admin_org').status='suspended';
   await assert.rejects(call({action:'acceptInvitation',invitationId},'new'),/team_inviter_access_changed/);
 });
-test('invitation cannot overwrite existing or revoked membership',async()=>{
+test('invitation cannot overwrite an active or suspended membership; a revoked person may join again (R2)',async()=>{
+  for(const status of ['active','suspended']){
+    const {db,call}=fixture();const {invitationId}=await call(invite);
+    db.rows.set('memberships/new_org',{...membership('new','manager'),status});
+    await assert.rejects(call({action:'acceptInvitation',invitationId},'new'),/team_existing_access/);
+    assert.equal(db.rows.get('memberships/new_org').status,status);
+    assert.equal(db.rows.get('memberships/new_org').role,'manager');
+  }
   const {db,call}=fixture();const {invitationId}=await call(invite);
-  db.rows.set('memberships/new_org',{...membership('new','receptionist'),status:'revoked'});
-  await assert.rejects(call({action:'acceptInvitation',invitationId},'new'),/team_existing_access/);
-  assert.equal(db.rows.get('memberships/new_org').status,'revoked');
+  db.rows.set('memberships/new_org',{...membership('new','manager'),status:'revoked'});
+  await call({action:'acceptInvitation',invitationId},'new');
+  assert.equal(db.rows.get('memberships/new_org').status,'active');
+  assert.equal(db.rows.get('memberships/new_org').role,'receptionist');
 });
 test('concurrent invitations to one staff profile cannot link two accounts',async()=>{
   const {db,call}=fixture();const a=await call(invite);const b=await call({...invite,email:'second@example.com'});
@@ -118,7 +127,10 @@ test('cross-organization buildings, staff, and invalid overrides are rejected',a
 });
 test('generic member/owner invitations and administrator peer grants are rejected',async()=>{
   const {call}=fixture();
-  for(const role of ['member','admin','owner','toString'])await assert.rejects(call({...invite,access:access(role)}),/team_invalid_access/);
+  // Roles are data now: 'owner' and malformed ids are invalid input; names that are
+  // neither a template nor an organization role are simply not found.
+  for(const role of ['owner','',' x','a/b'])await assert.rejects(call({...invite,access:access(role)}),/team_invalid_access/);
+  for(const role of ['member','admin','toString','viewer'])await assert.rejects(call({...invite,access:access(role)}),/team_role_not_found/);
   await assert.rejects(call({...invite,access:access('administrator')},'admin'),/team_role_protected/);
 });
 test('staff management rejects unauthenticated, legacy, restricted and suspended actors',async()=>{
@@ -162,7 +174,7 @@ test('administrator cannot grant default capabilities they have explicitly lost'
   await assert.rejects(call({...invite,access:access('accountant')},'admin'),/team_grant_exceeds_access/);
 });
 test('callable wrapper forwards authentication and validates input',async()=>{
-  const {mutateTeam}=require('../index');
+  const mutateTeam=via(require('../index'),'mutateTeam');
   await assert.rejects(mutateTeam.run({data:{}}),e=>e.code==='unauthenticated');
   await assert.rejects(mutateTeam.run({auth:{uid:'owner'},data:{}}),e=>e.code==='unauthenticated'&&e.message==='app_check_required');
 });

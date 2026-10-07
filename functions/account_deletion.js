@@ -1,6 +1,9 @@
 'use strict';
 const {createHash}=require('node:crypto');
 const {forEachMatch}=require('./org_data');
+const {canRunOrganization}=require('./team_access');
+const {owners,authorizeSensitive,companyOf,control}=require('./governance_access');
+const {accountPolicy,policyLocks,prepareBinding}=require('./account_policy');
 
 // Account deletion ("delete my account") for version-2 and legacy members.
 // preview: what happens to each organization. delete: carries it out, after a
@@ -36,7 +39,7 @@ function createAccountDeletionHandler({db,Timestamp,HttpsError}){
    await forEachMatch(db,'memberships','organizationId',orgId,doc=>{if(doc.id!==m.id&&doc.data().status!=='revoked')others.push(doc.data());});
    row.otherMembers=others.length;
    if(row.accessVersion===2&&d.role==='owner'){
-    row.candidates=others.filter(x=>x.accessVersion===2&&x.status==='active'&&x.role==='administrator')
+    row.candidates=others.filter(x=>canRunOrganization(x))
      .map(x=>({userId:x.ownerId,name:x.displayName||x.email||''}));
     row.plan=row.candidates.length?'decide':'close';
    }else if(row.accessVersion!==2&&d.role==='admin'&&d.status==='active'){
@@ -56,13 +59,22 @@ function createAccountDeletionHandler({db,Timestamp,HttpsError}){
   // Legacy member lists show every membership record, so legacy ones are
   // deleted as the old app did; version-2 ones keep a scrubbed revoked record.
   if(row.accessVersion!==2){await ref.delete();return;}
-  await ref.update({status:'revoked',revokedReason:'accountDeleted',...scrub,updatedAt:now,updatedBy:uid});
+  await db.runTransaction(async tx=>{
+   const current=(await tx.get(ref)).data();
+   if(current?.role==='coOwner'&&current.status==='active'){
+    const all=await owners(db,tx,row.organizationId);let recovery=false;
+    for(const other of all){if(other===uid)continue;const m=(await tx.get(db.collection('memberships').doc(`${other}_${row.organizationId}`))).data();if(control(m,'manageCoOwners',all.length)!=='off')recovery=true;}
+    if(!recovery)fail('failed-precondition','agreement_last_owner');
+   }
+   tx.update(ref,{status:'revoked',revokedReason:'accountDeleted',...scrub,updatedAt:now,updatedBy:uid});
+  });
  }
  async function closeOrganization(row,now,uid){
   const orgRef=db.collection('organizations').doc(row.organizationId);
   await db.runTransaction(async tx=>{
    const org=await tx.get(orgRef);
    if(!org.exists||org.data().closedAt)return;
+   if(org.data().accessVersion===2){const m=(await tx.get(db.collection('memberships').doc(`${uid}_${row.organizationId}`))).data();await authorizeSensitive(db,tx,{orgId:row.organizationId,uid,member:m,kind:'closeOrganization'},fail);}
    tx.update(orgRef,{closedAt:now,closedBy:uid,closedReason:'accountDeleted',purgeAfter:Timestamp.fromMillis(now.toMillis()+RETENTION_DAYS*86400000)});
    tx.set(db.collection('teamActivity').doc(hash([uid,'accountDeletedClose',row.organizationId])),{organizationId:row.organizationId,actorId:uid,
     action:'closeOrganization',targetId:row.organizationId,before:null,after:{status:'closed',reason:'accountDeleted'},createdAt:now});
@@ -83,10 +95,24 @@ function createAccountDeletionHandler({db,Timestamp,HttpsError}){
    const t=target.exists?target.data():null;
    if(t&&t.role==='owner'&&t.status==='active'&&mine.exists&&mine.data().status==='revoked')return; // already done
    if(!org.exists||org.data().closedAt||!t||t.ownerId!==to||t.organizationId!==row.organizationId||t.accessVersion!==2||
-    t.status!=='active'||t.role!=='administrator')fail('failed-precondition','account_deletion_plan_changed');
-   tx.update(targetRef,{role:'owner',buildingScope:'all',buildingIds:[],permissionOverrides:{},updatedAt:now,updatedBy:uid});
+    !canRunOrganization(t))fail('failed-precondition','account_deletion_plan_changed');
+   const allMembers=await tx.get(db.collection('memberships').where('organizationId','==',row.organizationId));
+   if(allMembers.docs.some(d=>d.data().role==='coOwner'&&d.data().status!=='revoked'))fail('failed-precondition','org_single_organization_review');
+   const commitPolicy=await policyLocks(db,tx,to,t.email);
+   const bind=await prepareBinding(db,tx,to,row.organizationId,{email:t.email,source:'ownershipTransfer'},fail);
+   if((await accountPolicy(db,tx,to,t.email,row.organizationId)).hasStaff)fail('failed-precondition','org_staff_account');
+   const staff=await tx.get(db.collection('memberships').where('organizationId','==',row.organizationId));
+   for(const doc of staff.docs){
+    const m=doc.data();if(m.ownerId===uid||m.ownerId===to||m.status==='revoked')continue;
+    // Fail closed until employees with other workplace assignments are removed
+    // from this organization; the owner can then retry the normal handover.
+    const p=await accountPolicy(db,tx,m.ownerId,m.email,row.organizationId);
+    if(p.hasStaff)fail('failed-precondition','account_deletion_plan_changed');
+   }
+   commitPolicy();bind();
+   tx.update(targetRef,{role:'owner',roleGrants:null,roleRevision:null,roleName:null,buildingScope:'all',buildingIds:[],permissionOverrides:{},updatedAt:now,updatedBy:uid});
    tx.update(mineRef,{status:'revoked',revokedReason:'accountDeleted',...scrub,updatedAt:now,updatedBy:uid});
-   tx.update(orgRef,{ownerTransferredAt:now,ownerTransferredTo:to});
+   tx.update(orgRef,{ownerTransferredAt:now,ownerTransferredTo:to,companyId:companyOf(org.data())});
    tx.set(db.collection('teamActivity').doc(hash([uid,'transferOwnership',row.organizationId])),{organizationId:row.organizationId,actorId:uid,
     action:'transferOwnership',targetId:targetRef.id,before:{owner:uid},after:{owner:to},createdAt:now});
   });
@@ -115,6 +141,8 @@ function createAccountDeletionHandler({db,Timestamp,HttpsError}){
   // The first attempt fixes the choices; a resumed attempt reuses them.
   const chosen=await db.runTransaction(async tx=>{
    const prior=await tx.get(ledgerRef);
+   const lock=await policyLocks(db,tx,uid,request.auth.token?.email);
+   const bindingRef=db.collection('accountOrganizations').doc(uid),binding=(await tx.get(bindingRef)).data();
    if(prior.exists&&prior.data().status==='pending')return prior.data().decisions;
    for(const r of rows){
     const c=decisions[r.organizationId];
@@ -123,6 +151,7 @@ function createAccountDeletionHandler({db,Timestamp,HttpsError}){
     if(c?.action==='transfer'&&!(r.plan==='decide'&&r.candidates.some(x=>x.userId===c.to)))fail('failed-precondition','account_deletion_plan_changed');
     if(r.plan==='decide'&&!c)fail('failed-precondition','account_deletion_decision_required');
    }
+   lock();tx.set(bindingRef,{...(binding??{}),state:'deleting',revision:(binding?.revision??0)+1});
    tx.set(ledgerRef,{status:'pending',decisions,operationId:d.operationId,startedAt:Timestamp.now()});
    return decisions;
   });
@@ -149,7 +178,12 @@ function createAccountDeletionHandler({db,Timestamp,HttpsError}){
   await db.collection('aiEntitlements').doc(uid).delete();
   await db.collection('owners').doc(uid).delete();
   const result={status:'dataDeleted',organizations:rows.length,counts};
-  await ledgerRef.set({status:'complete',completedAt:Timestamp.now(),result},{merge:true});
+  await db.runTransaction(async tx=>{
+   const lock=await policyLocks(db,tx,uid,request.auth.token?.email);
+   const ref=db.collection('accountOrganizations').doc(uid),b=(await tx.get(ref)).data();
+   lock();tx.set(ref,{organizationId:null,state:'released',revision:(b?.revision??0)+1,source:'accountDeletion',updatedAtMs:Date.now()});
+   tx.set(ledgerRef,{status:'complete',completedAt:Timestamp.now(),result});
+  });
   return result;
  };
 }

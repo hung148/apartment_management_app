@@ -5,19 +5,22 @@ class CodeError extends Error {constructor(code,message){super(message);this.cod
 class Ts {constructor(ms){this.ms=ms;} toMillis(){return this.ms;} toDate(){return new Date(this.ms);}
   static now(){return new Ts(Ts.clock);} static fromMillis(ms){return new Ts(ms);}}
 Ts.clock=Date.parse('2026-09-28T12:00:00Z');
+// Field-delete sentinel for update(): removes the key.
+const DELETE=Symbol('delete');
 const cmp=(a,b)=>{const x=a?.toMillis?a.toMillis():a,y=b?.toMillis?b.toMillis():b;return x<y?-1:x>y?1:0;};
 function fakeDb(seed={}){
   const store=new Map(Object.entries(seed).map(([k,v])=>[k,{...v}]));
-  const db={store,calls:0};
+  const db={store,calls:0};let autoId=0;
   const ref=path=>({path,id:path.split('/').pop(),collection:name=>collection(`${path}/${name}`),
+    listCollections:async()=>[...new Set([...store.keys()].filter(p=>p.startsWith(path+'/')&&p.split('/').length===path.split('/').length+2).map(p=>p.split('/')[path.split('/').length]))].map(id=>({id,get:async()=>collection(`${path}/${id}`).get()})),
     get:async()=>snap(ref(path)),update:async v=>apply([['update',ref(path),v]]),
     set:async(v,o)=>apply([[o?.merge?'update-or-set':'set',ref(path),v]]),delete:async()=>apply([['delete',ref(path)]])});
-  const snap=r=>{const d=store.get(r.path);return {ref:r,id:r.id,exists:d!==undefined,data:()=>d&&{...d}};};
+  const snap=r=>{const d=store.get(r.path);return {ref:r,id:r.id,exists:d!==undefined,data:()=>d&&{...d},updateTime:{seconds:0,nanoseconds:0}};};
   const ops={'==':(a,b)=>a!==undefined&&cmp(a,b)===0,'<=':(a,b)=>a!==undefined&&cmp(a,b)<=0,'in':(a,b)=>b.includes(a)};
   function collection(name){
     const depth=name.split('/').length+1;
     const make=state=>({
-      doc:id=>ref(`${name}/${id}`),
+      doc:id=>ref(`${name}/${id??`auto${++autoId}`}`),
       where:(f,op,v)=>make({...state,filters:[...state.filters,[f,op,v]]}),
       orderBy:f=>make({...state,order:f}),
       limit:n=>make({...state,max:n}),
@@ -38,17 +41,19 @@ function fakeDb(seed={}){
     if(m==='update'&&!store.has(r.path))throw new CodeError('not-found','update');
     if(m==='delete'){store.delete(r.path);continue;}
     if(m==='update-or-set'){store.set(r.path,{...(store.get(r.path)??{}),...v});continue;}
-    store.set(r.path,m==='update'?{...store.get(r.path),...v}:{...v});}}
+    const next=m==='update'?{...store.get(r.path),...v}:{...v};
+    for(const k of Object.keys(next))if(next[k]===DELETE)delete next[k];
+    store.set(r.path,next);}}
   Object.assign(db,{
     collection,doc:path=>ref(path),
-    batch(){const w=[];return {set:(r,v)=>w.push(['set',r,v]),update:(r,v)=>w.push(['update',r,v]),delete:r=>w.push(['delete',r]),commit:async()=>{db.calls++;apply(w);}};},
+    batch(){const w=[];return {create:(r,v)=>w.push(['create',r,v]),set:(r,v)=>w.push(['set',r,v]),update:(r,v)=>w.push(['update',r,v]),delete:r=>w.push(['delete',r]),commit:async()=>{db.calls++;apply(w);}};},
     async runTransaction(fn){const w=[];const tx={get:async r=>r.get(),
       create:(r,v)=>w.push(['create',r,v]),update:(r,v)=>w.push(['update',r,v]),set:(r,v)=>w.push(['set',r,v])};
       const out=await fn(tx);apply(w);return out;},
     async listCollections(){return [...new Set([...store.keys()].map(p=>p.split('/')[0]))].map(id=>({id}));},
-    bulkWriter(){return {close:async()=>{}};},
+    bulkWriter(){const w=[];return {create:(r,v)=>{w.push(['create',r,v]);},close:async()=>apply(w)};},
     async recursiveDelete(r){for(const p of [...store.keys()])if(p===r.path||p.startsWith(r.path+'/'))store.delete(p);},
   });
   return db;
 }
-module.exports={fakeDb,Ts,CodeError};
+module.exports={fakeDb,Ts,CodeError,DELETE};

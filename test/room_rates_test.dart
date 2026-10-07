@@ -9,14 +9,13 @@ import 'package:phan_mem_quan_ly_can_ho/services/team_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/localizations/app_localizations.dart';
 import 'team_review_test.dart' show mountReview;
 import 'staff_editor_test.dart' as staff;
-import 'access_editor_test.dart' show choose;
 import 'room_directory_test.dart' show directory;
 
 Future<void> reveal(WidgetTester tester, Finder finder) async {
   FocusManager.instance.primaryFocus?.unfocus();
   await tester.pumpAndSettle();
   tester
-      .state<ScrollableState>(find.byType(Scrollable).first)
+      .state<ScrollableState>(staff.mainScrollable())
       .position
       .jumpTo(0);
   await tester.pumpAndSettle();
@@ -55,12 +54,9 @@ void main() {
         final store = TeamPreviewStore();
         final t = AppTranslations(Locale(language));
         await mountReview(tester, page(store.service), language: language);
+        // 2026-10-04: every price is optional; empty prices save.
         await press(tester, t['rates_save']);
-        final expected = language == 'en'
-            ? 'A positive rate is required for this rental mode.'
-            : 'Hình thức cho thuê này cần giá lớn hơn 0.';
-        await reveal(tester, find.byKey(const ValueKey('rates-roomPrice')));
-        expect(find.text(expected), findsOneWidget);
+        expect(find.text(t['rates_saved']), findsOneWidget);
         expect(
           t['rates_required'],
           language == 'en'
@@ -70,34 +66,29 @@ void main() {
       }
     },
   );
-  testWidgets(
-    'selected rental mode remains readable outside the constrained dropdown',
-    (tester) async {
-      final store = TeamPreviewStore();
-      store.rooms.first['rentalMode'] = 'both';
-      await mountReview(
-        tester,
-        page(store.service),
-        language: 'vi',
-        size: const Size(320, 740),
-        scale: 2,
-      );
-      final label = find.byKey(const ValueKey('rates-selected-mode'));
-      expect(label, findsOneWidget);
-      expect(tester.widget<Text>(label).data, 'Theo tháng và ngắn hạn');
-    },
-  );
+  testWidgets('no rental mode: every room takes short stays and leases', (tester) async {
+    final store = TeamPreviewStore();
+    store.rooms.first['rentalMode'] = 'monthly';
+    await mountReview(tester, page(store.service), language: 'vi', size: const Size(320, 740), scale: 2);
+    expect(find.byKey(const ValueKey('rates-selected-mode')), findsNothing);
+    expect(find.text('Hình thức cho thuê'), findsNothing);
+    await press(tester, 'Lưu giá và hình thức cho thuê');
+    expect(store.rooms.first['rentalMode'], 'both');
+    expect(tester.takeException(), isNull);
+  });
   test(
-    'exact dong and cents parsing rejects grouping, fractions and oversized amounts',
+    'exact dong and cents parsing reads grouping, rejects fractions and oversized amounts',
     () {
       expect(parseRoomRate('0.29', 'USD'), 29);
-      expect(parseRoomRate('12,50', 'USD'), 1250);
       expect(parseRoomRate('50000', 'VND'), 50000);
+      // Comma between thousands, dot before cents (2026-10-05, Tom).
+      expect(parseRoomRate('5,000,000', 'VND'), 5000000);
+      expect(parseRoomRate('1,000', 'USD'), 100000);
       for (final text in [
         '-1',
         '0',
         '1.234',
-        '1,000',
+        '12,50',
         'NaN',
         '1e3',
         '100000000000000',
@@ -117,15 +108,15 @@ void main() {
       await reveal(tester, button);
       await tester.tap(button);
       await tester.pumpAndSettle();
-      await choose(tester, 'rates-mode-monthly', 'Monthly and short stay');
       await press(tester, 'Save pricing and mode');
       expect(store.rooms.first['roomPrice'], isNull);
       await enterRate(tester, 'roomPrice', '600');
       await enterRate(tester, 'hourlyPrice', '0.29');
-      await enterRate(tester, 'dailyPrice', '20');
-      await enterRate(tester, 'threshold', '8');
+      await enterRate(tester, 'nightlyPrice', '20');
       await press(tester, 'Save pricing and mode');
       expect(store.rooms.first['hourlyPrice'], 0.29);
+      expect(store.rooms.first['nightlyPrice'], 20);
+      expect(store.rooms.first['dailyPrice'], isNull);
       expect(store.rooms.first['rentalMode'], 'both');
       expect(find.text('Pricing and rental mode saved.'), findsOneWidget);
       await press(tester, 'Manage rooms');
@@ -234,9 +225,7 @@ void main() {
               'rentalMode': 'both',
               'roomPrice': 1200.50,
               'hourlyPrice': 12.50,
-              'dailyPrice': 100,
-              'overnightPrice': 75,
-              'dailyPriceThresholdHours': 8,
+              'nightlyPrice': 100,
             });
             final t = AppTranslations(Locale(language));
             await mountReview(
@@ -257,10 +246,12 @@ void main() {
                 ),
               );
             }
-            await enterRate(tester, 'roomPrice', '');
+            // The box refuses letters and extra dots while typing, so the
+            // error is shown for a price of 0 (2026-10-05).
+            await enterRate(tester, 'roomPrice', '0');
             await press(tester, t['rates_save']);
-            await reveal(tester, find.text(t['room_rate_required']));
-            expect(find.text(t['room_rate_required']).hitTestable(), findsOneWidget);
+            await reveal(tester, find.text(t['rates_invalid']));
+            expect(find.text(t['rates_invalid']).hitTestable(), findsOneWidget);
             expect(tester.takeException(), isNull);
             if (const bool.fromEnvironment('RATES_GOLDENS')) {
               await expectLater(
@@ -291,5 +282,37 @@ void main() {
         }
       }
     }
+  });
+
+  // 2026-10-04: monthly, per night and per hour only.
+  testWidgets('an older day price shows as the night price; prices may be empty', (tester) async {
+    final store = TeamPreviewStore();
+    store.rooms.first.addAll({
+      'rentalMode': 'hourly',
+      'currency': 'VND',
+      'dailyPrice': 450000,
+      'dailyPriceThresholdHours': 8,
+      'hourlyPrice': null,
+    });
+    await mountReview(tester, page(store.service));
+    for (final gone in ['rates-dailyPrice', 'rates-overnightPrice', 'rates-threshold']) {
+      expect(find.byKey(ValueKey(gone)), findsNothing, reason: gone);
+    }
+    expect(find.text('Price per night'), findsOneWidget);
+    expect(find.text('Price per hour'), findsOneWidget);
+    await reveal(tester, find.byKey(const ValueKey('rates-nightlyPrice')));
+    expect(
+      tester.widget<TextFormField>(find.byKey(const ValueKey('rates-nightlyPrice'))).controller!.text,
+      '450,000',
+    );
+    await enterRate(tester, 'nightlyPrice', '');
+    await enterRate(tester, 'hourlyPrice', '120000');
+    await press(tester, 'Save pricing and mode');
+    expect(store.rooms.first['hourlyPrice'], 120000);
+    expect(store.rooms.first['nightlyPrice'], isNull);
+    // The old day price and its threshold are cleared.
+    expect(store.rooms.first['dailyPrice'], isNull);
+    expect(store.rooms.first['dailyPriceThresholdHours'], isNull);
+    expect(find.text('Pricing and rental mode saved.'), findsOneWidget);
   });
 }

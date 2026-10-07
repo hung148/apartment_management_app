@@ -8,6 +8,7 @@ import 'package:phan_mem_quan_ly_can_ho/screens/team/role_workspace.dart';
 import 'package:phan_mem_quan_ly_can_ho/preview/team_preview_store.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/team_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/localizations/app_localizations.dart';
+import 'staff_editor_test.dart' show openSection;
 import 'team_review_test.dart' show mountReview;
 import 'room_rates_test.dart' show press, reveal;
 import 'room_booking_settings_test.dart' show enter;
@@ -36,13 +37,15 @@ void main() {
         tester,
         RoleWorkspace(organizationId: 'preview', service: store.service),
       );
-      await press(tester, 'Tenants');
+      await openSection(tester, 'tenants');
       await open(tester, 'tenant-anh');
       await enter(tester, 'tenant-contact-name', 'Updated name');
       await enter(tester, 'tenant-contact-phone', '+84 900 111');
       await press(tester, 'Save contact');
-      await press(tester, 'Reload contact');
-      expect(find.text('Updated name'), findsOneWidget);
+      // Saving reloads the page; no "Reload contact" next to it (2026-10-04).
+      expect(find.text('Reload contact'), findsNothing);
+      // The name is in the page header and in the edit box.
+      expect(find.text('Updated name'), findsWidgets);
       expect(store.tenants.first['monthlyRent'], 200);
       expect(store.tenants.first['deposit'], 500);
       await press(tester, 'Tenants');

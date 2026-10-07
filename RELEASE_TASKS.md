@@ -7,6 +7,12 @@ stays in [IAM rollout](IAM_ROLLOUT.md), [security evidence](SECURITY_VERIFICATIO
 [release checklist](RELEASE_SECURITY_CHECKLIST.md) and
 [implementation history](TEAM_ACCESS_IMPLEMENTATION.md).
 
+**Client work (2026-09-30):** anh Hưng's requests (custom roles, Google sign-in,
+short/long-term bookings, calendar bars, invoices, KPI, notifications, Sheet backup)
+are planned in [CLIENT_ROADMAP.md](CLIENT_ROADMAP.md). Start there: finish the
+PROFILE/STAFFLINK/NAV tests, then R1. G3/G4/G5/G6 are folded into that roadmap;
+G8 (v2 creation + migrating his organization) must land before he uses them.
+
 Baseline: commit `9ea3cf3` (Team and Access), pushed 2026-09-28. Roll back to
 this commit if a release step goes wrong before deployment.
 
@@ -204,8 +210,10 @@ list and operations, invoices, collections/refunds, housekeeping.
 - [ ] G6 Receipts and exports: payment PDF, Excel export, organization reports.
 - [ ] G7 AI chat data tools: denied for v2 (`ai_scoped_access_required`);
   needs role/property-scoped read tools.
-- [ ] G8 New organizations are always created as legacy (v1); there is no v2
-  creation path and no production migration-apply tool (see Task 5).
+- [ ] G8 v2 creation path built behind a release switch (staging on,
+  production off) and migration tool `tool/migrate_v2.cjs` built (plan/backup/
+  apply/undo/anonymized rehearsal). Remaining: staging rehearsal, then the
+  production move (see Task 5 and CLIENT_ROADMAP G8).
 
 ---
 

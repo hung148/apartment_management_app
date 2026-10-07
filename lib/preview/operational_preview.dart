@@ -324,13 +324,27 @@ extension OperationalPreview on TeamPreviewStore {
     if (d['action'] == 'rooms') {
       return {
         'canPrice': manager && priceOverride,
-        'records': rooms
-            .where(
-              (r) =>
-                  r['buildingId'] == b['id'] &&
-                  ['both', 'hourly'].contains(r['rentalMode']),
-            )
-            .toList(),
+        'canCollect': book,
+        'today': previewToday,
+        'records': [
+          for (final r in rooms.where(
+            (r) =>
+                // 2026-10-04: every room takes short stays.
+                r['buildingId'] == b['id'],
+          ))
+            {
+              ...r,
+              // Room prices in minor units, like the server (B2 / 2026-10-03).
+              'nightlyPriceMinor': switch (r['nightlyPrice'] ?? r['dailyPrice']) {
+                final num v => (v * (r['currency'] == 'USD' ? 100 : 1)).round(),
+                _ => null,
+              },
+              'hourlyPriceMinor': switch (r['hourlyPrice']) {
+                final num v => (v * (r['currency'] == 'USD' ? 100 : 1)).round(),
+                _ => null,
+              },
+            },
+        ],
         'timeZone': zone,
       };
     }
@@ -356,23 +370,60 @@ extension OperationalPreview on TeamPreviewStore {
       }
       final currency = room['currency'] ?? 'VND',
           scale = currency == 'USD' ? 100 : 1,
-          rate = room['${d['pricingType']}Price'] as num?;
+          hourlyMinor = d['pricingType'] == 'hourly' ? (d['hourlyPriceMinor'] as int?) : null,
+          rate = hourlyMinor != null
+              ? hourlyMinor / scale
+              : d['pricingType'] == 'nightly'
+              ? (room['nightlyPrice'] ?? room['dailyPrice']) as num?
+              : room['${d['pricingType']}Price'] as num?;
       if (rate == null) {
         throw FirebaseFunctionsException(
           code: 'failed-precondition',
           message: 'Rate',
         );
       }
-      final calculatedAmount =
-          (rate *
-                  scale *
-                  (d['pricingType'] == 'hourly'
-                      ? end.difference(start).inMinutes / 60
-                      : (end.difference(start).inMinutes / 1440).ceil()))
-              .round();
-      final amount = d['overrideMinor'] as int? ?? calculatedAmount;
+      final nights = DateTime.utc(end.year, end.month, end.day)
+          .difference(DateTime.utc(start.year, start.month, start.day))
+          .inDays;
+      final custom = (d['nightPricesMinor'] as List?)?.cast<int>();
+      final calculatedAmount = custom != null
+          ? custom.fold<int>(0, (a, b) => a + b)
+          : (rate *
+                    scale *
+                    (d['pricingType'] == 'hourly'
+                        ? end.difference(start).inMinutes / 60
+                        : d['pricingType'] == 'nightly'
+                        ? nights
+                        : (end.difference(start).inMinutes / 1440).ceil()))
+                .round();
+      final surcharges = [
+        for (final s in (d['surcharges'] as List? ?? const []))
+          Map<String, dynamic>.from(s as Map),
+      ];
+      // Per person (2026-10-04): × the number of guests, once.
+      final guests = (d['numberOfGuests'] as int?) ?? 1;
+      int line(Map s) =>
+          (s['amountMinor'] as int) * (s['basis'] == 'person' ? guests : 1);
+      final surchargesMinor = surcharges.fold<int>(0, (a, s) => a + line(s));
+      final base = d['overrideMinor'] as int? ?? calculatedAmount;
+      final amount = base + surchargesMinor;
       final quote = {
         'totalMinor': amount,
+        'baseMinor': base,
+        'surchargesMinor': surchargesMinor,
+        'guests': guests,
+        'surchargeLines': [
+          for (final s in surcharges)
+            {
+              'label': s['label'],
+              'basis': s['basis'] == 'person' ? 'person' : 'room',
+              'unitMinor': s['amountMinor'],
+              'count': s['basis'] == 'person' ? guests : 1,
+              'totalMinor': line(s),
+            },
+        ],
+        if (d['pricingType'] == 'nightly') 'nights': nights,
+        'pricingType': d['pricingType'],
         'currency': currency,
         'roomRevision': room['revision'],
         'timeZone': zone,
@@ -421,7 +472,55 @@ extension OperationalPreview on TeamPreviewStore {
         'pricingType': d['pricingType'],
         'totalPrice': amount / scale,
         'depositAmount': (d['depositMinor'] as num) / scale,
+        for (final k in [
+          'guestIdNumber',
+          'guests',
+          'numberOfGuests',
+          'staffInChargeId',
+          'platform',
+          'contactChannel',
+          'depositNote',
+        ])
+          if (d.containsKey(k)) k: d[k],
+        'surcharges': [
+          for (final s in surcharges)
+            {
+              'label': s['label'],
+              'amount': line(s) / scale,
+              if (s['basis'] == 'person') ...{
+                'basis': 'person',
+                'unitAmount': (s['amountMinor'] as int) / scale,
+                'count': guests,
+              },
+            },
+        ],
+        'hourlyPrice': hourlyMinor == null ? null : hourlyMinor / scale,
+        'nightPrices': custom?.map((v) => v / scale).toList(),
       });
+      // A deposit taken with the booking (2026-10-04) is a payment toward the total.
+      final deposit = d['deposit'] as Map?;
+      if (deposit != null) {
+        final paid = ((row['paidAmount'] as num) * scale).round();
+        if (!book || row['depositPayment'] != null) reject();
+        if ((deposit['amountMinor'] as int) + paid > amount) {
+          throw FirebaseFunctionsException(
+            code: 'invalid-argument',
+            message: 'booking_deposit_too_large',
+          );
+        }
+        if ((deposit['paidOn'] as String).compareTo(previewToday) > 0) {
+          throw FirebaseFunctionsException(
+            code: 'invalid-argument',
+            message: 'booking_deposit_date',
+          );
+        }
+        row['paidAmount'] = (paid + (deposit['amountMinor'] as int)) / scale;
+        row['depositPayment'] = {
+          'amount': (deposit['amountMinor'] as int) / scale,
+          'paymentMethod': deposit['method'],
+          'paidOn': deposit['paidOn'],
+        };
+      }
       changed(row);
       return completed[key] = {'id': row['id']};
     }

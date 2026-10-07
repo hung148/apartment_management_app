@@ -1,5 +1,5 @@
 const fs=require('node:fs'),base='../functions/node_modules/firebase-tools/lib/';
-const project='apartment-management-staging',region='us-central1',number='933030543017';
+const project='apartment-management-staging',region=require('../functions/region').REGION,number='933030543017';
 async function main(){
 await require(base+'requireAuth').requireAuth({project,...require(base+'auth').getGlobalDefaultAccount()});
 const headers={Authorization:'Bearer '+await require(base+'apiv2').getAccessToken(),'Content-Type':'application/json','x-goog-user-project':project};
@@ -32,7 +32,7 @@ let started=0;
 for(const [name,e] of Object.entries(endpoints)){
  if(state.operations[name]&&!state.operations[name].error)continue;
  if(started>=3)break;
- const account=['aiChat','aiImportPreview'].includes(name)?'app-ai-runtime':['aiSyncSubscription','revenueCatWebhook'].includes(name)?'app-billing-runtime':'app-functions-runtime';
+ const account='app-functions-runtime';
  const body={name:`projects/${project}/locations/${region}/functions/${name}`,buildConfig:{runtime:'nodejs22',entryPoint:name,serviceAccount:`projects/${project}/serviceAccounts/app-functions-build@${project}.iam.gserviceaccount.com`,source:{storageSource:state.source},environmentVariables:{GOOGLE_NODE_RUN_SCRIPTS:''}},serviceConfig:{serviceAccountEmail:`${account}@${project}.iam.gserviceaccount.com`,availableMemory:e.availableMemoryMb===512?'512Mi':'256Mi',timeoutSeconds:e.timeoutSeconds??60,maxInstanceCount:2,minInstanceCount:0,environmentVariables:{GCLOUD_PROJECT:project,FUNCTION_REGION:region}},labels:{environment:'staging','deployment-tool':'restricted-rest'}};
  const existing=await api(root+'/functions/'+name,'GET',null,[404]); const result=existing.status===404?await api(root+'/functions?functionId='+name,'POST',body):await api(root+'/functions/'+name+'?updateMask=buildConfig,serviceConfig,labels','PATCH',body);state.operations[name]={name:result.data.name};started++;fs.writeFileSync(statePath,JSON.stringify(state,null,2));
 }

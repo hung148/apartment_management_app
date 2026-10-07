@@ -29,8 +29,8 @@ void main() {
       onBack: () {},
     );
     await mountReview(tester, page('preview'));
-    await reveal(tester, find.text('Mark completed'));
-    await tester.tap(find.text('Mark completed'));
+    await reveal(tester, find.text('Done'));
+    await tester.tap(find.text('Done'));
     await tester.pump();
     await mountReview(tester, page('other'), settle: false);
     await tester.pump();
@@ -41,7 +41,7 @@ void main() {
     expect(refresh.onPressed, isNotNull);
     pending.complete({});
     await tester.pumpAndSettle();
-    expect(find.text('Mark completed'), findsNothing);
+    expect(find.text('Done'), findsNothing);
     expect(
       tester
           .widget<OutlinedButton>(
@@ -63,14 +63,14 @@ void main() {
         onBack: () {},
       );
       await mountReview(tester, page());
-      await press(tester, 'Assign a task');
+      await press(tester, 'Assign');
       await press(tester, 'Save assignment');
       expect(store.tasks.length, 1);
       await choose(tester, 'task-room', '101 — Phòng gia đình Riverside');
       await choose(
         tester,
         'task-person',
-        'Nguyễn Thị Lan — Nhân viên buồng phòng (preview-housekeeper)',
+        'Nguyễn Thị Lan — Nhân viên dọn phòng',
       );
       await reveal(tester, find.byKey(const ValueKey('task-title')));
       await tester.enterText(
@@ -82,12 +82,12 @@ void main() {
       store.tasks.removeAt(0);
       store.workspaceRole = 'housekeeper';
       await mountReview(tester, page());
-      expect(find.text('Assign a task'), findsNothing);
-      await press(tester, 'Start task');
+      expect(find.text('Assign'), findsNothing);
+      await press(tester, 'Start');
       expect(store.tasks.single['status'], 'inProgress');
-      await press(tester, 'Mark completed');
+      await press(tester, 'Done');
       expect(store.tasks.single['status'], 'completed');
-      expect(find.text('Mark completed'), findsNothing);
+      expect(find.text('Done'), findsNothing);
     },
   );
   testWidgets(
@@ -117,7 +117,7 @@ void main() {
           onBack: () {},
         ),
       );
-      await press(tester, 'Mark completed');
+      await press(tester, 'Done');
       await press(tester, 'Retry the same task change');
       expect(calls[0], calls[1]);
       denied = true;
@@ -167,7 +167,7 @@ void main() {
               await choose(
                 tester,
                 'task-person',
-                'Nguyễn Thị Lan — Nhân viên buồng phòng (preview-housekeeper)',
+                'Nguyễn Thị Lan — Nhân viên dọn phòng',
               );
               await reveal(tester, find.byKey(const ValueKey('task-title')));
               await tester.enterText(
@@ -193,4 +193,42 @@ void main() {
       }
     },
   );
+  testWidgets('a task shows its planned and real work time', (tester) async {
+    final store = TeamPreviewStore()..workspaceRole = 'manager';
+    store.tasks
+      ..first['plannedStart'] = '2026-10-06 12:00'
+      ..first['plannedEnd'] = '2026-10-06 14:00'
+      ..first['startedLocal'] = '2026-10-06 09:45'
+      ..add({
+        'id': 'clean-102',
+        'roomId': 'room-101',
+        'assigneeId': 'preview-housekeeper',
+        'title': 'Lau kính',
+        'status': 'completed',
+        'buildingId': 'riverside',
+        'startedLocal': '2026-10-06 23:50',
+        'completedLocal': '2026-10-07 00:20',
+      });
+    await mountReview(
+      tester,
+      HousekeepingScreen(
+        organizationId: 'preview',
+        buildingId: 'riverside',
+        service: TeamService(transport: store.call),
+        onBack: () {},
+      ),
+    );
+    expect(find.text('Planned: 2026-10-06 12:00 – 14:00'), findsOneWidget);
+    // The list uses the calendar's words for a cleaning's state.
+    expect(find.text('Not started'), findsOneWidget);
+    expect(find.text('Finished'), findsOneWidget);
+    expect(find.text('Actual: 2026-10-06 09:45 – …'), findsOneWidget);
+    expect(
+      find.text('Actual: 2026-10-06 23:50 – 2026-10-07 00:20'),
+      findsOneWidget,
+    );
+    // Short button labels (1–3 words).
+    expect(find.widgetWithText(OutlinedButton, 'Start'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'Done'), findsOneWidget);
+  });
 }

@@ -9,6 +9,10 @@ class Membership {
   final DateTime joinedAt;
   final String displayName; 
   final String email;       
+  /// Version 2 only, read-only here (server-owned): the organization role's
+  /// own name, and whether the membership carries a copy of that role's grants.
+  final String? roleName;
+  final bool hasRoleGrants;
 
   Membership({
     required this.id,
@@ -19,6 +23,8 @@ class Membership {
     required this.joinedAt,
     this.displayName = '', 
     this.email = '',       
+    this.roleName,
+    this.hasRoleGrants = false,
   });
 
   Map<String, dynamic> toMap() {
@@ -43,6 +49,8 @@ class Membership {
       joinedAt: (map['joinedAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       displayName: map['displayName'] ?? '', 
       email: map['email'] ?? '',             
+      roleName: map['roleName'] is String ? map['roleName'] as String : null,
+      hasRoleGrants: map['roleGrants'] is Map,
     );
   }
 }

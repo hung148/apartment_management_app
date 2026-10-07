@@ -123,4 +123,24 @@ void main() {
     await service.restore('a');
     expect(calls.last, {'action': 'restore', 'organizationId': 'a', 'operationId': 'op'});
   });
+  test('create sends all eight fields, trimmed, with the caller\'s operation', () async {
+    final sent = <Map<String, dynamic>>[];
+    final service = OrganizationSettingsService(
+      transport: (name, data) async {
+        expect(name, 'organizationSettings');
+        sent.add(data);
+        return {'organizationId': 'newOrg'};
+      },
+    );
+    final id = await service.create({'name': ' Daily+ ', 'phone': null}, operationId: 'op1');
+    expect(id, 'newOrg');
+    expect(sent.single, {
+      'action': 'create', 'operationId': 'op1',
+      'fields': {
+        'name': 'Daily+', 'address': '', 'phone': '', 'email': '',
+        'taxCode': '', 'bankName': '', 'bankAccountNumber': '', 'bankAccountName': '',
+      },
+    });
+    expect(() => service.create({'createdBy': 'x'}, operationId: 'op2'), throwsArgumentError);
+  });
 }

@@ -67,7 +67,9 @@ async function main(){
      employmentStatus:'active',accountId:staff.uid,createdAt:now,updatedAt:now}],
     ...(waiting?[[`memberships/${waiting.uid}_${SOURCE}`,{...member(waiting,SOURCE,null)[1],role:null,status:'assignmentRequired',buildingScope:'selected'}]]:[]),
     ['buildings/stagingSeedB1',{organizationId:SOURCE,name:'Seed Tower',address:'1 Test Street',timeZone:'Asia/Ho_Chi_Minh',currency:'VND'}],
-    ['rooms/stagingSeedR101',{organizationId:SOURCE,buildingId:'stagingSeedB1',roomNumber:'101',currency:'VND',roomPrice:5000000}],
+    ['rooms/stagingSeedR101',{organizationId:SOURCE,buildingId:'stagingSeedB1',roomNumber:'101',currency:'VND',roomPrice:5000000,
+     // Takes short stays too, so booking tests work without setting rates first.
+     rentalMode:'both',hourlyPrice:100000,dailyPrice:500000,overnightPrice:400000}],
     ['tenants/stagingSeedT1',{organizationId:SOURCE,buildingId:'stagingSeedB1',roomId:'stagingSeedR101',fullName:'Seed Tenant',phoneNumber:'0911111111',
      status:'active',isMainTenant:true,moveInDate:Timestamp.fromMillis(now.toMillis()-30*day),monthlyRent:5000000,currency:'VND'}],
     ['tenants/stagingSeedT2',{organizationId:SOURCE,buildingId:'stagingSeedB1',roomId:'stagingSeedR101',fullName:'Seed Roommate',phoneNumber:'0922222222',

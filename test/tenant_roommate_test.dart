@@ -32,10 +32,21 @@ void main() {
           onBack: () {},
         ),
       );
-      await press(tester, 'Add roommate');
+      // Lease actions live on the tenant page (2026-10-01).
+      final open = find.byKey(const ValueKey('tenant-contact-tenant-anh'));
+      await reveal(tester, open);
+      await tester.tap(open);
+      await tester.pumpAndSettle();
+      // 2026-10-04: "Add" in "Living with them" opens the form in a dialog.
+      final add = find.byKey(const ValueKey('add-roommate-tenant-anh'));
+      await reveal(tester, add);
+      await tester.tap(add);
+      await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('lease-rent')), findsNothing);
       expect(find.byKey(const ValueKey('lease-end')), findsNothing);
       await enter(tester, 'lease-name', 'New roommate');
+      // CCCD and tạm trú like at lease creation (2026-10-04).
+      await enter(tester, 'lease-idNumber', '079200003333');
       await enter(tester, 'lease-start', '2026-08-31');
       await enter(tester, 'lease-reason', 'Import');
       await press(tester, 'Create roommate');
@@ -54,6 +65,8 @@ void main() {
       expect(s.tenants.last['mainTenantId'], 'tenant-anh');
       expect(s.tenants.last['isMainTenant'], false);
       expect(s.tenants.last.containsKey('monthlyRent'), false);
+      expect(s.tenants.last['nationalId'], '079200003333');
+      expect(s.tenants.last['residenceRegistered'], false);
       await press(tester, 'Tenants');
       expect(find.text('New roommate'), findsOneWidget);
       expect(

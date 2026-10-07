@@ -165,8 +165,14 @@ void main() {
                 );
                 String text(String key) =>
                     opsText(tester.element(find.byType(Form).first), key);
-                if (['invoice', 'booking'].contains(entry.key)) {
+                if (entry.key == 'invoice') {
                   await press(tester, text('create'));
+                }
+                if (entry.key == 'booking') {
+                  await press(
+                    tester,
+                    bookingText(tester.element(find.byType(Form).first), 'newBooking'),
+                  );
                 }
                 if (entry.key == 'invoice') {
                   await enter(tester, 'ops-end', '2026-11-01');

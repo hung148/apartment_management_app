@@ -4,6 +4,7 @@ import 'package:phan_mem_quan_ly_can_ho/models/booking_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/rooms_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/payment_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/tenants_model.dart';
+import 'app_functions.dart';
 
 /// Thrown when a booking write would overlap an existing booking or an
 /// active tenant contract on the same room.
@@ -28,8 +29,7 @@ class BookingService {
 
   Future<Map<String, dynamic>> _mutate(Map<String, dynamic> data) async {
     try {
-      final result = await FirebaseFunctions.instance
-          .httpsCallable('mutateCalendarBooking')
+      final result = await appCallable('mutateCalendarBooking')
           .call(_encode(data));
       return Map<String, dynamic>.from(result.data as Map);
     } on FirebaseFunctionsException catch (e) {

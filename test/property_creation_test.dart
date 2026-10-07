@@ -8,6 +8,7 @@ import 'package:phan_mem_quan_ly_can_ho/screens/team/role_workspace.dart';
 import 'package:phan_mem_quan_ly_can_ho/preview/team_preview_store.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/team_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/localizations/app_localizations.dart';
+import 'support/calendar_nav.dart';
 import 'team_review_test.dart' show mountReview;
 import 'room_rates_test.dart' show press, reveal;
 import 'room_booking_settings_test.dart' show enter;
@@ -48,7 +49,8 @@ void main() {
         tester,
         RoleWorkspace(organizationId: 'preview', service: store.service),
       );
-      await press(tester, 'Create property');
+      // No property yet: the calendar offers "create the first building".
+      await openNewBuilding(tester);
       expect(find.text('Asia/Ho_Chi_Minh'), findsOneWidget);
       await press(tester, 'Create property');
       expect(store.buildings, isEmpty);
@@ -62,13 +64,18 @@ void main() {
       expect(store.buildings.single['name'], 'Riverside East');
       expect(store.buildings.single['timeZone'], 'America/New_York');
       expect(store.buildings.single['currency'], 'USD');
+      // Created: the dialog closes and the calendar shows the new building.
+      expect(find.byKey(const ValueKey('calendar-dialog-title')), findsNothing);
+      expect(find.text('Riverside East'), findsWidgets);
+      final id = store.buildings.single['id'] as String;
+      await openBuildingPage(tester, 'property', buildingId: id);
       await enter(tester, 'property-name', 'Riverside renamed');
       await press(tester, 'Save property details');
       expect(store.buildings.single['name'], 'Riverside renamed');
-      await press(
-        tester,
-        AppTranslations(const Locale('en'))['workspace_title'],
-      );
+      // No reload or "back" in the dialog: its X closes it.
+      expect(find.text(AppTranslations(const Locale('en'))['property_reload']), findsNothing);
+      expect(find.text(AppTranslations(const Locale('en'))['workspace_title']), findsNothing);
+      await closeCalendarDialog(tester);
       expect(find.text('Riverside renamed'), findsWidgets);
       expect(
         store.activity.where((a) => a['action'] == 'property_created').length,
@@ -215,13 +222,12 @@ void main() {
                 scale: scale,
                 brightness: brightness,
               );
-              await reveal(tester, find.widgetWithText(OutlinedButton, t['property_create']));
-              expect(find.widgetWithText(OutlinedButton, t['property_create']).hitTestable(), findsOneWidget);
+              await openNewBuilding(tester);
+              expect(find.byKey(const ValueKey('property-name')), findsOneWidget);
               expect(tester.takeException(), isNull);
               if (const bool.fromEnvironment('PROPERTY_CREATE_GOLDENS')) {
                 await expectLater(find.byKey(const ValueKey('capture')), matchesGoldenFile('../.dart_tool/property-create-entry-$language-${size.width.toInt()}-$scale-${brightness.name}.png'));
               }
-              await press(tester, t['property_create']);
               await enter(
                 tester,
                 'property-name',
@@ -233,7 +239,12 @@ void main() {
                 'Tầng 12, số 123 đường Nguyễn Văn Thoại, phường Mỹ An, quận Ngũ Hành Sơn, thành phố Đà Nẵng',
               );
               await enter(tester, 'property-timezone', '');
-              await press(tester, t['property_create']);
+              // In Vietnamese the toolbar's "Tạo tòa nhà" sits under the
+              // dialog with the same label, so press the form's own button.
+              final create = find.widgetWithText(FilledButton, t['property_create']);
+              await reveal(tester, create);
+              await tester.tap(create);
+              await tester.pumpAndSettle();
               await reveal(tester, find.text(t['property_required']));
               expect(
                 find.text(t['property_required']).hitTestable(),

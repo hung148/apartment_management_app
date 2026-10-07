@@ -1,5 +1,7 @@
+import 'workspace_page_scope.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
+import 'ws_ui.dart';
 import 'package:uuid/uuid.dart';
 import '../../services/team_service.dart';
 import '../../utils/localizations/app_localizations.dart';
@@ -196,6 +198,8 @@ class _LeaseLifecycleScreenState extends State<LeaseLifecycleScreen> {
           _confirm = false;
           _message = e.message == 'lease_handle_roommates_first'
               ? 'lease_ops_roommates'
+              : e.message == 'room_has_open_problem'
+              ? 'lease_room_problem'
               : e.code == 'already-exists'
               ? 'lease_ops_conflict'
               : 'lease_ops_unavailable';
@@ -251,7 +255,7 @@ class _LeaseLifecycleScreenState extends State<LeaseLifecycleScreen> {
       child: Align(
         alignment: Alignment.topCenter,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 720),
+          constraints: WorkspacePageScope.constraints(context, 720),
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Form(
@@ -282,20 +286,24 @@ class _LeaseLifecycleScreenState extends State<LeaseLifecycleScreen> {
                         'move',
                         'moveOut',
                       ])
-                        OutlinedButton(
-                          onPressed: _locked
-                              ? null
-                              : () => setState(() {
-                                  _action = mode;
-                                  _confirm = false;
-                                  _date.text =
-                                      (mode == 'terms'
-                                              ? r['contractEndDate']
-                                              : r['today'])
-                                          as String? ??
-                                      '';
-                                }),
-                          child: Text(t['lease_ops_$mode']),
+                        WsActions(
+                          children: [
+                            OutlinedButton(
+                              onPressed: _locked
+                                  ? null
+                                  : () => setState(() {
+                                      _action = mode;
+                                      _confirm = false;
+                                      _date.text =
+                                          (mode == 'terms'
+                                                  ? r['contractEndDate']
+                                                  : r['today'])
+                                              as String? ??
+                                          '';
+                                    }),
+                              child: Text(t['lease_ops_$mode']),
+                            ),
+                          ],
                         ),
                       Text(
                         t['lease_ops_$_action'],
@@ -349,24 +357,28 @@ class _LeaseLifecycleScreenState extends State<LeaseLifecycleScreen> {
                       field('lease-ops-reason', t['rent_plan_reason'], _reason),
                       const SizedBox(height: 16),
                       if (_confirm) Text(t['lease_ops_confirm_help']),
-                      FilledButton(
-                        onPressed:
-                            _busy ||
-                                _saving ||
-                                r['status'] == 'moveOut' ||
-                                (_action == 'move' &&
-                                    (_room == null ||
-                                        (r['isMainTenant'] != true &&
-                                            _parent == null)))
-                            ? null
-                            : _save,
-                        child: Text(
-                          t[_pending != null
-                              ? 'lease_ops_retry'
-                              : _confirm
-                              ? 'lease_ops_confirm'
-                              : 'lease_ops_review'],
-                        ),
+                      WsActions(
+                        children: [
+                          FilledButton(
+                            onPressed:
+                                _busy ||
+                                    _saving ||
+                                    r['status'] == 'moveOut' ||
+                                    (_action == 'move' &&
+                                        (_room == null ||
+                                            (r['isMainTenant'] != true &&
+                                                _parent == null)))
+                                ? null
+                                : _save,
+                            child: Text(
+                              t[_pending != null
+                                  ? 'lease_ops_retry'
+                                  : _confirm
+                                  ? 'lease_ops_confirm'
+                                  : 'lease_ops_review'],
+                            ),
+                          ),
+                        ],
                       ),
                       if (_confirm && _pending == null)
                         TextButton(
@@ -375,9 +387,13 @@ class _LeaseLifecycleScreenState extends State<LeaseLifecycleScreen> {
                               : () => setState(() => _confirm = false),
                           child: Text(t['lease_ops_change']),
                         ),
-                      OutlinedButton(
-                        onPressed: _locked ? null : _readHistory,
-                        child: Text(t['lease_ops_history']),
+                      WsActions(
+                        children: [
+                          OutlinedButton(
+                            onPressed: _locked ? null : _readHistory,
+                            child: Text(t['lease_ops_history']),
+                          ),
+                        ],
                       ),
                     ] else ...[
                       TextButton(
@@ -420,9 +436,13 @@ class _LeaseLifecycleScreenState extends State<LeaseLifecycleScreen> {
                         ),
                     ],
                   ],
-                  OutlinedButton(
-                    onPressed: _locked ? null : () => _load(),
-                    child: Text(t['lease_ops_reload']),
+                  WsActions(
+                    children: [
+                      OutlinedButton(
+                        onPressed: _locked ? null : () => _load(),
+                        child: Text(t['lease_ops_reload']),
+                      ),
+                    ],
                   ),
                 ],
               ),

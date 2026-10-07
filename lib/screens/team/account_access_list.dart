@@ -1,8 +1,11 @@
+import 'workspace_page_scope.dart';
 import 'package:flutter/material.dart';
+import 'ws_ui.dart';
 import '../../models/team_access.dart';
 import '../../services/team_service.dart';
 import '../../utils/localizations/app_localizations.dart';
 import 'access_editor.dart';
+import 'team_display.dart';
 
 /// Includes accounts without staff profiles so legacy access cannot be hidden.
 class AccountAccessList extends StatefulWidget {
@@ -110,7 +113,7 @@ class _AccountAccessListState extends State<AccountAccessList> {
       child: Align(
         alignment: Alignment.topCenter,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 960),
+          constraints: WorkspacePageScope.constraints(context, 960),
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
@@ -122,9 +125,13 @@ class _AccountAccessListState extends State<AccountAccessList> {
               Text(t['team_accounts_note']),
               if (_busy) const LinearProgressIndicator(),
               if (_failed) Text(t['team_denied']),
-              OutlinedButton(
-                onPressed: _busy ? null : () => _load(),
-                child: Text(t['team_refresh']),
+              WsActions(
+                children: [
+                  OutlinedButton(
+                    onPressed: _busy ? null : () => _load(),
+                    child: Text(t['team_refresh']),
+                  ),
+                ],
               ),
               if (!_busy && !_failed && _records.isEmpty)
                 Text(t['team_accounts_empty']),
@@ -148,28 +155,42 @@ class _AccountAccessListState extends State<AccountAccessList> {
                             record['accessVersion'] != 2)
                           Text(t['team_assignment_required'])
                         else
-                          Text(t['team_role_${record['role']}']),
+                          Text(
+                            teamRoleLabel(
+                              t,
+                              record['role'],
+                              record['roleName'],
+                            ),
+                          ),
                         Text(
                           '${t['activity_field_status']}: ${t.translationKeys.contains('team_status_${record['status']}') ? t['team_status_${record['status']}'] : t['team_assignment_required']}',
                         ),
                         if (record['staffId'] == null)
                           Text(t['team_account_unlinked']),
                         if (record['canManageAccess'] == true)
-                          OutlinedButton(
-                            key: ValueKey('review-${record['id']}'),
-                            onPressed: _busy
-                                ? null
-                                : () => setState(() => _selected = record),
-                            child: Text(t['team_manage_access']),
+                          WsActions(
+                            children: [
+                              OutlinedButton(
+                                key: ValueKey('review-${record['id']}'),
+                                onPressed: _busy
+                                    ? null
+                                    : () => setState(() => _selected = record),
+                                child: Text(t['team_manage_access']),
+                              ),
+                            ],
                           ),
                       ],
                     ),
                   ),
                 ),
               if (_cursor != null && !_failed)
-                OutlinedButton(
-                  onPressed: _busy ? null : () => _load(more: true),
-                  child: Text(t['team_more']),
+                WsActions(
+                  children: [
+                    OutlinedButton(
+                      onPressed: _busy ? null : () => _load(more: true),
+                      child: Text(t['team_more']),
+                    ),
+                  ],
                 ),
             ],
           ),

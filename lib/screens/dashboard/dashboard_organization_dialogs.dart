@@ -4,6 +4,7 @@ part of 'dashboard_screen.dart';
 // These dialogs use the dashboard's existing services, locks, and refresh flow.
 extension _DashboardOrganizationDialogs on _DashboardScreenState {
   Future<void> _showCreateOrganizationDialog() async {
+    if (!_canCreateOrganization) return;
     final nameCtrl    = TextEditingController();
     final addressCtrl = TextEditingController();
     final phoneCtrl   = TextEditingController();
@@ -145,7 +146,7 @@ extension _DashboardOrganizationDialogs on _DashboardScreenState {
                                   if (mounted) dialogNav.pop();
                                   return;
                                 }
-                                await _organizationService.createOrganization(
+                                final created = await _organizationService.createOrganization(
                                   name: nameCtrl.text.trim(),
                                   ownerId: owner.id,
                                   address: addressCtrl.text.trim().isEmpty ? null : addressCtrl.text.trim(),
@@ -153,20 +154,22 @@ extension _DashboardOrganizationDialogs on _DashboardScreenState {
                                   email: emailCtrl.text.trim().isEmpty ? null : emailCtrl.text.trim(),
                                   taxCode: taxCtrl.text.trim().isEmpty ? null : taxCtrl.text.trim(),
                                 );
+                                if (created == null) throw StateError('org_create_failed');
                                 if (!mounted) return;
                                 dialogNav.pop(); // pop loader
                                 dialogNav.pop(); // pop create dialog
                                 WidgetsBinding.instance.addPostFrameCallback((_) {
                                   if (mounted) {
                                     _showSuccessSnack(AppTranslations.of(context).text('org_created_success'));
-                                    _refreshOrgs(owner.id);
+                                    _updateDashboardState(() { _entryKey = UniqueKey(); });
                                   }
                                 });
                               } catch (e) {
                                 if (mounted) {
                                   dialogNav.pop(); // pop loader
+                                  final reason = serverReason(e, const ['org_staff_account', 'org_create_limit', 'org_create_unavailable', 'org_invalid_email']);
                                   screenMessenger.showSnackBar(SnackBar(
-                                    content: Text(e.toString()),
+                                    content: Text(AppTranslations.of(context).text(reason.isEmpty ? 'org_create_failed' : reason)),
                                     backgroundColor: Colors.red,
                                   ));
                                 }
@@ -323,7 +326,7 @@ extension _DashboardOrganizationDialogs on _DashboardScreenState {
           content: Text(success ? successText : failText),
           backgroundColor: success ? Colors.green : Colors.red,
         ));
-        if (success) _refreshOrgs(ownerId);
+        if (success) _updateDashboardState(() { _entryKey = UniqueKey(); });
       });
     }
   }
@@ -490,7 +493,7 @@ extension _DashboardOrganizationDialogs on _DashboardScreenState {
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ));
-      if (success) _refreshOrgs(ownerId);
+      if (success) _updateDashboardState(() { _entryKey = UniqueKey(); });
     }
   }
 
@@ -1080,7 +1083,7 @@ extension _DashboardOrganizationDialogs on _DashboardScreenState {
                               _showSuccessSnack(deleteAfter
                                   ? AppTranslations.of(context).text('migrated_and_deleted_success')
                                   : AppTranslations.of(context).text('migrated_data_success'));
-                              _refreshOrgs(ownerId);
+                              _updateDashboardState(() { _entryKey = UniqueKey(); });
                             } else {
                               setDialogState(() {
                                 statusIsError = true;
@@ -1317,7 +1320,7 @@ extension _DashboardOrganizationDialogs on _DashboardScreenState {
                                 WidgetsBinding.instance.addPostFrameCallback((_) {
                                   if (mounted) {
                                     _showSuccessSnack(AppTranslations.of(context).text('org_updated_success'));
-                                    _refreshOrgs(ownerId);
+                                    _updateDashboardState(() { _entryKey = UniqueKey(); });
                                   }
                                 });
                               } else {
@@ -1385,12 +1388,13 @@ extension _DashboardOrganizationDialogs on _DashboardScreenState {
     );
   }
 
-  void _showOrganizationOptions(Organization org, String ownerId, bool isAdmin, String role) {
+  void _showOrganizationOptions(Organization org, String ownerId, bool isAdmin, String role,
+      {String? roleName, bool waitingMember = false}) {
     final isV2 = org.accessVersion == 2;
     // Legacy: admins cannot leave. Version 2: only the owner cannot leave.
     final canLeave = isV2 ? role != 'owner' : !isAdmin;
     // Waiting members can only leave; there is nothing else they may open yet.
-    final waiting = isV2 && !TeamRole.values.any((r) => r.name == role);
+    final waiting = isV2 && (waitingMember || (!TeamPolicy.isTemplate(role) && !role.startsWith('r_')));
     if (isV2 && !waiting) _prefetchV2Settings(org);
     final screenWidth = MediaQuery.sizeOf(context).width;
     final isLarge = screenWidth >= 600;
@@ -1456,8 +1460,8 @@ extension _DashboardOrganizationDialogs on _DashboardScreenState {
             ),
             const SizedBox(height: 8),
             _buildRoleBadgeLight(isAdmin,
-                label: !isV2 ? null : TeamRole.values.any((r) => r.name == role)
-                    ? _v2RoleLabel(role)
+                label: !isV2 ? null : !waiting
+                    ? _v2RoleLabel(role, roleName)
                     : AppTranslations.of(context).text('team_waiting_role')),
           ]),
         ),
@@ -1615,7 +1619,7 @@ extension _DashboardOrganizationDialogs on _DashboardScreenState {
   bool _isWaitingMember(Membership? m) =>
       m != null &&
       (m.status == 'assignmentRequired' ||
-          (m.status == 'active' && !TeamRole.values.any((r) => r.name == m.role)));
+          (m.status == 'active' && !TeamPolicy.isTemplate(m.role) && !m.hasRoleGrants));
 
   void _showWaitingForRole(Organization org) {
     _showTrackedDialog(
@@ -1717,7 +1721,7 @@ extension _DashboardOrganizationDialogs on _DashboardScreenState {
                                         content: Text(t.text(ok ? 'org_restored_success' : 'org_restore_failed')),
                                         backgroundColor: ok ? Colors.green : Colors.red,
                                       ));
-                                      if (ok) _refreshOrgs(ownerId);
+                                      if (ok) _updateDashboardState(() { _entryKey = UniqueKey(); });
                                     },
                                     child: Text(t.text('restore_action')),
                                   ),
@@ -1747,10 +1751,11 @@ extension _DashboardOrganizationDialogs on _DashboardScreenState {
     return 'operation_failed';
   }
 
-  String _v2RoleLabel(String role) {
+  String _v2RoleLabel(String role, [String? roleName]) {
     final t = AppTranslations.of(context);
+    if (roleName != null && roleName.trim().isNotEmpty) return roleName.trim();
     final key = 'team_role_$role';
-    return t.translationKeys.contains(key) ? t[key] : t['member'];
+    return t.translationKeys.contains(key) ? t[key] : t['team_role_custom'];
   }
 
   /// Runs a server action; false on any failure so dialogs show their error.

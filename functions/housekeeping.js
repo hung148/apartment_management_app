@@ -8,7 +8,11 @@ function createHousekeepingHandler({db,Timestamp,HttpsError}){
     const uid=request.auth?.uid,d=request.data;
     if(!uid)fail('unauthenticated','team_sign_in_required');
     if(!d||!id(d.organizationId)||!id(d.operationId)||!id(d.taskId)||!['assign','status'].includes(d.action))fail('invalid-argument','task_invalid_input');
-    const keys=['organizationId','operationId','taskId','action',...(d.action==='assign'?['buildingId','roomId','assigneeId','title']:['status'])];
+    // 2026-10-05 (Tom): a cleaning has a planned window (property wall clock,
+    // "YYYY-MM-DD HH:MM") shown on the calendar; both or neither.
+    const keys=['organizationId','operationId','taskId','action',...(d.action==='assign'?['buildingId','roomId','assigneeId','title','plannedStart','plannedEnd']:['status'])];
+    const stamp=v=>typeof v==='string'&&/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(v)&&!Number.isNaN(Date.parse(v.replace(' ','T')+':00Z'));
+    if(d.action==='assign'&&(d.plannedStart!==undefined||d.plannedEnd!==undefined)&&(!stamp(d.plannedStart)||!stamp(d.plannedEnd)||d.plannedEnd<=d.plannedStart))fail('invalid-argument','task_invalid_time');
     if(Object.keys(d).some(k=>!keys.includes(k)))fail('invalid-argument','task_invalid_input');
     if(d.action==='assign'&&(!id(d.buildingId)||!id(d.roomId)||!id(d.assigneeId)||typeof d.title!=='string'||!d.title.trim()||d.title.length>200))fail('invalid-argument','task_invalid_input');
     if(d.action==='status'&&!['inProgress','completed'].includes(d.status))fail('invalid-argument','task_invalid_status');
@@ -36,11 +40,13 @@ function createHousekeepingHandler({db,Timestamp,HttpsError}){
         const assignee=await tx.get(db.doc(`memberships/${d.assigneeId}_${d.organizationId}`));
         if(!room.exists||room.data().organizationId!==d.organizationId||room.data().buildingId!==d.buildingId||
           !allows(assignee.data(),'updateAssignedTasks',{organizationId:d.organizationId,userId:d.assigneeId,buildingId}))fail('failed-precondition','task_invalid_assignment');
-        patch={organizationId:d.organizationId,buildingId,roomId:d.roomId,assigneeId:d.assigneeId,title:d.title.trim(),status:'assigned',createdAt:now,createdBy:uid,updatedAt:now,updatedBy:uid};
+        patch={organizationId:d.organizationId,buildingId,roomId:d.roomId,assigneeId:d.assigneeId,title:d.title.trim(),status:'assigned',createdAt:now,createdBy:uid,updatedAt:now,updatedBy:uid,
+         ...(d.plannedStart?{plannedStart:d.plannedStart,plannedEnd:d.plannedEnd}:{})};
       }else{
         if(!old)fail('not-found','task_not_found');
         if(old.status==='completed'||!['assigned','inProgress'].includes(old.status)||old.status===d.status)fail('failed-precondition','task_invalid_transition');
-        patch={status:d.status,updatedAt:now,updatedBy:uid,...(d.status==='completed'?{completedAt:now,completedBy:uid}:{})};
+        // The real work time: started (Bắt đầu) and done (Xong).
+        patch={status:d.status,updatedAt:now,updatedBy:uid,...(d.status==='inProgress'?{startedAt:now,startedBy:uid}:{}),...(d.status==='completed'?{completedAt:now,completedBy:uid}:{})};
       }
       const result={taskId:d.taskId,status:patch.status};
       if(old)tx.update(ref,patch);else tx.create(ref,patch);

@@ -1,24 +1,20 @@
+import 'workspace_page_scope.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
+import 'ws_ui.dart';
 import 'package:uuid/uuid.dart';
 import '../../services/team_service.dart';
+import '../../utils/app_number.dart';
 import '../../utils/localizations/app_localizations.dart';
 
-const rateFields = ['roomPrice', 'hourlyPrice', 'dailyPrice', 'overnightPrice'];
+// 2026-10-04: monthly price, price per night, price per hour. Day and
+// overnight prices (and the day-price hour threshold) are gone.
+const rateFields = ['roomPrice', 'nightlyPrice', 'hourlyPrice'];
+
+/// A price above 0 in minor units ("5,000,000" → 5000000), or null.
 int? parseRoomRate(String text, String currency) {
-  final value = text.trim().replaceAll(',', '.');
-  if (!RegExp(
-    currency == 'USD' ? r'^\d+(?:\.\d{1,2})?$' : r'^\d+$',
-  ).hasMatch(value)) {
-    return null;
-  }
-  final parts = value.split('.'), whole = int.tryParse(parts[0]);
-  if (whole == null) return null;
-  final minor = currency == 'USD'
-      ? whole * 100 +
-            int.parse(parts.length == 1 ? '0' : parts[1].padRight(2, '0'))
-      : whole;
-  return minor > 0 && minor <= 1000000000000 ? minor : null;
+  final minor = appParseMoney(text, currency);
+  return minor != null && minor > 0 ? minor : null;
 }
 
 class RoomRatesScreen extends StatefulWidget {
@@ -41,9 +37,9 @@ class _RoomRatesScreenState extends State<RoomRatesScreen> {
   final _prices = {
     for (final field in rateFields) field: TextEditingController(),
   };
-  final _threshold = TextEditingController(), _form = GlobalKey<FormState>();
+  final _form = GlobalKey<FormState>();
   String? _revision, _message;
-  String _currency = 'VND', _mode = 'monthly', _name = '';
+  String _currency = 'VND', _name = '';
   bool _busy = true, _saving = false;
   int _generation = 0;
   Map<String, dynamic>? _pending;
@@ -71,7 +67,6 @@ class _RoomRatesScreenState extends State<RoomRatesScreen> {
     for (final c in _prices.values) {
       c.dispose();
     }
-    _threshold.dispose();
     super.dispose();
   }
 
@@ -84,7 +79,6 @@ class _RoomRatesScreenState extends State<RoomRatesScreen> {
     for (final c in _prices.values) {
       c.clear();
     }
-    _threshold.clear();
     _revision = null;
     _name = '';
   }
@@ -106,18 +100,14 @@ class _RoomRatesScreenState extends State<RoomRatesScreen> {
       setState(() {
         _revision = row['revision'] as String;
         _currency = row['currency'] as String;
-        _mode = row['rentalMode'] as String;
         _name = row['roomNumber'] as String;
         final rates = row['ratesMinor'] as Map;
         for (final field in rateFields) {
           final value = (rates[field] as num?)?.toInt();
           _prices[field]!.text = value == null
               ? ''
-              : _currency == 'USD'
-              ? '${value ~/ 100}.${(value % 100).toString().padLeft(2, '0')}'
-              : value.toString();
+              : appMoneyInputText(value, _currency);
         }
-        _threshold.text = row['dailyPriceThresholdHours']?.toString() ?? '';
         _busy = false;
         _message = saved ? 'rates_saved' : null;
       });
@@ -139,16 +129,12 @@ class _RoomRatesScreenState extends State<RoomRatesScreen> {
       ..._identity,
       'operationId': const Uuid().v4(),
       'revision': _revision,
-      'rentalMode': _mode,
       'ratesMinor': {
         for (final field in rateFields)
           field: _prices[field]!.text.trim().isEmpty
               ? null
               : parseRoomRate(_prices[field]!.text, _currency),
       },
-      'dailyPriceThresholdHours': _threshold.text.trim().isEmpty
-          ? null
-          : int.tryParse(_threshold.text.trim()),
     });
     final generation = _generation;
     setState(() {
@@ -202,19 +188,28 @@ class _RoomRatesScreenState extends State<RoomRatesScreen> {
   Widget build(BuildContext context) {
     final t = AppTranslations.of(context),
         locked = _busy || _saving || _pending != null,
-        editable = !locked && _revision != null;
+        editable = !locked && _revision != null,
+        inDialog = DialogPageScope.contains(context);
     return SafeArea(
       child: Align(
         alignment: Alignment.topCenter,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 720),
+          constraints: WorkspacePageScope.constraints(context, 720),
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              TextButton(
-                onPressed: _saving ? null : widget.onBack,
-                child: Text(t['room_directory']),
-              ),
+              if (!PageTabScope.contains(context))
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: TextButton(
+                    onPressed: _saving ? null : widget.onBack,
+                    child: Text(
+                      inDialog
+                          ? DialogPageScope.back(context)
+                          : t['room_directory'],
+                    ),
+                  ),
+                ),
               Text(
                 t['rates_title'],
                 style: Theme.of(context).textTheme.headlineSmall,
@@ -234,37 +229,8 @@ class _RoomRatesScreenState extends State<RoomRatesScreen> {
                       Text('${t['rates_currency']} $_currency'),
                       Text(t['rates_info']),
                       const SizedBox(height: 16),
-                      DropdownButtonFormField<String>(
-                        key: ValueKey('rates-mode-$_mode'),
-                        initialValue: _mode,
-                        isExpanded: true,
-                        selectedItemBuilder: (context) => [
-                          for (final mode in ['monthly', 'hourly', 'both'])
-                            Text(
-                              t['rates_mode_$mode'],
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                        ],
-                        itemHeight: null,
-                        decoration: InputDecoration(labelText: t['rates_mode']),
-                        items: [
-                          for (final mode in ['monthly', 'hourly', 'both'])
-                            DropdownMenuItem(
-                              value: mode,
-                              child: Text(t['rates_mode_$mode']),
-                            ),
-                        ],
-                        onChanged: editable
-                            ? (v) => setState(() => _mode = v!)
-                            : null,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        t['rates_mode_$_mode'],
-                        key: const ValueKey('rates-selected-mode'),
-                      ),
-                      const SizedBox(height: 16),
+                      // 2026-10-04: no rental mode; every room takes short stays
+                      // and leases, and each price is optional.
                       Text(
                         t[_currency == 'USD'
                             ? 'rates_usd_hint'
@@ -280,17 +246,13 @@ class _RoomRatesScreenState extends State<RoomRatesScreen> {
                           keyboardType: const TextInputType.numberWithOptions(
                             decimal: true,
                           ),
+                          inputFormatters: appMoneyInput(_currency),
                           decoration: InputDecoration(
                             labelText: t['rates_$field'],
                             errorMaxLines: 8,
                           ),
                           validator: (v) {
-                            final required =
-                                field == 'roomPrice' && _mode != 'hourly' ||
-                                field == 'hourlyPrice' && _mode != 'monthly';
-                            if ((v ?? '').trim().isEmpty) {
-                              return required ? t['room_rate_required'] : null;
-                            }
+                            if ((v ?? '').trim().isEmpty) return null;
                             return parseRoomRate(v!, _currency) == null
                                 ? t['rates_invalid']
                                 : null;
@@ -298,47 +260,32 @@ class _RoomRatesScreenState extends State<RoomRatesScreen> {
                         ),
                       ],
                       const SizedBox(height: 16),
-                      TextFormField(
-                        key: const ValueKey('rates-threshold'),
-                        controller: _threshold,
-                        enabled: !locked,
-                        readOnly: !editable,
-                        keyboardType: TextInputType.number,
-                        decoration: InputDecoration(
-                          labelText: t['rates_threshold'],
-                          errorMaxLines: 8,
-                        ),
-                        validator: (v) {
-                          final value = (v ?? '').trim();
-                          final daily = _prices['dailyPrice']!.text
-                              .trim()
-                              .isNotEmpty;
-                          final hours = int.tryParse(value);
-                          return daily
-                              ? (hours == null || hours < 1 || hours > 24
-                                    ? t['rates_threshold_invalid']
-                                    : null)
-                              : (value.isEmpty
-                                    ? null
-                                    : t['rates_threshold_clear']);
-                        },
-                      ),
-                      const SizedBox(height: 16),
                       if (_revision != null)
-                        FilledButton(
-                          onPressed: _busy || _saving ? null : _save,
-                          child: Text(
-                            t[_pending == null ? 'rates_save' : 'rates_retry'],
-                          ),
+                        WsActions(
+                          children: [
+                            FilledButton(
+                              onPressed: _busy || _saving ? null : _save,
+                              child: Text(
+                                t[_pending == null
+                                    ? 'rates_save'
+                                    : 'rates_retry'],
+                              ),
+                            ),
+                          ],
                         ),
                     ],
                   ),
                 ),
               const SizedBox(height: 16),
-              OutlinedButton(
-                onPressed: locked ? null : () => _load(),
-                child: Text(t['rates_reload']),
-              ),
+              if (!inDialog || (_revision == null && !_busy))
+                WsActions(
+                  children: [
+                    OutlinedButton(
+                      onPressed: locked ? null : () => _load(),
+                      child: Text(t['rates_reload']),
+                    ),
+                  ],
+                ),
             ],
           ),
         ),

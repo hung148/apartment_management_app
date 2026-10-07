@@ -1,10 +1,11 @@
 'use strict';
-const {allows, canManageAccessOf, roles} = require('./team_access');
+const {allows, canManageAccessOf, effectiveGrants, memberLevel, reachesAllProperties} = require('./team_access');
+const {resolveRole, roleFields} = require('./roles');
 
 const FIELDS = Object.freeze({
   buildings: ['organizationId','name'],
   staff: ['organizationId','code','displayName','employmentStatus','accountId','email','phone','color','createdAt','updatedAt'],
-  access: ['organizationId','ownerId','staffId','accessVersion','role','status','buildingScope','buildingIds','permissionOverrides','displayName','email','joinedAt','updatedAt'],
+  access: ['organizationId','ownerId','staffId','accessVersion','role','roleRevision','roleName','roleGrants','ownershipAgreementId','status','buildingScope','buildingIds','permissionOverrides','displayName','email','joinedAt','updatedAt'],
   invitations: ['organizationId','staffId','email','access','status','invitedBy','createdAt','expiresAt','acceptedBy','acceptedAt','updatedAt'],
   requests: ['organizationId','userId','email','displayName','status','createdAt','reviewedBy','reviewedAt'],
   activity: ['organizationId','actorId','action','targetId','before','after','reason','createdAt'],
@@ -39,9 +40,21 @@ function createTeamReadHandler({db,HttpsError}) {
       const member=mine.exists?mine.data():null;
       const context={organizationId:input.organizationId,userId:uid};
       const validIdentity=member?.organizationId===input.organizationId&&member?.ownerId===uid;
+      // Names of organization roles (renamed templates and custom roles) for display.
+      const roleNames=new Map();
+      const loadRoleNames=async()=>{
+        const stored=await tx.get(db.collection('orgRoles').where('organizationId','==',input.organizationId));
+        for(const r of stored.docs)if(r.id===`${input.organizationId}_${r.data().roleId}`&&typeof r.data().name==='string'&&r.data().name)roleNames.set(r.data().roleId,{name:r.data().name,deleted:!!r.data().deletedAt});
+      };
+      const named=record=>{const n=roleNames.get(record.role);if(n)record.roleName=n.name;return record;};
       if(input.view==='myAccess'){
         // A revoked user needs their own state to render an access-revoked screen.
-        return {record:validIdentity?project('access',mine):null};
+        if(!validIdentity)return {record:null};
+        await loadRoleNames();
+        // grants = what this member may do right now (role + overrides), so the app
+        // does not need to know organization roles. The server rechecks every call.
+        return {record:{...named(project('access',mine)),grants:effectiveGrants(member)??{},level:memberLevel(member),
+          allProperties:reachesAllProperties(member)}};
       }
       const admin=allows(member,'manageTeam',context)&&member.buildingScope==='all';
       let kind=input.view, query;
@@ -77,15 +90,27 @@ function createTeamReadHandler({db,HttpsError}) {
         query=query.orderBy('__name__');
         if(input.cursor)query=query.startAfter(input.cursor);
       }
+      if(['access','invitations','staff'].includes(kind))await loadRoleNames();
+      // Invitation roles are resolved once per role for the protection check.
+      const invitationRoles=new Map();
+      const invitationTarget=async access=>{
+        if(!invitationRoles.has(access?.role))invitationRoles.set(access?.role,await resolveRole(db,tx,input.organizationId,access?.role));
+        const resolved=invitationRoles.get(access?.role);
+        return resolved?{role:access.role,...roleFields(resolved),permissionOverrides:access.permissionOverrides??{}}:{role:null};
+      };
       const snapshot=await tx.get(query.limit(limit+1));
       const docs=snapshot.docs.slice(0,limit);
       const records=await Promise.all(docs.map(async d=>{
         const record=project(kind,d);
-        if(kind==='invitations')record.canRevoke=admin && record.status==='pending' && canManageAccessOf(member,record.access?.role,context);
+        if(kind==='invitations'){
+          record.canRevoke=admin && record.status==='pending' && canManageAccessOf(member,await invitationTarget(record.access),context);
+          const n=roleNames.get(record.access?.role);if(n&&record.access)record.access.roleName=n.name;
+        }
         if(kind==='requests')record.canReview=admin && record.status==='pending';
         if(kind==='access')record.canManageAccess=admin && record.ownerId!==uid &&
           record.organizationId===input.organizationId && d.id===`${record.ownerId}_${input.organizationId}` &&
-          canManageAccessOf(member,record.role,context);
+          canManageAccessOf(member,d.data(),context);
+        if(kind==='access')named(record);
         if(kind==='staff'){
           // UI hint only; saveStaff rechecks the same protection in its transaction.
           record.canEditProfile=admin;
@@ -93,9 +118,9 @@ function createTeamReadHandler({db,HttpsError}) {
           if(admin && d.data().accountId){
             const linked=await tx.get(db.collection('memberships').doc(`${d.data().accountId}_${input.organizationId}`));
             if(linked.exists){
-              record.canEditProfile=canManageAccessOf(member,linked.data().role,context);
+              record.canEditProfile=canManageAccessOf(member,linked.data(),context);
               if(linked.data().organizationId===input.organizationId && linked.data().ownerId===d.data().accountId){
-                record.accountAccess=project('access',linked);
+                record.accountAccess=named(project('access',linked));
                 record.canManageAccess=record.canEditProfile && d.data().accountId!==uid;
               }
             }
@@ -124,8 +149,10 @@ function createInvitationLookupHandler({db,HttpsError}) {
       if(!org.exists || org.data().accessVersion!==2)fail('failed-precondition','team_migration_required');
       if(org.data().closedAt)fail('failed-precondition','org_closed');
       const mine=await tx.get(db.collection('memberships').doc(`${request.auth.uid}_${invitation.organizationId}`));
-      const expired=!invitation.expiresAt?.toMillis || invitation.expiresAt.toMillis()<=Date.now();
+      // Gmail pre-approvals (R2) have no expiry.
+      const expired=invitation.expiresAt!=null && (!invitation.expiresAt.toMillis || invitation.expiresAt.toMillis()<=Date.now());
       const grant=invitation.access ?? {};
+      const role=await resolveRole(db,tx,invitation.organizationId,grant.role);
       const properties=[];
       for(const key of (Array.isArray(grant.buildingIds)?grant.buildingIds:[]).slice(0,100)){
         if(!id(key))continue;
@@ -134,11 +161,14 @@ function createInvitationLookupHandler({db,HttpsError}) {
       }
       // Return only the grant the recipient is about to accept, never other users.
       return {invitationId,organizationId:org.id,organizationName:org.data().name ?? '',
-        access:serialize(Object.fromEntries(['accessVersion','role','buildingScope','buildingIds','permissionOverrides'].filter(k=>grant[k]!==undefined).map(k=>[k,grant[k]]))),
+        access:{...serialize(Object.fromEntries(['accessVersion','role','buildingScope','buildingIds','permissionOverrides'].filter(k=>grant[k]!==undefined).map(k=>[k,grant[k]]))),
+          // What the role allows right now (it may have been edited since the invitation was sent).
+          ...(role?{roleGrants:role.grants}:{})},
         properties,expiresAt:serialize(invitation.expiresAt)??null,
         status:invitation.status==='pending'&&expired?'expired':invitation.status,
-        roleRemoved:!Object.hasOwn(roles,grant.role),
-        canAccept:invitation.status==='pending'&&!expired&&!mine.exists&&Object.hasOwn(roles,grant.role)};
+        ...(role?.name?{roleName:role.name}:{}),
+        roleRemoved:!role,
+        canAccept:invitation.status==='pending'&&!expired&&!mine.exists&&!!role};
     });
   };
 }

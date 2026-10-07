@@ -8,6 +8,7 @@ import 'package:phan_mem_quan_ly_can_ho/screens/team/role_workspace.dart';
 import 'package:phan_mem_quan_ly_can_ho/preview/team_preview_store.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/team_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/localizations/app_localizations.dart';
+import 'support/calendar_nav.dart';
 import 'team_review_test.dart' show mountReview;
 import 'staff_editor_test.dart' show press, reveal;
 
@@ -56,7 +57,7 @@ void main() {
         tester,
         RoleWorkspace(organizationId: 'preview', service: store.service),
       );
-      await press(tester, 'Property details');
+      await openBuildingPage(tester, 'property');
       await enter(tester, 'property-name', '');
       await press(tester, 'Save property details');
       expect(find.text('Enter a value.'), findsOneWidget);
@@ -65,10 +66,8 @@ void main() {
       await press(tester, 'Save property details');
       expect(store.buildings.first['name'], 'Riverside updated');
       expect(find.text('Property details saved.'), findsOneWidget);
-      await press(
-        tester,
-        AppTranslations(const Locale('en'))['workspace_title'],
-      );
+      // In the dialog its X goes back to the calendar.
+      await closeCalendarDialog(tester);
       expect(find.text('Riverside updated'), findsWidgets);
       store.workspaceRole = 'receptionist';
       await mountReview(

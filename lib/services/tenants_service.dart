@@ -2,6 +2,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/tenants_model.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'app_functions.dart';
 
 class TenantService {
   FirebaseFirestore get _firestore => FirebaseFirestore.instance;
@@ -23,7 +24,7 @@ class TenantService {
   // ========================================
   Future<String?> addTenant(Tenant tenant) async {
     final id=tenant.id.isEmpty ? _firestore.collection('tenants').doc().id : tenant.id;
-    final result=await FirebaseFunctions.instance.httpsCallable('mutateCalendarTenant').call({
+    final result=await appCallable('mutateCalendarTenant').call({
       'tenantId':id,'create':true,'tenant':_calendarEncode(tenant.toMap())});
     return (result.data as Map)['id'] as String;
   }
@@ -325,7 +326,7 @@ class TenantService {
   // UPDATE - Update tenant information
   // ========================================
   Future<bool> updateTenant(String tenantId, Map<String,dynamic> data) async {
-    await FirebaseFunctions.instance.httpsCallable('mutateCalendarTenant').call({
+    await appCallable('mutateCalendarTenant').call({
       'tenantId':tenantId,'create':false,'tenant':_calendarEncode(data)});
     return true;
   }

@@ -1,5 +1,4 @@
 import 'package:phan_mem_quan_ly_can_ho/utils/app_theme.dart';
-import 'package:phan_mem_quan_ly_can_ho/services/ai_agent_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/auth_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/booking_notifier.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/booking_service.dart';
@@ -11,16 +10,19 @@ import 'package:phan_mem_quan_ly_can_ho/services/room_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/tenants_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/team_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/app_check_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/local_emulators.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/update_services.dart';
 
 import 'package:phan_mem_quan_ly_can_ho/utils/localizations/app_localizations.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_router.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/auth_redirect.dart';
-import 'package:phan_mem_quan_ly_can_ho/widgets/chat/chat_manager.dart';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'services/device_sealer.dart';
+import 'services/device_session.dart';
+import 'services/read_cache.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'firebase_options.dart';
 
@@ -32,39 +34,6 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'utils/app_window.dart';
 
 final navigatorKey = GlobalKey<NavigatorState>();
-final _chatRouteObserver = _ChatRouteObserver();
-
-// In _ChatRouteObserver, override didPop for ALL route types:
-class _ChatRouteObserver extends NavigatorObserver {
-  // ← change from RouteObserver<PageRoute>
-  static const _allowedRoutes = {
-    AppRouter.dashboardScreen,
-    AppRouter.oranizationScreen,
-    AppRouter.buildingRoomScreen,
-    AppRouter.roomDetailScreen,
-  };
-
-  void _update(Route? route) {
-    final name = route?.settings.name;
-    if (name != null && _allowedRoutes.contains(name)) {
-      ChatOverlayManager.install(); // re-inserts on top every time
-    } else if (route is PageRoute) {
-      ChatOverlayManager.uninstall();
-    }
-    // If it's a DialogRoute popping, install() re-raises the FAB above it
-  }
-
-  @override
-  void didPush(Route route, Route? previousRoute) =>
-      _update(route is PageRoute ? route : previousRoute);
-
-  @override
-  void didPop(Route route, Route? previousRoute) => _update(previousRoute);
-
-  @override
-  void didReplace({Route? newRoute, Route? oldRoute}) => _update(newRoute);
-}
-
 class LocaleNotifier extends ChangeNotifier {
   Locale _locale = const Locale('vi', 'VN');
 
@@ -82,7 +51,6 @@ final getIt = GetIt.instance;
 
 void setup() {
   getIt.registerLazySingleton(() => AuthService());
-  getIt.registerLazySingleton(() => AIAgentService());
   getIt.registerLazySingleton(() => RoomService());
   getIt.registerLazySingleton(() => TenantService());
   getIt.registerLazySingleton(() => BuildingService());
@@ -117,8 +85,18 @@ void main() async {
 
   await initializeAppWindow();
 
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  await activateAppCheck();
+  // Local test mode (tool\local.ps1) uses the emulators on this computer and
+  // has no App Check; every other build is unchanged.
+  await Firebase.initializeApp(
+    options: localEmulators
+        ? localFirebaseOptions
+        : DefaultFirebaseOptions.currentPlatform,
+  );
+  if (localEmulators) {
+    await useLocalEmulators();
+  } else {
+    await activateAppCheck();
+  }
 
   try {
     if (!kIsWeb) {
@@ -138,6 +116,22 @@ void main() async {
   setup();
 
   final prefs = await SharedPreferences.getInstance();
+  // The copy of server answers kept on this device (2026-10-06, speed): it
+  // belongs to the signed-in account; signing out or switching account wipes
+  // it before anything else can read it.
+  ReadCache.shared = ReadCache(
+    prefs,
+    account: () => FirebaseAuth.instance.currentUser?.uid,
+    // Encrypted; and nothing saved on a computer not remembered at sign-in.
+    sealer: createDeviceSealer(),
+    enabled: () => rememberThisDevice,
+  );
+  await ReadCache.shared!.keepOnlyAccount(
+    FirebaseAuth.instance.currentUser?.uid,
+  );
+  FirebaseAuth.instance.authStateChanges().listen(
+    (user) => ReadCache.shared?.keepOnlyAccount(user?.uid),
+  );
   await getIt<AppThemeNotifier>().load();
   final savedLang = prefs.getString('language_code') ?? 'vi';
   final savedCountry = savedLang == 'vi' ? 'VN' : 'US';
@@ -160,7 +154,6 @@ class MyApp extends StatelessWidget {
           listenable: getIt<AppThemeNotifier>(),
           builder: (context, child) => MaterialApp(
             navigatorKey: navigatorKey,
-            navigatorObservers: [_chatRouteObserver],
             builder: (context, child) => child!,
             locale: localeNotifier.locale,
             localizationsDelegates: const [
@@ -179,9 +172,16 @@ class MyApp extends StatelessWidget {
             // reload) points at an inner screen: those screens need arguments
             // that a reload cannot restore, and the splash decides between login
             // and dashboard from the current sign-in.
-            onGenerateInitialRoutes: (_) => [
-              AppRouter.generateRoute(const RouteSettings(name: AppRouter.splashScreen)),
-            ],
+            // An organization address (U1) is remembered and opened by the
+            // dashboard after sign-in, with the list underneath for Back.
+            onGenerateInitialRoutes: (initialRoute) {
+              if (initialRoute.startsWith('/org/')) {
+                AppRouter.pendingAddress = initialRoute;
+              }
+              return [
+                AppRouter.generateRoute(const RouteSettings(name: AppRouter.splashScreen)),
+              ];
+            },
             onGenerateRoute: AppRouter.generateRoute,
           ),
         );

@@ -1,4 +1,6 @@
+import 'workspace_page_scope.dart';
 import 'package:flutter/material.dart';
+import 'ws_ui.dart';
 import '../../services/team_service.dart';
 import '../../utils/localizations/app_localizations.dart';
 import 'team_display.dart';
@@ -6,12 +8,14 @@ import 'team_display.dart';
 class ActivityHistory extends StatefulWidget {
   final String organizationId;
   final TeamService service;
-  final VoidCallback onBack;
+
+  /// Null inside the organization workspace sections (U1): no Back button.
+  final VoidCallback? onBack;
   const ActivityHistory({
     super.key,
     required this.organizationId,
     required this.service,
-    required this.onBack,
+    this.onBack,
   });
   @override
   State<ActivityHistory> createState() => _ActivityHistoryState();
@@ -84,6 +88,7 @@ class _ActivityHistoryState extends State<ActivityHistory> {
   String _details(Object? value, AppTranslations t) {
     if (value is! Map || value.isEmpty) return t['activity_not_recorded'];
     return value.entries
+        .where((e) => e.key != 'roleRevision')
         .map((e) {
           final key = 'activity_field_${e.key}';
           final label = t.translationKeys.contains(key)
@@ -108,9 +113,22 @@ class _ActivityHistoryState extends State<ActivityHistory> {
                 )
                 .toList();
           }
-          if (e.key == 'role' && t.translationKeys.contains('team_role_$v')) {
-            v = t['team_role_$v'];
+          if (e.key == 'role') {
+            v = teamRoleLabel(t, v, value['roleName']);
           }
+          // Role permissions: "View bookings (Own records), ..."
+          if ((e.key == 'grants' || e.key == 'roleGrants') && v is Map) {
+            v = v.isEmpty
+                ? t['roles_no_permissions']
+                : v.entries
+                      .map(
+                        (g) =>
+                            '${t.translationKeys.contains('team_permission_${g.key}') ? t['team_permission_${g.key}'] : g.key}'
+                            ' (${t.translationKeys.contains('role_scope_${g.value}') ? t['role_scope_${g.value}'] : g.value})',
+                      )
+                      .join(', ');
+          }
+          if (e.key == 'template' && v is String) v = teamRoleLabel(t, v);
           if ((e.key == 'status' || e.key == 'requestStatus') &&
               t.translationKeys.contains('team_status_$v')) {
             v = t['team_status_$v'];
@@ -134,11 +152,15 @@ class _ActivityHistoryState extends State<ActivityHistory> {
       child: Align(
         alignment: Alignment.topCenter,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 960),
+          constraints: WorkspacePageScope.constraints(context, 960),
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              TextButton(onPressed: widget.onBack, child: Text(t['team_back'])),
+              if (widget.onBack != null)
+                TextButton(
+                  onPressed: widget.onBack,
+                  child: Text(t['team_back']),
+                ),
               Text(
                 t['activity_title'],
                 style: Theme.of(context).textTheme.headlineSmall,
@@ -156,16 +178,20 @@ class _ActivityHistoryState extends State<ActivityHistory> {
                   _cursor = null;
                 }),
               ),
-              OutlinedButton(
-                onPressed: _busy
-                    ? null
-                    : () {
-                        _filter = _actor.text.trim().isEmpty
-                            ? null
-                            : _actor.text.trim();
-                        _load();
-                      },
-                child: Text(t['team_refresh']),
+              WsActions(
+                children: [
+                  OutlinedButton(
+                    onPressed: _busy
+                        ? null
+                        : () {
+                            _filter = _actor.text.trim().isEmpty
+                                ? null
+                                : _actor.text.trim();
+                            _load();
+                          },
+                    child: Text(t['team_refresh']),
+                  ),
+                ],
               ),
               if (_busy) const LinearProgressIndicator(),
               if (_failed) Text(t['activity_failed']),
@@ -214,9 +240,13 @@ class _ActivityHistoryState extends State<ActivityHistory> {
                   ),
                 ),
               if (_cursor != null)
-                OutlinedButton(
-                  onPressed: _busy ? null : () => _load(more: true),
-                  child: Text(t['workspace_more']),
+                WsActions(
+                  children: [
+                    OutlinedButton(
+                      onPressed: _busy ? null : () => _load(more: true),
+                      child: Text(t['workspace_more']),
+                    ),
+                  ],
                 ),
             ],
           ),

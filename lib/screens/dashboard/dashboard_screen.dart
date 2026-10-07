@@ -1,9 +1,17 @@
+import 'dashboard_organization_header.dart';
+import '../team/org_shell.dart';
+import '../team/ws_ui.dart';
+import '../team/ownership_agreements_screen.dart';
+import '../team/google_drive_screen.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/app_dialog.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/team/invitation_acceptance.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/team/access_request.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/team_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/dashboard_settings_button.dart';
 import 'dart:ui';
+import 'account_entry_gate.dart';
+import 'organization_merge_dialog.dart';
+import '../../services/account_entry_service.dart';
 
 import 'package:phan_mem_quan_ly_can_ho/main.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/membership_model.dart';
@@ -21,6 +29,7 @@ import 'package:phan_mem_quan_ly_can_ho/utils/email_format.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/update_services.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/localizations/app_localizations.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_router.dart';
+import 'package:phan_mem_quan_ly_can_ho/screens/team/org_location.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_theme.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/loading.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -30,6 +39,7 @@ import 'package:country_flags/country_flags.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:io' show Platform;
 import 'dart:async';
+import '../../services/app_functions.dart';
 
 // Dialog implementations are grouped by purpose; this file owns screen state,
 // lifecycle, shared presentation helpers, and the dashboard layout.
@@ -138,16 +148,11 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
 
     _ownerFuture = _authService.getCurrentOwner();
+    // The organization list loads once, after the account check
+    // (_loadAccountEntry → _refreshOrgs); loading it here too was a duplicate
+    // server call on every open and reload.
     _ownerFuture?.then((owner) {
-      if (owner != null && mounted) {
-        _syncEmailIfChanged(owner);
-        setState(() {
-          _orgsFuture = _organizationService.getUserOrganizations(owner.id);
-        });
-        _orgsFuture?.then((_) {
-          if (mounted) _listAnimCtrl.forward();
-        });
-      }
+      if (owner != null && mounted) _syncEmailIfChanged(owner);
     });
 
     WidgetsBinding.instance.addObserver(this);
@@ -167,7 +172,12 @@ class _DashboardScreenState extends State<DashboardScreen>
     _updateCheckTimer = Timer(const Duration(milliseconds: 800), () {
       if (mounted && !_isDisposed) _backgroundUpdateCheck();
     });
+
+    // Entry must resolve the account before showing a deep-linked workspace.
   }
+
+  /// The organization opened from the address at start (see initState).
+  String? _openedEarly;
 
   @override
   void dispose() {
@@ -205,6 +215,89 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   // Companion dialog groups request rebuilds through the owning State.
   void _updateDashboardState(VoidCallback update) => setState(update);
+
+  bool _needsVerifiedEmail = false;
+  bool _canCreateOrganization = false;
+  bool _accountConflict = false;
+  Key _entryKey = UniqueKey();
+
+  late final _accountEntryService = AccountEntryService(transport: (name, data) async {
+      final result = await appCallable(name).call(data);
+      return Map<String, dynamic>.from(result.data as Map);
+    });
+
+  Future<AccountEntry> _loadAccountEntry() async {
+    final entry = await _accountEntryService.load();
+    _needsVerifiedEmail = entry.needsVerifiedEmail;
+    // The organization opened early from the address (initState) closes
+    // again when the account may not open it here: not in the list (in
+    // conflict only owned organizations are listed), still waiting, or the
+    // email is not verified yet. The entry screens then show why.
+    final early = _openedEarly;
+    if (early != null &&
+        mounted &&
+        (entry.needsVerifiedEmail ||
+            entry.waitingIds.contains(early) ||
+            !entry.workplaces.any((o) => o.id == early))) {
+      _openedEarly = null;
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    }
+    final owner = await _ownerFuture;
+    if (owner != null && mounted) {
+      // Speed (2026-10-06): the account check already listed the
+      // organizations; asking the server again cost one more trip. Older
+      // (version 1) organizations still load their full record.
+      if (entry.workplaces.every((o) => o.accessVersion == 2)) {
+        setState(() {
+          _membershipFutures.clear();
+          _orgsFuture = Future.value(entry.workplaces);
+        });
+        _listAnimCtrl.reset();
+        _listAnimCtrl.forward();
+      } else {
+        _refreshOrgs(owner.id);
+      }
+    }
+    return entry;
+  }
+
+  Future<void> _openStaffWorkplace(Organization org) async {
+    // Already open from the address (opened before the list loaded).
+    if (_openedEarly == org.id) {
+      _openedEarly = null;
+      return;
+    }
+    final address = AppRouter.takePendingAddress();
+    if (address != null && address.contains('/org/${org.id}/')) {
+      await Navigator.of(context).pushNamed(address);
+    } else {
+      await Navigator.of(context).pushNamed(AppRouter.oranizationScreen,
+          arguments: {'organization': org});
+    }
+  }
+
+  /// After a reload, reopen the organization page the address pointed at.
+  /// An account in conflict (owner + staff elsewhere) still reopens its OWN
+  /// organizations — it can open them by tapping anyway — but never a staff
+  /// workplace; in conflict the server lists only owned organizations.
+  // Kept with legacy dashboard code until production v1 migration.
+  // ignore: unused_element
+  Future<void> _reopenPendingAddress() async {
+    final address = AppRouter.takePendingAddress();
+    if (address == null || !mounted) return;
+    if (_accountConflict) {
+      final orgId = OrgLocation.parse(address)?.organizationId;
+      if (orgId == null) return;
+      List<Organization> owned;
+      try {
+        owned = await (_orgsFuture ?? Future.value(<Organization>[]));
+      } catch (_) {
+        return;
+      }
+      if (!mounted || !owned.any((o) => o.id == orgId)) return;
+    }
+    await Navigator.of(context).pushNamed(address);
+  }
 
   void _refreshOrgs(String ownerId) {
     if (!mounted || _isDisposed) return;
@@ -261,7 +354,98 @@ class _DashboardScreenState extends State<DashboardScreen>
   // ─────────────────────────────────────────────────────────
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => AccountEntryGate(
+    key: _entryKey,
+    load: _loadAccountEntry,
+    onSettings: _showSettingsDialog,
+    onMerge: () async {
+      await showDialog<bool>(context: context, barrierDismissible: false,
+        builder: (_) => OrganizationMergeDialog(transport: (name, data) async {
+          final result = await appCallable(name).call(data);
+          return Map<String, dynamic>.from(result.data as Map);
+        }));
+    },
+    openWorkplace: _openStaffWorkplace,
+    workspaceBuilder: _buildSingleWorkspace,
+    ownerBuilder: (entry) {
+      _canCreateOrganization = entry.canCreate;
+      _accountConflict = entry.mode == 'conflict';
+      return _buildOrganizationEntry(entry);
+    },
+  );
+
+  OrgLocation? _initialWorkspace;
+  String? _workspaceId;
+
+  Widget _buildSingleWorkspace(AccountEntry entry, Organization org) {
+    _canCreateOrganization = false;
+    if (_workspaceId != org.id) {
+      _workspaceId = org.id;
+      final requested = OrgLocation.parse(AppRouter.takePendingAddress());
+      _initialWorkspace = requested?.organizationId == org.id ? requested : null;
+    }
+    if (org.accessVersion != 2) {
+      return Scaffold(
+        appBar: AppBar(title: Text(org.name), actions: [
+          IconButton(tooltip: AppTranslations.of(context)['settings'], onPressed: _showSettingsDialog, icon: const Icon(Icons.person_outline)),
+        ]),
+        body: WsPage(children: [
+          WsNotice(AppTranslations.of(context)['org_legacy_workspace'], tone: WsTone.neutral),
+          FilledButton(onPressed: () => _openStaffWorkplace(org), child: Text(AppTranslations.of(context)['staff_open_workplace'])),
+        ]),
+      );
+    }
+    return OrgShell(
+      key: ValueKey('single-workspace-${org.id}'),
+      organizationId: org.id, name: org.name, initial: _initialWorkspace,
+      service: getIt<TeamService>(),
+      onAccountSettings: _showSettingsDialog,
+      onOrganizationSettings: () => _showSingleOrganizationActions(org),
+      onAccessEnded: () { if (mounted) setState(() { _entryKey = UniqueKey(); }); },
+    );
+  }
+
+  Widget _buildOrganizationEntry(AccountEntry entry) {
+    final t = AppTranslations.of(context);
+    return Scaffold(
+      appBar: AppBar(title: Text(t['org_entry_title']), actions: [
+        IconButton(tooltip: t['settings'], onPressed: _showSettingsDialog, icon: const Icon(Icons.person_outline)),
+      ]),
+      body: WsPage(maxWidth: 560, children: [
+        WsHeader(title: t['org_entry_title']),
+        WsNotice(t[entry.needsVerifiedEmail ? 'team_verified_email_required' : const {'closed','suspended','waiting','deleting','review'}.contains(entry.state) ? 'org_entry_${entry.state}' : 'org_entry_explanation'], tone: WsTone.neutral),
+        if (entry.canCreate && !entry.needsVerifiedEmail)
+          WsActions(children: [FilledButton.icon(
+            key: const ValueKey('single-create-organization'),
+            onPressed: () => _dialogLock.run(_showCreateOrganizationDialog),
+            icon: const Icon(Icons.add), label: Text(t['create_action']),
+          )]),
+        if (!entry.needsVerifiedEmail && const {'none','invited','ready'}.contains(entry.state))
+          InvitationEntryButton(service: getIt<TeamService>(), onReturn: () {
+            if (mounted) setState(() { _entryKey = UniqueKey(); });
+          }),
+        OutlinedButton(onPressed: () { setState(() { _entryKey = UniqueKey(); }); }, child: Text(t['team_refresh'])),
+      ]),
+    );
+  }
+
+  Future<void> _showSingleOrganizationActions(Organization org) async {
+    await _openV2Settings(org, (settings) {
+      final t = AppTranslations.of(context);
+      showModalBottomSheet<void>(context: context, builder: (sheet) => SafeArea(
+        child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(title: Text(t['org_info']), leading: const Icon(Icons.info_outline), onTap: () { Navigator.pop(sheet); _showOrganizationInfo(settings.organization); }),
+          if (settings.canManage) ListTile(title: Text(t['edit']), leading: const Icon(Icons.edit_outlined), onTap: () { Navigator.pop(sheet); _showEditOrganizationDialog(settings.organization, _authService.currentUser!.uid); }),
+          if (settings.canClose) ListTile(title: Text(t['org_close_action']), leading: const Icon(Icons.archive_outlined), onTap: () { Navigator.pop(sheet); _showDeleteOrganizationDialog(settings.organization, _authService.currentUser!.uid); }),
+          if (settings.canLeave) ListTile(title: Text(t['leave_org']), leading: const Icon(Icons.logout), onTap: () { Navigator.pop(sheet); _showLeaveOrganizationDialog(settings.organization, _authService.currentUser!.uid); }),
+        ])),
+      ));
+    });
+  }
+
+  // Retained for legacy recovery; strict accounts never enter this list.
+  // ignore: unused_element
+  Widget _buildOwnerDashboard(BuildContext context) {
     Theme.of(context); // Rebuild theme-dependent custom accents.
     final isSmall = _isSmallScreen(context);
     const minWidth  = 360.0;
@@ -296,57 +480,42 @@ class _DashboardScreenState extends State<DashboardScreen>
                 controller: _scrollCtrl,
                 slivers: [
                   SliverToBoxAdapter(child: _buildHero(context, isSmall)),
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                      child: InvitationEntryButton(
-                        service: getIt<TeamService>(),
-                        onReturn: () {
-                          if (mounted) _refreshOrgs(owner.id);
-                        },
-                      ),
-                    ),
-                  ),
+                  if (_accountConflict) SliverToBoxAdapter(child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(AppTranslations.of(context)['team_owner_account']),
+                  )),
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: EdgeInsets.fromLTRB(
                         isSmall ? 16 : 20, isSmall ? 16 : 24, isSmall ? 16 : 20, 12,
                       ),
-                      child: Row(children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: _DS.primaryLight,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Icon(Icons.business_rounded, color: _DS.primary, size: 18),
+                      child: DashboardOrganizationHeader(
+                        invitation: InvitationEntryButton(
+                          iconOnly: true,
+                          service: getIt<TeamService>(),
+                          onReturn: () {
+                            if (mounted) _refreshOrgs(owner.id);
+                          },
                         ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            AppTranslations.of(context).text('your_organizations'),
-                            style: TextStyle(
-                              fontWeight: FontWeight.w800,
-                              fontSize: isSmall ? 17 : 19,
-                              color: _DS.textPrimary,
-                              letterSpacing: -0.3,
-                            ),
-                          ),
-                        ),
-                        _buildHeaderButton(
-                          label: AppTranslations.of(context).text('join'),
-                          icon: Icons.group_add_rounded,
-                          outlined: true,
-                          onTap: () => _dialogLock.run(_showJoinOrganizationDialog),
-                        ),
-                        const SizedBox(width: 8),
-                        _buildHeaderButton(
-                          label: AppTranslations.of(context).text('create'),
-                          icon: Icons.add_rounded,
-                          outlined: false,
-                          onTap: () => _dialogLock.run(_showCreateOrganizationDialog),
-                        ),
-                      ]),
+                        canCreate: _canCreateOrganization,
+                        onJoin: () => _dialogLock.run(_showJoinOrganizationDialog),
+                        onCreate: () => _dialogLock.run(_showCreateOrganizationDialog),
+                        onAgreements: () => _dialogLock.run(() async {
+                          await Navigator.of(context).push(MaterialPageRoute(
+                            builder: (_) => OwnershipAgreementsScreen(service: TeamService()),
+                          ));
+                          if (mounted) setState(() { _entryKey = UniqueKey(); });
+                        }),
+                        // 2026-10-06 (Tom): one Google Drive for every organization the owner owns.
+                        onDrive: _canCreateOrganization
+                            ? () => _dialogLock.run(() => Navigator.of(context).push(MaterialPageRoute(
+                                builder: (_) => Scaffold(
+                                  appBar: AppBar(title: const Text('Google Drive')),
+                                  body: GoogleDriveScreen(service: getIt<TeamService>()),
+                                ),
+                              )))
+                            : null,
+                      ),
                     ),
                   ),
                   FutureBuilder<List<Organization>>(
@@ -565,15 +734,21 @@ class _DashboardScreenState extends State<DashboardScreen>
                                     ),
                                   ),
                                   const SizedBox(height: 8),
-                                  _buildRoleBadge(isAdmin,
-                                      label: waiting
-                                          ? AppTranslations.of(context).text('team_waiting_role')
-                                          : isV2 ? _v2RoleLabel(role) : null),
+                                  // No badge until the role has loaded (2026-10-06, Tom: it
+                                  // showed "Vai trò riêng" for a few seconds first).
+                                  if (waiting || snapshot.data != null)
+                                    _buildRoleBadge(isAdmin,
+                                        label: waiting
+                                            ? AppTranslations.of(context).text('team_waiting_role')
+                                            : isV2 ? _v2RoleLabel(role, snapshot.data?.roleName) : null)
+                                  else
+                                    const SizedBox(key: ValueKey('dashboard-role-loading'), height: 22),
                                 ],
                               ),
                             ),
                             GestureDetector(
-                              onTap: () => _showOrganizationOptions(org, owner.id, isAdmin, role),
+                              onTap: () => _showOrganizationOptions(org, owner.id, isAdmin, role,
+                                  roleName: snapshot.data?.roleName, waitingMember: waiting),
                               child: Container(
                                 width: 36, height: 36,
                                 decoration: BoxDecoration(
@@ -635,40 +810,6 @@ class _DashboardScreenState extends State<DashboardScreen>
           ),
         ),
       ]),
-    );
-  }
-
-  Widget _buildHeaderButton({
-    required String label,
-    required IconData icon,
-    required bool outlined,
-    required VoidCallback onTap,
-  }) {
-    if (outlined) {
-      return OutlinedButton.icon(
-        onPressed: onTap,
-        icon: Icon(icon, size: 16),
-        label: Text(label,
-            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-        style: OutlinedButton.styleFrom(
-          foregroundColor: _DS.primary,
-          side: BorderSide(color: _DS.primary.withValues(alpha: 0.45)),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        ),
-      );
-    }
-    return FilledButton.icon(
-      onPressed: onTap,
-      icon: Icon(icon, size: 16),
-      label: Text(label,
-          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-      style: FilledButton.styleFrom(
-        backgroundColor: _DS.primary,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        elevation: 0,
-      ),
     );
   }
 
@@ -933,36 +1074,19 @@ class _DashboardScreenState extends State<DashboardScreen>
             textAlign: TextAlign.center,
             style: TextStyle(color: _DS.textSecondary, fontSize: isSmall ? 13 : 14),
           ),
-          const SizedBox(height: 28),
-          Wrap(
-            spacing: 12, runSpacing: 12,
-            alignment: WrapAlignment.center,
-            children: [
-              OutlinedButton.icon(
-                onPressed: _showJoinOrganizationDialog,
-                icon: const Icon(Icons.group_add_rounded, size: 18),
-                label: Text(AppTranslations.of(context).text('join'),
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: _DS.primary,
-                  side: BorderSide(color: _DS.primary.withValues(alpha: 0.5)),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                ),
-              ),
-              FilledButton.icon(
-                onPressed: _showCreateOrganizationDialog,
-                icon: const Icon(Icons.add_rounded, size: 18),
-                label: Text(AppTranslations.of(context).text('create'),
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
-                style: FilledButton.styleFrom(
-                  backgroundColor: _DS.primary,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                ),
-              ),
-            ],
+          // R2: staff are added by their Gmail; say which address to give the manager.
+          const SizedBox(height: 12),
+          Text(
+            AppTranslations.of(context).textWithParams(
+              _needsVerifiedEmail ? 'team_staff_verify_email' : 'team_staff_ask_manager',
+              {'email': _authService.currentUser?.email ?? ''},
+            ),
+            key: const ValueKey('dashboard-staff-hint'),
+            textAlign: TextAlign.center,
+            style: TextStyle(color: _DS.textSecondary, fontSize: isSmall ? 13 : 14),
           ),
+          // Join and create live in the header beside "Tổ Chức Của Bạn";
+          // no second copy of those buttons here (Tom, 2026-10-02).
         ],
       ),
     );

@@ -231,7 +231,7 @@ class _BuildingRentScreenState extends State<BuildingRentScreen> {
                         Expanded(
                           child: Text(
                             '${building.rentContractStart != null ? DateFormat(t.dateFormat).format(building.rentContractStart!) : '—'}'
-                            '  →  '
+                            '  –  '
                             '${building.rentContractEnd != null ? DateFormat(t.dateFormat).format(building.rentContractEnd!) : '—'}',
                             style: TextStyle(
                                 fontSize: 12,

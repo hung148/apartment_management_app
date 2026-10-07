@@ -4,7 +4,7 @@ const {collectOrganization}=require('./org_data');
 // Permanently removes organizations whose close retention period has ended.
 // Runs from a daily schedule; each run handles a bounded number and the next
 // run continues, so an interrupted purge is simply retried.
-const KEEP=Object.freeze(['organizations','owners','purgedOrganizations']);
+const KEEP=Object.freeze(['organizations','owners','purgedOrganizations','accountOrganizations']);
 
 function createOrganizationPurge({db,Timestamp,logger,now=()=>Date.now(),maxOrganizations=5}){
  async function purgeOne(org){
@@ -34,6 +34,11 @@ function createOrganizationPurge({db,Timestamp,logger,now=()=>Date.now(),maxOrga
   }
   await db.recursiveDelete(org.ref,writer);
   await writer.close();
+  const bindings=await db.collection('accountOrganizations').where('organizationId','==',id).get();
+  for(const b of bindings.docs)await db.runTransaction(async tx=>{
+   const cur=await tx.get(b.ref);if(cur.data()?.organizationId!==id)return;
+   tx.set(b.ref,{organizationId:null,state:'released',revision:(cur.data().revision??0)+1,source:'purge',updatedAtMs:now()});
+  });
   // A minimal record that the purge happened; no names or contact details.
   await db.collection('purgedOrganizations').doc(id).set({closedBy:data.closedBy??null,closedAt:data.closedAt,
    purgeAfter:data.purgeAfter,purgedAt:Timestamp.fromMillis(now()),counts});

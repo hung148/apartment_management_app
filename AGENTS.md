@@ -3,6 +3,16 @@
 These rules apply to all work in this repository. Apply checks relevant to the
 changed behavior; passing unrelated tests is not evidence that a change works.
 
+## Local first, deploy only what needs it (Tom, 2026-10-02)
+
+Test locally whatever can be tested locally, and deploy only for the things that
+can't. Server logic → `node --test` (fake Firestore) and the emulator; screens and
+layouts → Flutter widget tests; full flows → the local emulator stack (app on
+localhost against local functions/Firestore/Auth) once it is set up. Deploy to
+staging only for what cannot run locally (App Check/reCAPTCHA, real email, Google
+sign-in/Drive, real hosting) and for the one final live check of a finished
+feature, batching all fixes into that deploy.
+
 ## Think through every situation first
 
 Before handing over any feature or fix, write out the full list of situations
@@ -62,3 +72,8 @@ items were verified and which were not.
 - Do not claim that all UI states are correct or that verification guarantees
   zero defects. If a required check cannot run, explain why and what remains
   unverified.
+
+## Handoff / continuing work
+
+See [HANDOFF.md](HANDOFF.md) (for any AI assistant or developer): what to do next, delivery, fast staging deploys,
+live tests on staging, design rules and test pitfalls.

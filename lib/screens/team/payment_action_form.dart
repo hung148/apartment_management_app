@@ -1,7 +1,11 @@
+import 'workspace_page_scope.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
+import 'ws_ui.dart';
 import '../../services/payment_command_service.dart';
+import '../../utils/app_number.dart';
 import '../../utils/localizations/app_localizations.dart';
+import 'team_display.dart';
 
 class PaymentActionForm extends StatefulWidget {
   final String organizationId, accountId;
@@ -38,7 +42,6 @@ class _PaymentActionFormState extends State<PaymentActionForm> {
       _pending != null ||
       _result != null ||
       _storageFailed;
-  int get _scale => widget.invoice['currency'] == 'USD' ? 100 : 1;
   @override
   void initState() {
     super.initState();
@@ -75,8 +78,9 @@ class _PaymentActionFormState extends State<PaymentActionForm> {
         _action = data['action'] as String;
         _method = data['paymentMethod'] as String? ?? 'cash';
         _reason.text = data['reason'] as String? ?? '';
-        _amount.text = ((data['amountMinor'] as int) / _scale).toStringAsFixed(
-          _scale == 100 ? 2 : 0,
+        _amount.text = appMoneyInputText(
+          data['amountMinor'] as int,
+          '${widget.invoice['currency']}',
         );
         _message = 'payment_action_uncertain';
       }
@@ -93,21 +97,8 @@ class _PaymentActionFormState extends State<PaymentActionForm> {
   }
 
   int? _minor() {
-    final value = _amount.text.trim();
-    if (!RegExp(
-      _scale == 100 ? r'^\d+(\.\d{1,2})?$' : r'^\d+$',
-    ).hasMatch(value)) {
-      return null;
-    }
-    final parts = value.split('.');
-    final whole = int.tryParse(parts[0]);
-    if (whole == null) return null;
-    final minor =
-        whole * _scale +
-        (_scale == 100 && parts.length == 2
-            ? int.parse(parts[1].padRight(2, '0'))
-            : 0);
-    return minor > 0 && minor <= 9007199254740991 ? minor : null;
+    final minor = appParseMoney(_amount.text, '${widget.invoice['currency']}');
+    return minor != null && minor > 0 ? minor : null;
   }
 
   Future<void> _submit() async {
@@ -213,7 +204,7 @@ class _PaymentActionFormState extends State<PaymentActionForm> {
       child: Align(
         alignment: Alignment.topCenter,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 720),
+          constraints: WorkspacePageScope.constraints(context, 720),
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Form(
@@ -229,7 +220,7 @@ class _PaymentActionFormState extends State<PaymentActionForm> {
                     '${t['payment_action_invoice']}: ${widget.invoice['id']}',
                   ),
                   Text(
-                    '${t['workspace_room']}: ${widget.invoice['roomId'] ?? ''}',
+                    '${t['workspace_room']}: ${teamRoomLabel(widget.invoice)}',
                   ),
                   Text(t['payment_action_note']),
                   if (_loading || _saving) const LinearProgressIndicator(),
@@ -281,6 +272,9 @@ class _PaymentActionFormState extends State<PaymentActionForm> {
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
+                    inputFormatters: appMoneyInput(
+                      '${widget.invoice['currency']}',
+                    ),
                     decoration: InputDecoration(
                       labelText:
                           '${t['workspace_amount']} (${widget.invoice['currency']})',
@@ -327,15 +321,19 @@ class _PaymentActionFormState extends State<PaymentActionForm> {
                     ),
                   const SizedBox(height: 16),
                   if (_result == null)
-                    FilledButton(
-                      onPressed: _loading || _saving || _storageFailed
-                          ? null
-                          : _submit,
-                      child: Text(
-                        t[_pending == null
-                            ? 'payment_action_confirm'
-                            : 'payment_action_retry'],
-                      ),
+                    WsActions(
+                      children: [
+                        FilledButton(
+                          onPressed: _loading || _saving || _storageFailed
+                              ? null
+                              : _submit,
+                          child: Text(
+                            t[_pending == null
+                                ? 'payment_action_confirm'
+                                : 'payment_action_retry'],
+                          ),
+                        ),
+                      ],
                     ),
                   TextButton(
                     onPressed: _saving ? null : widget.onBack,

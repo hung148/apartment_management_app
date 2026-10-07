@@ -1,5 +1,8 @@
+import 'workspace_page_scope.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../utils/localizations/app_localizations.dart';
+import '../../utils/app_number.dart';
 
 // Shared wording for the operational replacement pages. Keep field labels visible
 // above multiline inputs so enlarged text does not obscure values or errors.
@@ -46,6 +49,36 @@ String opsText(BuildContext context, String key) {
     'confirm': ['Confirm and save', 'Xác nhận và lưu'],
     'retry': ['Retry identical request', 'Thử lại đúng yêu cầu'],
     'saved': ['Saved successfully.', 'Đã lưu thành công.'],
+    'badDates': [
+      'Check arrival and departure: use YYYY-MM-DD HH:mm (for example 2026-10-05 14:00), and departure must be after arrival.',
+      'Kiểm tra giờ nhận và trả phòng: nhập dạng YYYY-MM-DD HH:mm (ví dụ 2026-10-05 14:00), giờ trả phải sau giờ nhận.',
+    ],
+    'roomRequired': ['Choose a room.', 'Hãy chọn phòng.'],
+    'noShortStayRooms': [
+      'No room in this property takes short-stay bookings yet. In the room\'s pricing, set the rental mode to hourly/daily (or both) and enter a price.',
+      'Tòa nhà này chưa có phòng nào nhận đặt ngắn hạn. Trong giá phòng, chọn kiểu cho thuê theo giờ/ngày (hoặc cả hai) và nhập giá.',
+    ],
+    'rateMissing': [
+      'This room has no price for this pricing type. Set the room rates first, or choose another pricing type.',
+      'Phòng này chưa có giá cho kiểu tính giá này. Hãy cài giá phòng trước hoặc chọn kiểu tính giá khác.',
+    ],
+    'badAmount': ['The amount is not valid.', 'Số tiền không hợp lệ.'],
+    'noCreatePermission': [
+      'Your role does not allow adding bookings in this property.',
+      'Vai trò của bạn không được thêm đặt phòng ở tòa nhà này.',
+    ],
+    'roomUnavailable': [
+      'This room cannot take short-stay bookings (check its rental mode), or it was removed.',
+      'Phòng này không nhận đặt phòng ngắn hạn (kiểm tra kiểu cho thuê) hoặc đã bị xóa.',
+    ],
+    'timezoneMissing': [
+      'This property has no timezone yet. Set it in the property details first.',
+      'Tòa nhà chưa có múi giờ. Hãy cài múi giờ trong thông tin tòa nhà trước.',
+    ],
+    'periodExists': [
+      'Rent or a fee is already billed for some of these days.',
+      'Tiền thuê hoặc một khoản phí đã có hóa đơn cho một phần những ngày này.',
+    ],
     'unavailable': [
       'Unavailable, changed, or access denied. Reload to check current data.',
       'Không thể truy cập, dữ liệu đã thay đổi hoặc không có quyền. Tải lại để kiểm tra.',
@@ -57,6 +90,7 @@ String opsText(BuildContext context, String key) {
     'required': ['Enter a valid value.', 'Nhập giá trị hợp lệ.'],
     'empty': ['No records.', 'Chưa có dữ liệu.'],
     'more': ['Load more', 'Tải thêm'],
+    'open': ['Open', 'Mở'],
     'create': ['Create new', 'Tạo mới'],
     'edit': ['Edit', 'Chỉnh sửa'],
     'reason': ['Reason / description', 'Lý do / mô tả'],
@@ -157,6 +191,7 @@ Widget opsField(
   required bool enabled,
   String? label,
   bool required = true,
+  List<TextInputFormatter>? formatters,
 }) => Padding(
   padding: const EdgeInsets.only(top: 16),
   child: Column(
@@ -171,6 +206,7 @@ Widget opsField(
           controller: controller,
           enabled: enabled,
           maxLines: null,
+          inputFormatters: formatters,
           decoration: const InputDecoration(errorMaxLines: 8),
           validator: (v) => required && (v ?? '').trim().isEmpty
               ? opsText(context, 'required')
@@ -184,9 +220,9 @@ Widget opsPage(BuildContext context, List<Widget> children) => SafeArea(
   child: Align(
     alignment: Alignment.topCenter,
     child: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 760),
+      constraints: WorkspacePageScope.constraints(context, 880),
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: children,
@@ -196,18 +232,6 @@ Widget opsPage(BuildContext context, List<Widget> children) => SafeArea(
   ),
 );
 
-int? operationalMoney(String text, String currency) {
-  final value = text.trim().replaceAll(',', '.');
-  if (!RegExp(
-    currency == 'USD' ? r'^\d+(?:\.\d{1,2})?$' : r'^\d+$',
-  ).hasMatch(value)) {
-    return null;
-  }
-  final parts = value.split('.');
-  final whole = int.tryParse(parts[0]);
-  if (whole == null) return null;
-  final minor =
-      whole * (currency == 'USD' ? 100 : 1) +
-      (parts.length == 2 ? int.parse(parts[1].padRight(2, '0')) : 0);
-  return minor <= 1000000000000 ? minor : null;
-}
+// Grouped amounts ("5,000,000", "2,000.50") are read too (2026-10-05, Tom).
+int? operationalMoney(String text, String currency) =>
+    appParseMoney(text, currency);

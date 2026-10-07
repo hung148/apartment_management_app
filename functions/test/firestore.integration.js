@@ -45,12 +45,18 @@ test('outsiders cannot read inventory or self-promote even with a valid shared c
  await assertFails(updateDoc(doc(outsider,'memberships/outsider_org'),{role:'admin'}));
  await assertFails(getDocs(query(collection(outsider,'rooms'),where('organizationId','==','org'))));
 });
-test('atomic organization creation and owner membership remains supported',async()=>{
+test('direct organization creation is denied; callable creates legacy ownership atomically',async()=>{
  const client=env.authenticatedContext('newowner').firestore(),batch=writeBatch(client);
  batch.set(doc(client,'organizations/new'),{createdBy:'newowner'});
  batch.set(doc(client,'memberships/newowner_new'),{ownerId:'newowner',organizationId:'new',role:'admin',status:'active'});
  batch.set(doc(client,'invite_codes/NEW'),{orgId:'new'});
- await assertSucceeds(batch.commit());
+ await assertFails(batch.commit());
+ const {createOrganizationSettingsHandler}=require('../organization_settings');
+ const api=createOrganizationSettingsHandler({db,Timestamp,HttpsError:class extends Error{constructor(code,message){super(message);this.code=code;}},allowCreate:false});
+ const result=await api({auth:{uid:'newowner',token:{email:'newowner@example.com',email_verified:true}},data:{action:'createLegacy',operationId:'create-legacy',fields:{name:'Legacy',address:'',phone:'',email:'',taxCode:'',bankName:'',bankAccountNumber:'',bankAccountName:''}}});
+ const created=await getDoc(doc(client,'organizations/'+result.organizationId));
+ assert.equal(created.data().name,'Legacy');
+ assert.equal((await getDoc(doc(client,'memberships/newowner_'+result.organizationId))).data().role,'admin');
 });
 test('real concurrent Firestore transactions accept only one overlapping reservation',async()=>{
  const booking={organizationId:'org',roomId:'room',guestName:'Guest',guestPhone:'',totalPrice:100,startTime:{__timestamp:Date.UTC(2026,8,9,10)},endTime:{__timestamp:Date.UTC(2026,8,9,12)}};

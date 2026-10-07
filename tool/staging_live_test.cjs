@@ -22,7 +22,7 @@ try{
  const debug=await api(`https://firebaseappcheck.googleapis.com/v1/${appPath}/debugTokens`,'POST',{displayName:'Temporary restricted-IAM acceptance',token:debugToken});assert.equal(debug.status,200,'debug registration');debugName=debug.data.name;
  const exchange=await api(`https://firebaseappcheck.googleapis.com/v1/${appPath}:exchangeDebugToken?key=${config.apiKey}`,'POST',{debugToken},{'Content-Type':'application/json'});assert.equal(exchange.status,200,'App Check exchange');
  const appToken=exchange.data.token;
- const invoke=(name,data,attestation=appToken)=>api(`https://us-central1-${project}.cloudfunctions.net/${name}`,'POST',{data},{Authorization:'Bearer '+idToken,'Content-Type':'application/json',...(attestation?{'X-Firebase-AppCheck':attestation}:{})});
+ const invoke=(name,data,attestation=appToken)=>api(`https://${require('../functions/region').REGION}-${project}.cloudfunctions.net/${name==='importSheet'?'heavy':'app'}`,'POST',{data:{fn:name,data}},{Authorization:'Bearer '+idToken,'Content-Type':'application/json',...(attestation?{'X-Firebase-AppCheck':attestation}:{})});
  await db.doc(docs[0]).set({name:'Temporary security acceptance',accessVersion:2,createdBy:uid});
  for(const id of [a,b])await db.doc(`buildings/${id}`).set({organizationId:org,name:'Synthetic property',timeZone:'Asia/Ho_Chi_Minh'});
  const member=(role,status='active')=>db.doc(docs[1]).set({ownerId:uid,organizationId:org,accessVersion:2,role,status,buildingScope:'selected',buildingIds:[a]});

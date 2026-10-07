@@ -1,7 +1,10 @@
+import 'workspace_page_scope.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
+import 'ws_ui.dart';
 import 'package:uuid/uuid.dart';
 import '../../services/team_service.dart';
+import '../../utils/app_number.dart';
 import '../../utils/localizations/app_localizations.dart';
 import 'property_contract_screen.dart' show contractDate;
 import 'room_rates_screen.dart' show parseRoomRate;
@@ -167,9 +170,8 @@ class _TenantRentScreenState extends State<TenantRentScreen> {
       );
     }
     final t = AppTranslations.of(context), r = _record;
-    String money(dynamic minor) => r!['currency'] == 'USD'
-        ? '${(minor as int) ~/ 100}.${(minor % 100).toString().padLeft(2, '0')} USD'
-        : '$minor VND';
+    String money(dynamic minor) =>
+        appMoneyMinor(minor as int, '${r!['currency'] ?? 'VND'}');
     Widget field(String key, String label, TextEditingController controller) =>
         Padding(
           padding: const EdgeInsets.only(top: 16),
@@ -212,7 +214,7 @@ class _TenantRentScreenState extends State<TenantRentScreen> {
       child: Align(
         alignment: Alignment.topCenter,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 720),
+          constraints: WorkspacePageScope.constraints(context, 720),
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -229,11 +231,15 @@ class _TenantRentScreenState extends State<TenantRentScreen> {
                 const SizedBox(height: 12),
                 Text(t['rent_plan_help']),
                 const SizedBox(height: 8),
-                OutlinedButton(
-                  onPressed: _locked
-                      ? null
-                      : () => setState(() => _history = true),
-                  child: Text(t['rent_history_title']),
+                WsActions(
+                  children: [
+                    OutlinedButton(
+                      onPressed: _locked
+                          ? null
+                          : () => setState(() => _history = true),
+                      child: Text(t['rent_history_title']),
+                    ),
+                  ],
                 ),
                 if (_busy || _saving) const LinearProgressIndicator(),
                 if (_message != null)
@@ -275,16 +281,21 @@ class _TenantRentScreenState extends State<TenantRentScreen> {
                                   r['today'] as String,
                                 ) >
                                 0)
-                              OutlinedButton(
-                                onPressed: _locked
-                                    ? null
-                                    : () => setState(() {
-                                        _cancel = true;
-                                        _date.text =
-                                            change['effectiveDate'] as String;
-                                        _reason.clear();
-                                      }),
-                                child: Text(t['rent_plan_choose_cancel']),
+                              WsActions(
+                                children: [
+                                  OutlinedButton(
+                                    onPressed: _locked
+                                        ? null
+                                        : () => setState(() {
+                                            _cancel = true;
+                                            _date.text =
+                                                change['effectiveDate']
+                                                    as String;
+                                            _reason.clear();
+                                          }),
+                                    child: Text(t['rent_plan_choose_cancel']),
+                                  ),
+                                ],
                               ),
                           ],
                         ),
@@ -314,11 +325,17 @@ class _TenantRentScreenState extends State<TenantRentScreen> {
                           ),
                         field('reason', t['rent_plan_reason'], _reason),
                         const SizedBox(height: 16),
-                        FilledButton(
-                          onPressed: _locked ? null : _save,
-                          child: Text(
-                            t[_cancel ? 'rent_plan_cancel' : 'rent_plan_save'],
-                          ),
+                        WsActions(
+                          children: [
+                            FilledButton(
+                              onPressed: _locked ? null : _save,
+                              child: Text(
+                                t[_cancel
+                                    ? 'rent_plan_cancel'
+                                    : 'rent_plan_save'],
+                              ),
+                            ),
+                          ],
                         ),
                         if (_cancel)
                           TextButton(
@@ -336,14 +353,22 @@ class _TenantRentScreenState extends State<TenantRentScreen> {
                   ),
                 ],
                 if (_pending != null)
-                  OutlinedButton(
-                    onPressed: _saving ? null : _save,
-                    child: Text(t['rent_plan_retry']),
+                  WsActions(
+                    children: [
+                      OutlinedButton(
+                        onPressed: _saving ? null : _save,
+                        child: Text(t['rent_plan_retry']),
+                      ),
+                    ],
                   ),
                 const SizedBox(height: 8),
-                OutlinedButton(
-                  onPressed: _locked ? null : () => _load(),
-                  child: Text(t['rent_plan_reload']),
+                WsActions(
+                  children: [
+                    OutlinedButton(
+                      onPressed: _locked ? null : () => _load(),
+                      child: Text(t['rent_plan_reload']),
+                    ),
+                  ],
                 ),
               ],
             ),

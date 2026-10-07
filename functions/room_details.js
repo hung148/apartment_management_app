@@ -11,7 +11,7 @@ function createRoomDetailsHandler({db,Timestamp,HttpsError}) {
     if(!uid)fail('unauthenticated');
     const keys=['action','organizationId','buildingId','roomId',...(deleting?['operationId','revision']:[]),...(editing?['operationId',...(!creating?['revision']:[]),'roomNumber','roomType','area']:[])];
     if(!['read','update','prepareCreate','create','delete'].includes(d.action)||!id(d.organizationId)||!id(d.buildingId)||!id(d.roomId)||Object.keys(d).some(k=>!keys.includes(k)))fail('invalid-argument');
-    if(editing&&(!id(d.operationId)||(!creating&&(typeof d.revision!=='string'||!/^\d+:\d+$/.test(d.revision)))||typeof d.roomNumber!=='string'||!d.roomNumber.trim()||d.roomNumber.length>80||typeof d.roomType!=='string'||!d.roomType.trim()||d.roomType.length>160||typeof d.area!=='number'||!Number.isFinite(d.area)||d.area<=0||d.area>100000))fail('invalid-argument');
+    if(editing&&(!id(d.operationId)||(!creating&&(typeof d.revision!=='string'||!/^\d+:\d+$/.test(d.revision)))||typeof d.roomNumber!=='string'||!d.roomNumber.trim()||d.roomNumber.length>80||typeof d.roomType!=='string'||d.roomType.length>160||typeof d.area!=='number'||!Number.isFinite(d.area)||d.area<=0||d.area>100000))fail('invalid-argument');
     if(deleting&&(!id(d.operationId)||typeof d.revision!=='string'||!/^\d+:\d+$/.test(d.revision)))fail('invalid-argument');
     return db.runTransaction(async tx=>{
       const org=await tx.get(db.doc(`organizations/${d.organizationId}`));
@@ -28,7 +28,7 @@ function createRoomDetailsHandler({db,Timestamp,HttpsError}) {
         const ref=db.doc(`rooms/${d.roomId}`),doc=await tx.get(ref),old=doc.data();
         if(!building.exists||building.data().organizationId!==d.organizationId||!old||old.organizationId!==d.organizationId||old.buildingId!==d.buildingId)fail('not-found');
         if(revision(doc)!==d.revision)fail('aborted');
-        for(const collection of ['tenants','bookings','payments','housekeepingTasks']){
+        for(const collection of ['tenants','bookings','payments','housekeepingTasks','utilityMeters','serviceFeeRooms']){
           if(!(await tx.get(db.collection(collection).where('roomId','==',d.roomId).limit(1))).empty)throw new HttpsError('failed-precondition','room_not_empty');
         }
         // A tenant/booking may have moved: its earlier room still has history.
@@ -66,7 +66,7 @@ function createRoomDetailsHandler({db,Timestamp,HttpsError}) {
       }
       const now=Timestamp.now(),patch={roomNumber:d.roomNumber.trim(),roomType:d.roomType.trim(),area:d.area},result={roomId:d.roomId};
       if(creating) {
-        tx.create(ref,{...patch,organizationId:d.organizationId,buildingId:d.buildingId,currency,rentalMode:'monthly',createdAt:now,createdBy:uid,updatedAt:now,updatedBy:uid});
+        tx.create(ref,{...patch,organizationId:d.organizationId,buildingId:d.buildingId,currency,rentalMode:'both',createdAt:now,createdBy:uid,updatedAt:now,updatedBy:uid});
         // Serialize creates even when the property has no rooms yet.
         tx.update(building.ref,{roomInventoryUpdatedAt:now});
       } else tx.update(ref,{...patch,updatedAt:now,updatedBy:uid});

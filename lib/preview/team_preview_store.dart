@@ -1,10 +1,19 @@
 import 'dart:convert';
 import 'package:cloud_functions/cloud_functions.dart';
 import '../services/team_service.dart';
+import '../models/team_access.dart';
 part 'operational_preview.dart';
 
 /// Disposable UI fixtures. This transport never contacts Firebase.
 class TeamPreviewStore {
+  Map<String,dynamic>? ownershipTransfer;
+  /// "Today" at the preview property (YYYY-MM-DD); tests may set it.
+  String previewToday = () {
+    final n = DateTime.now();
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${n.year}-${two(n.month)}-${two(n.day)}';
+  }();
+
   final tenants = <Map<String, dynamic>>[
     {
       'id': 'tenant-anh',
@@ -70,6 +79,22 @@ class TeamPreviewStore {
     'currency': 'VND',
     'status': 'partial',
   };
+  // Account-level fixtures are separate from the role inside this workplace.
+  String accountMode = 'owner';
+  String? staffConflict;
+  final ownerEmails = <String>{};
+  final otherEmployerEmails = <String>{};
+  final additionalWorkplaceEmails = <String>{};
+  bool additionalWorkplacePermissionInBoth = false;
+  final accountWorkplaces = <Map<String, dynamic>>[
+    {
+      'id': 'preview',
+      'name': 'Riverside — Khu căn hộ phía Đông',
+      'createdBy': 'preview-owner',
+      'createdAt': '2026-01-01T00:00:00Z',
+      'accessVersion': 2,
+    },
+  ];
   String workspaceRole = 'owner';
   bool assignedOnly = false;
   bool priceOverride = true;
@@ -190,6 +215,259 @@ class TeamPreviewStore {
     },
   ];
 
+  /// Edited templates and organization roles (R1 preview; the server is the authority).
+  final roleDocs = <String, Map<String, dynamic>>{};
+  var _roleSequence = 0;
+  final _roleOperations = <String, Map<String, dynamic>>{};
+
+  static String _hex(int argb) =>
+      '#${(argb & 0xFFFFFF).toRadixString(16).padLeft(6, '0').toUpperCase()}';
+
+  Map<String, dynamic> _roles(Map<String, dynamic> d) {
+    if (d['organizationId'] != 'preview') reject();
+    final owner = workspaceRole == 'owner' && !assignedOnly;
+    if (!['owner', 'administrator'].contains(workspaceRole) || assignedOnly) {
+      throw FirebaseFunctionsException(
+        code: 'permission-denied',
+        message: 'team_access_denied',
+      );
+    }
+    Map<String, dynamic>? current(String id) => roleDocs.containsKey(id)
+        ? (roleDocs[id]!['deleted'] == true ? null : roleDocs[id])
+        : TeamPolicy.isTemplate(id) && id != 'owner'
+        ? {
+            'id': id,
+            'template': id,
+            'name': '',
+            'color': _hex(TeamPolicy.templateColors[id]!),
+            'grants': TeamPolicy.encode(TeamPolicy.templates[id]!),
+            'revision': 0,
+          }
+        : null;
+    int holders(String id) => accounts
+        .where((a) => a['role'] == id && a['status'] != 'revoked')
+        .length;
+    int invites(String id) => invitations
+        .where(
+          (i) =>
+              i['status'] == 'pending' && (i['access'] as Map?)?['role'] == id,
+        )
+        .length;
+    if (d['action'] == 'list') {
+      final ids = [
+        ...TeamPolicy.templateIds.where((r) => r != 'owner'),
+        ...roleDocs.keys.where((k) => !TeamPolicy.isTemplate(k)),
+      ];
+      return {
+        'roles': [
+          {
+            'id': 'owner',
+            'template': 'owner',
+            'name': '',
+            'color': _hex(TeamPolicy.templateColors['owner']!),
+            'grants': TeamPolicy.encode(TeamPolicy.templates['owner']!),
+            'revision': 0,
+            'fixed': true,
+            'members': 1,
+            'pendingInvitations': 0,
+            'canEdit': false,
+            'canDelete': false,
+            'canAssign': false,
+          },
+          for (final id in ids)
+            if (current(id) case final role?)
+              {
+                ...role,
+                'fixed': false,
+                'members': holders(id),
+                'pendingInvitations': invites(id),
+                'canEdit': owner,
+                'canDelete': owner && holders(id) == 0 && invites(id) == 0,
+                'canAssign':
+                    TeamPolicy.level(TeamPolicy.parse(role['grants'])) <
+                    (owner ? 3 : 1),
+              },
+        ],
+        'canCreate': owner,
+        'myRole': workspaceRole,
+        'myLevel': owner ? 3 : 1,
+      };
+    }
+    final operation = d['operationId'] as String;
+    if (_roleOperations[operation] case final done?) return done;
+    if (!owner)
+      throw FirebaseFunctionsException(
+        code: 'permission-denied',
+        message: 'role_edit_denied',
+      );
+    final creating = d['roleId'] == null;
+    final id = creating ? 'r_preview${++_roleSequence}' : d['roleId'] as String;
+    final before = creating ? null : current(id);
+    if (!creating && before == null) {
+      throw FirebaseFunctionsException(
+        code: 'not-found',
+        message: 'role_not_found',
+      );
+    }
+    if (!creating && before!['revision'] != d['expectedRevision']) {
+      throw FirebaseFunctionsException(
+        code: 'aborted',
+        message: 'role_changed',
+      );
+    }
+    final revision = ((before?['revision'] as int?) ?? 0) + 1;
+    Map<String, dynamic> result;
+    if (d['action'] == 'delete') {
+      if (holders(id) + invites(id) > 0) {
+        throw FirebaseFunctionsException(
+          code: 'failed-precondition',
+          message: 'role_in_use',
+        );
+      }
+      roleDocs[id] = {...before!, 'deleted': true, 'revision': revision};
+      result = {'roleId': id, 'deleted': true};
+    } else {
+      final name = (d['name'] as String).trim();
+      final taken = roleDocs.entries.any(
+        (e) =>
+            e.key != id &&
+            e.value['deleted'] != true &&
+            (e.value['name'] as String).toLowerCase() == name.toLowerCase(),
+      );
+      if (taken)
+        throw FirebaseFunctionsException(
+          code: 'already-exists',
+          message: 'role_name_exists',
+        );
+      roleDocs[id] = {
+        'id': id,
+        'template': before?['template'],
+        'name': name,
+        'color': (d['color'] as String).toUpperCase(),
+        'grants': Map<String, dynamic>.from(d['grants'] as Map),
+        'revision': revision,
+      };
+      for (final a in accounts.where((a) => a['role'] == id)) {
+        a['roleGrants'] = roleDocs[id]!['grants'];
+        a['roleName'] = name;
+      }
+      result = {'roleId': id, 'revision': revision};
+    }
+    _roleOperations[operation] = result;
+    return result;
+  }
+
+  /// C1–C3 calendar fixture: the preview rooms with one lease (paid, with a
+  /// roommate), one Airbnb short stay with only the deposit paid, and a stay
+  /// this role may not open, placed inside whatever month is asked for.
+  Map<String, dynamic> _calendarPreview(Map<String, dynamic> d) {
+    if (d['organizationId'] != 'preview') reject();
+    final access = TeamAccess.fromMap(grant(workspaceRole));
+    final first = DateTime.parse('${d['from']}T00:00:00Z');
+    final last = DateTime.tryParse('${d['to']}T00:00:00Z');
+    // Three months are asked for (2026-10-04): the samples go in the middle one.
+    final from = last != null && last.difference(first).inDays > 40
+        ? DateTime.utc(first.year, first.month + 1)
+        : first;
+    String at(int days, String time) {
+      final t = from.add(Duration(days: days));
+      return '${t.toIso8601String().substring(0, 10)} $time';
+    }
+
+    final now = DateTime.now();
+    final today =
+        '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final leases = access.allows(TeamPermission.manageLease);
+    final bookings = access.allows(TeamPermission.readBookings);
+    final property = [
+      for (final b in buildings)
+        if (!assignedOnly || b['id'] == 'riverside')
+          {
+            'id': b['id'],
+            'name': b['name'],
+            'timeZone': 'Asia/Ho_Chi_Minh',
+            'today': today,
+            'now':
+                '$today ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}',
+            'canCreateBookings': access.allows(TeamPermission.createBookings),
+            'canLease': leases,
+            'canReadProblems': true,
+            'canReportProblems':
+                access.allows(TeamPermission.manageProperty) ||
+                leases ||
+                bookings,
+            'rooms': [
+              for (final r in rooms.where((r) => r['buildingId'] == b['id']))
+                {
+                  'id': r['id'],
+                  'roomNumber': r['roomNumber'],
+                  'shortStay': true,
+                  'monthly': true,
+                  'blocked': false,
+                  'problems': <Map<String, dynamic>>[],
+                },
+            ],
+            'bars': b['id'] != 'riverside'
+                ? <Map<String, dynamic>>[]
+                : [
+                    {
+                      'id': 'lease:tenant-anh',
+                      'type': 'lease',
+                      'roomId': 'room-101',
+                      'kind': 'long',
+                      'start': at(-20, '12:00'),
+                      'end': null,
+                      'plannedEnd': at(300, '12:00').substring(0, 10),
+                      'status': 'staying',
+                      'canOpen': leases,
+                      'problem': false,
+                      if (!leases) ...{'name': '', 'anonymous': true},
+                      if (leases) ...{
+                        'recordId': 'tenant-anh',
+                        'name': tenants.first['fullName'],
+                        'phone': true,
+                        'roommates': 1,
+                        'periodMonths': 1,
+                        'pay': 'paid',
+                        'paidUntil': at(10, '00:00'),
+                      },
+                    },
+                    {
+                      'id': 'booking:preview-airbnb',
+                      'type': 'booking',
+                      'roomId': 'room-102',
+                      'kind': bookings ? 'deposit' : 'short',
+                      'start': at(2, '14:00'),
+                      'end': at(4, '11:30'),
+                      'status': 'upcoming',
+                      'canOpen': bookings,
+                      'problem': false,
+                      if (!bookings) ...{'name': '', 'anonymous': true},
+                      if (bookings) ...{
+                        'recordId': 'preview-airbnb',
+                        'name': 'Trần Văn Bình — khách Airbnb',
+                        'phone': true,
+                        'platform': 'airbnb',
+                        'pay': 'deposit',
+                        'paidFraction': 0,
+                        'paidUntil': at(2, '14:00'),
+                      },
+                    },
+                  ],
+          },
+    ];
+    final visible =
+        access.allows(TeamPermission.readBookings) ||
+        access.allows(TeamPermission.createBookings) ||
+        leases ||
+        access.allows(TeamPermission.manageProperty);
+    return {
+      'from': d['from'],
+      'to': d['to'],
+      'properties': visible ? property : <Map<String, dynamic>>[],
+    };
+  }
+
   Never reject() => throw FirebaseFunctionsException(
     code: 'failed-precondition',
     message: 'Preview record unavailable',
@@ -208,6 +486,39 @@ class TeamPreviewStore {
   }
 
   Map<String, dynamic> _handle(String name, Map<String, dynamic> d) {
+    if(name=='transferOrganization') {
+      if(d['action']=='read')return {'owner':workspaceRole=='owner',
+        'candidates':workspaceRole=='owner'?[{'id':'preview-manager','name':'Nguyễn Thị Minh Anh — Quản lý Riverside'}]:[],
+        'proposal':ownershipTransfer==null?null:{...ownershipTransfer!, 'canAccept':workspaceRole=='manager'}};
+      if(d['action']=='propose'&&workspaceRole=='owner') {
+        ownershipTransfer={'id':d['proposalId'],'recipientName':'Nguyễn Thị Minh Anh — Quản lý Riverside'};return {'status':'pending'};
+      }
+      if(d['action']=='cancel'&&workspaceRole=='owner') {ownershipTransfer=null;return {'status':'cancelled'};}
+      if(d['action']=='accept'&&workspaceRole=='manager'&&ownershipTransfer!=null) {workspaceRole='owner';ownershipTransfer=null;return {'status':'complete'};}
+      throw FirebaseFunctionsException(code:'failed-precondition',message:'org_transfer_changed');
+    }
+    if(name == 'ownershipAgreements') throw FirebaseFunctionsException(code: 'failed-precondition', message: 'organization_governance_retired');
+    if (name == 'claimMyInvitations')
+      return {'results': <Map<String, dynamic>>[]};
+    if (name == 'listMyOrganizations')
+      return {
+        'accountPolicy': {
+          'mode': accountMode,
+          'canCreate': accountMode == 'normal' && accountWorkplaces.isEmpty,
+          if (staffConflict != null) 'staffConflict': staffConflict,
+        },
+        'records': accountWorkplaces,
+        'nextCursor': null,
+      };
+    if (name == 'organizationSettings' &&
+        const ['create', 'createLegacy', 'restore'].contains(d['action']) &&
+        (accountMode != 'normal' || accountWorkplaces.isNotEmpty)) {
+      throw FirebaseFunctionsException(
+        code: 'failed-precondition',
+        message: 'org_staff_account',
+      );
+    }
+    if (name == 'calendarView') return _calendarPreview(d);
     final operational = _operationalPreview(name, d);
     if (operational != null) return operational;
     if (name == 'leaseLifecycle') {
@@ -506,6 +817,12 @@ class TeamPreviewStore {
         'status': 'active',
         'moveInLocalDate': d['moveInDate'],
         'revision': '1:0',
+        // CCCD and tạm trú (2026-10-04), stored like the server does.
+        if (d['nationalId'] != null) 'nationalId': d['nationalId'],
+        if (d['residenceRegistered'] != null)
+          'residenceRegistered': d['residenceRegistered'],
+        if (d['residenceDate'] != null)
+          'residenceRegisteredLocalDate': d['residenceDate'],
       });
       room['revision'] =
           '${int.parse((room['revision'] as String).split(':').first) + 1}:0';
@@ -530,6 +847,23 @@ class TeamPreviewStore {
         reject();
       }
       final building = record(buildings, d['buildingId']);
+      // 2026-10-04: a lease's surcharges edited later.
+      if (d['action'] == 'surcharges') {
+        final row = record(tenants, d['tenantId']);
+        if (row['buildingId'] != d['buildingId'] || row['isMainTenant'] != true)
+          reject();
+        final rows = [
+          for (final (i, c) in (d['surcharges'] as List).indexed)
+            {
+              ...Map<String, dynamic>.from(c as Map),
+              'id':
+                  (c['id'] as String?) ??
+                  'sc_${row['id']}_${DateTime.now().microsecondsSinceEpoch}_$i',
+            },
+        ];
+        row['surcharges'] = rows;
+        return {'surcharges': rows};
+      }
       if (d['action'] == 'rooms') {
         final rows =
             rooms
@@ -551,7 +885,8 @@ class TeamPreviewStore {
                 (r) => {
                   'id': r['id'],
                   'roomNumber': r['roomNumber'],
-                  'monthly': (r['rentalMode'] ?? 'monthly') != 'hourly',
+                  // 2026-10-04: every room takes leases.
+                  'monthly': true,
                 },
               )
               .toList(),
@@ -570,12 +905,6 @@ class TeamPreviewStore {
           message: 'lease_property_timezone_required',
         );
       }
-      if (room['rentalMode'] == 'hourly') {
-        throw FirebaseFunctionsException(
-          code: 'failed-precondition',
-          message: 'monthly',
-        );
-      }
       final currency = room['currency'] ?? building['currency'] ?? 'VND';
       if (d['action'] == 'prepare') {
         return {
@@ -586,6 +915,7 @@ class TeamPreviewStore {
             'timeZone': building['timeZone'],
             'today': '2026-09-27',
             'canBackdate': workspaceRole != 'manager',
+            'canPrice': workspaceRole != 'manager' || priceOverride,
           },
         };
       }
@@ -628,7 +958,47 @@ class TeamPreviewStore {
         'monthlyRentMinor': d['rentMinor'],
         'currency': currency,
         'revision': '1:0',
+        // B3 details, stored like the server does (deposit only when given).
+        for (final k in [
+          'nationalId',
+          'residenceRegistered',
+          'staffInChargeId',
+          'depositMethod',
+          'depositNote',
+        ])
+          if (d[k] != null) k: d[k],
+        if (d['periodMonths'] != null) 'paymentPeriodMonths': d['periodMonths'],
+        if (d['dueDay'] != null) 'paymentDueDay': d['dueDay'],
+        if (d['periodMonths'] != null)
+          'periodRentMinor':
+              d['periodAmountMinor'] ??
+              (d['rentMinor'] as int) * (d['periodMonths'] as int),
+        if (d['depositMinor'] != null) 'deposit': d['depositMinor'],
+        if (d['depositMinor'] != null) 'depositMinor': d['depositMinor'],
+        if (d['surcharges'] != null)
+          'surcharges': [
+            for (final (i, c) in (d['surcharges'] as List).indexed)
+              {...Map<String, dynamic>.from(c as Map), 'id': 'sc_${key}_$i'},
+          ],
       });
+      for (final (i, c) in ((d['coTenants'] as List?) ?? const []).indexed) {
+        final m = Map<String, dynamic>.from(c as Map);
+        tenants.add({
+          'id': '$key-co$i',
+          'buildingId': d['buildingId'],
+          'roomId': d['roomId'],
+          'fullName': m['fullName'],
+          'phoneNumber': m['phoneNumber'] ?? '',
+          if (m['nationalId'] != null) 'nationalId': m['nationalId'],
+          'residenceRegistered': m['residenceRegistered'] == true,
+          'status': 'active',
+          'isMainTenant': false,
+          'mainTenantId': key,
+          'moveInLocalDate': d['moveInDate'],
+          'currency': currency,
+          'revision': '1:0',
+        });
+      }
       room['revision'] =
           '${int.parse((room['revision'] as String).split(':').first) + 1}:0';
       activity.insert(0, {
@@ -646,6 +1016,27 @@ class TeamPreviewStore {
       });
       return completed[key] = {'tenantId': key};
     }
+    // Like the server projection: permissions and the main tenant's name.
+    Map<String, dynamic> contact(Map<String, dynamic> r) => {
+      ...r,
+      'stayStatus': r['status'] == 'moveOut'
+          ? 'checkedOut'
+          : '${r['moveInLocalDate'] ?? ''}'.compareTo('2026-09-27') > 0
+          ? (((r['depositMinor'] as num?) ?? 0) > 0
+                ? 'deposited'
+                : 'notCheckedIn')
+          : 'staying',
+      'canReadRentHistory': workspaceRole != 'manager' || priceOverride,
+      'canEditRent':
+          r['canEditRent'] == true &&
+          (workspaceRole != 'manager' || priceOverride),
+      if (r['mainTenantId'] != null)
+        'mainTenantName':
+            tenants
+                .where((t) => t['id'] == r['mainTenantId'])
+                .firstOrNull?['fullName'] ??
+            '',
+    };
     if (name == 'tenantContacts') {
       if (d['organizationId'] != 'preview' ||
           !['owner', 'administrator', 'manager'].contains(workspaceRole) ||
@@ -668,25 +1059,32 @@ class TeamPreviewStore {
                 (a, b) => (a['id'] as String).compareTo(b['id'] as String),
               );
         return {
-          'records': rows
-              .take(25)
-              .map(
-                (r) => {
-                  ...r,
-                  'canReadRentHistory':
-                      workspaceRole != 'manager' || priceOverride,
-                  'canEditRent':
-                      r['canEditRent'] == true &&
-                      (workspaceRole != 'manager' || priceOverride),
-                },
-              )
-              .toList(),
+          'records': rows.take(25).map(contact).toList(),
           'nextCursor': rows.length > 25 ? rows[24]['id'] : null,
         };
       }
       final row = record(tenants, d['tenantId']);
       if (row['buildingId'] != d['buildingId']) reject();
-      if (d['action'] == 'read') return {'record': row};
+      if (d['action'] == 'read') {
+        return {
+          'record': {
+            ...contact(row),
+            // The people living with a main tenant (2026-10-04).
+            'roommates': [
+              if (row['isMainTenant'] == true)
+                for (final t in tenants)
+                  if (t['mainTenantId'] == row['id'] &&
+                      t['status'] == 'active' &&
+                      t['moveOutLocalDate'] == null)
+                    {
+                      'id': t['id'],
+                      'fullName': t['fullName'],
+                      'moveInLocalDate': t['moveInLocalDate'] ?? '',
+                    },
+            ],
+          },
+        };
+      }
       final key = 'tenant-contact-$workspaceRole-${d['operationId']}';
       if (completed.containsKey(key)) return completed[key]!;
       if (row['revision'] != d['revision']) {
@@ -871,25 +1269,26 @@ class TeamPreviewStore {
       if (room['buildingId'] != d['buildingId']) reject();
       final currency = room['currency'] ?? 'VND',
           factor = currency == 'USD' ? 100 : 1;
-      const fields = [
-        'roomPrice',
-        'hourlyPrice',
-        'dailyPrice',
-        'overnightPrice',
-      ];
+      // Same as the server (2026-10-04): monthly, per night, per hour; an
+      // older day price is shown as the night price.
+      const fields = ['roomPrice', 'nightlyPrice', 'hourlyPrice'];
+      num? stored(String f) =>
+          (f == 'nightlyPrice'
+                  ? room['nightlyPrice'] ?? room['dailyPrice']
+                  : room[f])
+              as num?;
       if (d['action'] == 'read') {
         return {
           'record': {
             'roomId': room['id'],
             'roomNumber': room['roomNumber'],
             'currency': currency,
-            'rentalMode': room['rentalMode'] ?? 'monthly',
+            'rentalMode': 'both',
             'revision': room['revision'],
             'ratesMinor': {
               for (final f in fields)
-                f: room[f] == null ? null : ((room[f] as num) * factor).round(),
+                f: stored(f) == null ? null : (stored(f)! * factor).round(),
             },
-            'dailyPriceThresholdHours': room['dailyPriceThresholdHours'],
           },
         };
       }
@@ -898,9 +1297,16 @@ class TeamPreviewStore {
       if (room['revision'] != d['revision']) {
         throw FirebaseFunctionsException(code: 'aborted', message: 'Changed');
       }
-      room['rentalMode'] = d['rentalMode'];
-      room['dailyPriceThresholdHours'] = d['dailyPriceThresholdHours'];
       final rates = d['ratesMinor'] as Map;
+      if (d.containsKey('dailyPriceThresholdHours') ||
+          rates.keys.toSet().difference(fields.toSet()).isNotEmpty) {
+        reject();
+      }
+      // Every room takes both; each price is optional (2026-10-04).
+      room['rentalMode'] = 'both';
+      room['dailyPrice'] = null;
+      room['overnightPrice'] = null;
+      room['dailyPriceThresholdHours'] = null;
       for (final f in fields) {
         room[f] = rates[f] == null ? null : (rates[f] as num) / factor;
       }
@@ -1002,7 +1408,7 @@ class TeamPreviewStore {
               'buildingId': d['buildingId'],
               'revision': '0:0',
               'currency': building['currency'] ?? 'VND',
-              'rentalMode': 'monthly',
+              'rentalMode': 'both',
             }
           : record(rooms, d['roomId']);
       if (row['buildingId'] != d['buildingId']) reject();
@@ -1381,7 +1787,7 @@ class TeamPreviewStore {
                   {
                     'id': 'cleaner',
                     'ownerId': 'preview-housekeeper',
-                    'displayName': 'Nguyễn Thị Lan — Nhân viên buồng phòng',
+                    'displayName': 'Nguyễn Thị Lan — Nhân viên dọn phòng',
                   },
                 ],
         };
@@ -1474,6 +1880,7 @@ class TeamPreviewStore {
         ],
       };
     }
+    if (name == 'orgRoles') return _roles(d);
     if (name == 'readTeam') {
       if (d['organizationId'] != 'preview') reject();
       final admin =
@@ -1562,6 +1969,40 @@ class TeamPreviewStore {
     final operation = d['operationId'] as String;
     if (completed.containsKey(operation)) return completed[operation]!;
     final result = <String, dynamic>{'ok': true};
+    if (const [
+          'addStaff',
+          'invite',
+          'changeInvitationEmail',
+          'acceptInvitation',
+          'requestAccess',
+          'reviewRequest',
+          'setAccess',
+        ].contains(d['action']) &&
+        d['status'] != 'revoked' &&
+        d['decision'] != 'reject') {
+      final address =
+          ((d['profile'] as Map?)?['email'] ??
+                  d['email'] ??
+                  accounts
+                      .where((a) => a['ownerId'] == d['userId'])
+                      .firstOrNull?['email'] ??
+                  '')
+              .toString()
+              .trim()
+              .toLowerCase();
+      final reason = ownerEmails.contains(address)
+          ? 'team_owner_account'
+          : otherEmployerEmails.contains(address)
+          ? 'team_other_employer'
+          : additionalWorkplaceEmails.contains(address)
+          ? 'team_other_employer'
+          : null;
+      if (reason != null)
+        throw FirebaseFunctionsException(
+          code: 'failed-precondition',
+          message: reason,
+        );
+    }
     switch (d['action']) {
       case 'requestAccess':
         if (d['organizationId'] != 'preview' ||
@@ -1597,6 +2038,40 @@ class TeamPreviewStore {
         } else {
           record(staff, d['staffId']).addAll(profile);
         }
+      case 'addStaff':
+        final profile = Map<String, dynamic>.from(d['profile'] as Map);
+        final email = (profile['email'] as String).trim().toLowerCase();
+        if (invitations.any(
+          (i) => i['email'] == email && i['status'] == 'pending',
+        )) {
+          throw FirebaseFunctionsException(
+            code: 'already-exists',
+            message: 'team_email_already_invited',
+          );
+        }
+        staff.add({
+          ...profile,
+          'email': email,
+          'id': operation,
+          'code': 'S${staff.length + 1}',
+          'employmentStatus': 'active',
+          'accountId': null,
+          'canEditProfile': true,
+        });
+        invitations.add({
+          'id': operation,
+          'staffId': operation,
+          'email': email,
+          'access': d['access'],
+          'status': 'pending',
+          'expiresAt': null,
+          'canRevoke': true,
+        });
+        result.addAll({'staffId': operation, 'invitationId': operation});
+      case 'changeInvitationEmail':
+        record(invitations, d['invitationId'])['email'] = (d['email'] as String)
+            .trim()
+            .toLowerCase();
       case 'invite':
         invitations.add({
           'id': operation,

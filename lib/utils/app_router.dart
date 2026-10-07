@@ -4,6 +4,10 @@ import 'package:phan_mem_quan_ly_can_ho/screens/authentication/login_screen.dart
 import 'package:phan_mem_quan_ly_can_ho/screens/organizations/organization_screen.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/building/room/room_detail.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/splash_screen.dart';
+import 'package:phan_mem_quan_ly_can_ho/screens/team/org_location.dart';
+import 'package:phan_mem_quan_ly_can_ho/screens/team/org_shell.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/team_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/main.dart' show getIt;
 import 'package:flutter/material.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/localizations/app_localizations.dart';
 
@@ -18,6 +22,17 @@ class AppRouter {
   static const String paymentScreen = '/payemts';
   static const String tenantScreen = '/tenants';
   static const String reportScreen = '/report';
+
+  /// An organization address the app was opened (or reloaded) at. The splash
+  /// always runs first; the dashboard opens this once sign-in is known, so
+  /// the organization list stays underneath for Back (U1).
+  static String? pendingAddress;
+
+  static String? takePendingAddress() {
+    final address = pendingAddress;
+    pendingAddress = null;
+    return address;
+  }
 
   /// Use this with [Navigator.pushReplacement] for a smooth fade transition.
   /// e.g. Navigator.pushReplacement(context, AppRouter.fadeRoute(const DashboardScreen()));
@@ -80,6 +95,18 @@ class AppRouter {
           settings: settings,
         );
       default:
+        // Version-2 organization pages: /org/{id}/{section}/{page}?p={property}
+        final location = OrgLocation.parse(settings.name);
+        if (location != null) {
+          return MaterialPageRoute(
+            builder: (_) => OrgShell(
+              organizationId: location.organizationId,
+              initial: location,
+              service: getIt<TeamService>(),
+            ),
+            settings: settings,
+          );
+        }
         // If the route doesn't exist, show an error
         return MaterialPageRoute(builder: (context) => Scaffold(
           body: Center(child: Text(

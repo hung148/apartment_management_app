@@ -1,10 +1,14 @@
+import 'workspace_page_scope.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
+import 'ws_ui.dart';
 import 'package:uuid/uuid.dart';
 import '../../services/team_service.dart';
 import '../../utils/localizations/app_localizations.dart';
 import 'room_rates_screen.dart' show parseRoomRate;
 import 'property_contract_history.dart';
+import 'back_steps.dart';
+import '../../utils/app_number.dart';
 
 bool contractDate(String value) {
   final d = DateTime.tryParse('${value}T00:00:00Z');
@@ -18,13 +22,15 @@ bool contractDate(String value) {
 class PropertyContractScreen extends StatefulWidget {
   final String organizationId, buildingId;
   final TeamService service;
-  final VoidCallback onBack;
+
+  /// Null inside the organization workspace sections (U1): no Back button.
+  final VoidCallback? onBack;
   const PropertyContractScreen({
     super.key,
     required this.organizationId,
     required this.buildingId,
     required this.service,
-    required this.onBack,
+    this.onBack,
   });
   @override
   State<PropertyContractScreen> createState() => _PropertyContractScreenState();
@@ -119,9 +125,15 @@ class _PropertyContractScreenState extends State<PropertyContractScreen> {
         }
         if (c != null) {
           final amount = c['amountMinor'] as int;
-          _fields['amount']!.text = _currency == 'USD'
-              ? '${amount ~/ 100}.${(amount % 100).toString().padLeft(2, '0')}'
-              : '$amount';
+          _fields['amount']!.text = appMoneyInputText(amount, _currency);
+        } else if (r['importedRentInMinor'] is int) {
+          // Sheet import (2026-10-05): the rent the business pays for the
+          // building in the old app; the owner adds the landlord and dates.
+          _direction = 'rentIn';
+          _fields['amount']!.text = appMoneyInputText(
+            r['importedRentInMinor'] as int,
+            _currency,
+          );
         }
         _busy = false;
         _message = saved ? 'contract_saved' : null;
@@ -205,11 +217,14 @@ class _PropertyContractScreenState extends State<PropertyContractScreen> {
   @override
   Widget build(BuildContext context) {
     if (_history) {
-      return PropertyContractHistory(
-        organizationId: widget.organizationId,
-        buildingId: widget.buildingId,
-        service: widget.service,
+      return BackStep(
         onBack: () => setState(() => _history = false),
+        child: PropertyContractHistory(
+          organizationId: widget.organizationId,
+          buildingId: widget.buildingId,
+          service: widget.service,
+          onBack: () => setState(() => _history = false),
+        ),
       );
     }
     final t = AppTranslations.of(context),
@@ -239,6 +254,7 @@ class _PropertyContractScreenState extends State<PropertyContractScreen> {
               readOnly: !editable,
               minLines: lines,
               maxLines: null,
+              inputFormatters: k == 'amount' ? appMoneyInput(_currency) : null,
               decoration: InputDecoration(
                 helperText: helper,
                 helperMaxLines: 12,
@@ -260,16 +276,17 @@ class _PropertyContractScreenState extends State<PropertyContractScreen> {
       child: Align(
         alignment: Alignment.topCenter,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 720),
+          constraints: WorkspacePageScope.constraints(context, 720),
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                TextButton(
-                  onPressed: locked ? null : widget.onBack,
-                  child: Text(t['workspace_title']),
-                ),
+                if (widget.onBack != null)
+                  TextButton(
+                    onPressed: locked ? null : widget.onBack,
+                    child: Text(t['workspace_title']),
+                  ),
                 Text(
                   t['contract_title'],
                   style: Theme.of(context).textTheme.headlineSmall,
@@ -411,9 +428,13 @@ class _PropertyContractScreenState extends State<PropertyContractScreen> {
                           lines: 3,
                         ),
                         const SizedBox(height: 20),
-                        FilledButton(
-                          onPressed: editable ? _save : null,
-                          child: Text(t['contract_save']),
+                        WsActions(
+                          children: [
+                            FilledButton(
+                              onPressed: editable ? _save : null,
+                              child: Text(t['contract_save']),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -427,21 +448,33 @@ class _PropertyContractScreenState extends State<PropertyContractScreen> {
                     ),
                   ),
                 if (_revision != null)
-                  OutlinedButton(
-                    onPressed: locked
-                        ? null
-                        : () => setState(() => _history = true),
-                    child: Text(t['contract_history']),
+                  WsActions(
+                    children: [
+                      OutlinedButton(
+                        onPressed: locked
+                            ? null
+                            : () => setState(() => _history = true),
+                        child: Text(t['contract_history']),
+                      ),
+                    ],
                   ),
                 if (_pending != null)
-                  OutlinedButton(
-                    onPressed: _saving ? null : _save,
-                    child: Text(t['contract_retry']),
+                  WsActions(
+                    children: [
+                      OutlinedButton(
+                        onPressed: _saving ? null : _save,
+                        child: Text(t['contract_retry']),
+                      ),
+                    ],
                   ),
                 const SizedBox(height: 8),
-                OutlinedButton(
-                  onPressed: locked ? null : () => _load(),
-                  child: Text(t['contract_reload']),
+                WsActions(
+                  children: [
+                    OutlinedButton(
+                      onPressed: locked ? null : () => _load(),
+                      child: Text(t['contract_reload']),
+                    ),
+                  ],
                 ),
               ],
             ),

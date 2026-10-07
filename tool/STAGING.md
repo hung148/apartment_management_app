@@ -7,6 +7,13 @@ provider secrets into this environment.
 
 ## Web release
 
+Everything below (analyze, test, functions, web build, hosting) in one command,
+stopping at the first failure:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tool\staging_all.ps1
+```
+
 ```powershell
 flutter test --concurrency=1
 flutter build web --release --output=build/staging-web --dart-define-from-file=config/app_check.staging.json
@@ -51,6 +58,11 @@ IAM_ROLLOUT.md. No service-account private keys are needed.
 entrypoint, and keeps a journal under `.dart_tool/staging-release/<id>/`.
 
 ```powershell
+# One command (prepare, deploy 3 at a time + poll until done, finish, verify;
+# resumes if interrupted; add --replace to abandon an unfinished release):
+node tool/staging_release.cjs all
+
+# Or step by step:
 node tool/staging_release.cjs prepare
 node tool/staging_release.cjs deploy     # starts 3; repeat after polling
 node tool/staging_release.cjs poll       # repeat until running is 0
@@ -73,3 +85,30 @@ in the source. Both accounts must be registered in the staging web app first.
 `status` shows state and counts, `expire` makes a closed test organization due
 for purge, `node tool/staging_release.cjs run-purge` runs the schedule once, and
 `delete` removes everything the tool created.
+
+## v2 migration rehearsal (G8)
+
+`tool/migrate_v2.cjs` moves one legacy organization to version 2. Every step
+except `rehearse` works on the project named in `--project`; `rehearse` reads
+production (read-only) and writes an **anonymized** copy into staging, so no
+live names, phones, emails, addresses or notes reach staging (amounts, dates
+and structure stay so the move can be tested). Backups and plans are written
+under `private-backups/migrate-v2/` (git-ignored).
+
+```powershell
+node tool/migrate_v2.cjs rehearse --org PRODUCTION_ORG_ID --owner your-staging@gmail.com
+node tool/migrate_v2.cjs plan --project staging --org REHEARSAL_ORG_ID
+node tool/migrate_v2.cjs apply --plan "FOLDER" --confirm "ORGANIZATION NAME"
+# test in the staging app, then:
+node tool/migrate_v2.cjs undo --plan "FOLDER"     # rollback rehearsal
+node tool/migrate_v2.cjs rehearse-delete           # remove rehearsal copies
+```
+
+What the plan changes: owner → `owner`, admin → `administrator`, everyone else
+waits for a role (`assignmentRequired`), non-active people `suspended`;
+properties without a time zone/currency get `Asia/Ho_Chi_Minh`/`VND`; rooms
+without a rental mode get `both` (short-stay prices or bookings) or `monthly`;
+old tenants/bookings/payments get `organizationId`/`buildingId` from their
+room; the organization gets `accessVersion: 2` last. `apply` stops if any of
+those fields changed after the plan; `undo` restores the previous values and
+leaves fields that were changed after the move unless `--force`.

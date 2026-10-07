@@ -78,3 +78,7 @@ analyze.txt
 .firebaserc.local
 
 project_diagram.excalidraw
+
+# Local emulator data (tool/local.ps1)
+.local-data*/
+.local-emulators.pid

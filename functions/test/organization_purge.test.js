@@ -21,6 +21,13 @@ const seed=()=>({
 });
 const run=db=>createOrganizationPurge({db,Timestamp:Ts,logger,now:()=>now})();
 
+test('purge removes meter readings, retry ledgers and tariffs only for the closed organization',async()=>{
+ const db=fakeDb({...seed(),'utilityMeters/m':{organizationId:'due'},'utilityMeters/m/readings/r':{organizationId:'due'},'utilityMeters/m/operations/op':{organizationId:'due'},'utilityTariffs/p':{organizationId:'due'},'utilityMeters/keep':{organizationId:'live'},'utilityMeters/keep/readings/r':{organizationId:'live'}});
+ await run(db);
+ for(const p of ['utilityMeters/m','utilityMeters/m/readings/r','utilityMeters/m/operations/op','utilityTariffs/p'])assert.equal(db.store.has(p),false,p);
+ assert.ok(db.store.has('utilityMeters/keep/readings/r'));
+});
+
 test('purges only due, closed organizations and everything that belongs to them',async()=>{
   const db=fakeDb(seed());
   const results=await run(db);

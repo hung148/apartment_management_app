@@ -38,7 +38,7 @@ function createPropertyDetailsHandler({db,Timestamp,HttpsError}) {
       if(deleting){
         if(old.rentalContract!=null||old.managementType==='rented'||['renterName','renterPhone','rentAmount','rentDueDay','rentContractStart','rentContractEnd','renterNotes'].some(field=>old[field]!=null&&old[field]!==''))throw new HttpsError('failed-precondition','property_not_empty');
         // Never cascade: even cancelled/completed operational history blocks removal.
-        for(const collection of ['rooms','tenants','bookings','payments','housekeepingTasks']){
+        for(const collection of ['rooms','tenants','bookings','payments','housekeepingTasks','utilityMeters','utilityTariffs','serviceFees','serviceFeeRooms']){
           const linked=await tx.get(db.collection(collection).where('buildingId','==',d.buildingId).limit(1));
           if(!linked.empty)throw new HttpsError('failed-precondition','property_not_empty');
         }

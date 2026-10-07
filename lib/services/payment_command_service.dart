@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'team_service.dart';
+import 'app_functions.dart';
 
 /// Retain the same operation after a timeout or connection failure.
 /// A new operation means a new financial action, even with identical amounts.
@@ -66,8 +67,7 @@ class PaymentCommandService {
     String callable,
     Map<String, dynamic> data,
   ) async {
-    final response = await FirebaseFunctions.instance
-        .httpsCallable(callable)
+    final response = await appCallable(callable)
         .call(data);
     return Map<String, dynamic>.from(response.data as Map);
   }

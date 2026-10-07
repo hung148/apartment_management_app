@@ -1,3 +1,4 @@
+import 'workspace_page_scope.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import '../../services/team_service.dart';
@@ -150,7 +151,7 @@ class _StaffEditorState extends State<StaffEditor> {
         child: Align(
           alignment: Alignment.topCenter,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 720),
+            constraints: WorkspacePageScope.constraints(context, 720),
             child: SingleChildScrollView(
               controller: _scroll,
               padding: const EdgeInsets.all(16),

@@ -64,24 +64,24 @@ class _TeamPreviewAppState extends State<TeamPreviewApp> {
                         // Preview-only controls use the same policy as real reads.
                         spacing: 8,
                         children: [
-                          DropdownButton<TeamRole>(
-                            value: TeamRole.values.firstWhere(
-                              (r) => r.name == store.workspaceRole,
-                            ),
-                            items: TeamRole.values
+                          DropdownButton<String>(
+                            value: TeamPolicy.templateIds.contains(store.workspaceRole)
+                                ? store.workspaceRole
+                                : 'owner',
+                            items: TeamPolicy.templateIds
                                 .map(
                                   (r) => DropdownMenuItem(
                                     value: r,
                                     child: Text(
                                       AppTranslations(
                                         Locale(vietnamese ? 'vi' : 'en'),
-                                      )['team_role_${r.name}'],
+                                      )['team_role_$r'],
                                     ),
                                   ),
                                 )
                                 .toList(),
                             onChanged: (role) => setState(() {
-                              store.workspaceRole = role!.name;
+                              store.workspaceRole = role!;
                               workspace = true;
                               recipient = false;
                               requesting = false;

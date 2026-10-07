@@ -1,6 +1,9 @@
+import 'workspace_page_scope.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
+import 'ws_ui.dart';
 import '../../services/team_service.dart';
+import '../../utils/app_number.dart';
 import '../../utils/localizations/app_localizations.dart';
 
 class TenantRentHistory extends StatefulWidget {
@@ -97,17 +100,14 @@ class _TenantRentHistoryState extends State<TenantRentHistory> {
     final t = AppTranslations.of(context);
     String money(Map? value, String currency) {
       if (value == null) return t['rent_history_none'];
-      final n = value['amountMinor'] as int;
-      return currency == 'USD'
-          ? '${n ~/ 100}.${(n % 100).toString().padLeft(2, '0')} USD'
-          : '$n $currency';
+      return appMoneyMinor(value['amountMinor'] as int, currency);
     }
 
     return SafeArea(
       child: Align(
         alignment: Alignment.topCenter,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 720),
+          constraints: WorkspacePageScope.constraints(context, 720),
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -124,9 +124,13 @@ class _TenantRentHistoryState extends State<TenantRentHistory> {
                 const SizedBox(height: 12),
                 Text(t['rent_history_help']),
                 const SizedBox(height: 12),
-                OutlinedButton(
-                  onPressed: _busy ? null : () => _load(),
-                  child: Text(t['contract_history_refresh']),
+                WsActions(
+                  children: [
+                    OutlinedButton(
+                      onPressed: _busy ? null : () => _load(),
+                      child: Text(t['contract_history_refresh']),
+                    ),
+                  ],
                 ),
                 if (_busy) const LinearProgressIndicator(),
                 if (_failed)
@@ -182,13 +186,17 @@ class _TenantRentHistoryState extends State<TenantRentHistory> {
                     ),
                   ),
                 if (_cursor != null)
-                  OutlinedButton(
-                    onPressed: _busy ? null : () => _load(more: true),
-                    child: Text(
-                      t[_failed
-                          ? 'contract_history_retry'
-                          : 'contract_history_more'],
-                    ),
+                  WsActions(
+                    children: [
+                      OutlinedButton(
+                        onPressed: _busy ? null : () => _load(more: true),
+                        child: Text(
+                          t[_failed
+                              ? 'contract_history_retry'
+                              : 'contract_history_more'],
+                        ),
+                      ),
+                    ],
                   ),
               ],
             ),

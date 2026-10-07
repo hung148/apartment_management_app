@@ -2,6 +2,7 @@ import 'package:phan_mem_quan_ly_can_ho/models/owner_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/app_logger.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 
 /// Thrown by [AuthService.deleteSignIn] when Firebase requires the user
 /// to have signed in recently before a sensitive operation (like account
@@ -37,6 +38,66 @@ class AuthService {
       logger.e('Login failed', error: e);
       return null;
     }
+  }
+
+  /// Google sign-in is offered on web and Android (R2, 2026-10-01). The iPhone
+  /// app waits for Sign in with Apple (App Store rule); desktop builds have no
+  /// Firebase provider flow.
+  static bool get googleSignInAvailable =>
+      kIsWeb || defaultTargetPlatform == TargetPlatform.android;
+
+  /// Signs in with Google. Returns null when the person closed or cancelled the
+  /// Google window. Throws [FirebaseAuthException] for real failures.
+  /// The first Google sign-in creates the owners/{uid} profile.
+  Future<User?> signInWithGoogle({String? languageCode}) async {
+    final provider = GoogleAuthProvider()
+      ..setCustomParameters({'prompt': 'select_account'});
+    UserCredential result;
+    try {
+      if (languageCode != null) await _auth.setLanguageCode(languageCode);
+      result = kIsWeb
+          ? await _auth.signInWithPopup(provider)
+          : await _auth.signInWithProvider(provider);
+    } on FirebaseAuthException catch (e) {
+      if (const {
+        'popup-closed-by-user',
+        'cancelled-popup-request',
+        'web-context-cancelled',
+        'web-context-canceled',
+        'user-cancelled',
+        'canceled',
+      }.contains(e.code)) {
+        return null;
+      }
+      rethrow;
+    }
+    final user = result.user;
+    if (user == null) return null;
+    try {
+      await _ensureOwnerProfile(user);
+    } catch (e) {
+      // Without a profile the dashboard cannot load; sign out so a retry starts clean.
+      logger.e('Could not create the profile after Google sign-in', error: e);
+      await _auth.signOut();
+      throw FirebaseAuthException(code: 'profile-create-failed');
+    }
+    logger.i('Google sign-in successful');
+    return user;
+  }
+
+  Future<void> _ensureOwnerProfile(User user) async {
+    final ref = _firestore.collection('owners').doc(user.uid);
+    if ((await ref.get()).exists) return;
+    final email = user.email ?? '';
+    final display = user.displayName?.trim() ?? '';
+    final name = display.isNotEmpty ? display : email.split('@').first;
+    await ref.set(Owner(
+      id: user.uid,
+      email: email,
+      name: name.length > 100 ? name.substring(0, 100) : name,
+      createdAt: DateTime.now(),
+      invitedBy: null,
+    ).toMap());
   }
 
   // Logout

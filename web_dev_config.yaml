@@ -1,0 +1,18 @@
+# Flutter web dev server settings (used by `flutter run` on web only; not part
+# of any build). Local test mode (tool\local.ps1) sends sign-in, database and
+# server calls to the app's own address; these rules forward them to the
+# Firebase emulators, so the page never calls another port directly (some
+# browsers, like the Claude browser pane, block that). Ports match
+# firebase.local.json.
+server:
+  proxy:
+    - target: "http://127.0.0.1:9199/"
+      prefix: "/identitytoolkit.googleapis.com/"
+    - target: "http://127.0.0.1:9199/"
+      prefix: "/securetoken.googleapis.com/"
+    - target: "http://127.0.0.1:9199/"
+      prefix: "/emulator/"
+    - target: "http://127.0.0.1:8180/"
+      prefix: "/google.firestore.v1.Firestore/"
+    - target: "http://127.0.0.1:5101/"
+      prefix: "/demo-canho360/"

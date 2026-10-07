@@ -30,7 +30,7 @@ class _SplashScreenState extends State<SplashScreen>
 
     _progressController = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 3),
+      duration: const Duration(milliseconds: 900),
     );
     _progressController.forward();
 
@@ -59,7 +59,15 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _checkAuthStatus() async {
-    await Future.delayed(const Duration(seconds: 3));
+    // Continue as soon as the saved sign-in is restored (was a fixed 3 s
+    // wait on every load). A short minimum keeps the logo from flashing.
+    await Future.wait([
+      Future<void>.delayed(const Duration(milliseconds: 700)),
+      FirebaseAuth.instance
+          .authStateChanges()
+          .first
+          .timeout(const Duration(seconds: 5), onTimeout: () => null),
+    ]);
     if (!mounted) return;
 
     // Fade out before navigating

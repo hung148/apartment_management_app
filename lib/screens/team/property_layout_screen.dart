@@ -1,5 +1,7 @@
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
+import 'workspace_page_scope.dart';
+import 'ws_ui.dart';
 import 'package:uuid/uuid.dart';
 import '../../services/team_service.dart';
 import 'operational_widgets.dart';
@@ -7,13 +9,15 @@ import 'operational_widgets.dart';
 class PropertyLayoutScreen extends StatefulWidget {
   final String organizationId, buildingId;
   final TeamService service;
-  final VoidCallback onBack;
+
+  /// Null inside the organization workspace sections (U1): no Back button.
+  final VoidCallback? onBack;
   const PropertyLayoutScreen({
     super.key,
     required this.organizationId,
     required this.buildingId,
     required this.service,
-    required this.onBack,
+    this.onBack,
   });
   @override
   State<PropertyLayoutScreen> createState() => _PropertyLayoutScreenState();
@@ -168,10 +172,11 @@ class _PropertyLayoutScreenState extends State<PropertyLayoutScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            TextButton(
-              onPressed: locked ? null : widget.onBack,
-              child: Text(t('back')),
-            ),
+            if (widget.onBack != null)
+              TextButton(
+                onPressed: locked ? null : widget.onBack,
+                child: Text(t('back')),
+              ),
             Text(
               t('propertyLayout'),
               style: Theme.of(context).textTheme.headlineSmall,
@@ -189,14 +194,23 @@ class _PropertyLayoutScreenState extends State<PropertyLayoutScreen> {
                   enabled: !locked,
                   required: k != 'roomPrefix',
                 ),
-              FilledButton(
-                onPressed: _busy ? null : _save,
-                child: Text(t(_pending == null ? 'save' : 'retry')),
-              ),
             ],
-            OutlinedButton(
-              onPressed: locked ? null : () => _load(),
-              child: Text(t('reload')),
+            // One row, right-aligned, with a gap (2026-10-05, Tom: "Lưu" was
+            // full width and stuck to "Tải lại"). In a dialog "Tải lại" only
+            // after loading failed.
+            WsActions(
+              children: [
+                if (_record == null || !DialogPageScope.contains(context))
+                  OutlinedButton(
+                    onPressed: locked ? null : () => _load(),
+                    child: Text(t('reload')),
+                  ),
+                if (_record != null)
+                  FilledButton(
+                    onPressed: _busy ? null : _save,
+                    child: Text(t(_pending == null ? 'save' : 'retry')),
+                  ),
+              ],
             ),
           ],
         ),

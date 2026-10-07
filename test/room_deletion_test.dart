@@ -8,6 +8,7 @@ import 'package:phan_mem_quan_ly_can_ho/screens/team/role_workspace.dart';
 import 'package:phan_mem_quan_ly_can_ho/preview/team_preview_store.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/team_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/localizations/app_localizations.dart';
+import 'support/calendar_nav.dart';
 import 'team_review_test.dart' show mountReview;
 import 'room_rates_test.dart' show press, reveal;
 
@@ -32,7 +33,7 @@ void main() {
         tester,
         RoleWorkspace(organizationId: 'preview', service: store.service),
       );
-      await press(tester, 'Manage rooms');
+      await openRoomDialog(tester, 'room-102');
       final edit = find.byKey(const ValueKey('edit-room-room-102'));
       await reveal(tester, edit);
       await tester.tap(edit);
@@ -48,7 +49,8 @@ void main() {
         store.activity.where((a) => a['action'] == 'room_deleted').length,
         1,
       );
-      await press(tester, 'Manage rooms');
+      // The room dialog says the room is gone; its pages are no longer offered.
+      expect(find.byKey(const ValueKey('room-deleted')), findsOneWidget);
       expect(find.byKey(const ValueKey('edit-room-room-102')), findsNothing);
     },
   );
@@ -67,7 +69,7 @@ void main() {
       tester,
       RoleWorkspace(organizationId: 'preview', service: store.service),
     );
-    await press(tester, 'Manage rooms');
+    await openRoomDialog(tester, 'room-102');
     final edit = find.byKey(const ValueKey('edit-room-room-102'));
     await reveal(tester, edit);
     await tester.tap(edit);

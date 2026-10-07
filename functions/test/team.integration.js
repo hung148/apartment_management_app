@@ -145,8 +145,8 @@ test('lease creation blocks occupancy and bookings, paginates rooms and serializ
  const run=data=>api({auth:{uid:'owner'},data:{organizationId:'org',buildingId:'a',...data}});
  await db.doc('buildings/a').update({timeZone:'UTC'});
  const batch=db.batch();for(let i=0;i<27;i++)batch.set(db.doc(`rooms/r${String(i).padStart(2,'0')}`),{organizationId:'org',buildingId:'a',roomNumber:`${i}`,currency:'VND',rentalMode:i===26?'hourly':'monthly'});await batch.commit();
- const page=await run({action:'rooms'}),page2=await run({action:'rooms',cursor:page.nextCursor});assert.equal(page.records.length,25);assert.equal(page2.records.length,2);assert.equal(page2.records[1].monthly,false);
- await assert.rejects(run({action:'prepare',roomId:'r26'}),e=>e.code==='failed-precondition');
+ const page=await run({action:'rooms'}),page2=await run({action:'rooms',cursor:page.nextCursor});assert.equal(page.records.length,25);assert.equal(page2.records.length,2);assert.equal(page2.records[1].monthly,true);
+ assert.equal((await run({action:'prepare',roomId:'r26'})).record.roomNumber,'26');
  const command=async roomId=>({action:'create',roomId,operationId:roomId,roomRevision:(await run({action:'prepare',roomId})).record.roomRevision,currency:'VND',timeZone:'UTC',fullName:'Tenant',phoneNumber:'',moveInDate:'2100-01-01',contractEndDate:'2100-02-01',rentMinor:1000000,backdateReason:''});
  for(const status of ['active','suspended']){
   await db.doc('tenants/occupant').set({organizationId:'org',roomId:'r00',status,isMainTenant:false,moveInDate:Stamp.fromMillis(1)});
@@ -218,12 +218,13 @@ test('tenant contact directory scopes pages and edits only contact fields with p
  const run=(data,uid='owner',buildingId='a')=>handler({auth:{uid},data:{organizationId:'org',buildingId,...data}});
  const batch=db.batch();for(let i=0;i<27;i++)batch.set(db.doc(`tenants/t${String(i).padStart(2,'0')}`),{organizationId:'org',buildingId:'a',roomId:'room',fullName:'Private name',phoneNumber:'Private phone',status:i===0?'moveOut':'active',nationalId:'secret',monthlyRent:100,deposit:200,moveInDate:Timestamp.fromMillis(1000),currency:'USD'});await batch.commit();
  await db.doc('tenants/foreign').set({organizationId:'elsewhere',buildingId:'a',fullName:'foreign'});await db.doc('buildings/b').set({organizationId:'org'});
- await setMember('manager','manager');const first=await run({action:'list'},'manager');assert.equal(first.records.length,25);assert.equal(first.records[0].status,'moveOut');assert.ok(!JSON.stringify(first).includes('secret'));assert.ok(!JSON.stringify(first).includes('monthlyRent'));
+ await setMember('manager','manager');const first=await run({action:'list'},'manager');assert.equal(first.records.length,25);assert.equal(first.records[0].status,'moveOut');assert.ok(!JSON.stringify(first).includes('secret'));assert.equal(first.records[0].monthlyRent,undefined);assert.equal(first.records[0].monthlyRentMinor,null);assert.equal(first.records[0].nationalId,'•••• cret');assert.equal(first.records[0].canReadIds,false);
  const second=await run({action:'list',cursor:first.nextCursor},'manager');assert.equal(second.records.length,2);assert.equal(second.nextCursor,null);
  for(const role of ['receptionist','housekeeper','accountant','viewer']){await setMember(role,role);await assert.rejects(run({action:'list'},role),e=>e.code==='permission-denied');}
  await assert.rejects(run({action:'list'},'manager','b'),e=>e.code==='permission-denied');await assert.rejects(run({action:'read',tenantId:'foreign'}),e=>e.code==='not-found');
  const before=(await db.doc('tenants/t00').get()).data(),r=(await run({action:'read',tenantId:'t00'})).record;
- assert.deepEqual(Object.keys(r).sort(),['id','fullName','phoneNumber','roomId','status','revision','canAddRoommate','canEditRent','canReadRentHistory','mainTenantId'].sort());
+ assert.deepEqual(Object.keys(r).sort(),['id','fullName','phoneNumber','roomId','roomNumber','status','revision','canAddRoommate','canEditRent','canReadRentHistory','canBill','canSettle','settled','mainTenantId','isMainTenant','mainTenantName','moveInLocalDate','contractEndLocalDate','currency','monthlyRentMinor','nationalId','residenceRegistered','residenceRegisteredLocalDate','paymentPeriodMonths','paymentDueDay','periodRentMinor','depositMinor','depositMethod','depositAccountLabel','depositNote','staffName','canReadIds','contractEnded','moveOutLocalDate','roommates','stayStatus','surcharges'].sort());
+ assert.deepEqual(r.roommates,[]);assert.deepEqual(r.surcharges,[]);assert.equal(r.moveOutLocalDate,'');
  const command={action:'update',tenantId:'t00',operationId:'contact',revision:r.revision,fullName:'New name',phoneNumber:'+84 123'};
  for(const patch of [{status:'active'},{nationalId:'forged'},{monthlyRent:1},{fullName:' '},{phoneNumber:'x'.repeat(81)}])await assert.rejects(run({...command,...patch}),e=>e.code==='invalid-argument');
  const result=await run(command,'manager');assert.deepEqual(await run(command,'manager'),result);
@@ -645,36 +646,23 @@ test('room pricing uses exact minor units, preserves existing charges and enforc
   for(const uid of ['restricted','reception'])await assert.rejects(run({action:'read'},uid),e=>e.code==='permission-denied');
   const list=await workspace({auth:{uid:'restricted'},data:{organizationId:'org',buildingId:'a',view:'rooms'}});assert.equal(list.records[0].canEditRates,false);
   await assert.rejects(run({action:'read',buildingId:'outside'}),e=>e.code==='permission-denied');
-  const command={action:'update',operationId:'rates',revision:row.revision,rentalMode:'both',ratesMinor:{roomPrice:60000,hourlyPrice:29,dailyPrice:2000,overnightPrice:null},dailyPriceThresholdHours:8};
-  for(const patch of [{ratesMinor:{...command.ratesMinor,hourlyPrice:0.29}},{ratesMinor:{...command.ratesMinor,roomPrice:null}},{dailyPriceThresholdHours:0},{currency:'VND'},{updatedAt:'forged'}])await assert.rejects(run({...command,...patch}),e=>e.code==='invalid-argument');
-  await assert.rejects(run({...command,rentalMode:'monthly'}),e=>e.message==='room_rates_active_bookings');
-  await assert.rejects(run({...command,rentalMode:'hourly'}),e=>e.message==='room_rates_active_tenants');
+  const command={action:'update',operationId:'rates',revision:row.revision,rentalMode:'both',ratesMinor:{roomPrice:60000,nightlyPrice:2000,hourlyPrice:29}};
+  for(const patch of [{ratesMinor:{...command.ratesMinor,hourlyPrice:0.29}},{rentalMode:'weekly'},{ratesMinor:{roomPrice:60000,hourlyPrice:29,dailyPrice:2000,overnightPrice:null}},{dailyPriceThresholdHours:8},{currency:'VND'},{updatedAt:'forged'}])await assert.rejects(run({...command,...patch}),e=>e.code==='invalid-argument');
+  // 2026-10-04: every room takes both; a mode from an older app is ignored, active bookings/leases do not matter.
   const result=await run(command);assert.deepEqual(await run(command),result);
-  const changed=(await db.doc('rooms/r').get()).data();assert.equal(changed.hourlyPrice,0.29);assert.equal(changed.roomPrice,600);assert.equal(changed.cleaningBufferMinutes,30);assert.equal(changed.minBookingHours,2);assert.ok(changed.updatedAt.toMillis()>0);
+  const changed=(await db.doc('rooms/r').get()).data();assert.equal(changed.hourlyPrice,0.29);assert.equal(changed.nightlyPrice,20);assert.equal(changed.dailyPrice,null);assert.equal(changed.dailyPriceThresholdHours,null);assert.equal(changed.roomPrice,600);assert.equal(changed.cleaningBufferMinutes,30);assert.equal(changed.minBookingHours,2);assert.ok(changed.updatedAt.toMillis()>0);
   assert.equal((await db.doc('bookings/existing').get()).data().totalPrice,99);assert.equal((await db.doc('tenants/existing').get()).data().monthlyRent,500);assert.equal((await db.doc('payments/existing').get()).data().amount,500);
   assert.equal((await db.collection('roomRateOperations').get()).size,1);assert.equal((await db.collection('teamActivity').get()).size,1);
   await assert.rejects(run({...command,operationId:'stale'}),e=>e.code==='aborted');
-  await assert.rejects(run({...command,dailyPriceThresholdHours:9}),e=>e.code==='failed-precondition');
+  await assert.rejects(run({...command,ratesMinor:{...command.ratesMinor,hourlyPrice:30}}),e=>e.code==='failed-precondition');
   await setMember('manager','manager',{permissionOverrides:{overridePrices:false}});await assert.rejects(run(command),e=>e.code==='permission-denied');
   await db.doc('bookings/existing').update({status:'cancelled'});await db.doc('tenants/existing').update({status:'moveOut'});
   const latest=(await run({action:'read'},'owner')).record;
-  await run({...command,operationId:'monthly',revision:latest.revision,rentalMode:'monthly',ratesMinor:{roomPrice:75000,hourlyPrice:null,dailyPrice:null,overnightPrice:null},dailyPriceThresholdHours:null},'owner');
-  assert.equal((await db.doc('rooms/r').get()).data().rentalMode,'monthly');
+  await run({...command,operationId:'monthly',revision:latest.revision,rentalMode:'monthly',ratesMinor:{roomPrice:null,nightlyPrice:null,hourlyPrice:null}},'owner');
+  assert.equal((await db.doc('rooms/r').get()).data().rentalMode,'both');assert.equal((await db.doc('rooms/r').get()).data().roomPrice,null);
 });
 
-test('concurrent hourly-only switch and active lease cannot both commit',async()=>{
-  await db.doc('buildings/a').update({timeZone:'UTC'});
-  const rates=createRoomRatesHandler({db,Timestamp:Timestamp,HttpsError:class extends Error{constructor(code,message){super(message);this.code=code;}}});
-  await db.doc('rooms/race').set({organizationId:'org',buildingId:'a',rentalMode:'both',currency:'VND',roomPrice:1000000,hourlyPrice:50000});
-  const identity={organizationId:'org',buildingId:'a',roomId:'race'},ctx={auth:{uid:'owner'}};
-  const row=(await rates({...ctx,data:{action:'read',...identity}})).record;
-  const results=await Promise.allSettled([
-    rates({...ctx,data:{action:'update',...identity,operationId:'mode',revision:row.revision,rentalMode:'hourly',ratesMinor:{roomPrice:null,hourlyPrice:50000,dailyPrice:null,overnightPrice:null},dailyPriceThresholdHours:null}}),
-    tenant({create:true,tenantId:'race-tenant',tenant:{organizationId:'org',roomId:'race',fullName:'Tenant',status:'active',moveInDate:{__timestamp:1000},backdateReason:'Historical fixture'}},ctx),
-  ]);
-  assert.equal(results.filter(r=>r.status==='fulfilled').length,1);
-  assert.ok(['failed-precondition','aborted'].includes(results.find(r=>r.status==='rejected').reason.code));
-});
+// 'concurrent hourly-only switch and active lease' removed 2026-10-04: rooms no longer have a rental mode.
 
 test('room creation inherits currency, rejects forged defaults and audits exactly once with current authorization',async()=>{
   const edit=createRoomDetailsHandler({db,Timestamp:Timestamp,HttpsError:class extends Error{constructor(code,message){super(message);this.code=code;}}});
@@ -686,10 +674,10 @@ test('room creation inherits currency, rejects forged defaults and audits exactl
   const command={action:'create',operationId:'create-room',roomNumber:'201',roomType:'Family',area:45.5};
   await assert.rejects(run(command,'worker'),e=>e.code==='permission-denied');
   await assert.rejects(run({...command,buildingId:'outside'}),e=>e.code==='permission-denied');
-  for(const patch of [{createdAt:'forged'},{currency:'VND'},{rentalMode:'hourly'},{area:0},{roomType:''},{revision:'new'},{roomPrice:500}])await assert.rejects(run({...command,...patch}),e=>e.code==='invalid-argument');
+  for(const patch of [{createdAt:'forged'},{currency:'VND'},{rentalMode:'hourly'},{area:0},{roomType:7},{roomType:'x'.repeat(161)},{revision:'new'},{roomPrice:500}])await assert.rejects(run({...command,...patch}),e=>e.code==='invalid-argument');
   const result=await run(command);assert.deepEqual(await run(command),result);
   assert.equal((await db.collection('rooms').get()).size,1);
-  const row=(await db.doc('rooms/new').get()).data();assert.equal(row.currency,'USD');assert.equal(row.rentalMode,'monthly');assert.equal(row.roomPrice,undefined);assert.equal(row.createdBy,'manager');assert.ok(row.createdAt.toMillis()>0);assert.equal(row.organizationId,'org');assert.equal(row.buildingId,'a');
+  const row=(await db.doc('rooms/new').get()).data();assert.equal(row.currency,'USD');assert.equal(row.rentalMode,'both');assert.equal(row.roomPrice,undefined);assert.equal(row.createdBy,'manager');assert.ok(row.createdAt.toMillis()>0);assert.equal(row.organizationId,'org');assert.equal(row.buildingId,'a');
   const events=await db.collection('teamActivity').get();assert.equal(events.size,1);assert.equal(events.docs[0].data().action,'room_created');assert.equal(events.docs[0].data().before,null);
   await assert.rejects(run({...command,roomNumber:'different'}),e=>e.code==='failed-precondition');
   await assert.rejects(run({...command,operationId:'different'}),e=>e.code==='failed-precondition');
@@ -858,11 +846,12 @@ test('synthetic migration rehearsal preserves inventory and requires legacy assi
 test('dashboard lists only current authorized organizations and omits private fields',async()=>{
   const directory=createOrganizationDirectory({db,HttpsError:class extends Error{constructor(code,message){super(message);this.code=code;}}});
   await db.doc('organizations/org').update({name:'Visible',bankAccountNumber:'PRIVATE',inviteCode:'SECRET'});
+ const read=()=>directory({auth:{uid:'owner'},data:{}});
+ assert.deepEqual((await read()).records.map(r=>r.id),['org']);
   await db.doc('organizations/foreign').set({name:'Hidden',accessVersion:2});
   await db.doc('memberships/owner_foreign').set({organizationId:'foreign',ownerId:'owner',role:'member',status:'active'});
-  const read=()=>directory({auth:{uid:'owner'},data:{}});
   const result=await read();
-  assert.deepEqual(result.records.map(r=>r.id),['org']);
+ assert.deepEqual(result.records,[]);assert.equal(result.accountPolicy.mode,'conflict');
   assert.ok(!JSON.stringify(result).includes('PRIVATE'));assert.ok(!JSON.stringify(result).includes('SECRET'));
   await db.doc('memberships/owner_org').update({status:'suspended'});
   assert.deepEqual((await read()).records,[]);
@@ -881,8 +870,9 @@ test('account review includes unlinked legacy accounts with protected role hints
     access:{role:'receptionist',buildingScope:'selected',buildingIds:['a']}},'admin');
   const member=(await db.doc('memberships/legacy_org').get()).data();
   assert.equal(member.accessVersion,2);assert.equal(member.role,'receptionist');
-  assert.equal(member.staffId,undefined);
-  assert.equal((await db.collection('staffProfiles').get()).size,1);
+  assert.equal(typeof member.staffId,'string');
+  const profile=(await db.doc('staffProfiles/'+member.staffId).get()).data();assert.equal(profile.accountId,'legacy');assert.equal(profile.organizationId,'org');
+  assert.equal((await db.collection('staffProfiles').get()).size,2);
   await assert.rejects(read('legacy'),e=>e.code==='permission-denied');
 });
 
@@ -1383,7 +1373,8 @@ test('invoice quotes prorate saved rent and persist immutable income or expense 
  const quote={kind:'tenantRent',tenantId:'invoiced',startDate:'2026-10-01',endDate:'2026-11-01',dueDate:'2026-10-05',feesMinor,reason:'Agreed billing'};
  const q=(await run({action:'quote',...quote})).record;assert.equal(q.amountMinor,4700000);
  const create={action:'create',...quote,operationId:'invoice',quoteRevision:q.quoteRevision};const result=await run(create);assert.deepEqual(await run(create),result);
- const again=(await run({action:'quote',...quote})).record;await assert.rejects(run({...create,operationId:'duplicate',quoteRevision:again.quoteRevision}),e=>e.code==='already-exists');
+ // An overlapping period is refused already at review (quote) and again at create.
+ await assert.rejects(run({action:'quote',...quote}),e=>e.code==='already-exists');await assert.rejects(run({...create,operationId:'duplicate'}),e=>e.code==='already-exists');
  const original=(await db.doc(`payments/${result.invoiceId}`).get()).data();await db.doc('tenants/invoiced').update({monthlyRentMinor:9999999});assert.deepEqual((await db.doc(`payments/${result.invoiceId}`).get()).data(),original);
  const read=(await run({action:'read',invoiceId:result.invoiceId})).record;await setMember('manager','manager',{permissionOverrides:{overridePrices:false}});await assert.rejects(run({action:'edit',invoiceId:result.invoiceId,operationId:'edit',revision:read.revision,reason:'Fee',dueDate:'2026-10-05',feesMinor:{...feesMinor,taxAmount:1}},'manager'),e=>e.code==='permission-denied');
  const expenseQuote={...quote,kind:'buildingRent',tenantId:null};const eq=(await run({action:'quote',...expenseQuote})).record;assert.equal(eq.direction,'expense');const expense=await run({action:'create',...expenseQuote,quoteRevision:eq.quoteRevision,operationId:'expense'});
@@ -1447,7 +1438,7 @@ test('organization settings: v2 update, leave and close against the emulator, cl
  await assert.rejects(invitationLookup({auth:{uid:'new',token:{email:'new@example.com',email_verified:true}},data:{invitationId:pending.id}}),e=>e.message==='org_closed');
 });
 
-test('organization copy and purge work against real Firestore queries, subcollections and recursive delete',async()=>{
+test('retired copy refuses writes and purge preserves other organizations and their subcollections',async()=>{
  const {createOrganizationSettingsHandler}=require('../organization_settings');
  const {createOrganizationPurge}=require('../organization_purge');
  const E=class extends Error{constructor(code,message){super(message);this.code=code;}};
@@ -1461,15 +1452,16 @@ test('organization copy and purge work against real Firestore queries, subcollec
  await db.doc('tenants/t/rentHistory/h').set({organizationId:'org',tenantId:'t'});
  await db.doc('tenants/old').set({roomId:'r',fullName:'Legacy child'});
  await db.doc('payments/p').set({organizationId:'org',tenantId:'t',roomId:'r'});
- const preview=await run({action:'copyPreview',targetOrganizationId:'dest'});
- assert.deepEqual([preview.buildings,preview.rooms,preview.tenants,preview.payments],[1,1,2,1]);
+ await assert.rejects(run({action:'copyPreview',targetOrganizationId:'dest'}),/org_copy_retired/);
  const copy={action:'copy',operationId:'copy1',targetOrganizationId:'dest'};
- const result=await run(copy);assert.deepEqual(await run(copy),result);
- const tenants=(await db.collection('tenants').where('organizationId','==','dest').get()).docs;
- assert.equal(tenants.length,2);
- const main=tenants.find(t=>t.data().fullName==='Main');
- const room=(await db.collection('rooms').where('organizationId','==','dest').get()).docs[0];
- assert.equal(main.data().roomId,room.id);assert.notEqual(room.id,'r');
+ await assert.rejects(run(copy),/org_copy_retired/);await assert.rejects(run(copy),/org_copy_retired/);
+ assert.equal((await db.collection('tenants').where('organizationId','==','dest').get()).size,0);
+ await db.doc('buildings/destProperty').set({organizationId:'dest'});
+ await db.doc('rooms/destRoom').set({organizationId:'dest',buildingId:'destProperty'});
+ await db.doc('tenants/destTenant').set({organizationId:'dest',buildingId:'destProperty',roomId:'destRoom',fullName:'Main'});
+ await db.doc('tenants/destTenant/rentHistory/h').set({organizationId:'dest',tenantId:'destTenant'});
+ await db.doc('payments/destPayment').set({organizationId:'dest',tenantId:'destTenant',roomId:'destRoom'});
+ const main=await db.doc('tenants/destTenant').get();
  assert.equal((await main.ref.collection('rentHistory').get()).size,1);
  assert.equal((await db.collection('payments').where('tenantId','==',main.id).get()).docs[0].data().organizationId,'dest');
  assert.ok((await db.doc('tenants/t').get()).exists,'source kept');
@@ -1527,7 +1519,7 @@ test('waiting members see their organization marked waiting; removed-role invita
  assert.equal(preview.roleRemoved,true);assert.equal(preview.canAccept,false);
  await assert.rejects(call({action:'acceptInvitation',operationId:'acc',invitationId:'oldInvite'},'new'),e=>e.message==='team_invitation_role_removed');
  assert.equal((await db.doc('memberships/new_org').get()).exists,false);
- await assert.rejects(call({...invitation,operationId:'viewer-invite',access:{...invitation.access,role:'viewer'}}),e=>e.code==='invalid-argument');
+ await assert.rejects(call({...invitation,operationId:'viewer-invite',access:{...invitation.access,role:'viewer'}}),e=>e.code==='failed-precondition'&&e.message==='team_role_not_found');
 });
 
 test('account deletion hands over or closes owned organizations and removes personal records',async()=>{

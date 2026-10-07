@@ -1,6 +1,7 @@
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:uuid/uuid.dart';
 import 'team_service.dart' show TeamTransport;
+import 'app_functions.dart';
 
 /// Someone who can take over an organization when its owner leaves.
 class DeletionCandidate {
@@ -46,7 +47,7 @@ class AccountDeletionService {
         _newOperationId = newOperationId ?? (() => const Uuid().v4());
 
   static Future<Map<String, dynamic>> _firebase(String callable, Map<String, dynamic> data) async {
-    final response = await FirebaseFunctions.instance.httpsCallable(callable).call(data);
+    final response = await appCallable(callable).call(data);
     return Map<String, dynamic>.from(response.data as Map);
   }
 

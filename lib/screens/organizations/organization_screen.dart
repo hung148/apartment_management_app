@@ -1,6 +1,6 @@
 import 'package:phan_mem_quan_ly_can_ho/widgets/compact_summary_toolbar.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/team/team_screen.dart';
-import 'package:phan_mem_quan_ly_can_ho/screens/team/role_workspace.dart';
+import 'package:phan_mem_quan_ly_can_ho/screens/team/org_shell.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/team_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/app_dialog.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/building_summary_card.dart';
@@ -87,9 +87,10 @@ class OrganizationScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (organization.accessVersion == 2) {
-      return Scaffold(
-        appBar: AppBar(title: Text(organization.name, maxLines: 1, overflow: TextOverflow.ellipsis)),
-        body: RoleWorkspace(organizationId: organization.id, service: teamService ?? getIt<TeamService>()),
+      return OrgShell(
+        organizationId: organization.id,
+        name: organization.name,
+        service: teamService ?? getIt<TeamService>(),
       );
     }
     return _LegacyOrganizationScreen(organization: organization);

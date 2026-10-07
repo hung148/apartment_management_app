@@ -422,7 +422,7 @@ class _EditPaymentDialogState extends State<EditPaymentDialog>
                                   billingStart == null &&
                                   billingEnd == null &&
                                   tenant != null) {
-                                billingStart = tenant!.contractStartDate ??
+                                billingStart = tenant.contractStartDate ??
                                     tenant.moveInDate;
                                 billingEnd = tenant.contractEndDate;
                               }

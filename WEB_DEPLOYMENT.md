@@ -12,6 +12,10 @@ flutter build web --release
 firebase deploy --only hosting --project apartment-management-app-776b9
 ```
 
+Always run `flutter build web --release` right before the deploy: `tool\local.ps1`
+(local testing) leaves a LOCAL build in `build/web` that talks only to the emulators
+on this computer, and it must never be uploaded. Staging uses `build/staging-web`.
+
 Run Flutter tests and builds sequentially. The Hosting configuration serves only
 `build/web`, with an `index.html` fallback for browser routes. Deploying with
 `--only hosting` leaves Firestore rules and Cloud Functions unchanged.

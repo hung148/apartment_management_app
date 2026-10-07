@@ -84,28 +84,52 @@ void main() {
           onBack: () {},
         ),
       );
-      await press(tester, 'Rent schedule');
-      await enter(tester, 'rent-plan-date', '2026-09-27');
-      await enter(tester, 'rent-plan-amount', '2000000');
-      await enter(tester, 'rent-plan-reason', 'Renewal');
-      await press(tester, 'Save future rent');
-      expect(s.tenants.first['rentSchedule'], isNull);
-      await enter(tester, 'rent-plan-date', '2026-10-01');
-      await press(tester, 'Save future rent');
+      // Lease actions live on the tenant page (2026-10-01).
+      final open = find.byKey(const ValueKey('tenant-contact-tenant-anh'));
+      await reveal(tester, open);
+      await tester.tap(open);
+      await tester.pumpAndSettle();
+      // 2026-10-04: "Change" next to the rent opens a small dialog.
+      Future<void> tapKey(String key) async {
+        final f = find.byKey(ValueKey(key));
+        await reveal(tester, f);
+        await tester.tap(f);
+        await tester.pumpAndSettle();
+      }
+
+      await tapKey('lease-rent-change');
+      await enter(tester, 'lease-rent-date', '2026-09-27');
+      await enter(tester, 'lease-rent-amount', '2000000');
+      await enter(tester, 'lease-rent-reason', 'Renewal');
+      await tapKey('lease-rent-save');
+      expect(
+        s.tenants.first['rentSchedule'],
+        isNull,
+        reason: 'not after today',
+      );
+      await enter(tester, 'lease-rent-date', '2026-10-01');
+      await tapKey('lease-rent-save');
       expect(
         (s.tenants.first['rentSchedule'] as List).single['amountMinor'],
         2000000,
       );
       expect(s.tenants.first['monthlyRentMinor'], 1500000);
-      await enter(tester, 'rent-plan-date', '2026-10-01');
-      await enter(tester, 'rent-plan-amount', '2100000');
-      await enter(tester, 'rent-plan-reason', 'Correct planned amount');
-      await press(tester, 'Save future rent');
+      expect(
+        find.text('From 2026-10-01 · 2,000,000 VND · planned'),
+        findsOneWidget,
+      );
+      // The same day again replaces the planned amount.
+      await tapKey('lease-rent-change');
+      await enter(tester, 'lease-rent-date', '2026-10-01');
+      await enter(tester, 'lease-rent-amount', '2100000');
+      await enter(tester, 'lease-rent-reason', 'Correct planned amount');
+      await tapKey('lease-rent-save');
       expect((s.tenants.first['rentSchedule'] as List).length, 1);
-      await press(tester, 'Select this change to cancel');
-      await enter(tester, 'rent-plan-reason', 'Agreement withdrawn');
-      await press(tester, 'Confirm cancellation');
+      await tapKey('lease-rent-cancel-2026-10-01');
+      await enter(tester, 'lease-rent-reason', 'Agreement withdrawn');
+      await tapKey('lease-rent-save');
       expect(s.tenants.first['rentSchedule'], isEmpty);
+      expect(find.textContaining('planned'), findsNothing);
       final records = s.rentHistory['tenant-anh']!;
       expect(records.length, 3);
       expect(records.first['after'], isNull);

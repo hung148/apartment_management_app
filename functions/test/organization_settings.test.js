@@ -1,4 +1,5 @@
 const {test}=require('node:test');
+const {via}=require('./call_group');
 const assert=require('node:assert/strict');
 const {createOrganizationSettingsHandler}=require('../organization_settings');
 const {fakeDb,Ts,CodeError}=require('./fake_firestore');
@@ -105,8 +106,8 @@ test('an interrupted close resumes for the same owner, even with a new operation
 
 test('the exported callable passes through the shared security boundary',async()=>{
   const api=require('../index');
-  await rejects(api.organizationSettings.run({data:{}}),'unauthenticated');
-  await rejects(api.organizationSettings.run({auth:{uid:'u'},data:{}}),'unauthenticated','app_check_required');
+  await rejects(via(api,'organizationSettings').run({data:{}}),'unauthenticated');
+  await rejects(via(api,'organizationSettings').run({auth:{uid:'u'},data:{}}),'unauthenticated','app_check_required');
 });
 
 // ── Copy to another organization ────────────────────────────────────────────
@@ -132,64 +133,17 @@ const copySeed=()=>({...seed(),
 const copyCmd={action:'copy',organizationId:'org',operationId:'cp',targetOrganizationId:'dest'};
 const inDest=(db,c)=>[...db.store].filter(([k,v])=>k.split('/').length===2&&k.startsWith(c+'/')&&v.organizationId==='dest');
 
-test('copy preview counts records and checks access in both organizations',async()=>{
-  const {call}=setup(copySeed());
-  const preview=await call('owner',{action:'copyPreview',organizationId:'org',targetOrganizationId:'dest'});
-  assert.deepEqual([preview.buildings,preview.rooms,preview.tenants,preview.payments,preview.bookings],[1,1,3,2,1]);
-  await rejects(call('owner',{action:'copyPreview',organizationId:'org',targetOrganizationId:'org'}),'invalid-argument','org_copy_target');
-  // Manager in the target: no manageOrganization/importData there.
-  await rejects(call('admin',{action:'copyPreview',organizationId:'org',targetOrganizationId:'dest'}),'permission-denied','org_copy_access_required');
-  await rejects(call('owner',{action:'copyPreview',organizationId:'org',targetOrganizationId:'legacy'}),'failed-precondition','team_migration_required');
+test('retired copy routes preserve every source, destination, invoice and history record',async()=>{
+ const {call,db}=setup(copySeed());const before=JSON.stringify([...db.store]);
+ for(const action of ['copyPreview','copy'])await rejects(call('owner',{action,organizationId:'org',targetOrganizationId:'dest',...(action==='copy'?{operationId:'retired-copy'}:{})}),'failed-precondition','org_copy_retired');
+ assert.equal(JSON.stringify([...db.store]),before);
 });
 
-test('copy duplicates records with new IDs, rewires every link and keeps the source intact',async()=>{
-  const {call,db}=setup(copySeed());
-  const before=new Map([...db.store].map(([k,v])=>[k,JSON.stringify(v)]));
-  const result=await call('owner',copyCmd);
-  assert.equal(result.status,'copied');
-  assert.deepEqual(result.counts,{buildings:1,rooms:1,tenants:3,bookings:1,payments:2,leaseOccupancy:1,leaseDateCorrections:0,rentalContractHistory:1,rentHistory:1,invoiceHistory:1});
-  const [[bPath]]=inDest(db,'buildings'),bId=bPath.split('/')[1];
-  const [[rPath,room]]=inDest(db,'rooms'),rId=rPath.split('/')[1];
-  assert.equal(room.buildingId,bId);assert.deepEqual(room.rates,{monthly:500});
-  const tenants=Object.fromEntries(inDest(db,'tenants').map(([k,v])=>[v.fullName,{id:k.split('/')[1],...v}]));
-  assert.equal(tenants.Mate.mainTenantId,tenants.Main.id);
-  assert.equal(tenants['Old record without organizationId'].roomId,rId);
-  assert.ok(tenants.Main.movedIn instanceof Ts,'timestamps survive the copy');
-  const payments=inDest(db,'payments').map(([k,v])=>({id:k.split('/')[1],...v}));
-  const p1=payments.find(p=>p.lines);assert.equal(p1.tenantId,tenants.Main.id);assert.equal(p1.lines[0].tenantId,tenants.Mate.id);
-  assert.equal(payments.find(p=>p.amount===10).tenantId,tenants['Old record without organizationId'].id);
-  assert.deepEqual(inDest(db,'bookings')[0][1].paymentIds,[p1.id]);
-  assert.equal(inDest(db,'leaseOccupancy')[0][1].tenantId,tenants.Main.id);
-  assert.equal([...db.store.keys()].filter(k=>k.startsWith(`tenants/${tenants.Main.id}/rentHistory/`)).length,1);
-  assert.equal([...db.store.keys()].filter(k=>k.startsWith(`payments/${p1.id}/invoiceHistory/`)).length,1);
-  assert.equal(inDest(db,'housekeepingTasks').length+inDest(db,'staffProfiles').length,0,'team and tasks stay behind');
-  for(const [k,v] of before)assert.equal(JSON.stringify(db.store.get(k)),v,`source record changed: ${k}`);
-  const actions=[...db.store].filter(([k])=>k.startsWith('teamActivity/')).map(([,v])=>`${v.organizationId}:${v.action}`).sort();
-  assert.deepEqual(actions,['dest:copyOrganizationIn','org:copyOrganizationOut']);
-  const size=db.store.size;
-  assert.deepEqual(await call('owner',copyCmd),result);assert.equal(db.store.size,size,'exact retry makes no duplicates');
-});
-
-test('an interrupted copy resumes onto the same IDs; a foreign child aborts it',async()=>{
-  const data=copySeed();
-  for(let i=0;i<500;i++)data[`rooms/x${String(i).padStart(3,'0')}`]={organizationId:'org',buildingId:'b1',roomNumber:String(i)};
-  const {call,db}=setup(data);
-  const commit=db.batch;let fails=1;
-  db.batch=()=>{const b=commit();const c=b.commit;b.commit=async()=>{if(db.calls===1&&fails-->0)throw new CodeError('unavailable','network');return c();};return b;};
-  await rejects(call('owner',copyCmd),'unavailable');
-  const partial=inDest(db,'rooms').length;assert.ok(partial>0&&partial<501);
-  await call('owner',copyCmd);
-  assert.equal(inDest(db,'rooms').length,501);assert.equal(inDest(db,'buildings').length,1);
-  const bad=setup({...copySeed(),'payments/foreign':{organizationId:'other',tenantId:'t1'}});
-  await rejects(bad.call('owner',copyCmd),'failed-precondition','org_copy_cross_link');
-  assert.equal(inDest(bad.db,'buildings').length,0);
-});
-
-// ── Restore a closed organization ───────────────────────────────────────────
 test('the owner can list and restore a closed organization; members return to their previous status',async()=>{
   const data=seed();
   data['memberships/susp_org']=member('susp','manager',{status:'suspended'});
   data['memberships/left_org']=member('left','receptionist',{status:'revoked',revokedReason:'left'});
+  data['organizations/legacy'].createdBy='legacyOwner';delete data['memberships/owner_legacy'];
   const {call,db}=setup(data);
   await call('owner',{action:'close',organizationId:'org',operationId:'c1',confirmName:'Sunrise'});
   const listed=await call('owner',{action:'closedList'});
@@ -210,7 +164,8 @@ test('the owner can list and restore a closed organization; members return to th
 });
 
 test('restore is refused after the purge date or once the purge has started',async()=>{
-  const {call,db}=setup();
+  const data=seed();data['organizations/legacy'].createdBy='legacyOwner';delete data['memberships/owner_legacy'];
+  const {call,db}=setup(data);
   await call('owner',{action:'close',organizationId:'org',operationId:'c1',confirmName:'Sunrise'});
   db.store.set('organizations/org',{...db.store.get('organizations/org'),purgeAfter:new Ts(Ts.clock-1)});
   await rejects(call('owner',{action:'restore',organizationId:'org',operationId:'r1'}),'failed-precondition','org_restore_expired');
@@ -234,4 +189,64 @@ test('waiting members cannot read or manage, but can leave',async()=>{
   }
   const event=[...db.store].find(([k,v])=>k.startsWith('teamActivity/')&&v.targetId==='wait_org')[1];
   assert.deepEqual(event.before,{status:'assignmentRequired'});
+});
+
+// G8: version-2 organization creation behind the release switch.
+const creator=(data=seed(),allowCreate=true)=>{const db=fakeDb(data);
+  return {db,call:(uid,input,token={email:'New@Example.com',name:'Tom'})=>createOrganizationSettingsHandler({db,Timestamp:Ts,HttpsError:CodeError,allowCreate})({auth:uid&&{uid,token},data:input})};};
+
+test('create is refused while the release switch is off',async()=>{
+  const {call,db}=creator(seed(),false);
+  await rejects(call('newbie',{action:'create',operationId:'op1',fields}),'failed-precondition','org_create_unavailable');
+  assert.equal([...db.store.keys()].filter(k=>k.startsWith('organizations/')).length,2);
+});
+
+test('create makes a version-2 organization owned by the caller, idempotently',async()=>{
+  const {call,db}=creator();
+  const first=await call('newbie',{action:'create',operationId:'op1',fields});
+  const id=first.organizationId;
+  const org=db.store.get('organizations/'+id);
+  assert.equal(org.accessVersion,2);assert.equal(org.createdBy,'newbie');assert.equal(org.name,'Sunrise Homes');
+  assert.equal(org.taxCode,null);
+  const m=db.store.get(`memberships/newbie_${id}`);
+  assert.deepEqual([m.role,m.status,m.accessVersion,m.buildingScope,m.email,m.displayName],['owner','active',2,'all','new@example.com','Tom']);
+  assert.equal(db.store.get('invite_codes/'+org.inviteCode).orgId,id);
+  assert.equal(db.store.get('teamActivity/'+[...db.store.keys()].find(k=>k.startsWith('organizationOperations/')).split('/')[1]).action,'createOrganization');
+  // Same operation again: same organization, nothing new.
+  const size=db.store.size;
+  assert.deepEqual(await call('newbie',{action:'create',operationId:'op1',fields}),first);
+  assert.equal(db.store.size,size);
+  // Same operation ID with different fields is a reuse error.
+  await rejects(call('newbie',{action:'create',operationId:'op1',fields:{...fields,name:'Other'}}),'already-exists','org_operation_reused');
+  // Another person with the same operation ID gets a different organization.
+  const other=await call('someone',{action:'create',operationId:'op1',fields});
+  assert.notEqual(other.organizationId,id);
+  // The new owner can use the organization straight away.
+  const read=await call('newbie',{action:'read',organizationId:id});
+  assert.equal(read.role,'owner');assert.equal(read.canClose,true);
+});
+
+test('create validates input and limits how many organizations one person owns',async()=>{
+  const {call}=creator();
+  await rejects(call(null,{action:'create',operationId:'op',fields}),'unauthenticated');
+  for(const input of [{action:'create',fields},{action:'create',operationId:'op',fields:{...fields,name:' '}},
+    {action:'create',operationId:'op',organizationId:'org',fields},{action:'create',operationId:'op',fields:{name:'x'}}])
+    await rejects(call('newbie',input),'invalid-argument');
+  const data=seed();
+  for(let i=0;i<20;i++)data[`memberships/many_o${i}`]={...member('many','owner'),organizationId:'o'+i};
+  const limited=creator(data);
+  await rejects(limited.call('many',{action:'create',operationId:'op',fields}),'resource-exhausted','org_create_limit');
+});
+
+// B8-lite (2026-10-01): payment receiving accounts.
+test('organization managers keep the list of receiving accounts; everyone can read it',async()=>{
+  const {call,db}=setup();
+  const accounts=[{id:'vcb',label:' Vietcombank 1234 '},{id:'momo',label:'MoMo'}];
+  for(const bad of [[{id:'cash',label:'Cash'}],[{id:'a',label:''}],[{id:'a',label:'x'},{id:'a',label:'y'}],[{id:'a b',label:'x'}],[{id:'a',label:'x',number:'1'}],'vcb'])
+    await rejects(call('owner',{action:'accounts',organizationId:'org',operationId:'bad',accounts:bad}),'invalid-argument');
+  await rejects(call('staff',{action:'accounts',organizationId:'org',operationId:'s1',accounts}),'permission-denied');
+  await call('admin',{action:'accounts',organizationId:'org',operationId:'a1',accounts});
+  assert.deepEqual(db.store.get('organizations/org').paymentAccounts,[{id:'vcb',label:'Vietcombank 1234'},{id:'momo',label:'MoMo'}]);
+  assert.deepEqual((await call('staff',{action:'read',organizationId:'org'})).paymentAccounts.map(a=>a.id),['vcb','momo']);
+  assert.equal([...db.store].filter(([k,v])=>k.startsWith('teamActivity/')&&v.action==='updatePaymentAccounts').length,1);
 });

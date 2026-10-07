@@ -1,5 +1,7 @@
+import 'workspace_page_scope.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
+import 'ws_ui.dart';
 import '../../services/team_service.dart';
 import '../../utils/localizations/app_localizations.dart';
 
@@ -97,7 +99,14 @@ class _AccessRequestScreenState extends State<AccessRequestScreen> {
       setState(() {
         if (rejected) _operation = null;
         _records = [];
-        _message = _operation != null
+        final policyReason = serverReason(error, const [
+          'team_owner_account',
+          'team_other_employer',
+          'team_same_owner_approval',
+        ]);
+        _message = policyReason.isNotEmpty
+            ? policyReason
+            : _operation != null
             ? 'team_save_uncertain'
             : rejected
             ? 'team_request_rejected'
@@ -120,7 +129,7 @@ class _AccessRequestScreenState extends State<AccessRequestScreen> {
         child: Align(
           alignment: Alignment.topCenter,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 720),
+            constraints: WorkspacePageScope.constraints(context, 720),
             child: SingleChildScrollView(
               controller: _scroll,
               padding: const EdgeInsets.all(16),
@@ -159,17 +168,25 @@ class _AccessRequestScreenState extends State<AccessRequestScreen> {
                       ),
                     ),
                   const SizedBox(height: 16),
-                  FilledButton(
-                    onPressed: _busy ? null : () => _run(true),
-                    child: Text(
-                      t[_operation == null
-                          ? 'team_request_submit'
-                          : 'team_retry_save'],
-                    ),
+                  WsActions(
+                    children: [
+                      FilledButton(
+                        onPressed: _busy ? null : () => _run(true),
+                        child: Text(
+                          t[_operation == null
+                              ? 'team_request_submit'
+                              : 'team_retry_save'],
+                        ),
+                      ),
+                    ],
                   ),
-                  OutlinedButton(
-                    onPressed: _locked ? null : () => _run(false),
-                    child: Text(t['team_request_status']),
+                  WsActions(
+                    children: [
+                      OutlinedButton(
+                        onPressed: _locked ? null : () => _run(false),
+                        child: Text(t['team_request_status']),
+                      ),
+                    ],
                   ),
                   for (final record in _records)
                     Card(

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AppThemeColors {
+  /// Neutral grey (slate). The default for new installs since 2026-10-01.
+  static const slate = Color(0xFF475569);
   static const teal = Color(0xFF176B70);
   static const indigo = Color(0xFF4F46E5);
   static const blue = Color(0xFF2563EB);
@@ -9,11 +11,12 @@ class AppThemeColors {
   static const amber = Color(0xFFB45309);
   static const rose = Color(0xFFBE123C);
 
-  static const presets = <Color>[teal, indigo, blue, purple, amber, rose];
+  static const presets = <Color>[slate, teal, indigo, blue, purple, amber, rose];
+  static const defaultColor = slate;
 }
 
 class AppThemePalette {
-  static Color _primary = AppThemeColors.teal;
+  static Color _primary = AppThemeColors.defaultColor;
 
   static Color get primary => _primary;
   static Color get primaryDeep => Color.lerp(_primary, Colors.black, 0.45)!;
@@ -40,7 +43,7 @@ class AppThemePalette {
 class AppThemeNotifier extends ChangeNotifier {
   static const _preferenceKey = 'theme_primary_color';
 
-  Color _primary = AppThemeColors.teal;
+  Color _primary = AppThemeColors.defaultColor;
 
   Color get primary => _primary;
 
@@ -64,7 +67,7 @@ class AppThemeNotifier extends ChangeNotifier {
 }
 
 ThemeData buildAppTheme([
-  Color primary = AppThemeColors.teal,
+  Color primary = AppThemeColors.defaultColor,
 ]) {
   return ThemeData(
     fontFamily: 'Roboto',

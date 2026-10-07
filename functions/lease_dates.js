@@ -12,12 +12,14 @@ function propertyDate(instant,timeZone){
  }catch{return null;}
 }
 
-function leaseDatePolicy({moveInMillis,nowMillis,timeZone,role,reason}){
+// canBackdate: the member's backdateRecords permission. `role` is the older form
+// (owner/administrator only) kept for callers that have no membership.
+function leaseDatePolicy({moveInMillis,nowMillis,timeZone,role,canBackdate,reason}){
  if(!validZone(timeZone))return {error:'failed-precondition',key:'lease_property_timezone_required'};
  const localDate=propertyDate(moveInMillis,timeZone),today=propertyDate(nowMillis,timeZone);
  if(!localDate||!today)return {error:'invalid-argument',key:'booking_invalid_dates'};
  const backdated=localDate<today;
- if(backdated&&!['owner','administrator'].includes(role))return {error:'permission-denied',key:'lease_backdate_owner_admin_required'};
+ if(backdated&&!(typeof canBackdate==='boolean'?canBackdate:['owner','administrator'].includes(role)))return {error:'permission-denied',key:'lease_backdate_owner_admin_required'};
  if(reason!==undefined&&(typeof reason!=='string'||reason.length>1000))return {error:'invalid-argument',key:'lease_backdate_reason_invalid'};
  if(backdated&&(typeof reason!=='string'||!reason.trim()))return {error:'invalid-argument',key:'lease_backdate_reason_required'};
  return {localDate,timeZone,backdated,reason:backdated?reason.trim():null};

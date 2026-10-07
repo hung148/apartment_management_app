@@ -45,7 +45,8 @@ function createPropertyContractHandler({db,Timestamp,HttpsError}){
         for(const k of ['managementType','renterName','renterPhone','rentAmount','rentDueDay','rentContractStart','rentContractEnd','renterNotes']){
           if(old[k]!=null)legacy[k]=old[k]?.toDate?old[k].toDate().toISOString():old[k];
         }
-        return {record:{name:old.name??'',revision,currency,contract:old.rentalContract??null,legacy}};
+        // Sheet import (2026-10-05): the old app's building rent, to start a "thuê vào" contract from.
+        return {record:{name:old.name??'',revision,currency,contract:old.rentalContract??null,legacy,importedRentInMinor:Number.isSafeInteger(old.importedRentInMinor)&&old.importedRentInMinor>0?old.importedRentInMinor:null}};
       }
       const hash=v=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
       const key=hash(['propertyContract',d.organizationId,uid,d.operationId]),op=ref.collection('rentalContractHistory').doc(key);

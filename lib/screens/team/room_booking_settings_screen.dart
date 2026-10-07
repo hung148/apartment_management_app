@@ -1,5 +1,7 @@
+import 'workspace_page_scope.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
+import 'ws_ui.dart';
 import 'package:uuid/uuid.dart';
 import '../../services/team_service.dart';
 import 'operating_schedule_editor.dart';
@@ -233,14 +235,28 @@ class _RoomBookingSettingsScreenState extends State<RoomBookingSettingsScreen> {
       child: Align(
         alignment: Alignment.topCenter,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 720),
+          constraints: WorkspacePageScope.constraints(context, 720),
           child: ListView(
+            shrinkWrap: StackedPageScope.contains(context),
+            physics: StackedPageScope.contains(context)
+                ? const NeverScrollableScrollPhysics()
+                : null,
             padding: const EdgeInsets.all(16),
             children: [
-              TextButton(
-                onPressed: _saving || _pending != null ? null : widget.onBack,
-                child: Text(t['room_directory']),
-              ),
+              if (!PageTabScope.contains(context))
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: TextButton(
+                    onPressed: _saving || _pending != null
+                        ? null
+                        : widget.onBack,
+                    child: Text(
+                      DialogPageScope.contains(context)
+                          ? DialogPageScope.back(context)
+                          : t['room_directory'],
+                    ),
+                  ),
+                ),
               Text(
                 t['settings_title'],
                 style: Theme.of(context).textTheme.headlineSmall,
@@ -274,34 +290,41 @@ class _RoomBookingSettingsScreenState extends State<RoomBookingSettingsScreen> {
                             : null,
                       ),
                       if (_limited) ...[
-                        OutlinedButton(
-                          onPressed: editable
-                              ? () => setState(() {
-                                  if (!_weekly) {
-                                    _schedule = ScheduleDraft.daily(
-                                      bookingMinute(_open.text),
-                                      bookingMinute(_close.text, closing: true),
-                                    );
-                                  } else {
-                                    if (bookingMinute(_open.text) == null) {
-                                      _open.text = '09:00';
-                                    }
-                                    if (bookingMinute(
-                                          _close.text,
-                                          closing: true,
-                                        ) ==
-                                        null) {
-                                      _close.text = '17:00';
-                                    }
-                                  }
-                                  _weekly = !_weekly;
-                                })
-                              : null,
-                          child: Text(
-                            t[_weekly
-                                ? 'schedule_use_daily'
-                                : 'schedule_use_weekly'],
-                          ),
+                        WsActions(
+                          children: [
+                            OutlinedButton(
+                              onPressed: editable
+                                  ? () => setState(() {
+                                      if (!_weekly) {
+                                        _schedule = ScheduleDraft.daily(
+                                          bookingMinute(_open.text),
+                                          bookingMinute(
+                                            _close.text,
+                                            closing: true,
+                                          ),
+                                        );
+                                      } else {
+                                        if (bookingMinute(_open.text) == null) {
+                                          _open.text = '09:00';
+                                        }
+                                        if (bookingMinute(
+                                              _close.text,
+                                              closing: true,
+                                            ) ==
+                                            null) {
+                                          _close.text = '17:00';
+                                        }
+                                      }
+                                      _weekly = !_weekly;
+                                    })
+                                  : null,
+                              child: Text(
+                                t[_weekly
+                                    ? 'schedule_use_daily'
+                                    : 'schedule_use_weekly'],
+                              ),
+                            ),
+                          ],
                         ),
                         if (_weekly)
                           OperatingScheduleEditor(
@@ -346,21 +369,29 @@ class _RoomBookingSettingsScreenState extends State<RoomBookingSettingsScreen> {
                       ],
                       const SizedBox(height: 16),
                       if (_revision != null)
-                        FilledButton(
-                          onPressed: _busy || _saving ? null : _save,
-                          child: Text(
-                            t[_pending == null
-                                ? 'settings_save'
-                                : 'settings_retry'],
-                          ),
+                        WsActions(
+                          children: [
+                            FilledButton(
+                              onPressed: _busy || _saving ? null : _save,
+                              child: Text(
+                                t[_pending == null
+                                    ? 'settings_save'
+                                    : 'settings_retry'],
+                              ),
+                            ),
+                          ],
                         ),
                     ],
                   ),
                 ),
               const SizedBox(height: 16),
-              OutlinedButton(
-                onPressed: locked ? null : () => _load(),
-                child: Text(t['settings_reload']),
+              WsActions(
+                children: [
+                  OutlinedButton(
+                    onPressed: locked ? null : () => _load(),
+                    child: Text(t['settings_reload']),
+                  ),
+                ],
               ),
             ],
           ),

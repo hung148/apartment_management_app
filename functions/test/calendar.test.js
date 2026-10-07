@@ -1,4 +1,5 @@
 const {test}=require('node:test');
+const {via}=require('./call_group');
 const assert=require('node:assert/strict');
 const {createCalendarHandler,createTenantHandler}=require('../calendar');
 class Stamp {constructor(value){this.value=value;} toMillis(){return this.value;} static fromMillis(v){return new Stamp(v);} static now(){return new Stamp(Date.now());}}
@@ -93,7 +94,7 @@ test('Rejects unauthorized users, invalid amounts, and illegal status changes',a
 test('Deployed callable wrappers forward second-generation request data and authentication', async () => {
  const exported = require('../index');
  for (const name of ['mutateCalendarBooking','mutateCalendarTenant','tenantLeases','tenantRoommates','tenantRent']) {
-   await assert.rejects(exported[name].run({data:{}}), error => error.code === 'unauthenticated');
-   await assert.rejects(exported[name].run({data:{},auth:{uid:'owner'}}), error => error.code === 'unauthenticated' && error.message === 'app_check_required');
+   await assert.rejects(via(exported,name).run({data:{}}), error => error.code === 'unauthenticated');
+   await assert.rejects(via(exported,name).run({data:{},auth:{uid:'owner'}}), error => error.code === 'unauthenticated' && error.message === 'app_check_required');
  }
 });

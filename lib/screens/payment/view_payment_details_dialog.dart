@@ -184,7 +184,7 @@ class _ViewPaymentDetailsDialogState extends State<ViewPaymentDetailsDialog>
                       if (item.billingStartDate != null &&
                           item.billingEndDate != null)
                         Text(
-                          '${DateFormat(dateFormat).format(item.billingStartDate!)} → ${DateFormat(dateFormat).format(item.billingEndDate!)}',
+                          '${DateFormat(dateFormat).format(item.billingStartDate!)} – ${DateFormat(dateFormat).format(item.billingEndDate!)}',
                           style: TextStyle(
                               fontSize: 11, color: Colors.grey.shade500),
                         ),

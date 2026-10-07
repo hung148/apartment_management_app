@@ -36,6 +36,8 @@ Future<void> fill(WidgetTester tester, {String date = '2026-09-27'}) async {
   );
   await enter(tester, 'lease-phone', '0901234567');
   await enter(tester, 'lease-start', date);
+  // Required since 2026-10-04 (Tom).
+  await enter(tester, 'lease-end', '2027-09-27');
   await enter(tester, 'lease-rent', '1500000');
 }
 
@@ -53,7 +55,7 @@ void main() {
           onBack: () {},
         ),
       );
-      await press(tester, 'Add tenant / Start lease');
+      await press(tester, 'Add tenant');
       await room(tester, 'room-102');
       await fill(tester, date: '2026-09-26');
       await press(tester, 'Create tenant and lease');
@@ -97,7 +99,8 @@ void main() {
         find.text(AppTranslations(const Locale('en'))['lease_form_occupied']),
         findsOneWidget,
       );
-      await press(tester, 'Choose another room');
+      // The form stays; the room is changed from its header.
+      await press(tester, 'Change room');
       await room(tester, 'room-102');
       await press(tester, 'Create tenant and lease');
       expect(s.tenants.length, 3);
@@ -262,7 +265,9 @@ void main() {
                   ),
                 );
               }
-              await enter(tester, 'lease-rent', '12.345');
+              // The box refuses extra decimals while typing; 0 is refused
+              // by the check (2026-10-05).
+              await enter(tester, 'lease-rent', '0');
               await press(tester, t['lease_form_save']);
               await reveal(tester, find.text(t['lease_form_invalid_rent']));
               expect(

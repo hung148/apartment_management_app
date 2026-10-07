@@ -1,0 +1,63 @@
+{
+  "note": "Shared by functions/team_access.js and lib/models/team_access.dart (parity tested). Scopes: all = every property in the organization, managed = the member's own property list, own = records they created or are in charge of (inside their properties).",
+  "permissions": {
+    "manageOrganization": ["all"],
+    "manageTeam": ["all"],
+    "manageRoles": ["all"],
+    "assignAdditionalWorkplace": ["all"],
+    "manageProperty": ["all", "managed"],
+    "manageLease": ["all", "managed"],
+    "readBookings": ["all", "managed", "own"],
+    "createBookings": ["all", "managed"],
+    "manageBookings": ["all", "managed", "own"],
+    "collectPayments": ["all", "managed"],
+    "overridePrices": ["all", "managed"],
+    "refundPayments": ["all", "managed"],
+    "readFinancialReports": ["all", "managed"],
+    "readOwnActivity": ["all"],
+    "readAllActivity": ["all"],
+    "exportData": ["all"],
+    "importData": ["all"],
+    "connectDrive": ["all"],
+    "backdateRecords": ["all"],
+    "readAssignedTasks": ["all", "managed"],
+    "updateAssignedTasks": ["all", "managed"],
+    "readGuestIds": ["all", "managed"]
+  },
+  "overridable": ["overridePrices", "refundPayments", "exportData", "importData"],
+  "templates": {
+    "owner": {"color": "#6D4C41", "grants": {
+      "manageOrganization": "all", "manageTeam": "all", "manageRoles": "all",
+      "manageProperty": "managed", "manageLease": "managed", "readBookings": "managed",
+      "createBookings": "managed", "manageBookings": "managed", "collectPayments": "managed",
+      "overridePrices": "managed", "refundPayments": "managed", "readFinancialReports": "managed",
+      "readOwnActivity": "all", "readAllActivity": "all", "exportData": "all", "importData": "all",
+      "connectDrive": "all", "backdateRecords": "all", "readAssignedTasks": "managed",
+      "updateAssignedTasks": "managed", "readGuestIds": "managed"}},
+    "administrator": {"color": "#3949AB", "grants": {
+      "manageOrganization": "all", "manageTeam": "all",
+      "manageProperty": "managed", "manageLease": "managed", "readBookings": "managed",
+      "createBookings": "managed", "manageBookings": "managed", "collectPayments": "managed",
+      "overridePrices": "managed", "refundPayments": "managed", "readFinancialReports": "managed",
+      "readOwnActivity": "all", "readAllActivity": "all", "exportData": "all", "importData": "all",
+      "connectDrive": "all", "backdateRecords": "all", "readAssignedTasks": "managed",
+      "updateAssignedTasks": "managed", "readGuestIds": "managed"}},
+    "manager": {"color": "#00897B", "grants": {
+      "manageProperty": "managed", "manageLease": "managed", "readBookings": "managed",
+      "createBookings": "managed", "manageBookings": "managed", "collectPayments": "managed",
+      "overridePrices": "managed", "readFinancialReports": "managed", "readOwnActivity": "all"}},
+    "receptionist": {"color": "#1E88E5", "grants": {
+      "readBookings": "managed", "createBookings": "managed", "manageBookings": "managed",
+      "collectPayments": "managed", "readOwnActivity": "all"}},
+    "housekeeper": {"color": "#8E24AA", "grants": {
+      "readAssignedTasks": "managed", "updateAssignedTasks": "managed", "readOwnActivity": "all"}},
+    "accountant": {"color": "#F4511E", "grants": {
+      "readBookings": "managed", "collectPayments": "managed", "refundPayments": "managed",
+      "readFinancialReports": "managed", "readOwnActivity": "all"}},
+    "staff": {"color": "#43A047", "grants": {
+      "readBookings": "managed", "createBookings": "managed", "manageBookings": "own",
+      "collectPayments": "managed", "readOwnActivity": "all"}},
+    "investor": {"color": "#FDD835", "grants": {
+      "readBookings": "managed", "readFinancialReports": "managed", "readOwnActivity": "all"}}
+  }
+}

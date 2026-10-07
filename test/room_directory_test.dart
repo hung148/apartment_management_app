@@ -5,10 +5,14 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/team/room_directory.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/team/room_details_screen.dart';
+import 'package:phan_mem_quan_ly_can_ho/screens/team/room_booking_settings_screen.dart';
+import 'package:phan_mem_quan_ly_can_ho/screens/team/utility_readings_screen.dart';
+import 'package:phan_mem_quan_ly_can_ho/screens/team/room_service_fees_screen.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/team/role_workspace.dart';
 import 'package:phan_mem_quan_ly_can_ho/preview/team_preview_store.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/team_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/localizations/app_localizations.dart';
+import 'support/calendar_nav.dart';
 import 'team_review_test.dart' show mountReview;
 import 'staff_editor_test.dart' show press, reveal;
 
@@ -60,7 +64,21 @@ void main() {
         tester,
         RoleWorkspace(organizationId: 'preview', service: store.service),
       );
-      await press(tester, 'Manage rooms');
+      await openRoomDialog(tester, 'room-101');
+      // The room's pages are chips in its dialog (2026-10-05, Tom); the
+      // details page shows first, with the booking settings under it (no
+      // separate "Cài đặt" chip).
+      expect(find.byKey(const ValueKey('room-edit-number')), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (w) => w.runtimeType.toString() == 'RoomBookingSettingsScreen',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('settings-room-room-101')),
+        findsNothing,
+      );
       await reveal(tester, find.byKey(const ValueKey('edit-room-room-101')));
       await tester.tap(find.byKey(const ValueKey('edit-room-room-101')));
       await tester.pumpAndSettle();
@@ -70,7 +88,15 @@ void main() {
       expect(find.text('Enter a value.'), findsOneWidget);
       expect(store.rooms.first['area'], 45.5);
       await enter(tester, 'number', '102');
+      // A comma is only a thousands mark (2026-10-05): "52,75" is refused,
+      // not read as 52.75.
       await enter(tester, 'area', '52,75');
+      await press(tester, 'Save room details');
+      expect(
+        find.text('Enter an area above 0 and up to 100,000 m².'),
+        findsOneWidget,
+      );
+      await enter(tester, 'area', '52.75');
       await press(tester, 'Save room details');
       expect(find.textContaining('already uses'), findsOneWidget);
       await enter(tester, 'number', 'Family 201');
@@ -78,8 +104,8 @@ void main() {
       await press(tester, 'Save room details');
       expect(store.rooms.first['area'], 52.75);
       expect(find.text('Room details saved.'), findsOneWidget);
-      await press(tester, 'Manage rooms');
-      expect(find.text('Family 201'), findsOneWidget);
+      // The details are a page of the room dialog (2026-10-05): no "Back".
+      expect(find.text('Family 201'), findsWidgets);
       expect(find.text('Family suite'), findsOneWidget);
       store.workspaceRole = 'housekeeper';
       await mountReview(
@@ -277,4 +303,49 @@ void main() {
       }
     },
   );
+  test('room links name the open page and keep older bare room IDs', () {
+    expect(roomLink('utilities', 'room-101'), 'utilities--room-101');
+    expect(roomLinkView('utilities--room-101'), 'utilities');
+    expect(roomLinkRoom('utilities--room-101'), 'room-101');
+    expect(roomLinkView('settings--a_b-c'), 'settings');
+    expect(roomLinkView('fees--room-101'), 'fees');
+    expect(roomLinkRoom('rates--x'), 'x');
+    // Older links and odd values open the room details.
+    expect(roomLinkView('room-101'), isNull);
+    expect(roomLinkRoom('room-101'), 'room-101');
+    expect(roomLinkView('utilities--'), isNull);
+    expect(roomLink('utilities', 'r' * 120), isNull);
+  });
+  for (final (link, screen) in [
+    ('utilities--room-101', UtilityReadingsScreen),
+    ('fees--room-101', RoomServiceFeesScreen),
+    ('settings--room-101', RoomBookingSettingsScreen),
+    ('room-101', RoomDetailsScreen),
+  ]) {
+    testWidgets(
+      'a room link $link reopens the same page and keeps its address',
+      (tester) async {
+        final store = TeamPreviewStore();
+        final reported = <String?>[];
+        await mountReview(
+          tester,
+          RoomDirectory(
+            organizationId: 'preview',
+            buildingId: 'riverside',
+            service: store.service,
+            initialRecordId: link,
+            onRecordChanged: reported.add,
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.byType(screen), findsOneWidget);
+        if (screen != RoomDetailsScreen) {
+          expect(find.byType(RoomDetailsScreen), findsNothing);
+        }
+        expect(reported.last, link);
+      },
+    );
+  }
+  // The Rooms section and its addresses were removed (rooms open from the
+  // calendar, 2026-10-03); room pages are covered by the link tests above.
 }

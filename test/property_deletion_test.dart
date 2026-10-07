@@ -8,6 +8,7 @@ import 'package:phan_mem_quan_ly_can_ho/screens/team/role_workspace.dart';
 import 'package:phan_mem_quan_ly_can_ho/preview/team_preview_store.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/team_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/localizations/app_localizations.dart';
+import 'support/calendar_nav.dart';
 import 'team_review_test.dart' show mountReview;
 import 'room_rates_test.dart' show press, reveal;
 
@@ -56,7 +57,7 @@ void main() {
       tester,
       RoleWorkspace(organizationId: 'preview', service: store.service),
     );
-    await press(tester, 'Property details');
+    await openBuildingPage(tester, 'property');
     expect(find.text('Delete empty property'), findsNothing);
   });
   testWidgets(

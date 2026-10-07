@@ -1,3 +1,4 @@
+import 'workspace_page_scope.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import '../../models/team_access.dart';
@@ -8,6 +9,9 @@ import 'access_editor.dart';
 import 'team_review_queue.dart';
 import 'activity_history.dart';
 import 'account_access_list.dart';
+import 'roles_screen.dart';
+import 'back_steps.dart';
+import 'ws_ui.dart';
 
 /// Server-authorized directory. Employment and login linkage are deliberately
 /// displayed separately; neither implies that an account has active access.
@@ -33,6 +37,9 @@ class _TeamScreenState extends State<TeamScreen> {
   bool _reviewing = false;
   bool _activity = false;
   bool _accounts = false;
+  bool _roles = false;
+  // R2: "Add staff by Gmail" (profile + pre-approval in one form).
+  bool _addingByGmail = false;
   bool _accessEditing = false;
   TeamAccess? _actor;
   String? _invitationId;
@@ -53,6 +60,8 @@ class _TeamScreenState extends State<TeamScreen> {
       _invitationId = null;
       _activity = false;
       _accounts = false;
+      _roles = false;
+      _addingByGmail = false;
       _load();
     }
   }
@@ -136,6 +145,13 @@ class _TeamScreenState extends State<TeamScreen> {
         _ => 'team_unspecified',
       }];
 
+  /// Team managers pick roles; role managers also create and edit them.
+  bool get _canOpenRoles =>
+      _admin ||
+      (_actor != null &&
+          _actor!.allBuildings &&
+          _actor!.allows(TeamPermission.manageRoles));
+
   bool _linked(Map<String, dynamic> record) =>
       record['accountId'] is String &&
       (record['accountId'] as String).isNotEmpty;
@@ -144,22 +160,80 @@ class _TeamScreenState extends State<TeamScreen> {
   Widget build(BuildContext context) {
     final t = AppTranslations.of(context);
     final selected = _selected;
+    if (_roles && _actor != null) {
+      return BackStep(
+        onBack: () {
+          setState(() => _roles = false);
+          _load();
+        },
+        child: RolesScreen(
+          key: ValueKey('roles-${widget.organizationId}'),
+          organizationId: widget.organizationId,
+          service: widget.service,
+          actor: _actor!,
+          onBack: () {
+            setState(() => _roles = false);
+            _load();
+          },
+          onAccessDenied: () => setState(() {
+            _roles = false;
+            _records = [];
+            _cursor = null;
+            _admin = false;
+            _error = 'team_denied';
+          }),
+        ),
+      );
+    }
     if (_accounts) {
-      return AccountAccessList(
-        organizationId: widget.organizationId,
-        service: widget.service,
+      return BackStep(
         onBack: () {
           setState(() => _accounts = false);
           _load();
         },
+        child: AccountAccessList(
+          organizationId: widget.organizationId,
+          service: widget.service,
+          onBack: () {
+            setState(() => _accounts = false);
+            _load();
+          },
+        ),
       );
     }
     if (_reviewing) {
-      return TeamReviewQueue(
-        key: ValueKey('queue-${widget.organizationId}'),
+      return BackStep(
+        onBack: () => _load(),
+        child: TeamReviewQueue(
+          key: ValueKey('queue-${widget.organizationId}'),
+          organizationId: widget.organizationId,
+          service: widget.service,
+          onBack: () => _load(),
+        ),
+      );
+    }
+    if (_addingByGmail && _actor != null) {
+      return AccessEditor(
+        key: ValueKey('add-by-gmail-${widget.organizationId}'),
         organizationId: widget.organizationId,
         service: widget.service,
-        onBack: () => _load(),
+        actor: _actor!,
+        profile: const {},
+        onCancel: () => setState(() => _addingByGmail = false),
+        onAccessDenied: () => setState(() {
+          _addingByGmail = false;
+          _records = [];
+          _cursor = null;
+          _admin = false;
+          _error = 'team_denied';
+        }),
+        onSaved: (result) {
+          setState(() => _addingByGmail = false);
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(t['team_added_by_gmail'])));
+          _load();
+        },
       );
     }
     if (_accessEditing && selected != null && _actor != null) {
@@ -195,10 +269,13 @@ class _TeamScreenState extends State<TeamScreen> {
       );
     }
     if (_activity) {
-      return ActivityHistory(
-        organizationId: widget.organizationId,
-        service: widget.service,
+      return BackStep(
         onBack: () => setState(() => _activity = false),
+        child: ActivityHistory(
+          organizationId: widget.organizationId,
+          service: widget.service,
+          onBack: () => setState(() => _activity = false),
+        ),
       );
     }
     if (_editing) {
@@ -230,121 +307,157 @@ class _TeamScreenState extends State<TeamScreen> {
       child: Align(
         alignment: Alignment.topCenter,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 960),
+          constraints: WorkspacePageScope.constraints(context, 960),
           child: ListView(
             key: ValueKey(
               '${widget.organizationId}-${selected?['id'] ?? 'directory'}',
             ),
             padding: const EdgeInsets.all(16),
             children: [
-              if (selected != null)
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton.icon(
-                    onPressed: () => setState(() => _selected = null),
-                    icon: const Icon(Icons.arrow_back),
-                    label: Text(t['team_back']),
-                  ),
-                ),
-              Text(
-                t[selected == null
-                    ? (_admin ? 'team_directory' : 'team_profile')
-                    : 'team_details'],
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
-              const SizedBox(height: 8),
-              Text(t['team_distinction']),
-              if (_admin && !_loading && _error == null && selected == null)
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: OutlinedButton.icon(
-                    onPressed: () => setState(() => _accounts = true),
-                    icon: const Icon(Icons.manage_accounts_outlined),
-                    label: Text(t['team_accounts']),
-                  ),
-                ),
-              if (_admin && !_loading && _error == null && selected == null)
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: OutlinedButton.icon(
-                    onPressed: () => setState(() => _activity = true),
-                    icon: const Icon(Icons.history),
-                    label: Text(t['activity_title']),
-                  ),
-                ),
-              if (_admin && !_loading && _error == null && selected == null)
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: OutlinedButton.icon(
-                    onPressed: () => setState(() => _reviewing = true),
-                    icon: const Icon(Icons.inbox_outlined),
-                    label: Text(t['team_review_queue']),
-                  ),
-                ),
-              if (_admin && _error == null && _invitationId != null) ...[
-                const SizedBox(height: 16),
-                Text(t['team_invite_reference']),
-                SelectableText(_invitationId!),
-                Text(t['team_invite_created']),
-              ],
-              if (_admin &&
-                  !_loading &&
-                  _error == null &&
-                  selected != null &&
-                  (selected['canManageAccess'] == true ||
-                      (!_linked(selected) &&
-                          selected['employmentStatus'] == 'active' &&
-                          selected['canEditProfile'] == true)))
-                Padding(
-                  padding: const EdgeInsets.only(top: 16),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: OutlinedButton.icon(
-                      onPressed: () => setState(() => _accessEditing = true),
-                      icon: const Icon(Icons.admin_panel_settings_outlined),
-                      label: Text(
-                        t[_linked(selected)
-                            ? 'team_manage_access'
-                            : 'team_invite'],
-                      ),
-                    ),
-                  ),
-                ),
-              if (_admin &&
-                  !_loading &&
-                  _error == null &&
-                  (selected == null || selected['canEditProfile'] == true))
-                Padding(
-                  padding: const EdgeInsets.only(top: 16),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: FilledButton.icon(
-                      onPressed: () => setState(() {
-                        _draft = selected;
-                        _editing = true;
-                      }),
-                      icon: Icon(
-                        selected == null
-                            ? Icons.person_add_outlined
-                            : Icons.edit_outlined,
-                      ),
-                      label: Text(
+              Builder(
+                builder: (context) {
+                  final ready = _admin && !_loading && _error == null;
+                  return WsHeader(
+                    back: selected == null
+                        ? null
+                        : WsBack(
+                            label: t['team_back'],
+                            onPressed: () => setState(() => _selected = null),
+                          ),
+                    title:
                         t[selected == null
-                            ? 'team_add_staff'
-                            : 'team_edit_staff'],
+                            ? (_admin ? 'team_directory' : 'team_profile')
+                            : 'team_details'],
+                    help: t['team_distinction'],
+                    actions: [
+                      if (ready && selected == null)
+                        FilledButton.icon(
+                          key: const ValueKey('team-add-by-gmail'),
+                          onPressed: () =>
+                              setState(() => _addingByGmail = true),
+                          icon: const Icon(
+                            Icons.person_add_alt_1_outlined,
+                            size: 18,
+                          ),
+                          label: Text(t['team_add_by_gmail']),
+                        ),
+                      if (ready &&
+                          (selected == null ||
+                              selected['canEditProfile'] == true))
+                        OutlinedButton.icon(
+                          onPressed: () => setState(() {
+                            _draft = selected;
+                            _editing = true;
+                          }),
+                          icon: Icon(
+                            selected == null
+                                ? Icons.person_add_outlined
+                                : Icons.edit_outlined,
+                            size: 18,
+                          ),
+                          label: Text(
+                            t[selected == null
+                                ? 'team_add_staff'
+                                : 'team_edit_staff'],
+                          ),
+                        ),
+                      if (ready &&
+                          selected != null &&
+                          (selected['canManageAccess'] == true ||
+                              (!_linked(selected) &&
+                                  selected['employmentStatus'] == 'active' &&
+                                  selected['canEditProfile'] == true)))
+                        OutlinedButton.icon(
+                          onPressed: () =>
+                              setState(() => _accessEditing = true),
+                          icon: const Icon(
+                            Icons.admin_panel_settings_outlined,
+                            size: 18,
+                          ),
+                          label: Text(
+                            t[_linked(selected)
+                                ? 'team_manage_access'
+                                : 'team_invite'],
+                          ),
+                        ),
+                    ],
+                  );
+                },
+              ),
+              // Team tools: one compact row instead of a stack of buttons.
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    if (selected == null &&
+                        _admin &&
+                        !_loading &&
+                        _error == null)
+                      OutlinedButton.icon(
+                        onPressed: () => setState(() => _accounts = true),
+                        icon: const Icon(
+                          Icons.manage_accounts_outlined,
+                          size: 18,
+                        ),
+                        label: Text(t['team_accounts']),
                       ),
+                    if (selected == null &&
+                        _canOpenRoles &&
+                        !_loading &&
+                        _error == null)
+                      OutlinedButton.icon(
+                        key: const ValueKey('team-roles'),
+                        onPressed: () => setState(() => _roles = true),
+                        icon: const Icon(Icons.badge_outlined, size: 18),
+                        label: Text(t['roles_title']),
+                      ),
+                    if (selected == null &&
+                        _admin &&
+                        !_loading &&
+                        _error == null)
+                      OutlinedButton.icon(
+                        onPressed: () => setState(() => _reviewing = true),
+                        icon: const Icon(Icons.inbox_outlined, size: 18),
+                        label: Text(t['team_review_queue']),
+                      ),
+                    if (selected == null &&
+                        _admin &&
+                        !_loading &&
+                        _error == null)
+                      OutlinedButton.icon(
+                        onPressed: () => setState(() => _activity = true),
+                        icon: const Icon(Icons.history, size: 18),
+                        label: Text(t['activity_title']),
+                      ),
+                    if (!WorkspacePageScope.contains(context))
+                      OutlinedButton.icon(
+                        onPressed: _loading ? null : () => _load(),
+                        icon: const Icon(Icons.refresh, size: 18),
+                        label: Text(t['team_refresh']),
+                      ),
+                  ],
+                ),
+              ),
+              if (_admin && _error == null && _invitationId != null)
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          t['team_invite_reference'],
+                          style: Theme.of(context).textTheme.labelLarge,
+                        ),
+                        SelectableText(_invitationId!),
+                        const SizedBox(height: 4),
+                        Text(t['team_invite_created']),
+                      ],
                     ),
                   ),
                 ),
-              const SizedBox(height: 16),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: OutlinedButton.icon(
-                  onPressed: _loading ? null : () => _load(),
-                  icon: const Icon(Icons.refresh),
-                  label: Text(t['team_refresh']),
-                ),
-              ),
               if (_loading) ...[
                 const SizedBox(height: 16),
                 LinearProgressIndicator(semanticsLabel: t['team_loading']),
@@ -376,43 +489,31 @@ class _TeamScreenState extends State<TeamScreen> {
                 Text(t['team_access_note']),
               ] else ...[
                 for (final record in _records)
-                  Card(
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(12),
-                      onTap: _loading
-                          ? null
-                          : () => setState(() => _selected = record),
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              _value(record, 'displayName', t),
-                              style: Theme.of(context).textTheme.titleMedium,
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              '${t['team_code']}: ${_value(record, 'code', t)}',
-                            ),
-                            Text(
-                              '${t['team_employment']}: ${_employment(record, t)}',
-                            ),
-                            Text(
-                              '${t['team_account']}: ${t[_linked(record) ? 'team_linked' : 'team_unlinked']}',
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              t['team_view_details'],
-                              key: ValueKey('team-details-${record['id']}'),
-                              style: TextStyle(
-                                color: Theme.of(context).colorScheme.primary,
-                              ),
-                            ),
-                          ],
+                  WsRecord(
+                    onTap: _loading
+                        ? null
+                        : () => setState(() => _selected = record),
+                    leading: WsBadge(text: _value(record, 'code', t)),
+                    title: _value(record, 'displayName', t),
+                    pill: WsPill(
+                      t[_linked(record) ? 'team_linked' : 'team_unlinked'],
+                      tone: _linked(record) ? WsTone.good : WsTone.neutral,
+                    ),
+                    details: [
+                      '${t['team_code']}: ${_value(record, 'code', t)}',
+                      '${t['team_employment']}: ${_employment(record, t)}',
+                      '${t['team_account']}: ${t[_linked(record) ? 'team_linked' : 'team_unlinked']}',
+                    ],
+                    actions: [
+                      Text(
+                        t['team_view_details'],
+                        key: ValueKey('team-details-${record['id']}'),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.primary,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
-                    ),
+                    ],
                   ),
                 if (_cursor != null)
                   Padding(

@@ -1,5 +1,7 @@
+import 'workspace_page_scope.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
+import 'ws_ui.dart';
 import 'package:uuid/uuid.dart';
 import '../../services/team_service.dart';
 import '../../utils/localizations/app_localizations.dart';
@@ -9,6 +11,10 @@ class PropertyDetailsScreen extends StatefulWidget {
   final TeamService service;
   final VoidCallback onBack;
   final bool create, canDelete;
+
+  /// Called once a new property is created (the calendar closes its dialog).
+  /// Without it the page shows the new property's details.
+  final VoidCallback? onCreated;
   const PropertyDetailsScreen({
     super.key,
     required this.organizationId,
@@ -17,6 +23,7 @@ class PropertyDetailsScreen extends StatefulWidget {
     required this.onBack,
     this.create = false,
     this.canDelete = false,
+    this.onCreated,
   });
   @override
   State<PropertyDetailsScreen> createState() => _PropertyDetailsScreenState();
@@ -142,9 +149,14 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
       _message = null;
     });
     try {
-      final deleting = _deleting;
+      final deleting = _deleting, creating = _creating;
       await widget.service.propertyDetails(Map.of(_pending!));
       if (!mounted || generation != _generation) return;
+      if (creating && widget.onCreated != null) {
+        _pending = null;
+        widget.onCreated!();
+        return;
+      }
       setState(() {
         _saving = false;
         _pending = null;
@@ -210,24 +222,28 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
   @override
   Widget build(BuildContext context) {
     final t = AppTranslations.of(context),
-        locked = _loading || _saving || _pending != null || _confirmDelete;
+        locked = _loading || _saving || _pending != null || _confirmDelete,
+        inDialog = DialogPageScope.contains(context);
     return SafeArea(
       child: Align(
         alignment: Alignment.topCenter,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 720),
+          constraints: WorkspacePageScope.constraints(context, 720),
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              TextButton(
-                onPressed: _saving || _pending != null ? null : widget.onBack,
-                child: Text(t['workspace_title']),
-              ),
-              Text(
-                t[_creating ? 'property_create' : 'property_details'],
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
-              const SizedBox(height: 16),
+              // In a dialog its title bar names the page and closes it.
+              if (!inDialog) ...[
+                TextButton(
+                  onPressed: _saving || _pending != null ? null : widget.onBack,
+                  child: Text(t['workspace_title']),
+                ),
+                Text(
+                  t[_creating ? 'property_create' : 'property_details'],
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+                const SizedBox(height: 16),
+              ],
               if (_loading || _saving) const LinearProgressIndicator(),
               if (_message != null)
                 Semantics(liveRegion: true, child: Text(t[_message!])),
@@ -322,18 +338,25 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
                         const SizedBox(height: 16),
                       ],
                       if (_revision != null)
-                        FilledButton(
-                          onPressed:
-                              _loading || _saving || _deleting || _confirmDelete
-                              ? null
-                              : _save,
-                          child: Text(
-                            t[_pending == null
-                                ? (_creating
-                                      ? 'property_create'
-                                      : 'property_save')
-                                : 'property_retry'],
-                          ),
+                        WsActions(
+                          children: [
+                            FilledButton(
+                              onPressed:
+                                  _loading ||
+                                      _saving ||
+                                      _deleting ||
+                                      _confirmDelete
+                                  ? null
+                                  : _save,
+                              child: Text(
+                                t[_pending == null
+                                    ? (_creating
+                                          ? 'property_create'
+                                          : 'property_save')
+                                    : 'property_retry'],
+                              ),
+                            ),
+                          ],
                         ),
                     ],
                   ),
@@ -347,34 +370,51 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
                   Text(_savedName),
                   Text(t['property_delete_hint']),
                   const SizedBox(height: 12),
-                  FilledButton(
-                    onPressed: _saving ? null : _delete,
-                    child: Text(
-                      t[_deleting
-                          ? 'property_delete_retry'
-                          : 'property_delete_confirm'],
-                    ),
+                  WsActions(
+                    children: [
+                      FilledButton(
+                        onPressed: _saving ? null : _delete,
+                        child: Text(
+                          t[_deleting
+                              ? 'property_delete_retry'
+                              : 'property_delete_confirm'],
+                        ),
+                      ),
+                    ],
                   ),
                   if (!_deleting)
-                    OutlinedButton(
-                      onPressed: _saving
-                          ? null
-                          : () => setState(() => _confirmDelete = false),
-                      child: Text(t['property_delete_cancel']),
+                    WsActions(
+                      children: [
+                        OutlinedButton(
+                          onPressed: _saving
+                              ? null
+                              : () => setState(() => _confirmDelete = false),
+                          child: Text(t['property_delete_cancel']),
+                        ),
+                      ],
                     ),
                 ] else
-                  OutlinedButton(
-                    onPressed: locked
-                        ? null
-                        : () => setState(() => _confirmDelete = true),
-                    child: Text(t['property_delete']),
+                  WsActions(
+                    children: [
+                      OutlinedButton(
+                        onPressed: locked
+                            ? null
+                            : () => setState(() => _confirmDelete = true),
+                        child: Text(t['property_delete']),
+                      ),
+                    ],
                   ),
               ],
               const SizedBox(height: 16),
-              if (!_deleted)
-                OutlinedButton(
-                  onPressed: locked ? null : () => _load(),
-                  child: Text(t['property_reload']),
+              // In a dialog: only when the details could not be loaded.
+              if (!_deleted && (!inDialog || (_revision == null && !_loading)))
+                WsActions(
+                  children: [
+                    OutlinedButton(
+                      onPressed: locked ? null : () => _load(),
+                      child: Text(t['property_reload']),
+                    ),
+                  ],
                 ),
             ],
           ),

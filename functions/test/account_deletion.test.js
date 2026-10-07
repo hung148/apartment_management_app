@@ -1,4 +1,5 @@
 const {test}=require('node:test');
+const {via}=require('./call_group');
 const assert=require('node:assert/strict');
 const {createAccountDeletionHandler}=require('../account_deletion');
 const {fakeDb,Ts,CodeError}=require('./fake_firestore');
@@ -113,6 +114,6 @@ test('if the chosen administrator lost the role, nothing is transferred and a ne
 
 test('the exported callable passes through the shared security boundary',async()=>{
   const api=require('../index');
-  await rejects(api.deleteMyAccount.run({data:{}}),'unauthenticated');
-  await rejects(api.deleteMyAccount.run({auth:{uid:'u'},data:{}}),'unauthenticated','app_check_required');
+  await rejects(via(api,'deleteMyAccount').run({data:{}}),'unauthenticated');
+  await rejects(via(api,'deleteMyAccount').run({auth:{uid:'u'},data:{}}),'unauthenticated','app_check_required');
 });

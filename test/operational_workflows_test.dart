@@ -117,14 +117,15 @@ void main() {
           onBack: () {},
         ),
       );
-      await press(tester, 'Create new');
+      await press(tester, 'New booking');
       await enter(tester, 'ops-guest', 'Guest family');
       await enter(tester, 'ops-startLocal', '2026-10-01 09:00');
       await enter(tester, 'ops-endLocal', '2026-10-01 11:00');
       await press(tester, 'Review calculation');
       await press(tester, 'Confirm and save');
       expect(s.operationalBookings.single['totalPrice'], 200000);
-      await press(tester, 'Collect booking payment');
+      // 2026-10-04: "Collect" sits in the money section.
+      await press(tester, 'Collect');
       await enter(tester, 'ops-reason', 'Receipt');
       await enter(tester, 'ops-amount', '50000');
       await press(tester, 'Confirm and save');

@@ -1,39 +1,59 @@
+import 'workspace_page_scope.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
+import 'ws_ui.dart';
 import '../../models/team_access.dart';
 import '../../services/team_service.dart';
 import '../../utils/localizations/app_localizations.dart';
 import 'team_display.dart';
 
 class InvitationEntryButton extends StatelessWidget {
+  final bool iconOnly;
   final TeamService service;
   final VoidCallback onReturn;
   const InvitationEntryButton({
     super.key,
+    this.iconOnly = false,
     required this.service,
     required this.onReturn,
   });
   @override
-  Widget build(BuildContext context) => Align(
-    alignment: Alignment.centerLeft,
-    child: OutlinedButton.icon(
-      icon: const Icon(Icons.mail_outline),
-      label: Text(AppTranslations.of(context)['team_accept_invitation']),
-      onPressed: () async {
-        await Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (routeContext) => Scaffold(
-              body: InvitationAcceptance(
-                service: service,
-                onBack: () => Navigator.of(routeContext).pop(),
-              ),
+  Widget build(BuildContext context) {
+    final label = AppTranslations.of(context)['team_accept_invitation'];
+    Future<void> open() async {
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (routeContext) => Scaffold(
+            body: InvitationAcceptance(
+              service: service,
+              onBack: () => Navigator.of(routeContext).pop(),
             ),
           ),
-        );
-        if (context.mounted) onReturn();
-      },
-    ),
-  );
+        ),
+      );
+      if (context.mounted) onReturn();
+    }
+
+    if (iconOnly) {
+      return IconButton.outlined(
+        tooltip: label,
+        constraints: const BoxConstraints.tightFor(width: 40, height: 40),
+        style: IconButton.styleFrom(
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        icon: const Icon(Icons.mail_outline, size: 18),
+        onPressed: open,
+      );
+    }
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: OutlinedButton.icon(
+        icon: const Icon(Icons.mail_outline),
+        label: Text(label),
+        onPressed: open,
+      ),
+    );
+  }
 }
 
 class InvitationAcceptance extends StatefulWidget {
@@ -120,7 +140,16 @@ class _InvitationAcceptanceState extends State<InvitationAcceptance> {
           ].contains(error.code);
       setState(() {
         _busy = false;
-        _error = rejected ? 'team_accept_failed' : 'team_save_uncertain';
+        final policyReason = serverReason(error, const [
+          'team_owner_account',
+          'team_other_employer',
+          'team_same_owner_approval',
+        ]);
+        _error = policyReason.isNotEmpty
+            ? policyReason
+            : rejected
+            ? 'team_accept_failed'
+            : 'team_save_uncertain';
         if (rejected) {
           _operation = null;
           _preview = null;
@@ -145,7 +174,7 @@ class _InvitationAcceptanceState extends State<InvitationAcceptance> {
         child: Align(
           alignment: Alignment.topCenter,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 720),
+            constraints: WorkspacePageScope.constraints(context, 720),
             child: SingleChildScrollView(
               controller: _scroll,
               padding: const EdgeInsets.all(16),
@@ -184,9 +213,13 @@ class _InvitationAcceptanceState extends State<InvitationAcceptance> {
                   if (_accepted) ...[
                     const SizedBox(height: 24),
                     Text(t['team_invitation_accepted']),
-                    FilledButton(
-                      onPressed: widget.onBack,
-                      child: Text(t['team_done']),
+                    WsActions(
+                      children: [
+                        FilledButton(
+                          onPressed: widget.onBack,
+                          child: Text(t['team_done']),
+                        ),
+                      ],
                     ),
                   ] else ...[
                     const SizedBox(height: 20),
@@ -204,9 +237,13 @@ class _InvitationAcceptanceState extends State<InvitationAcceptance> {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    OutlinedButton(
-                      onPressed: _locked ? null : _lookup,
-                      child: Text(t['team_preview_invitation']),
+                    WsActions(
+                      children: [
+                        OutlinedButton(
+                          onPressed: _locked ? null : _lookup,
+                          child: Text(t['team_preview_invitation']),
+                        ),
+                      ],
                     ),
                     if (preview != null) ...[
                       const SizedBox(height: 24),
@@ -218,7 +255,7 @@ class _InvitationAcceptanceState extends State<InvitationAcceptance> {
                         // A role removed after the invitation was sent has no name to show.
                         access.role == null
                             ? t['team_invitation_role_removed']
-                            : '${t['team_role']}: ${t['team_role_${access.role!.name}']}',
+                            : '${t['team_role']}: ${teamRoleLabel(t, access.role, preview['roleName'])}',
                       ),
                       Text(t['team_status_${preview['status']}']),
                       Text(
@@ -245,24 +282,33 @@ class _InvitationAcceptanceState extends State<InvitationAcceptance> {
                           ),
                       ],
                       const SizedBox(height: 16),
-                      for (final permission in TeamAccess.overridable)
-                        Text(
-                          '${t['team_permission_${permission.name}']}: ${t[access.allows(permission) ? 'team_override_allow' : 'team_override_deny']}',
-                        ),
+                      // What the role allows (roles replaced per-person switches in R1).
+                      Text(t['team_role_permissions']),
+                      for (final permission in TeamPermission.values)
+                        if (access.allows(permission))
+                          Text(
+                            'â€¢ ${t['team_permission_${permission.name}']}',
+                          ),
                       const SizedBox(height: 24),
                       if (preview['canAccept'] == true)
-                        FilledButton(
-                          onPressed: _busy ? null : _accept,
-                          child: Text(
-                            t[_operation != null
-                                ? 'team_retry_save'
-                                : 'team_accept_invitation'],
-                          ),
+                        WsActions(
+                          children: [
+                            FilledButton(
+                              onPressed: _busy ? null : _accept,
+                              child: Text(
+                                t[_operation != null
+                                    ? 'team_retry_save'
+                                    : 'team_accept_invitation'],
+                              ),
+                            ),
+                          ],
                         )
                       else
-                        Text(t[preview['roleRemoved'] == true
-                            ? 'team_invitation_role_removed'
-                            : 'team_invitation_closed']),
+                        Text(
+                          t[preview['roleRemoved'] == true
+                              ? 'team_invitation_role_removed'
+                              : 'team_invitation_closed'],
+                        ),
                     ],
                   ],
                 ],

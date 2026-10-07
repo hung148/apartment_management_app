@@ -5,14 +5,24 @@ service cloud.firestore {
     // v2 documents are served through role-specific callable projections.
     // A missing version preserves the legacy app until coordinated migration.
     function legacyOrganization(orgId) {
-      return get(/databases/$(database)/documents/organizations/$(orgId)).data.get('accessVersion', 1) == 1;
+      return get(/databases/$(database)/documents/organizations/$(orgId)).data.get('accessVersion', 1) == 1 &&
+        get(/databases/$(database)/documents/organizations/$(orgId)).data.get('mergedInto', null) == null;
     }
     function member(orgId) {
-      return signedIn() && legacyOrganization(orgId) && exists(/databases/$(database)/documents/memberships/$(request.auth.uid + '_' + orgId)) &&
+      return signedIn() && legacyOrganization(orgId) && bindingAllows(orgId) && exists(/databases/$(database)/documents/memberships/$(request.auth.uid + '_' + orgId)) &&
         get(/databases/$(database)/documents/memberships/$(request.auth.uid + '_' + orgId)).data.status == 'active';
+    }
+    function bindingAllows(orgId) {
+      return !exists(/databases/$(database)/documents/accountOrganizations/$(request.auth.uid)) ||
+        (get(/databases/$(database)/documents/accountOrganizations/$(request.auth.uid)).data.state == 'bound' &&
+         get(/databases/$(database)/documents/accountOrganizations/$(request.auth.uid)).data.organizationId == orgId);
     }
     function admin(orgId) {
       return member(orgId) && get(/databases/$(database)/documents/memberships/$(request.auth.uid + '_' + orgId)).data.role == 'admin';
+    }
+    function legacyOwner(orgId) {
+      return admin(orgId) && get(/databases/$(database)/documents/organizations/$(orgId)).data.get(
+        'ownerTransferredTo', get(/databases/$(database)/documents/organizations/$(orgId)).data.createdBy) == request.auth.uid;
     }
     function sameOrganization() {
       return request.resource.data.organizationId == resource.data.organizationId;
@@ -30,10 +40,11 @@ service cloud.firestore {
     }
     match /organizations/{orgId} {
       allow read: if member(orgId);
-      allow create: if signedIn() && request.resource.data.createdBy == request.auth.uid && !request.resource.data.keys().hasAny(['accessVersion']);
+      // Both legacy and v2 creation use the callable account-policy transaction.
+      allow create: if false;
       allow update: if admin(orgId) && request.resource.data.createdBy == resource.data.createdBy &&
-        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['accessVersion']);
-      allow delete: if admin(orgId);
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['accessVersion', 'companyId', 'governanceRevision', 'ownerTransferredTo', 'ownerTransferredAt', 'closedAt', 'closedBy', 'purgeAfter', 'mergedInto', 'mergedFrom', 'mergedAt']);
+      allow delete: if legacyOwner(orgId);
     }
     match /invite_codes/{code} {
       allow get: if signedIn() && legacyOrganization(resource.data.orgId);
@@ -49,16 +60,13 @@ service cloud.firestore {
       allow get: if signedIn() && (!exists(/databases/$(database)/documents/memberships/$(membershipId)) ||
         resource.data.ownerId == request.auth.uid || admin(resource.data.organizationId));
       allow list: if signedIn() && (resource.data.ownerId == request.auth.uid || admin(resource.data.organizationId));
-      allow create: if signedIn() && getAfter(/databases/$(database)/documents/organizations/$(request.resource.data.organizationId)).data.get('accessVersion', 1) == 1 &&
-        !request.resource.data.keys().hasAny(['accessVersion', 'buildingScope', 'buildingIds', 'permissionOverrides', 'staffId']) && request.resource.data.ownerId == request.auth.uid &&
-        membershipId == request.auth.uid + '_' + request.resource.data.organizationId &&
-        request.resource.data.status == 'active' && (
-          (request.resource.data.role == 'admin' &&
-            getAfter(/databases/$(database)/documents/organizations/$(request.resource.data.organizationId)).data.createdBy == request.auth.uid)
-        );
+      // Membership attachment is server-owned in both versions. A legacy
+      // creator must not recreate admin access after an ownership transfer.
+      allow create: if false;
       allow update: if signedIn() && legacyOrganization(resource.data.organizationId) &&
-        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['accessVersion', 'buildingScope', 'buildingIds', 'permissionOverrides', 'staffId']) &&
-        sameOrganization() && request.resource.data.ownerId == resource.data.ownerId && (
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['accessVersion', 'buildingScope', 'buildingIds', 'permissionOverrides', 'staffId', 'roleGrants', 'roleRevision', 'roleName', 'employerShareId', 'ownershipControls', 'ownershipAgreementId', 'employerApprovedBy', 'employerPrimary']) &&
+        sameOrganization() && request.resource.data.ownerId == resource.data.ownerId &&
+        request.resource.data.role in ['admin', 'member'] && (
         admin(resource.data.organizationId) ||
         (resource.data.ownerId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'email']))
       );

@@ -9,6 +9,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   firebase_auth
   firebase_core
   flutter_localization
+  flutter_secure_storage_windows
   printing
   screen_retriever_windows
   share_plus

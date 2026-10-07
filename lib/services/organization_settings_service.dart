@@ -2,6 +2,14 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:uuid/uuid.dart';
 import '../models/organization_model.dart';
 import 'team_service.dart' show TeamTransport;
+import 'app_functions.dart';
+
+/// A bank or e-wallet account deposits and payments are received into (B8-lite).
+class PaymentAccount {
+  final String id;
+  final String label;
+  const PaymentAccount(this.id, this.label);
+}
 
 /// Details of a version-2 organization plus what the current account may do.
 class OrganizationSettings {
@@ -10,12 +18,14 @@ class OrganizationSettings {
   final bool canManage;
   final bool canClose;
   final bool canLeave;
+  final List<PaymentAccount> paymentAccounts;
   const OrganizationSettings({
     required this.organization,
     required this.role,
     required this.canManage,
     required this.canClose,
     required this.canLeave,
+    this.paymentAccounts = const [],
   });
 }
 
@@ -47,8 +57,7 @@ class OrganizationSettingsService {
     String callable,
     Map<String, dynamic> data,
   ) async {
-    final response = await FirebaseFunctions.instance
-        .httpsCallable(callable)
+    final response = await appCallable(callable)
         .call(data);
     return Map<String, dynamic>.from(response.data as Map);
   }
@@ -90,8 +99,27 @@ class OrganizationSettingsService {
       canManage: row['canManage'] == true,
       canClose: row['canClose'] == true,
       canLeave: row['canLeave'] == true,
+      paymentAccounts: [
+        for (final a in (row['paymentAccounts'] as List? ?? const []))
+          if (a is Map && a['id'] is String && a['label'] is String)
+            PaymentAccount(a['id'] as String, a['label'] as String),
+      ],
     );
   }
+
+  /// Replaces the list of receiving accounts. Reuse [operationId] to retry.
+  Future<void> saveAccounts(
+    String organizationId,
+    List<PaymentAccount> accounts, {
+    required String operationId,
+  }) => _transport('organizationSettings', {
+    'action': 'accounts',
+    'organizationId': organizationId,
+    'operationId': operationId,
+    'accounts': [
+      for (final a in accounts) {'id': a.id, 'label': a.label},
+    ],
+  });
 
   /// Sends every field; an empty value clears it. Unknown keys are refused.
   Future<void> update(String organizationId, Map<String, String?> fields) {
@@ -143,6 +171,20 @@ class OrganizationSettingsService {
     'operationId': operationId,
     'targetOrganizationId': targetId,
   });
+
+  /// Creates a version-2 organization owned by the caller and returns its ID.
+  /// Retrying with the same [operationId] returns the same organization.
+  Future<String> create(Map<String, String?> fields, {required String operationId, bool legacy = false}) async {
+    if (fields.keys.any((k) => !fieldNames.contains(k))) {
+      throw ArgumentError('Unknown organization field');
+    }
+    final row = await _transport('organizationSettings', {
+      'action': legacy ? 'createLegacy' : 'create',
+      'operationId': operationId,
+      'fields': {for (final k in fieldNames) k: (fields[k] ?? '').trim()},
+    });
+    return row['organizationId'] as String;
+  }
 
   /// Closed organizations this account can still restore, soonest removal first.
   Future<List<ClosedOrganization>> closedList() async {

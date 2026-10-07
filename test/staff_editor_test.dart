@@ -7,13 +7,64 @@ import 'package:phan_mem_quan_ly_can_ho/services/team_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/localizations/app_localizations.dart';
 import 'team_screen_test.dart' show mount, access, staff;
 
+/// The page's own vertical scroll view: skips the organization workspace
+/// menu (sidebar) and horizontal rows such as the page chips (U1).
+Finder mainScrollable() {
+  final menus = find.byKey(const ValueKey('workspace-nav')).evaluate().toSet();
+  bool inMenu(Element element) {
+    var found = false;
+    element.visitAncestorElements((ancestor) {
+      found = menus.contains(ancestor);
+      return !found;
+    });
+    return found;
+  }
+
+  final candidates = find
+      .byWidgetPredicate(
+        (w) =>
+            w is Scrollable &&
+            (w.axisDirection == AxisDirection.down ||
+                w.axisDirection == AxisDirection.up),
+      )
+      .evaluate()
+      .where((e) => !inMenu(e))
+      .toList();
+  if (candidates.isEmpty) return find.byType(Scrollable).first;
+  final first = candidates.first;
+  return find.byElementPredicate((e) => identical(e, first));
+}
+
 Future<void> reveal(WidgetTester tester, Finder finder) async {
-  await tester.scrollUntilVisible(
-    finder,
-    160,
-    scrollable: find.byType(Scrollable).first,
-  );
+  await tester.scrollUntilVisible(finder, 160, scrollable: mainScrollable());
   await tester.pumpAndSettle();
+}
+
+/// Opens a workspace section (sidebar, bottom bar or "More") and optionally
+/// one of its pages (U1).
+Future<void> openSection(
+  WidgetTester tester,
+  String section, {
+  String? page,
+}) async {
+  final direct = find.byKey(ValueKey('workspace-section-$section'));
+  if (direct.evaluate().isNotEmpty) {
+    await tester.tap(direct.first);
+  } else {
+    await tester.tap(find.byKey(const ValueKey('workspace-section-more')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(ValueKey('workspace-more-$section')));
+  }
+  await tester.pumpAndSettle();
+  // A section with one page has no page chips.
+  final chip = find.byKey(ValueKey('workspace-page-$page'));
+  if (page != null && chip.evaluate().isNotEmpty) {
+    // The page tabs scroll sideways on narrow screens.
+    await tester.ensureVisible(chip);
+    await tester.pumpAndSettle();
+    await tester.tap(chip);
+    await tester.pumpAndSettle();
+  }
 }
 
 Future<void> press(WidgetTester tester, String label) async {

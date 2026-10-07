@@ -8,8 +8,17 @@
 //   node tool/staging_release.cjs poll       check running deployments (repeat until all done)
 //   node tool/staging_release.cjs finish     invoker access + daily purge schedule
 //   node tool/staging_release.cjs run-purge  run the purge schedule once, now
+//   node tool/staging_release.cjs remove-old-region  list the functions still in us-central1
+//   node tool/staging_release.cjs remove-old-region --delete  delete them and their schedule (asks nothing)
+//   node tool/staging_release.cjs remove-unused  list functions here that the code no longer has
+//   node tool/staging_release.cjs remove-unused --delete  delete them (asks nothing)
+// Or all in one (prepare, deploy/poll until done, finish, verify):
+//   node tool/staging_release.cjs all            resumes an unfinished release if there is one
+//   node tool/staging_release.cjs all --replace  abandons an unfinished release and bundles the current source
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),{execFileSync}=require('node:child_process');
-const project='apartment-management-staging',region='us-central1';
+// Region: the one the functions declare (functions/region.js, 2026-10-06: next
+// to the Singapore database). OLD_REGION: where they ran before (remove-old-region).
+const project='apartment-management-staging',region=require('../functions/region').REGION,OLD_REGION='us-central1';
 const fnDir=path.resolve('functions'),dep=require('node:module').createRequire(path.join(fnDir,'package.json'));
 const base=path.join(fnDir,'node_modules/firebase-tools/lib/');
 const root='.dart_tool/staging-release',currentPath=path.join(root,'current.json');
@@ -33,17 +42,35 @@ async function prepare(){
  const ignore=JSON.parse(fs.readFileSync('firebase.json','utf8')).functions[0].ignore;
  const files=fs.readdirSync(fnDir).filter(f=>f.endsWith('.js')&&!ignore.includes(f)).sort();
  files.push('staging_index.js');
+ // Data files the code loads (e.g. role_templates.json since R1). Without them
+ // every function crashes on start ("container failed to start").
+ for(const f of [...files])for(const m of fs.readFileSync(path.join(fnDir,f),'utf8').matchAll(/require\(\s*['"]\.\/([A-Za-z0-9_.-]+\.json)['"]\s*\)/g)){
+  if(!fs.existsSync(path.join(fnDir,m[1])))fail(`${f} needs ${m[1]}, which is missing`);
+  if(!files.includes(m[1]))files.push(m[1]);
+ }
  const pkg=JSON.parse(fs.readFileSync(path.join(fnDir,'package.json'),'utf8'));pkg.main='staging_index.js';
  // Endpoint metadata straight from the staging entrypoint (identities, memory, triggers).
  const endpoints=JSON.parse(execFileSync(process.execPath,['-e',
   "console.log(JSON.stringify(Object.fromEntries(Object.entries(require('./staging_index')).map(([n,f])=>[n,f.__endpoint]))))"],
   {cwd:fnDir,env:{...process.env,GCLOUD_PROJECT:project},encoding:'utf8'}));
  const plan={};
+ const onlyArg=process.argv.find(a=>a.startsWith('--only='));
+ const selected=onlyArg?new Set(onlyArg.slice(7).split(',')):null;
+ if(selected)for(const name of selected)if(!endpoints[name])fail('Unknown selected endpoint: '+name);
  for(const [name,e] of Object.entries(endpoints)){
+  if(selected&&!selected.has(name))continue;
   if(!e.serviceAccountEmail?.endsWith(`@${project}.iam.gserviceaccount.com`))fail('Missing explicit staging identity: '+name);
   if(e.secretEnvironmentVariables?.length)fail('Staging endpoint must not bind secrets: '+name);
   const kind=e.scheduleTrigger?'schedule':e.callableTrigger?'callable':e.httpsTrigger?'https':fail('Unsupported trigger: '+name);
-  plan[name]={kind,serviceAccount:e.serviceAccountEmail,memoryMb:e.availableMemoryMb??256,timeoutSeconds:e.timeoutSeconds??60,
+  // CPU (2026-10-06, speed): passed through so staging matches production; a
+  // full CPU also lets one instance serve several requests (concurrency).
+  // Always sent: Google keeps the old CPU when it is left out (2026-10-06,
+  // deleteMyAccount/importSheet kept a full CPU). Default = Google's CPU for
+  // that memory size, which then serves one request at a time.
+  const memoryMb=typeof e.availableMemoryMb==='number'?e.availableMemoryMb:256;
+  const cpu=typeof e.cpu==='number'?e.cpu:({128:0.0833,256:0.1666,512:0.3333,1024:0.5833,2048:1,4096:2,8192:2})[memoryMb]??0.1666;
+  plan[name]={kind,serviceAccount:e.serviceAccountEmail,memoryMb,timeoutSeconds:e.timeoutSeconds??60,
+   cpu,concurrency:cpu<1?1:typeof e.concurrency==='number'?e.concurrency:80,
    maxInstances:Math.min(e.maxInstances??2,2),...(kind==='schedule'?{schedule:e.scheduleTrigger.schedule,timeZone:e.scheduleTrigger.timeZone??'UTC'}:{})};
  }
  const id=new Date().toISOString().replace(/[:.]/g,'-').toLowerCase(),dir=path.join(root,id);
@@ -89,6 +116,11 @@ async function deploy(){
  const sha=crypto.createHash('sha256').update(fs.readFileSync(path.join(dir,'source.zip'))).digest('hex');
  if(sha!==j.sourceSha256)fail('source.zip changed after prepare; run prepare again');
  const repo=`https://artifactregistry.googleapis.com/v1/projects/${project}/locations/${region}/repositories/gcf-artifacts`;
+ // A new region has no image repository yet (2026-10-06): create it, as Cloud Functions would.
+ if((await api(repo,'GET',null,[404])).status===404){
+  await api(`https://artifactregistry.googleapis.com/v1/projects/${project}/locations/${region}/repositories?repositoryId=gcf-artifacts`,'POST',{format:'DOCKER',description:'Cloud Functions images (staging)'},[409]);
+  for(let i=0;(await api(repo,'GET',null,[404])).status===404;i++){if(i>=20)fail('Image repository not ready yet; run deploy again');await new Promise(r=>setTimeout(r,5000));}
+ }
  await bind(api,repo+':getIamPolicy',repo+':setIamPolicy','roles/artifactregistry.writer','serviceAccount:'+build);
  if(!j.source){
   const upload=(await api(fnRoot+'/functions:generateUploadUrl','POST',{})).data;
@@ -106,6 +138,7 @@ async function deploy(){
   const body={name:`projects/${project}/locations/${region}/functions/${name}`,
    buildConfig:{runtime:'nodejs22',entryPoint:name,serviceAccount:`projects/${project}/serviceAccounts/${build}`,source:{storageSource:j.source},environmentVariables:{GOOGLE_NODE_RUN_SCRIPTS:''}},
    serviceConfig:{serviceAccountEmail:e.serviceAccount,availableMemory:`${e.memoryMb}Mi`,timeoutSeconds:e.timeoutSeconds,maxInstanceCount:e.maxInstances,minInstanceCount:0,
+    ...(e.cpu?{availableCpu:String(e.cpu),maxInstanceRequestConcurrency:e.concurrency}:{}),
     environmentVariables:{GCLOUD_PROJECT:project,FUNCTION_REGION:region}},
    labels:{environment:'staging','deployment-tool':'restricted-rest',release:j.id.slice(0,63),...(e.kind==='schedule'?{'deployment-scheduled':'true'}:{})}};
   const existing=await api(fnRoot+'/functions/'+name,'GET',null,[404]);
@@ -183,7 +216,68 @@ async function runPurge(){
  console.log(JSON.stringify({triggered:'purgeClosedOrganizations',next:'wait ~1 minute, then node tool/staging_seed_v2.cjs status'}));
 }
 
-const steps={prepare,deploy,poll,finish,'run-purge':runPurge};
+// One command for a whole backend release. Starts 3 deployments at a time (as the
+// manual steps do), polls every 20 s, retries a failed function up to 2 times,
+// then runs finish and staging_verify. Safe to stop and run again: it resumes.
+async function all(){
+ let resume=false;
+ if(fs.existsSync(currentPath)&&!process.argv.includes('--replace')){
+  const {j}=loadJournal();resume=!j.finishedAt&&Object.keys(j.operations).length>0;
+ }
+ if(resume)console.log(JSON.stringify({resuming:loadJournal().j.id}));else await prepare();
+ const retries={},started=Date.now();
+ for(;;){
+  const {j}=loadJournal(),names=Object.keys(j.endpoints),ops=j.operations;
+  const failed=names.filter(n=>ops[n]?.error),running=names.filter(n=>ops[n]&&!ops[n].done).length,notStarted=names.filter(n=>!ops[n]).length;
+  if(!running&&!notStarted&&!failed.length)break;
+  if(!running){
+   for(const n of failed){
+    retries[n]=(retries[n]??0)+1;
+    if(retries[n]>2)fail(`${n} failed 3 times: ${ops[n].error.message??JSON.stringify(ops[n].error)}`);
+   }
+   await deploy();
+  }
+  if(Date.now()-started>90*60000)fail('Still deploying after 90 minutes. Run the same command again to resume.');
+  await new Promise(r=>setTimeout(r,20000));
+  await poll();
+ }
+ await finish();
+ execFileSync(process.execPath,[path.join('tool','staging_verify.cjs')],{stdio:'inherit'});
+}
+
+// After moving region (2026-10-06): the functions left in the old region keep
+// running (and the purge schedule keeps firing) until removed. Lists them;
+// --delete removes them and the old schedule. Only run --delete when Tom says so.
+async function removeOldRegion(){
+ const api=await session(),old=`https://cloudfunctions.googleapis.com/v2/projects/${project}/locations/${OLD_REGION}`;
+ if(OLD_REGION===region)fail('The functions already run in '+region);
+ const list=(await api(old+'/functions?pageSize=200')).data.functions??[];
+ const names=list.map(f=>f.name.split('/').pop());
+ if(!process.argv.includes('--delete')){console.log(JSON.stringify({region:OLD_REGION,functions:names,next:names.length?'node tool/staging_release.cjs remove-old-region --delete':'nothing to remove'}));return;}
+ const job=`https://cloudscheduler.googleapis.com/v1/projects/${project}/locations/${OLD_REGION}/jobs/firebase-schedule-purgeClosedOrganizations-${OLD_REGION}`;
+ await api(job,'DELETE',null,[404]);
+ const removed=[];
+ for(const name of names){await api(old+'/functions/'+name,'DELETE',null,[404]);removed.push(name);}
+ console.log(JSON.stringify({removedFrom:OLD_REGION,functions:removed.length,schedule:'removed',note:'deletions finish in the background (a few minutes)'}));
+}
+
+// After grouping (2026-10-06, speed step 4): the 43 one-call functions are no
+// longer in the code but keep existing (and count toward the region's CPU
+// limit) until removed. Lists the functions in this region that the last
+// finished release does not have; --delete removes them. Only when Tom says so.
+async function removeUnused(){
+ const {j}=loadJournal();
+ if(!j.finishedAt)fail(`Release ${j.id} is not finished; finish it first so the new functions are in place.`);
+ const keep=new Set(Object.keys(j.endpoints)),api=await session();
+ const list=(await api(fnRoot+'/functions?pageSize=200')).data.functions??[];
+ const names=list.map(f=>f.name.split('/').pop()).filter(n=>!keep.has(n));
+ if(!process.argv.includes('--delete')){console.log(JSON.stringify({region,keep:[...keep],unused:names,next:names.length?'node tool/staging_release.cjs remove-unused --delete':'nothing to remove'}));return;}
+ const removed=[];
+ for(const name of names){await api(fnRoot+'/functions/'+name,'DELETE',null,[404]);removed.push(name);}
+ console.log(JSON.stringify({region,removed:removed.length,kept:[...keep],note:'deletions finish in the background (a few minutes)'}));
+}
+
+const steps={prepare,deploy,poll,finish,all,'run-purge':runPurge,'remove-old-region':removeOldRegion,'remove-unused':removeUnused};
 const step=steps[process.argv[2]];
-if(!step){console.error('Usage: node tool/staging_release.cjs prepare|deploy|poll|finish|run-purge');process.exitCode=1;}
+if(!step){console.error('Usage: node tool/staging_release.cjs prepare|deploy|poll|finish|all|run-purge|remove-old-region|remove-unused');process.exitCode=1;}
 else step().catch(e=>{console.error(e.message);process.exitCode=1;});

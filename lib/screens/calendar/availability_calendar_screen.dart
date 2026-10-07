@@ -237,9 +237,9 @@ class _AvailabilityCalendarScreenState
     final painter = TextPainter(
       text: TextSpan(
         text: text,
-        style: Theme.of(context).textTheme.bodyMedium!.copyWith(
-          fontSize: size, fontWeight: weight,
-        ),
+        style: Theme.of(
+          context,
+        ).textTheme.bodyMedium!.copyWith(fontSize: size, fontWeight: weight),
       ),
       maxLines: 1,
       textDirection: Directionality.of(context),
@@ -257,14 +257,18 @@ class _AvailabilityCalendarScreenState
   double _measureRoomRowHeight() {
     // Include the label's padding (8) and bottom border (1). Text inherits
     // the theme's line height, which is not necessarily fontSize * 1.5.
-    var labelHeight = 9 + _calendarLineHeight('101', 13, weight: FontWeight.w700);
+    var labelHeight =
+        9 + _calendarLineHeight('101', 13, weight: FontWeight.w700);
     final rooms = _hourlyRooms;
     if (rooms.any((room) => _isTenantOccupiedOnDate(room.id, _selectedDate))) {
       // Badge: top margin (4), vertical padding (4), two borders (1.6).
-      labelHeight += 9.6 + _calendarLineHeight(
-        AppTranslations.of(context)['calendar_long_term_guest'], 9,
-        weight: FontWeight.w700,
-      );
+      labelHeight +=
+          9.6 +
+          _calendarLineHeight(
+            AppTranslations.of(context)['calendar_long_term_guest'],
+            9,
+            weight: FontWeight.w700,
+          );
     } else if (rooms.any((room) => room.hasHourlyPricing)) {
       labelHeight += _calendarLineHeight('0', 10);
     }
@@ -273,11 +277,17 @@ class _AvailabilityCalendarScreenState
       return length > count ? length : count;
     });
     // Each booking lane includes vertical content padding and its gap.
-    final events = 4 + lanes * (10 +
-      _calendarLineHeight('Guest', 11, weight: FontWeight.w700) +
-      _calendarLineHeight('00:00', 9));
-    return [48.0, labelHeight, events]
-        .reduce((a, b) => a > b ? a : b).ceilToDouble();
+    final events =
+        4 +
+        lanes *
+            (10 +
+                _calendarLineHeight('Guest', 11, weight: FontWeight.w700) +
+                _calendarLineHeight('00:00', 9));
+    return [
+      48.0,
+      labelHeight,
+      events,
+    ].reduce((a, b) => a > b ? a : b).ceilToDouble();
   }
 
   double get _dayGridWidth => _pixelsPerHour * (_endHour - _startHour);
@@ -485,7 +495,10 @@ class _AvailabilityCalendarScreenState
                   flexibleSpace: DecoratedBox(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        colors: [AppThemePalette.primaryDeep, AppThemePalette.primary],
+                        colors: [
+                          AppThemePalette.primaryDeep,
+                          AppThemePalette.primary,
+                        ],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
@@ -525,11 +538,14 @@ class _AvailabilityCalendarScreenState
               materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               visualDensity: VisualDensity.compact,
               padding: const EdgeInsets.symmetric(horizontal: 10),
-              color: WidgetStateProperty.resolveWith((states) =>
-                  states.contains(WidgetState.selected)
-                      ? primary
-                      : Theme.of(context).colorScheme.surface),
-              side: BorderSide(color: selected ? primary : const Color(0xFFE2E8F0)),
+              color: WidgetStateProperty.resolveWith(
+                (states) => states.contains(WidgetState.selected)
+                    ? primary
+                    : Theme.of(context).colorScheme.surface,
+              ),
+              side: BorderSide(
+                color: selected ? primary : const Color(0xFFE2E8F0),
+              ),
               labelStyle: TextStyle(
                 color: selected ? Colors.white : const Color(0xFF475569),
                 fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
@@ -580,7 +596,9 @@ class _AvailabilityCalendarScreenState
             children: [
               _buildWorkspaceToolbar(),
               SizedBox(
-                height: MediaQuery.textScalerOf(context).scale(16) > 24 ? 80 : 48,
+                height: MediaQuery.textScalerOf(context).scale(16) > 24
+                    ? 80
+                    : 48,
                 child: _viewMode == _ViewMode.day && _rangeStart != null
                     ? _rangeInstructions()
                     : _buildDateNav(),
@@ -625,45 +643,68 @@ class _AvailabilityCalendarScreenState
         );
         if (mounted && building != null) _onBuildingChanged(building);
       },
-      child: Row(children: [
-        Expanded(child: Text.rich(
-          TextSpan(children: [
-            if (!toolbar) TextSpan(
-              text: '${t['calendar_title']}  ·  ',
-              style: const TextStyle(fontSize: 13, color: Colors.white70),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  if (!toolbar)
+                    TextSpan(
+                      text: '${t['calendar_title']}  ·  ',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: Colors.white70,
+                      ),
+                    ),
+                  TextSpan(
+                    text: _selectedBuilding?.name ?? '',
+                    style: TextStyle(
+                      fontSize: toolbar ? 14 : 16,
+                      fontWeight: FontWeight.w600,
+                      color: toolbar
+                          ? Theme.of(context).colorScheme.onSurface
+                          : Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
-            TextSpan(text: _selectedBuilding?.name ?? '', style: TextStyle(
-              fontSize: toolbar ? 14 : 16,
-              fontWeight: FontWeight.w600,
-              color: toolbar ? Theme.of(context).colorScheme.onSurface : Colors.white,
-            )),
-          ]),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        )),
-        Icon(Icons.search, size: 20,
-          color: toolbar ? Theme.of(context).colorScheme.onSurfaceVariant : Colors.white),
-      ]),
+          ),
+          Icon(
+            Icons.search,
+            size: 20,
+            color: toolbar
+                ? Theme.of(context).colorScheme.onSurfaceVariant
+                : Colors.white,
+          ),
+        ],
+      ),
     );
     if (!toolbar) return dropdown;
-    return LayoutBuilder(builder: (context, constraints) {
-      final painter = TextPainter(
-        text: TextSpan(
-          text: _selectedBuilding?.name ?? '',
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-        ),
-        textDirection: Directionality.of(context),
-        textScaler: MediaQuery.textScalerOf(context),
-      )..layout();
-      final width = (painter.width + 32).clamp(48.0, 180.0)
-          .clamp(0.0, constraints.maxWidth);
-      painter.dispose();
-      return Align(
-        alignment: Alignment.centerLeft,
-        widthFactor: 1,
-        child: SizedBox(width: width, height: 48, child: dropdown),
-      );
-    });
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final painter = TextPainter(
+          text: TextSpan(
+            text: _selectedBuilding?.name ?? '',
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          ),
+          textDirection: Directionality.of(context),
+          textScaler: MediaQuery.textScalerOf(context),
+        )..layout();
+        final width = (painter.width + 32)
+            .clamp(48.0, 180.0)
+            .clamp(0.0, constraints.maxWidth);
+        painter.dispose();
+        return Align(
+          alignment: Alignment.centerLeft,
+          widthFactor: 1,
+          child: SizedBox(width: width, height: 48, child: dropdown),
+        );
+      },
+    );
   }
 
   // ── Date nav bar ──────────────────────────────────────────────────
@@ -677,7 +718,11 @@ class _AvailabilityCalendarScreenState
       padding: const EdgeInsets.fromLTRB(6, 0, 6, 0),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
-        border: Border(bottom: BorderSide(color: Theme.of(context).colorScheme.outlineVariant)),
+        border: Border(
+          bottom: BorderSide(
+            color: Theme.of(context).colorScheme.outlineVariant,
+          ),
+        ),
       ),
       child: Row(
         children: [
@@ -774,9 +819,7 @@ class _AvailabilityCalendarScreenState
                         decoration: BoxDecoration(
                           border: Border(
                             right: BorderSide(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .outline,
+                              color: Theme.of(context).colorScheme.outline,
                             ),
                           ),
                         ),
@@ -815,15 +858,18 @@ class _AvailabilityCalendarScreenState
                               child: DecoratedBox(
                                 decoration: BoxDecoration(
                                   border: Border.all(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .outlineVariant,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.outlineVariant,
                                   ),
                                 ),
                                 child: Stack(
                                   children: [
                                     CustomPaint(
-                                      size: Size(_dayGridWidth, _roomsGridHeight),
+                                      size: Size(
+                                        _dayGridWidth,
+                                        _roomsGridHeight,
+                                      ),
                                       painter: _TimeGridPainter(
                                         pixelsPerHour: _pixelsPerHour,
                                         hourCount: _endHour - _startHour,
@@ -977,7 +1023,11 @@ class _AvailabilityCalendarScreenState
                   else if (room.hasHourlyPricing)
                     Text(
                       t.textWithParams('calendar_price_per_hour', {
-                        'price': ReportingMoney.format(room.organizationId, room.hourlyPrice!, room.currency),
+                        'price': ReportingMoney.format(
+                          room.organizationId,
+                          room.hourlyPrice!,
+                          room.currency,
+                        ),
                         'currency': '',
                       }),
                       maxLines: 1,
@@ -1575,10 +1625,17 @@ class _AvailabilityCalendarScreenState
         color: scheme.surfaceContainerLow,
         border: Border(bottom: BorderSide(color: scheme.outlineVariant)),
       ),
-      padding: EdgeInsets.fromLTRB(10, 2, 10 + (widget.embedded ? widget.trailingInset : 0), 2),
+      padding: EdgeInsets.fromLTRB(
+        10,
+        2,
+        10 + (widget.embedded ? widget.trailingInset : 0),
+        2,
+      ),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final compact = constraints.maxWidth < 1000 || MediaQuery.textScalerOf(context).scale(14) > 18;
+          final compact =
+              constraints.maxWidth < 1000 ||
+              MediaQuery.textScalerOf(context).scale(14) > 18;
           final search = SizedBox(
             height: 36,
             width: compact ? null : 280,
@@ -1617,10 +1674,12 @@ class _AvailabilityCalendarScreenState
                 ),
                 onSelected: (v) => setState(() => _roomFilter = v),
                 itemBuilder: (_) => ['all', 'available', 'booked', 'leased']
-                    .map((value) => PopupMenuItem(
-                          value: value,
-                          child: Text(t['calendar_filter_$value']),
-                        ))
+                    .map(
+                      (value) => PopupMenuItem(
+                        value: value,
+                        child: Text(t['calendar_filter_$value']),
+                      ),
+                    )
                     .toList(),
               ),
               IconButton(
@@ -1640,24 +1699,34 @@ class _AvailabilityCalendarScreenState
               setState(() => _viewMode = mode);
               _loadCurrentView();
             },
-            itemBuilder: (_) => _ViewMode.values.map((mode) =>
-              CheckedPopupMenuItem(
-                key: ValueKey('calendar-view-${mode.name}'),
-                value: mode,
-                checked: mode == _viewMode,
-                child: Text(t['calendar_view_${mode.name}']),
-              ),
-            ).toList(),
+            itemBuilder: (_) => _ViewMode.values
+                .map(
+                  (mode) => CheckedPopupMenuItem(
+                    key: ValueKey('calendar-view-${mode.name}'),
+                    value: mode,
+                    checked: mode == _viewMode,
+                    child: Text(t['calendar_view_${mode.name}']),
+                  ),
+                )
+                .toList(),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 110, minHeight: 48),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Flexible(child: Text(t['calendar_view_${_viewMode.name}'],
-                    maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 13))),
-                  const Icon(Icons.expand_more, size: 18),
-                ]),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        t['calendar_view_${_viewMode.name}'],
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                    ),
+                    const Icon(Icons.expand_more, size: 18),
+                  ],
+                ),
               ),
             ),
           );
@@ -1685,16 +1754,22 @@ class _AvailabilityCalendarScreenState
                     builder: (context) => AlertDialog(
                       title: Text(t['calendar_search']),
                       content: SizedBox(width: 360, child: search),
-                      actions: [TextButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        child: Text(MaterialLocalizations.of(context).closeButtonLabel),
-                      )],
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          child: Text(
+                            MaterialLocalizations.of(context).closeButtonLabel,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 )
               else ...[
                 const SizedBox(width: 12),
-                Expanded(child: Align(alignment: Alignment.centerLeft, child: search)),
+                Expanded(
+                  child: Align(alignment: Alignment.centerLeft, child: search),
+                ),
                 const SizedBox(width: 8),
               ],
               actions,
@@ -2213,4 +2288,3 @@ class _TimeGridPainter extends CustomPainter {
         oldDelegate.rowLineColor != rowLineColor;
   }
 }
-

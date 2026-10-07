@@ -8,8 +8,9 @@ import 'package:phan_mem_quan_ly_can_ho/preview/team_preview_store.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/team_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/localizations/app_localizations.dart';
 import 'team_review_test.dart' show mountReview;
-import 'staff_editor_test.dart' show press, reveal;
+import 'staff_editor_test.dart' show press, reveal, openSection;
 import 'room_directory_test.dart' show directory, enter;
+import 'package:phan_mem_quan_ly_can_ho/screens/team/role_workspace.dart';
 
 Widget create(
   TeamService service, {
@@ -26,7 +27,7 @@ Widget create(
 Future<void> fill(WidgetTester tester, {String number = '201'}) async {
   await enter(tester, 'number', number);
   await enter(tester, 'type', 'Family suite');
-  await enter(tester, 'area', '52,75');
+  await enter(tester, 'area', '52.75');
 }
 
 void main() {
@@ -46,7 +47,8 @@ void main() {
       expect(store.rooms.length, 1);
       expect(store.rooms.single['area'], 52.75);
       expect(store.rooms.single['currency'], 'USD');
-      expect(store.rooms.single['rentalMode'], 'monthly');
+      // 2026-10-04: every room takes short stays and leases.
+      expect(store.rooms.single['rentalMode'], 'both');
       expect(find.text('Create room'), findsNothing);
       expect(find.text('Room details saved.'), findsOneWidget);
       await enter(tester, 'number', '202');
@@ -223,5 +225,33 @@ void main() {
         }
       }
     }
+  });
+
+  // 2026-10-04: "New room" on the calendar closes once the room exists; the room type is optional.
+  testWidgets('new room from the calendar: type optional, the dialog closes and the room shows', (tester) async {
+    final store = TeamPreviewStore()..workspaceRole = 'manager';
+    final before = store.rooms.length;
+    await mountReview(
+      tester,
+      RoleWorkspace(organizationId: 'preview', service: store.service),
+      size: const Size(1440, 1000),
+    );
+    if (find.byKey(const ValueKey('calendar-month')).evaluate().isEmpty) {
+      await openSection(tester, 'calendar');
+    }
+    await tester.tap(find.byKey(const ValueKey('calendar-new-room')));
+    await tester.pumpAndSettle();
+    // The dialog's title says what it is: no second heading, no "back", no reload.
+    expect(find.text('Manage rooms'), findsNothing);
+    expect(find.text('Add room'), findsNothing);
+    expect(find.text('Room type (optional)'), findsOneWidget);
+    await enter(tester, 'number', '909');
+    await enter(tester, 'area', '30');
+    await press(tester, 'Create room');
+    expect(store.rooms.length, before + 1);
+    expect(store.rooms.last['roomType'], '');
+    expect(find.byKey(const ValueKey('calendar-dialog-title')), findsNothing);
+    expect(find.text('909'), findsWidgets);
+    expect(tester.takeException(), isNull);
   });
 }

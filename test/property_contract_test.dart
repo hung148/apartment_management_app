@@ -9,6 +9,7 @@ import 'package:phan_mem_quan_ly_can_ho/screens/team/role_workspace.dart';
 import 'package:phan_mem_quan_ly_can_ho/preview/team_preview_store.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/team_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/localizations/app_localizations.dart';
+import 'support/calendar_nav.dart';
 import 'team_review_test.dart' show mountReview;
 import 'room_rates_test.dart' show press, reveal;
 import 'room_booking_settings_test.dart' show enter;
@@ -56,7 +57,7 @@ void main() {
         tester,
         RoleWorkspace(organizationId: 'preview', service: store.service),
       );
-      await press(tester, 'Whole-building contract');
+      await openBuildingPage(tester, 'contract');
       await press(tester, 'Save contract');
       await reveal(tester, find.text('Choose rent in or rent out.'));
       expect(find.text('Choose rent in or rent out.'), findsOneWidget);
@@ -85,8 +86,10 @@ void main() {
       await press(tester, 'Save contract');
       expect(store.buildings.first['rentalContract']['direction'], 'rentOut');
       expect(store.buildings.first['rentalContract']['status'], 'ended');
-      await press(tester, 'Your workspace');
-      expect(find.text('Whole-building contract'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('building-page-contract')),
+        findsOneWidget,
+      );
       await tester.pumpWidget(const SizedBox.shrink());
       store.workspaceRole = 'receptionist';
       await mountReview(

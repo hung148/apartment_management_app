@@ -1,7 +1,10 @@
+import 'workspace_page_scope.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
+import 'ws_ui.dart';
 import 'package:uuid/uuid.dart';
 import '../../services/team_service.dart';
+import '../../utils/app_number.dart';
 import '../../utils/localizations/app_localizations.dart';
 
 class RoomDetailsScreen extends StatefulWidget {
@@ -9,6 +12,12 @@ class RoomDetailsScreen extends StatefulWidget {
   final TeamService service;
   final VoidCallback onBack;
   final bool create, canDelete;
+
+  /// Called once a new room is created (the calendar closes its dialog).
+  final VoidCallback? onCreated;
+
+  /// Called once the room is deleted (the room dialog then says so).
+  final VoidCallback? onDeleted;
   const RoomDetailsScreen({
     super.key,
     required this.organizationId,
@@ -18,6 +27,8 @@ class RoomDetailsScreen extends StatefulWidget {
     required this.onBack,
     this.create = false,
     this.canDelete = false,
+    this.onCreated,
+    this.onDeleted,
   });
   @override
   State<RoomDetailsScreen> createState() => _RoomDetailsScreenState();
@@ -26,10 +37,8 @@ class RoomDetailsScreen extends StatefulWidget {
 class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
   final _number = TextEditingController(), _type = TextEditingController();
   final _area = TextEditingController();
-  double? _parseArea(String value) =>
-      RegExp(r'^\d+(?:[.,]\d+)?$').hasMatch(value.trim())
-      ? double.tryParse(value.trim().replaceAll(',', '.'))
-      : null;
+  // Dot for decimals, comma only as thousands (2026-10-05).
+  double? _parseArea(String value) => appParseQuantity(value, decimals: 2);
   final _form = GlobalKey<FormState>();
   String? _revision, _message;
   bool _loading = true, _saving = false;
@@ -98,7 +107,7 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
         _number.text = row['roomNumber'] as String;
         _savedNumber = _number.text;
         _type.text = row['roomType'] as String;
-        _area.text = _creating ? '' : (row['area'] as num).toString();
+        _area.text = _creating ? '' : appQuantity(row['area'] as num);
         _currency = row['currency'] as String?;
         _loading = false;
         _message = saved ? 'room_edit_saved' : null;
@@ -151,9 +160,14 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
       _message = null;
     });
     try {
-      final deleting = _deleting;
+      final deleting = _deleting, creating = _creating;
       await widget.service.roomDetails(Map.of(_pending!));
       if (!mounted || generation != _generation) return;
+      if (creating && widget.onCreated != null) {
+        _pending = null;
+        widget.onCreated!();
+        return;
+      }
       setState(() {
         _saving = false;
         _pending = null;
@@ -169,6 +183,7 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
           _area.clear();
           _message = 'room_deleted';
         });
+        widget.onDeleted?.call();
       } else {
         await _load(saved: true);
       }
@@ -216,24 +231,45 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
   @override
   Widget build(BuildContext context) {
     final t = AppTranslations.of(context),
-        locked = _loading || _saving || _pending != null || _confirmDelete;
+        locked = _loading || _saving || _pending != null || _confirmDelete,
+        inDialog = DialogPageScope.contains(context),
+            // New room from the calendar: the dialog's title says it all.
+            // Or a chip page of the room dialog: the chip names it.
+            bare =
+            inDialog &&
+            (widget.onCreated != null || PageTabScope.contains(context));
     return SafeArea(
       child: Align(
         alignment: Alignment.topCenter,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 720),
+          constraints: WorkspacePageScope.constraints(context, 720),
           child: ListView(
+            shrinkWrap: StackedPageScope.contains(context),
+            physics: StackedPageScope.contains(context)
+                ? const NeverScrollableScrollPhysics()
+                : null,
             padding: const EdgeInsets.all(16),
             children: [
-              TextButton(
-                onPressed: _saving || _pending != null ? null : widget.onBack,
-                child: Text(t['room_directory']),
-              ),
-              Text(
-                t[_creating ? 'room_create' : 'room_edit_details'],
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
-              const SizedBox(height: 16),
+              if (!bare) ...[
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: TextButton(
+                    onPressed: _saving || _pending != null
+                        ? null
+                        : widget.onBack,
+                    child: Text(
+                      inDialog
+                          ? DialogPageScope.back(context)
+                          : t['room_directory'],
+                    ),
+                  ),
+                ),
+                Text(
+                  t[_creating ? 'room_create' : 'room_edit_details'],
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+                const SizedBox(height: 16),
+              ],
               if (_creating && _currency != null)
                 Text('${t['room_create_info']} $_currency'),
               if (_loading || _saving) const LinearProgressIndicator(),
@@ -270,12 +306,10 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
                         maxLength: 160,
                         minLines: 2,
                         maxLines: null,
+                        // Optional (2026-10-04).
                         decoration: InputDecoration(
-                          labelText: t['room_edit_type'],
+                          labelText: t['room_edit_type_optional'],
                         ),
-                        validator: (v) => v == null || v.trim().isEmpty
-                            ? t['room_edit_required']
-                            : null,
                       ),
                       const SizedBox(height: 16),
                       TextFormField(
@@ -303,18 +337,25 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
                       ),
                       const SizedBox(height: 16),
                       if (_revision != null)
-                        FilledButton(
-                          onPressed:
-                              _loading || _saving || _deleting || _confirmDelete
-                              ? null
-                              : _save,
-                          child: Text(
-                            t[_pending == null
-                                ? (_creating
-                                      ? 'room_create_save'
-                                      : 'room_edit_save')
-                                : 'room_edit_retry'],
-                          ),
+                        WsActions(
+                          children: [
+                            FilledButton(
+                              onPressed:
+                                  _loading ||
+                                      _saving ||
+                                      _deleting ||
+                                      _confirmDelete
+                                  ? null
+                                  : _save,
+                              child: Text(
+                                t[_pending == null
+                                    ? (_creating
+                                          ? 'room_create_save'
+                                          : 'room_edit_save')
+                                    : 'room_edit_retry'],
+                              ),
+                            ),
+                          ],
                         ),
                     ],
                   ),
@@ -328,36 +369,52 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
                   Text(_savedNumber),
                   Text(t['room_delete_hint']),
                   const SizedBox(height: 12),
-                  FilledButton(
-                    onPressed: _saving ? null : _delete,
-                    child: Text(
-                      t[_deleting
-                          ? 'room_delete_retry'
-                          : 'room_empty_delete_confirm'],
-                    ),
+                  WsActions(
+                    children: [
+                      FilledButton(
+                        onPressed: _saving ? null : _delete,
+                        child: Text(
+                          t[_deleting
+                              ? 'room_delete_retry'
+                              : 'room_empty_delete_confirm'],
+                        ),
+                      ),
+                    ],
                   ),
                   if (!_deleting) ...[
                     const SizedBox(height: 8),
-                    OutlinedButton(
-                      onPressed: _saving
-                          ? null
-                          : () => setState(() => _confirmDelete = false),
-                      child: Text(t['room_delete_cancel']),
+                    WsActions(
+                      children: [
+                        OutlinedButton(
+                          onPressed: _saving
+                              ? null
+                              : () => setState(() => _confirmDelete = false),
+                          child: Text(t['room_delete_cancel']),
+                        ),
+                      ],
                     ),
                   ],
                 ] else
-                  OutlinedButton(
-                    onPressed: locked
-                        ? null
-                        : () => setState(() => _confirmDelete = true),
-                    child: Text(t['room_empty_delete']),
+                  WsActions(
+                    children: [
+                      OutlinedButton(
+                        onPressed: locked
+                            ? null
+                            : () => setState(() => _confirmDelete = true),
+                        child: Text(t['room_empty_delete']),
+                      ),
+                    ],
                   ),
               ],
               const SizedBox(height: 16),
-              if (!_deleted)
-                OutlinedButton(
-                  onPressed: locked ? null : () => _load(),
-                  child: Text(t['room_edit_reload']),
+              if (!_deleted && (!inDialog || (_revision == null && !_loading)))
+                WsActions(
+                  children: [
+                    OutlinedButton(
+                      onPressed: locked ? null : () => _load(),
+                      child: Text(t['room_edit_reload']),
+                    ),
+                  ],
                 ),
             ],
           ),

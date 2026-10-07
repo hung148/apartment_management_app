@@ -55,34 +55,60 @@ Widget history(TeamService s, {String building = 'riverside'}) =>
       onBack: () {},
     );
 void main() {
+  // 2026-10-04 (Tom): no separate rent pages behind buttons; the lease
+  // section lists the rent changes, and only people who may change prices
+  // see them and the "Change" button.
   testWidgets(
-    'former tenant history opens from directory and price-restricted managers have no link',
+    'the tenant page lists rent changes; price-restricted managers see the rent only',
     (tester) async {
       final store = TeamPreviewStore();
-      store.tenants.first['status'] = 'moveOut';
-      store.tenants.first['canEditRent'] = false;
-      store.rentHistory['tenant-anh'] = [row(1)];
+      store.buildings.first['timeZone'] = 'Asia/Ho_Chi_Minh';
+      store.tenants.first['rentSchedule'] = [
+        {'effectiveDate': '2026-09-10', 'amountMinor': 1800000},
+        {'effectiveDate': '2026-10-01', 'amountMinor': 2000000},
+      ];
       Widget directory() => TenantContactsScreen(
         organizationId: 'preview',
         buildingId: 'riverside',
         service: store.service,
         onBack: () {},
       );
+      Future<void> open() async {
+        final f = find.byKey(const ValueKey('tenant-contact-tenant-anh'));
+        await reveal(tester, f);
+        await tester.tap(f);
+        await tester.pumpAndSettle();
+      }
+
       await mountReview(tester, directory());
-      final link = find.byKey(const ValueKey('rent-history-open-tenant-anh'));
-      await reveal(tester, link);
-      await tester.tap(link);
-      await tester.pumpAndSettle();
-      expect(find.text('Scheduled rent cancelled'), findsOneWidget);
+      await open();
+      expect(find.text('Rent-change history'), findsNothing);
+      expect(find.text('Rent schedule'), findsNothing);
+      expect(find.text('1,800,000 VND'), findsOneWidget, reason: 'today');
       expect(
-        find.text('After: No planned change for this date'),
+        find.text('From 2026-10-01 · 2,000,000 VND · planned'),
         findsOneWidget,
+      );
+      expect(
+        find.text('From 2026-09-10 · 1,800,000 VND · in effect'),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('lease-rent-cancel-2026-10-01')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('lease-rent-cancel-2026-09-10')),
+        findsNothing,
       );
       await tester.pumpWidget(const SizedBox.shrink());
       store.workspaceRole = 'manager';
       store.priceOverride = false;
       await mountReview(tester, directory());
-      expect(find.text('Rent-change history'), findsNothing);
+      await open();
+      expect(find.text('1,500,000 VND'), findsOneWidget);
+      expect(find.byKey(const ValueKey('lease-rent-change')), findsNothing);
+      expect(find.textContaining('planned'), findsNothing);
     },
   );
   testWidgets(
@@ -99,7 +125,7 @@ void main() {
       await press(tester, 'Rent-change history');
       expect(find.textContaining('preview-owner'), findsOneWidget);
       expect(find.textContaining('Signed amendment'), findsOneWidget);
-      expect(find.textContaining('2000000 VND'), findsOneWidget);
+      expect(find.textContaining('2,000,000 VND'), findsOneWidget);
       await press(tester, 'Back to rent schedule');
       expect(find.text('Unsaved draft'), findsOneWidget);
     },
@@ -202,7 +228,7 @@ void main() {
                 brightness: brightness,
               );
               final previous = find.text(
-                '${t['rent_history_before']}: 1234567.89 USD',
+                '${t['rent_history_before']}: 1,234,567.89 USD',
               );
               await reveal(tester, previous);
               expect(previous.hitTestable(), findsOneWidget);

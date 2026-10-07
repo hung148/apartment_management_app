@@ -171,15 +171,16 @@ void main() {
       );
       await tester.pumpAndSettle();
       await openEditor(tester, invite: false, language: 'vi');
-      final field = find.byKey(const ValueKey('access-refundPayments'));
+      // R1: per-person switches are gone; the retired-switch notice and the
+      // longest property-scope option must not clip at 200% in Vietnamese.
+      expect(find.byKey(const ValueKey('access-overrides-retired')), findsOneWidget);
+      final field = find.byKey(const ValueKey('access-scope-all'));
       await reveal(tester, field);
-      final label = find.descendant(
-        of: field,
-        matching: find.text('Không cho phép'),
-      );
+      const text = 'Tất cả tòa nhà, kể cả tòa nhà thêm sau này';
+      final label = find.descendant(of: field, matching: find.text(text));
       final paragraph = tester.renderObject<RenderParagraph>(label);
       final boxes = paragraph.getBoxesForSelection(
-        const TextSelection(baseOffset: 0, extentOffset: 13),
+        const TextSelection(baseOffset: 0, extentOffset: text.length),
       );
       expect(boxes, isNotEmpty);
       for (final box in boxes) {
@@ -231,7 +232,7 @@ void main() {
   );
 
   testWidgets(
-    'all properties clears selected IDs in payload and overrides are explicit',
+    'all properties clears selected IDs in payload and no per-person switches are sent',
     (tester) async {
       final calls = <Map<String, dynamic>>[];
       await mount(
@@ -248,20 +249,21 @@ void main() {
       await reveal(tester, building);
       await tester.tap(building);
       await tester.pumpAndSettle();
-      await reveal(tester, find.text('All properties'));
-      await tester.tap(find.text('All properties'));
+      final all = find.byKey(const ValueKey('access-scope-all'));
+      await reveal(tester, all);
+      await tester.tap(all);
       await tester.pumpAndSettle();
-      await choose(tester, 'access-refundPayments', 'Allow');
+      expect(find.byKey(const ValueKey('access-building-a')), findsNothing);
       await press(tester, 'Create invitation');
       final grant = calls.single['access'] as Map;
       expect(grant['buildingScope'], 'all');
       expect(grant['buildingIds'], isEmpty);
-      expect(grant['permissionOverrides'], {'refundPayments': true});
+      expect(grant['permissionOverrides'], isEmpty);
     },
   );
 
   testWidgets(
-    'existing access retains scope and overrides and requires an audit reason for suspension',
+    'existing access retains scope, removes old per-person switches and requires an audit reason for suspension',
     (tester) async {
       final calls = <Map<String, dynamic>>[];
       await mount(
@@ -273,6 +275,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       await openEditor(tester, invite: false);
+      expect(find.byKey(const ValueKey('access-overrides-retired')), findsOneWidget);
       await choose(tester, 'access-status', 'Suspended');
       await press(tester, 'Save access');
       expect(calls, isEmpty);
@@ -285,9 +288,7 @@ void main() {
       expect(calls.single['status'], 'suspended');
       expect(calls.single['reason'], 'Employment review');
       expect((calls.single['access'] as Map)['buildingIds'], ['a']);
-      expect((calls.single['access'] as Map)['permissionOverrides'], {
-        'refundPayments': false,
-      });
+      expect((calls.single['access'] as Map)['permissionOverrides'], isEmpty);
     },
   );
 
@@ -318,11 +319,13 @@ void main() {
       expect(find.text('Administrator'), findsNothing);
       expect(find.text('Owner'), findsNothing);
       expect(find.text('Member'), findsNothing);
-      await tester.tap(find.text('Accountant').last);
+      // R1: roles the actor cannot give are not offered at all. Accountant
+      // includes refunds, which this administrator has lost.
+      expect(find.text('Accountant'), findsNothing);
+      expect(find.text('Receptionist'), findsWidgets);
+      await tester.tap(find.text('Receptionist').last);
       await tester.pumpAndSettle();
-      await press(tester, 'Create invitation');
       expect(calls, isEmpty);
-      expect(find.textContaining('exceeds the permissions'), findsOneWidget);
     },
   );
 
@@ -483,6 +486,43 @@ void main() {
           }
         }
       }
+    },
+  );
+  testWidgets(
+    'R2: add staff by Gmail sends one addStaff with name, Gmail, phone, role and properties',
+    (tester) async {
+      final calls = <Map<String, dynamic>>[];
+      await mount(
+        tester,
+        serviceFor((data) async {
+          calls.add(data);
+          return {'staffId': 'new', 'invitationId': 'inv', 'code': 'S02'};
+        }),
+      );
+      await tester.pumpAndSettle();
+      final add = find.byKey(const ValueKey('team-add-by-gmail'));
+      await reveal(tester, add);
+      await tester.tap(add);
+      await tester.pumpAndSettle();
+      expect(find.text('Add staff by Gmail'), findsWidgets);
+      await press(tester, 'Add staff');
+      expect(calls, isEmpty); // name, Gmail and role are required
+      await tester.enterText(find.byKey(const ValueKey('access-name')), '  Lan  ');
+      await tester.enterText(find.byKey(const ValueKey('access-phone')), '0900');
+      await tester.enterText(find.byKey(const ValueKey('access-email')), ' Lan@Gmail.com ');
+      await choose(tester, 'access-role', 'Receptionist');
+      final building = find.byKey(const ValueKey('access-building-a'));
+      await reveal(tester, building);
+      await tester.tap(building);
+      await tester.pumpAndSettle();
+      await press(tester, 'Add staff');
+      expect(calls.single['action'], 'addStaff');
+      expect(calls.single['profile'], {'displayName': 'Lan', 'email': 'lan@gmail.com', 'phone': '0900'});
+      final grant = calls.single['access'] as Map;
+      expect(grant['role'], 'receptionist');
+      expect(grant['buildingIds'], ['a']);
+      expect(calls.single.containsKey('staffId'), isFalse);
+      expect(find.textContaining('They join when they sign in'), findsOneWidget);
     },
   );
 }
