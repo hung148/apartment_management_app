@@ -409,19 +409,12 @@ void main() {
         RoleWorkspace(organizationId: 'preview', service: store.service),
         size: const Size(360, 740),
       );
-      // 2026-10-05: cleaning moved onto the calendar, so the owner has five
-      // sections and they all fit; no "More".
-      for (final id in ['calendar', 'tenants', 'money', 'staff', 'settings']) {
+      // Settings actions now belong to Account; four main sections remain.
+      for (final id in ['calendar', 'tenants', 'money', 'staff']) {
         expect(section(id), findsOneWidget, reason: id);
       }
       expect(section('more'), findsNothing);
-      await openSection(tester, 'settings', page: 'accounts');
-      expect(
-        find.byWidgetPredicate(
-          (w) => w.runtimeType.toString() == 'PaymentAccountsScreen',
-        ),
-        findsOneWidget,
-      );
+      expect(section('settings'), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );

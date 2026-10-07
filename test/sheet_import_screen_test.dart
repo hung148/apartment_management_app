@@ -90,11 +90,13 @@ void main() {
       },
     );
     Uri? opened;
+    var changes = 0;
     await mountReview(
       tester,
       SheetImportScreen(
         organizationId: 'org',
         service: service,
+        onChanged: () => changes++,
         pickFile: () async => (name: 'mau.xlsx', bytes: bytes),
         openUrl: (u) async {
           opened = u;
@@ -121,11 +123,13 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('import-start')));
     await tester.pumpAndSettle();
     expect(calls.length, 1);
+    expect(changes, 0);
     expect(find.byKey(const ValueKey('import-confirm')), findsOneWidget);
     await reveal(tester, find.byKey(const ValueKey('import-apply')));
     await tester.tap(find.byKey(const ValueKey('import-apply')));
     await tester.pumpAndSettle();
     expect(calls[1]['action'], 'apply');
+    expect(changes, 1);
     expect(calls[1]['operationId'], isA<String>());
     expect(find.byKey(const ValueKey('import-created')), findsOneWidget);
     await reveal(tester, find.byKey(const ValueKey('import-save-sheet')));

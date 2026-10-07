@@ -8,6 +8,68 @@ build next, decisions, design notes) and [tool/STAGING.md](tool/STAGING.md).
 
 ## What to do next (read this first)
 
+Settings moved into Account (Tom, 2026-10-06): remove the Settings navigation
+section; Account now has four separately clickable actions for ownership
+transfer, Google Drive, receiving accounts and file import. Each opens a bounded,
+scrollable dialog with persistent Close. Fresh myAccess controls visibility:
+active owner gets four, organization-settings grantees get receiving accounts,
+and owner/read-own-activity accounts get ownership transfer (nominee acceptance
+stays available). Server authorization for every existing read/mutation remains
+unchanged. Revoked/suspended/malformed access exposes no new actions. Legacy v1
+workspace behavior remains unchanged; these four actions belong to v2 only.
+Old authorized `/settings/{page}` links open the corresponding dialog over an
+allowed workspace page; denied/unknown links fall back without opening it.
+
+Review situations: owner/non-owner/custom grants, suspension/revocation and
+cross-organization calls; loading/empty/error/retry; ownership no candidates,
+long candidates, pending offer, nominee accept/cancel and lost-response intent;
+Drive disconnected/connected/reconnect/provider errors; receiving-account empty,
+populated/edit/save error; import choose/preview/conflict/apply/error; close/back
+and refresh after changes; old links and legacy v1; EN/VI narrow portrait,
+landscape and desktop at 100/130/200%, keyboard, scroll reachability and spacing.
+The touching transfer/refresh buttons were reproduced with a retained regression
+(actual gap 0px); the form now separates its elements by 12px. Existing business
+workflows, validation and retry IDs are retained, not reimplemented.
+Focused checks: 130/130 (91 new account-dialog checks, plus existing transfer,
+Drive/photo and import flows). Includes all eight template roles, fresh-access
+loading/error/retry/suspension, denied old Drive/import links, nominee controls,
+long recipient text inside its field, landscape keyboard, receiving-account save
+notification and import/Drive change notifications. EN/VI portrait 320px,
+landscape 812×375 and desktop 1440×1000 at 100/130/200% cover all four dialogs;
+Close is reachable, transfer buttons have >=8px clearance, no layout exceptions.
+Full shared-navigation regression: 754/754. After visual inspection reproduced
+receiving-account label ellipsis with a failing test, its label moved above the
+input and wraps rather than truncates. Final focused checks use actual regular
+and bold Roboto fonts. Desktop and narrow VI 200% renders visually inspected;
+the additional menu double-tap guard prevents stacking dialogs. Long editable account values
+scroll horizontally; longer dialog bodies scroll vertically rather than vanish.
+Final isolated dialog checks: 91/91 after the label/double-tap refinements,
+including reachable Save/Disconnect/Choose file plus persistent Close in every
+EN/VI size/scale combination. Final analysis zero errors (443 warnings/infos);
+Additional populated-import checks: 18/18 EN/VI size/scale combinations with
+synthetic .xlsx preview counts, long property/guest labels and confirmation.
+Import/Cancel/Close remain reachable, no layout exceptions, no apply mutation.
+Actual-font desktop and narrow VI 200% preview renders inspected. The dialog
+accepts the existing screen's injectable file picker for local coverage; normal
+production picker behavior is unchanged. Total dialog coverage is 109/109
+(plus the 39 passing existing transfer/import/Drive checks reported above).
+release web build passed. Hosting deployed to staging; functions unchanged.
+Live staging owner check passed: Account has all four actions; each opens its
+dialog, displays real state and closes back to the same Nhà Mẫu A calendar.
+Only Calendar, Tenants, Money and Staff remain in navigation. Reloading the old
+ownership Settings URL rewrites to the calendar and opens the transfer dialog
+once. Its transfer/refresh controls are visibly separated. Receiving accounts
+showed the existing Test account and editable controls; Drive showed disconnected
+state; import showed the file chooser. No live saves, transfers, connection or
+imports performed. Screenshots: `.dart_tool/account-dialog-layout/` files
+`staging-account-menu.jpg`, `staging-ownership-dialog.jpg`,
+`staging-drive-dialog.jpg`, `staging-receiving-dialog.jpg`,
+`staging-import-dialog.jpg`. No production deployment or data changed. Server
+logic is unchanged; separate suspended/staff live logins, live OAuth consent,
+ownership handover and live import mutations are not performed for this layout
+change. Those existing business flows have local functional coverage; this is
+not a claim of new cloud mutation or provider verification.
+
 Individual-record recovery extension (Tom, 2026-10-06): ONE combined delete/restore
 permission for each of buildings, rooms, bookings, tenants, problems and staff
 profiles. Owner alone gets new defaults; managers need explicit grants and normal

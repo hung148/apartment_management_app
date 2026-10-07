@@ -13,10 +13,7 @@ String _text(BuildContext context, String key) {
       'Bank or e-wallet accounts that deposits and payments can be received into. Cash is always available. Old payments keep the name they were saved with.',
       'Tài khoản ngân hàng hoặc ví điện tử dùng để nhận cọc và tiền phòng. Luôn có sẵn tiền mặt. Khoản thu cũ giữ tên đã lưu lúc đó.',
     ],
-    'label': [
-      'Account (e.g. Vietcombank 0123 – Nguyen Van A)',
-      'Tài khoản (vd. Vietcombank 0123 – Nguyễn Văn A)',
-    ],
+    'label': ['Account name', 'Tên tài khoản'],
     'add': ['Add account', 'Thêm tài khoản'],
     'list': ['Accounts', 'Danh sách tài khoản'],
     'remove': ['Remove', 'Xóa'],
@@ -59,10 +56,12 @@ class _Row {
 class PaymentAccountsScreen extends StatefulWidget {
   final String organizationId;
   final OrganizationSettingsService? settings;
+  final VoidCallback? onChanged;
   const PaymentAccountsScreen({
     super.key,
     required this.organizationId,
     this.settings,
+    this.onChanged,
   });
   @override
   State<PaymentAccountsScreen> createState() => _PaymentAccountsScreenState();
@@ -138,6 +137,7 @@ class _PaymentAccountsScreenState extends State<PaymentAccountsScreen> {
         operationId: _operation!,
       );
       _operation = null;
+      widget.onChanged?.call();
       if (!mounted) return;
       setState(() {
         _busy = false;
@@ -198,30 +198,39 @@ class _PaymentAccountsScreenState extends State<PaymentAccountsScreen> {
             for (final (i, r) in _rows.indexed)
               Padding(
                 padding: EdgeInsets.only(top: i == 0 ? 0 : WsSpace.md),
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Expanded(
-                      child: TextField(
-                        key: ValueKey('account-${r.id}'),
-                        controller: r.label,
-                        enabled: editable,
-                        maxLength: 80,
-                        onChanged: (_) => _changed(),
-                        decoration: InputDecoration(
-                          labelText: t('label'),
-                          counterText: '',
+                    // A separate, wrapping label stays legible when large text
+                    // leaves too little room beside the remove button.
+                    Text(t('label'), style: theme.textTheme.labelMedium),
+                    const SizedBox(height: WsSpace.xs),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Semantics(
+                            label: t('label'),
+                            child: TextField(
+                              key: ValueKey('account-${r.id}'),
+                              controller: r.label,
+                              enabled: editable,
+                              maxLength: 80,
+                              onChanged: (_) => _changed(),
+                              decoration: InputDecoration(counterText: ''),
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: t('remove'),
-                      icon: const Icon(Icons.close),
-                      onPressed: editable
-                          ? () => setState(() {
-                              _retired.add(_rows.removeAt(i));
-                              _changed();
-                            })
-                          : null,
+                        IconButton(
+                          tooltip: t('remove'),
+                          icon: const Icon(Icons.close),
+                          onPressed: editable
+                              ? () => setState(() {
+                                  _retired.add(_rows.removeAt(i));
+                                  _changed();
+                                })
+                              : null,
+                        ),
+                      ],
                     ),
                   ],
                 ),

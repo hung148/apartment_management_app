@@ -11,10 +11,7 @@ import 'activity_history.dart';
 import 'invoice_screen.dart';
 import 'operational_widgets.dart';
 import 'org_location.dart';
-import 'payment_accounts_screen.dart';
-import 'sheet_import_screen.dart';
-import 'google_drive_screen.dart';
-import 'ownership_transfer_screen.dart';
+import 'account_workspace_dialog.dart';
 import 'team_display.dart';
 import 'team_screen.dart';
 import 'tenant_contacts_screen.dart';
@@ -204,37 +201,6 @@ final List<WorkspaceSection> workspaceSections = [
           ActivityHistory(organizationId: c.organizationId, service: c.service),
     ),
   ]),
-  WorkspaceSection('settings', Icons.settings_outlined, 'nav_settings', [
-    WorkspacePage(id:'ownership',label:(c,_)=>_t(c,'org_transfer_title'),perProperty:false,
-      allowed:(a,_)=>a.isOwner||a.allows(TeamPermission.readOwnActivity),
-      build:(c)=>OwnershipTransferScreen(organizationId:c.organizationId,service:c.service,onChanged:c.reload)),
-    WorkspacePage(
-      id: 'drive', label: (c, _) => 'Google Drive', perProperty: false,
-      allowed: (a, _) => a.isOwner,
-      build: (c) => GoogleDriveScreen(service: c.service),
-    ),
-    // Building details, the whole-building contract and "new building" are on
-    // the calendar now (building name / Tạo tòa nhà), 2026-10-03.
-    // B8-lite: where deposits and payments are received.
-    WorkspacePage(
-      id: 'accounts',
-      label: (c, _) => paymentAccountsTitle(c),
-      perProperty: false,
-      allowed: (a, _) => a.allows(TeamPermission.manageOrganization),
-      build: (c) => PaymentAccountsScreen(organizationId: c.organizationId),
-    ),
-    // 2026-10-05 (Tom): import the old app's .xlsx export; the owner only.
-    WorkspacePage(
-      id: 'import',
-      label: (c, _) => _t(c, 'nav_import'),
-      perProperty: false,
-      allowed: (a, _) => a.isOwner,
-      build: (c) => SheetImportScreen(
-        organizationId: c.organizationId,
-        service: c.service,
-      ),
-    ),
-  ]),
 ];
 
 /// Phone bottom bar: these first (when allowed), the rest under "More".
@@ -286,6 +252,7 @@ class _RoleWorkspaceState extends State<RoleWorkspace> {
   /// address, handed to the first matching page once.
   String? _record, _linkRecord;
   String? _linkSection, _linkPage;
+  String? _accountLink;
   String _accountId = '';
   String _newPropertyId = const Uuid().v4();
   // Tapping the section or page that is already open goes back to its list.
@@ -296,6 +263,7 @@ class _RoleWorkspaceState extends State<RoleWorkspace> {
   @override
   void initState() {
     super.initState();
+    _accountLink = widget.initial?.section == 'settings' ? widget.initial?.page : null;
     _section = widget.initial?.section;
     _page = widget.initial?.page;
     _building = widget.initial?.propertyId;
@@ -313,6 +281,7 @@ class _RoleWorkspaceState extends State<RoleWorkspace> {
       _section = null;
       _page = null;
       _building = null;
+      _accountLink = null;
       _load();
     }
   }
@@ -468,6 +437,18 @@ class _RoleWorkspaceState extends State<RoleWorkspace> {
     _page = (pages.where((p) => p.id == _page).firstOrNull ?? pages.firstOrNull)
         ?.id;
     _report();
+    if (!_busy && _accountLink != null) {
+      final linked = _accountLink;
+      _accountLink = null;
+      final option = accountWorkspaceOptions.where((o) => o.id == linked).firstOrNull;
+      if (access.status == 'active' && option != null && option.allowed(access)) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) showAccountWorkspaceDialog(context, option: option,
+            organizationId: widget.organizationId, service: widget.service,
+            onChanged: () { if (mounted) _load(); });
+        });
+      }
+    }
   }
 
   void _report() {

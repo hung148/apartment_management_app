@@ -407,6 +407,7 @@ void main() {
     t,
   ) async {
     final sent = <Map<String, dynamic>>[];
+    var changes = 0;
     final service = TeamService(
       transport: (name, d) async {
         expect(name, 'googleDrive');
@@ -425,16 +426,19 @@ void main() {
       Scaffold(
         body: GoogleDriveScreen(
           service: service,
+          onChanged: () => changes++,
           requestCode: (_) async => 'code1',
         ),
       ),
     );
     await t.pumpAndSettle();
     expect(sent.single, {'action': 'status'});
-    expect(find.textContaining('every organization you own'), findsOneWidget);
+    expect(changes, 0);
+    expect(find.textContaining('for your organization'), findsOneWidget);
     await _tap(t, find.byKey(const ValueKey('drive-connect')));
     expect(sent.last, {'action': 'connect', 'code': 'code1'});
     expect(find.text('owner@gmail.com'), findsOneWidget);
+    expect(changes, 1);
   });
 
   testWidgets(

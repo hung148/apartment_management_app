@@ -4,6 +4,7 @@ import '../team/ws_ui.dart';
 import '../team/ownership_agreements_screen.dart';
 import 'deleted_records_dialog.dart';
 import '../team/google_drive_screen.dart';
+import '../team/account_workspace_dialog.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/app_dialog.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/team/invitation_acceptance.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/team/access_request.dart';
@@ -400,9 +401,13 @@ class _DashboardScreenState extends State<DashboardScreen>
         ]),
       );
     }
+    final initial = _initialWorkspace;
+    // A Settings link opens its dialog once, including after a saved change
+    // refreshes account entry. Reopening would stack a second dialog.
+    if (initial?.section == 'settings') _initialWorkspace = null;
     return OrgShell(
       key: ValueKey('single-workspace-${org.id}'),
-      organizationId: org.id, name: org.name, initial: _initialWorkspace,
+      organizationId: org.id, name: org.name, initial: initial,
       service: getIt<TeamService>(),
       onAccountSettings: _showSettingsDialog,
       onOrganizationSettings: () => _showSingleOrganizationActions(org),

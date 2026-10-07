@@ -24,6 +24,7 @@ typedef PickedSheet = ({String name, Uint8List bytes});
 class SheetImportScreen extends StatefulWidget {
   final String organizationId;
   final TeamService service;
+  final VoidCallback? onChanged;
 
   /// Tests replace the file chooser and the link opener.
   final Future<PickedSheet?> Function()? pickFile;
@@ -32,6 +33,7 @@ class SheetImportScreen extends StatefulWidget {
     super.key,
     required this.organizationId,
     required this.service,
+    this.onChanged,
     this.pickFile,
     this.openUrl,
   });
@@ -121,13 +123,13 @@ class _SheetImportScreenState extends State<SheetImportScreen> {
         );
       case 'drive_not_connected':
         return x.tr(
-          'Google Drive is not connected. Connect it on the home screen (Google Drive button).',
-          'Chưa kết nối Google Drive. Hãy kết nối ở màn hình chính (nút Google Drive).',
+          'Google Drive is not connected. Open Account → Google Drive to connect it.',
+          'Chưa kết nối Google Drive. Mở Tài khoản → Google Drive để kết nối.',
         );
       case 'drive_reconnect_needed':
         return x.tr(
-          'Google Drive needs to be connected again (home screen, Google Drive button).',
-          'Cần kết nối lại Google Drive (màn hình chính, nút Google Drive).',
+          'Google Drive needs to be connected again. Open Account → Google Drive.',
+          'Cần kết nối lại Google Drive. Mở Tài khoản → Google Drive.',
         );
       case 'drive_unavailable':
         return x.tr(
@@ -206,6 +208,7 @@ class _SheetImportScreenState extends State<SheetImportScreen> {
         'sheets': _sheets,
         'operationId': _operationId,
       });
+      widget.onChanged?.call();
       if (!mounted) return;
       setState(() {
         _result = result;

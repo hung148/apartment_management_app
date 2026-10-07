@@ -6,6 +6,13 @@ import 'package:phan_mem_quan_ly_can_ho/screens/team/ownership_transfer_screen.d
 import 'account_entry_test.dart' as fixtures;
 void main(){
  setUpAll(()async{await (FontLoader('Roboto')..addFont(rootBundle.load('assets/fonts/Roboto-Regular.ttf'))).load();});
+ testWidgets('handover and refresh buttons have a visible gap',(t)async{
+  await fixtures.mount(t,Scaffold(body:OwnershipTransferScreen(organizationId:'org',onChanged:(){},service:TeamService(transport:(_,d)async=>{'owner':true,'candidates':[],'proposal':null}))));
+  await t.pumpAndSettle();
+  final send=t.getRect(find.byType(FilledButton));
+  final refresh=t.getRect(find.widgetWithText(OutlinedButton,'Refresh'));
+  expect(refresh.top-send.bottom,greaterThanOrEqualTo(8));
+ });
  testWidgets('owner sends a consent offer; lost reply retries identical intent',(t)async{
   final calls=<Map<String,dynamic>>[];var tries=0,changed=0;
   final service=TeamService(transport:(name,d)async{

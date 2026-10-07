@@ -97,6 +97,28 @@ extension _DashboardSettingsDialogs on _DashboardScreenState {
                           }
                         },
                       ),
+                    if (_accountOrganization?.accessVersion == 2)
+                      AccountWorkspaceButtons(
+                        organizationId: _accountOrganization!.id,
+                        service: getIt<TeamService>(),
+                        tile: (option, onTap) => _buildSettingsTile(
+                          icon: option.icon, iconBg: _DS.primaryLight,
+                          iconColor: _DS.primary, label: option.label(ctx), onTap: onTap),
+                        onOpen: (option) async {
+                          final org = _accountOrganization!;
+                          Navigator.pop(ctx);
+                          var changed = false;
+                          var closed = false;
+                          await showAccountWorkspaceDialog(context, option: option,
+                            organizationId: org.id, service: getIt<TeamService>(),
+                            onChanged: () {
+                              changed = true;
+                              if (closed && mounted) setState(() => _entryKey = UniqueKey());
+                            });
+                          closed = true;
+                          if (changed && mounted) setState(() => _entryKey = UniqueKey());
+                        },
+                      ),
                     _buildSettingsTile(
                       icon: Icons.language_rounded,
                       iconBg: _DS.primaryLight,

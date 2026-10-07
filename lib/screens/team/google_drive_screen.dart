@@ -18,6 +18,7 @@ import 'ws_ui.dart';
 class GoogleDriveScreen extends StatefulWidget {
   final String? organizationId;
   final TeamService service;
+  final VoidCallback? onChanged;
 
   /// Opens Google's pop-up; tests and the local emulator replace it.
   final Future<String> Function(String clientId)? requestCode;
@@ -25,6 +26,7 @@ class GoogleDriveScreen extends StatefulWidget {
     super.key,
     this.organizationId,
     required this.service,
+    this.onChanged,
     this.requestCode,
   });
   @override
@@ -173,6 +175,7 @@ class _GoogleDriveScreenState extends State<GoogleDriveScreen> {
           'organizationId': widget.organizationId,
         'code': code,
       });
+      widget.onChanged?.call();
       if (!mounted) return;
       setState(() {
         _data = data;
@@ -209,6 +212,7 @@ class _GoogleDriveScreenState extends State<GoogleDriveScreen> {
         if (widget.organizationId != null)
           'organizationId': widget.organizationId,
       });
+      widget.onChanged?.call();
       if (!mounted) return;
       setState(() {
         _data = data;
@@ -235,8 +239,8 @@ class _GoogleDriveScreenState extends State<GoogleDriveScreen> {
           title: 'Google Drive',
           help: widget.organizationId == null
               ? x.tr(
-                  'Connect once for every organization you own. Problem and meter photos and the import\'s Google Sheet are saved in your Google Drive, in the "CanHo360" folder.',
-                  'Kết nối một lần cho mọi tổ chức bạn sở hữu. Ảnh sự cố, ảnh đồng hồ điện nước và Google Sheet khi nhập dữ liệu được lưu vào Google Drive của bạn, trong thư mục "CanHo360".',
+                  'Connect Google Drive for your organization. Problem and meter photos and the import\'s Google Sheet are saved in your Google Drive, in the "CanHo360" folder.',
+                  'Kết nối Google Drive cho tổ chức của bạn. Ảnh sự cố, ảnh đồng hồ điện nước và Google Sheet khi nhập dữ liệu được lưu vào Google Drive của bạn, trong thư mục "CanHo360".',
                 )
               : x.tr(
                   'Photos of technical problems are saved in your Google Drive, in the "CanHo360" folder.',
