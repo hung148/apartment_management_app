@@ -918,7 +918,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
     final menu = PopupMenuButton<String>(
       key: const ValueKey('calendar-menu'),
       tooltip: c('legend'),
-      icon: const Icon(Icons.more_vert),
+      icon: const Icon(Icons.tune),
       onSelected: (v) {
         if (v == 'legend') _showLegend(context);
         if (v == 'refresh' && !_busy) _load();
@@ -982,7 +982,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
         textScaler: MediaQuery.textScalerOf(context).clamp(maxScaleFactor: 1.3),
         maxLines: 1,
       )..layout();
-      return painter.width.ceilToDouble() + 112;
+      return painter.width.ceilToDouble() + 88;
     }
 
     final pickerWidth = _properties.fold<double>(
@@ -1238,14 +1238,16 @@ class _RoomCalendarState extends State<RoomCalendar> {
                       // next line when the name needs the room.
                       if (building != null || buttons.isNotEmpty || narrow)
                         propertyActions,
-                      if (narrow)
-                        Align(
-                          alignment: AlignmentDirectional.centerStart,
-                          child: modes,
-                        ),
                       if (building != null || buttons.isNotEmpty || narrow)
                         const SizedBox(height: 6),
-                      Row(
+                      if (narrow)
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 6,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [nav, modes, menu],
+                        )
+                      else Row(
                         children: [
                           Expanded(
                             child: Align(

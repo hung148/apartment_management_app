@@ -8,6 +8,12 @@ build next, decisions, design notes) and [tool/STAGING.md](tool/STAGING.md).
 
 ## What to do next (read this first)
 
+Toolbar spacing refinement: reduced name-to-arrow allowance by 24px; compact
+date navigation, Ngày/Tháng and calendar options share a wrapping row instead
+of reserving a whole row for the toggle. Calendar options now use `Icons.tune`,
+while the five-action menu keeps three dots. Targeted populated calendar suite
+28/28 passed; inspected 200% Vietnamese phone render; staging web build passed.
+
 2026-10-06 toolbar follow-up: widened the one-line calendar property selector and
 dropdown based on the longest name; removed ellipsis, enlarged settings gear to
 28px, and put the five permitted actions in a three-dot menu when space is tight.
