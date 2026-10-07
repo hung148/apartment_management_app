@@ -8,177 +8,129 @@ extension _DashboardSettingsDialogs on _DashboardScreenState {
   // ─────────────────────────────────────────────────────────
 
   void _showSettingsDialog() {
-    const cornerRadius = 12.0;
+    Future<Map<String, dynamic>?>? ownershipRead;
+    DateTime? ownershipReadAt;
+    Future<void> openChild(BuildContext menu, Future<void> Function() action) =>
+        openAccountChild(menu, open: action, reopen: _showSettingsDialog,
+          canReopen: () => mounted && _authService.currentUser != null &&
+              ModalRoute.of(context)?.isCurrent == true);
     _showTrackedDialog(
       context: context,
-      builder: (ctx) => AppDialog(
-        scrollable: true,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(cornerRadius),
-        ),
-        elevation: 0,
-        backgroundColor: Colors.white,
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: _getDialogWidth(ctx)),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [_DS.primaryMid, _DS.primaryDeep],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(cornerRadius),
-                  ),
-                ),
-                child: Row(children: [
-                  Container(
-                    width: 44, height: 44,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: const Icon(Icons.person_outline, color: Colors.white, size: 22),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(child: Text(
-                    AppTranslations.of(ctx).text('account_menu'),
-                    style: const TextStyle(
-                      color: Colors.white, fontSize: 18,
-                      fontWeight: FontWeight.w800, letterSpacing: -0.3,
-                    ),
-                  )),
-                ]),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (_updateAvailable && !_checkingUpdate)
-                      _buildSettingsTile(
-                        icon: Icons.system_update_rounded,
-                        iconBg: const Color(0xFFDCFCE7),
-                        iconColor: const Color(0xFF16A34A),
-                        label: AppTranslations.of(ctx).text('update'),
-                        onTap: () {
-                          Navigator.pop(ctx);
-                          _performUpdate();
-                        },
-                      ),
-                    _buildSettingsTile(
-                      icon: Icons.person_outline_rounded,
-                      iconBg: _DS.primaryLight,
-                      iconColor: _DS.primary,
-                      label: AppTranslations.of(ctx).text('personal_info'),
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        _showPersonalInfoDialog();
-                      },
-                    ),
-                    if (_accountOrganization != null && _accountIsOwner)
-                      _buildSettingsTile(
-                        icon: Icons.business_outlined,
-                        iconBg: _DS.primaryLight,
-                        iconColor: _DS.primary,
-                        label: AppTranslations.of(ctx).text('org_info'),
-                        onTap: () {
-                          final organization = _accountOrganization!;
-                          Navigator.pop(ctx);
-                          if (organization.accessVersion == 2) {
-                            _showSingleOrganizationActions(organization);
-                          } else {
-                            _showEditOrganizationDialog(organization, _authService.currentUser!.uid, information: true);
-                          }
-                        },
-                      ),
-                    if (_accountOrganization?.accessVersion == 2)
-                      AccountWorkspaceButtons(
-                        organizationId: _accountOrganization!.id,
-                        service: getIt<TeamService>(),
-                        tile: (option, onTap) => _buildSettingsTile(
-                          icon: option.icon, iconBg: _DS.primaryLight,
-                          iconColor: _DS.primary, label: option.label(ctx), onTap: onTap),
-                        onOpen: (option) async {
-                          final org = _accountOrganization!;
-                          Navigator.pop(ctx);
-                          var changed = false;
-                          var closed = false;
-                          await showAccountWorkspaceDialog(context, option: option,
-                            organizationId: org.id, service: getIt<TeamService>(),
-                            onChanged: () {
-                              changed = true;
-                              if (closed && mounted) setState(() => _entryKey = UniqueKey());
-                            });
-                          closed = true;
-                          if (changed && mounted) setState(() => _entryKey = UniqueKey());
-                        },
-                      ),
-                    _buildSettingsTile(
-                      icon: Icons.language_rounded,
-                      iconBg: _DS.primaryLight,
-                      iconColor: _DS.primary,
-                      label: AppTranslations.of(ctx).text('lang'),
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        _showLanguageDialog();
-                      },
-                    ),
-                    _buildSettingsTile(
-                      icon: Icons.palette_outlined,
-                      iconBg: _DS.primaryLight,
-                      iconColor: _DS.primary,
-                      label: AppTranslations.of(ctx).text('theme_color'),
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        _showThemeColorDialog();
-                      },
-                    ),
-                    if (_accountOrganization?.accessVersion == 2) _buildSettingsTile(
-                      icon: Icons.history,
-                      iconBg: _DS.primaryLight,iconColor: _DS.primary,
-                      label: AppTranslations.of(ctx).text('record_recovery_title'),
-                      onTap: () async {
-                        final org=_accountOrganization!;Navigator.pop(ctx);
-                        final changed=await showDialog<bool>(context:context,barrierDismissible:false,builder:(_)=>DeletedRecordsDialog(
-                          organizationId:org.id,canRecoverOrganization:_accountIsOwner,transport:(name,data)async{
-                            final r=await appCallable(name).call(data);return Map<String,dynamic>.from(r.data as Map);
-                          }));
-                        if(changed==true&&mounted)setState(()=>_entryKey=UniqueKey());
-                      },
-                    ),
-                    _buildSettingsTile(
-                      icon: Icons.logout_rounded,
-                      iconBg: const Color(0xFFFFEBEB),
-                      iconColor: Colors.red,
-                      label: AppTranslations.of(ctx).text('logout'),
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        _handleLogout();
-                      },
-                    ),
-                    _buildSettingsTile(
-                      icon: Icons.delete_forever_rounded,
-                      iconBg: const Color(0xFFFFEBEB),
-                      iconColor: const Color(0xFFB91C1C),
-                      label: AppTranslations.of(ctx).text('delete_account'),
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        _handleDeleteAccount();
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 8),
-            ],
+      builder: (ctx) => AccountMenuDialog(
+        maxWidth: _getDialogWidth(ctx),
+        children: [
+        if (_updateAvailable && !_checkingUpdate)
+          _buildSettingsTile(
+            icon: Icons.system_update_rounded,
+            iconBg: const Color(0xFFDCFCE7),
+            iconColor: const Color(0xFF16A34A),
+            label: AppTranslations.of(ctx).text('update'),
+            onTap: () {
+              openChild(ctx, _performUpdate);
+            },
           ),
+        _buildSettingsTile(
+          icon: Icons.person_outline_rounded,
+          iconBg: _DS.primaryLight,
+          iconColor: _DS.primary,
+          label: AppTranslations.of(ctx).text('personal_info'),
+          onTap: () {
+            openChild(ctx, _showPersonalInfoDialog);
+          },
         ),
+        if (_accountOrganization != null && _accountIsOwner)
+          _buildSettingsTile(
+            icon: Icons.business_outlined,
+            iconBg: _DS.primaryLight,
+            iconColor: _DS.primary,
+            label: AppTranslations.of(ctx).text('org_info'),
+            onTap: () => openChild(ctx, () async {
+              final organization = _accountOrganization!;
+              if (organization.accessVersion == 2) {
+                await _showSingleOrganizationActions(organization);
+              } else {
+                await _showEditOrganizationDialog(organization, _authService.currentUser!.uid, information: true);
+              }
+            }),
+          ),
+        if (_accountOrganization?.accessVersion == 2)
+          AccountWorkspaceButtons(
+            organizationId: _accountOrganization!.id,
+            service: getIt<TeamService>(),
+            tile: (option, onTap) => _buildSettingsTile(
+              icon: option.icon, iconBg: _DS.primaryLight,
+              iconColor: _DS.primary, label: option.label(ctx), onTap: onTap),
+            onOwnershipPrefetch: (read) {
+              ownershipRead = read;
+              ownershipReadAt = DateTime.now();
+            },
+            onOpen: (option) => openChild(ctx, () async {
+              final org = _accountOrganization!;
+              final read = ownershipReadAt != null && DateTime.now().difference(ownershipReadAt!) < const Duration(seconds: 15) ? ownershipRead : null;
+              ownershipRead = null;
+              var changed = false;
+              var closed = false;
+              await showAccountWorkspaceDialog(context, option: option,
+                organizationId: org.id, service: getIt<TeamService>(),
+                ownershipRead: read,
+                onChanged: () {
+                  changed = true;
+                  if (closed && mounted) setState(() => _entryKey = UniqueKey());
+                });
+              closed = true;
+              if (changed && mounted) setState(() => _entryKey = UniqueKey());
+            }),
+          ),
+        _buildSettingsTile(
+          icon: Icons.language_rounded,
+          iconBg: _DS.primaryLight,
+          iconColor: _DS.primary,
+          label: AppTranslations.of(ctx).text('lang'),
+          onTap: () {
+            openChild(ctx, _showLanguageDialog);
+          },
+        ),
+        _buildSettingsTile(
+          icon: Icons.palette_outlined,
+          iconBg: _DS.primaryLight,
+          iconColor: _DS.primary,
+          label: AppTranslations.of(ctx).text('theme_color'),
+          onTap: () {
+            openChild(ctx, _showThemeColorDialog);
+          },
+        ),
+        if (_accountOrganization?.accessVersion == 2) _buildSettingsTile(
+          icon: Icons.history,
+          iconBg: _DS.primaryLight,iconColor: _DS.primary,
+          label: AppTranslations.of(ctx).text('record_recovery_title'),
+          onTap: () => openChild(ctx, () async {
+            final org=_accountOrganization!;
+            final changed=await showDialog<bool>(context:context,barrierDismissible:false,builder:(_)=>DeletedRecordsDialog(
+              organizationId:org.id,canRecoverOrganization:_accountIsOwner,transport:(name,data)async{
+                final r=await appCallable(name).call(data);return Map<String,dynamic>.from(r.data as Map);
+              }));
+            if(changed==true&&mounted)setState(()=>_entryKey=UniqueKey());
+          }),
+        ),
+        _buildSettingsTile(
+          icon: Icons.logout_rounded,
+          iconBg: const Color(0xFFFFEBEB),
+          iconColor: Colors.red,
+          label: AppTranslations.of(ctx).text('logout'),
+          onTap: () {
+            openChild(ctx, _handleLogout);
+          },
+        ),
+        _buildSettingsTile(
+          icon: Icons.delete_forever_rounded,
+          iconBg: const Color(0xFFFFEBEB),
+          iconColor: const Color(0xFFB91C1C),
+          label: AppTranslations.of(ctx).text('delete_account'),
+          onTap: () {
+            openChild(ctx, _handleDeleteAccount);
+          },
+        ),
+        ],
       ),
     );
   }
@@ -190,38 +142,19 @@ extension _DashboardSettingsDialogs on _DashboardScreenState {
     required String label,
     required VoidCallback onTap,
   }) {
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-        child: Row(children: [
-          Container(
-            width: 40, height: 40,
-            decoration: BoxDecoration(color: iconBg, borderRadius: BorderRadius.circular(12)),
-            child: Icon(icon, color: iconColor, size: 20),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Text(
-              label,
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: _DS.textPrimary),
-            ),
-          ),
-          Icon(Icons.chevron_right_rounded, color: Colors.grey.withValues(alpha: 0.5)),
-        ]),
-      ),
-    );
-    }
+    return AccountMenuTile(icon: icon, iconBg: iconBg, iconColor: iconColor,
+      label: label, onTap: onTap);
+  }
 
   // Language and appearance
 
   // ── dialogs ────────────────────────────────────────────────
 
-  void _showLanguageDialog() {
+  Future<void> _showLanguageDialog() async {
     final notifier = getIt<LocaleNotifier>();
     Locale tempLocale = notifier.locale;
     bool savingLocale = false; // a double tap must not close two screens
-    _showTrackedDialog(
+    await _showTrackedDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AppDialog(
@@ -333,11 +266,11 @@ extension _DashboardSettingsDialogs on _DashboardScreenState {
     );
   }
 
-  void _showThemeColorDialog() {
+  Future<void> _showThemeColorDialog() async {
     final notifier = getIt<AppThemeNotifier>();
     const names = ['teal', 'indigo', 'blue', 'purple', 'amber', 'rose'];
 
-    _showTrackedDialog(
+    await _showTrackedDialog(
       context: context,
       builder: (ctx) => AppDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

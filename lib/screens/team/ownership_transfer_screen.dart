@@ -9,11 +9,13 @@ class OwnershipTransferScreen extends StatefulWidget {
   final String organizationId;
   final TeamService service;
   final VoidCallback onChanged;
+  final Future<Map<String, dynamic>?>? initialRead;
   const OwnershipTransferScreen({
     super.key,
     required this.organizationId,
     required this.service,
     required this.onChanged,
+    this.initialRead,
   });
   @override
   State<OwnershipTransferScreen> createState() =>
@@ -40,19 +42,21 @@ class _OwnershipTransferScreenState extends State<OwnershipTransferScreen> {
   @override
   void initState() {
     super.initState();
-    _load();
+    _load(initialRead: widget.initialRead);
   }
 
-  Future<void> _load() async {
+  Future<void> _load({Future<Map<String, dynamic>?>? initialRead}) async {
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      final data = await widget.service.transferOrganization({
-        'action': 'read',
-        'organizationId': widget.organizationId,
-      });
+      final data =
+          await initialRead ??
+          await widget.service.transferOrganization({
+            'action': 'read',
+            'organizationId': widget.organizationId,
+          });
       if (mounted) setState(() => _data = data);
     } catch (e) {
       if (mounted) setState(() => _error = _message(e));
@@ -146,7 +150,7 @@ class _OwnershipTransferScreenState extends State<OwnershipTransferScreen> {
                 child: Text(t['org_transfer_cancel']),
               ),
           ],
-          if (_data?['owner'] != true && p == null)
+          if (_data != null && _data?['owner'] != true && p == null)
             Text(t['org_transfer_no_offer']),
           OutlinedButton(
             onPressed: _busy || _intent != null ? null : _load,

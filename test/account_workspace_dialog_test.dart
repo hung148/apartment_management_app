@@ -16,6 +16,51 @@ import 'package:phan_mem_quan_ly_can_ho/services/organization_settings_service.d
 import 'account_entry_test.dart' as fixtures;
 
 void main() {
+  for (final status in ['active', 'suspended', 'revoked']) {
+    testWidgets('ownership preparation waits for fresh $status authorization', (
+      t,
+    ) async {
+      final access = Completer<Map<String, dynamic>>();
+      var reads = 0;
+      Future<Map<String, dynamic>?>? prepared;
+      await fixtures.mount(
+        t,
+        Scaffold(
+          body: AccountWorkspaceButtons(
+            organizationId: 'org',
+            service: TeamService(
+              transport: (name, d) async {
+                if (name == 'readTeam') return access.future;
+                expect(name, 'transferOrganization');
+                expect(d['action'], 'read');
+                reads++;
+                return {'owner': true, 'candidates': [], 'proposal': null};
+              },
+            ),
+            tile: (o, tap) => TextButton(onPressed: tap, child: Text(o.id)),
+            onOpen: (_) {},
+            onOwnershipPrefetch: (future) => prepared = future,
+          ),
+        ),
+      );
+      await t.pump();
+      expect(reads, 0);
+      access.complete({
+        'record': {
+          'role': 'owner',
+          'status': status,
+          'accessVersion': 2,
+          'buildingScope': 'all',
+        },
+      });
+      await t.pumpAndSettle();
+      expect(reads, status == 'active' ? 1 : 0);
+      if (status == 'active')
+        expect((await prepared)!['owner'], true);
+      else
+        expect(prepared, isNull);
+    });
+  }
   setUpAll(() async {
     for (final family in ['Roboto', 'Ahem']) {
       await (FontLoader(family)
@@ -199,6 +244,7 @@ void main() {
     t,
   ) async {
     var opens = 0;
+    final closed = Completer<void>();
     await fixtures.mount(
       t,
       Scaffold(
@@ -215,7 +261,10 @@ void main() {
             },
           ),
           tile: (o, tap) => TextButton(onPressed: tap, child: Text(o.id)),
-          onOpen: (_) => opens++,
+          onOpen: (_) async {
+            opens++;
+            await closed.future;
+          },
         ),
       ),
     );
@@ -224,6 +273,11 @@ void main() {
     await t.tap(find.text('drive'));
     await t.pumpAndSettle();
     expect(opens, 1);
+    closed.complete();
+    await t.pumpAndSettle();
+    await t.tap(find.text('drive'));
+    await t.pumpAndSettle();
+    expect(opens, 2);
   });
   for (final role in TeamPolicy.templateIds) {
     testWidgets('Account actions retain $role permission boundaries', (

@@ -1,4 +1,5 @@
 import 'dashboard_organization_header.dart';
+import 'account_menu_dialog.dart';
 import '../team/org_shell.dart';
 import '../team/ws_ui.dart';
 import '../team/ownership_agreements_screen.dart';
@@ -442,9 +443,9 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   Future<void> _showSingleOrganizationActions(Organization org) async {
-    await _openV2Settings(org, (settings) {
+    await _openV2Settings(org, (settings) async {
       if (_accountIsOwner && settings.canManage) {
-        _showEditOrganizationDialog(settings.organization, _authService.currentUser!.uid, information: true);
+        await _showEditOrganizationDialog(settings.organization, _authService.currentUser!.uid, information: true);
       }
     });
   }

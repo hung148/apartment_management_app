@@ -8,6 +8,52 @@ build next, decisions, design notes) and [tool/STAGING.md](tool/STAGING.md).
 
 ## What to do next (read this first)
 
+
+Account dialog navigation follow-up (Tom, 2026-10-06): Tom explicitly chose
+close Account -> open child -> reopen a fresh Account after child Close/Cancel/
+Back, rather than keeping Account underneath. The common openAccountChild helper
+implements this for personal info, organization info (including legacy editor),
+all four workspace actions, language, theme, recovery and cancelled logout/account
+removal. Successful sign-out/deletion/navigation must not reopen Account.
+AccountMenuDialog has a localized 48px header close button outside the scrolling
+menu body; its close dismisses Account without reopening. The extracted tile
+preserves the existing appearance and lets tests render the production component.
+
+Ownership previously started its server read only after click; it also falsely
+showed "no offer" while loading (reproduced live and with a failing retained test).
+Fresh authorized myAccess now starts a read-only ownership prefetch while Account
+is open. It is local to that menu, consumed once, discarded after 15 seconds and
+never used for mutations. Failed preparation falls back to the usual fresh read
+and retry/error UI. Refresh reads fresh data. Server authorization, transactional
+transfer validation, nominee consent and idempotent retry payloads are unchanged.
+No backend source or region changes.
+
+Review matrix: all eight roles/custom grants, suspended/revoked/failed access;
+owner/candidate/nominee/empty/loading/error ownership states; double taps, repeated
+opens, close during loading, Close/Cancel/Back, discarded Account and no return
+after leaving the dashboard; v1 organization info and v2 actions; EN/VI 320px phone,
+812x375 landscape, 1440px desktop at 100/130/200%, long recipient and bank labels,
+scroll reachability, fixed header close, file-import preview. Automated focused
+checks currently 154/154: shared production menu/tile navigation matrix, absent
+Account route while child is open, return after Close/Back, header fixed while
+scrolling, roles/status/prefetch, fallback/Refresh and existing dialog workflows.
+Actual Roboto/MaterialIcons renders inspected at desktop EN and 320px VI 200%;
+artifacts in `.dart_tool/account-return-layout/`. Full sequential regression passed 798/798; analysis zero errors (454 warnings/
+infos); release web build passed; hosting-only staging deployment complete.
+Live owner checked Close/Cancel -> recreated Account for ownership, Drive,
+receiving accounts, import, personal info, organization info, language, theme,
+recovery, logout cancellation and account-deletion preview cancellation. Header
+close returns to unchanged calendar. Ownership showed loaded owner state on first
+observed frame in this check; this is not a network latency benchmark or guarantee.
+Screenshot: `.dart_tool/account-return-layout/staging-account-menu.jpg`.
+No live mutations, OAuth, transfer acceptance, successful logout/deletion, updater
+or legacy account login exercised. Separate staff live login not exercised;
+role/status and retry cases remain locally covered. Production unchanged.
+Observed unrelated existing theme picker defect: seventh palette is labelled
+`theme_color_undefined` (six names for seven presets). Recorded for a separate fix;
+not silently considered visually correct.
+
+
 Settings moved into Account (Tom, 2026-10-06): remove the Settings navigation
 section; Account now has four separately clickable actions for ownership
 transfer, Google Drive, receiving accounts and file import. Each opens a bounded,

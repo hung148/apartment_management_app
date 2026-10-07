@@ -1780,7 +1780,7 @@ extension _DashboardOrganizationDialogs on _DashboardScreenState {
   /// request started when the menu opened, shows a loader while waiting, and
   /// ignores further taps until this one finishes.
   Future<void> _openV2Settings(
-      Organization org, void Function(OrganizationSettings settings) open) {
+      Organization org, FutureOr<void> Function(OrganizationSettings settings) open) {
     return _dialogLock.run(() async {
       final messenger = ScaffoldMessenger.of(context);
       final nav = Navigator.of(context);
@@ -1812,7 +1812,7 @@ extension _DashboardOrganizationDialogs on _DashboardScreenState {
             content: Text(t.text('org_settings_load_failed')), backgroundColor: Colors.red));
         return;
       }
-      open(settings);
+      await open(settings);
     });
   }
 

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../models/team_access.dart';
 import '../../services/team_service.dart';
@@ -49,13 +50,15 @@ class AccountWorkspaceButtons extends StatefulWidget {
   final String organizationId;
   final TeamService service;
   final Widget Function(AccountWorkspaceOption, VoidCallback) tile;
-  final void Function(AccountWorkspaceOption) onOpen;
+  final FutureOr<void> Function(AccountWorkspaceOption) onOpen;
+  final void Function(Future<Map<String, dynamic>?>)? onOwnershipPrefetch;
   const AccountWorkspaceButtons({
     super.key,
     required this.organizationId,
     required this.service,
     required this.tile,
     required this.onOpen,
+    this.onOwnershipPrefetch,
   });
   @override
   State<AccountWorkspaceButtons> createState() =>
@@ -68,7 +71,30 @@ class _AccountWorkspaceButtonsState extends State<AccountWorkspaceButtons> {
   @override
   void initState() {
     super.initState();
-    _access = widget.service.myAccess(widget.organizationId);
+    _access = _loadAccess();
+  }
+
+  Future<Map<String, dynamic>?> _loadAccess() async {
+    final data = await widget.service.myAccess(widget.organizationId);
+    final access = TeamAccess.fromMap(data ?? {});
+    if (mounted &&
+        access.status == 'active' &&
+        access.role != null &&
+        accountWorkspaceOptions.first.allowed(access) &&
+        widget.onOwnershipPrefetch != null) {
+      widget.onOwnershipPrefetch!(
+        widget.service
+            .transferOrganization({
+              'action': 'read',
+              'organizationId': widget.organizationId,
+            })
+            .then<Map<String, dynamic>?>(
+              (value) => value,
+              onError: (Object _) => null,
+            ),
+      );
+    }
+    return data;
   }
 
   @override
@@ -90,7 +116,7 @@ class _AccountWorkspaceButtonsState extends State<AccountWorkspaceButtons> {
               const SizedBox(height: 12),
               OutlinedButton(
                 onPressed: () => setState(() {
-                  _access = widget.service.myAccess(widget.organizationId);
+                  _access = _loadAccess();
                 }),
                 child: Text(AppTranslations.of(context)['team_refresh']),
               ),
@@ -105,10 +131,18 @@ class _AccountWorkspaceButtonsState extends State<AccountWorkspaceButtons> {
           if (access.status == 'active' && access.role != null)
             for (final option in accountWorkspaceOptions)
               if (option.allowed(access))
-                widget.tile(option, () {
+                widget.tile(option, () async {
                   if (_opening) return;
                   _opening = true;
-                  widget.onOpen(option);
+                  try {
+                    await widget.onOpen(option);
+                  } finally {
+                    _opening = false;
+                    if (mounted)
+                      setState(() {
+                        _access = _loadAccess();
+                      });
+                  }
                 }),
         ],
       );
@@ -123,6 +157,7 @@ Future<void> showAccountWorkspaceDialog(
   required TeamService service,
   required VoidCallback onChanged,
   OrganizationSettingsService? settings,
+  Future<Map<String, dynamic>?>? ownershipRead,
 }) => showDialog<void>(
   context: context,
   barrierDismissible: false,
@@ -132,6 +167,7 @@ Future<void> showAccountWorkspaceDialog(
     service: service,
     onChanged: onChanged,
     settings: settings,
+    ownershipRead: ownershipRead,
   ),
 );
 
@@ -143,6 +179,7 @@ class AccountWorkspaceDialog extends StatelessWidget {
   final VoidCallback onChanged;
   final OrganizationSettingsService? settings;
   final Future<PickedSheet?> Function()? pickImportFile;
+  final Future<Map<String, dynamic>?>? ownershipRead;
   const AccountWorkspaceDialog({
     super.key,
     required this.option,
@@ -151,6 +188,7 @@ class AccountWorkspaceDialog extends StatelessWidget {
     required this.onChanged,
     this.settings,
     this.pickImportFile,
+    this.ownershipRead,
   });
   @override
   Widget build(BuildContext context) {
@@ -159,6 +197,7 @@ class AccountWorkspaceDialog extends StatelessWidget {
         organizationId: organizationId,
         service: service,
         onChanged: onChanged,
+        initialRead: ownershipRead,
       ),
       'drive' => GoogleDriveScreen(service: service, onChanged: onChanged),
       'accounts' => PaymentAccountsScreen(
