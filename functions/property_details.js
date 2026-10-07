@@ -2,6 +2,7 @@
 const {createHash}=require('node:crypto');
 const {allows}=require('./team_access');
 const {validZone}=require('./booking_settings');
+const {retainDeletedRecord}=require('./deleted_records');
 const id=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(v);
 const revision=doc=>`${doc.updateTime.seconds}:${doc.updateTime.nanoseconds}`;
 function createPropertyDetailsHandler({db,Timestamp,HttpsError}) {
@@ -20,9 +21,8 @@ function createPropertyDetailsHandler({db,Timestamp,HttpsError}) {
     return db.runTransaction(async tx=>{
       const org=await tx.get(db.doc(`organizations/${d.organizationId}`));
       const member=await tx.get(db.doc(`memberships/${uid}_${d.organizationId}`));
-      if(!org.exists||org.data().accessVersion!==2||!allows(member.data(),'manageProperty',{organizationId:d.organizationId,userId:uid,buildingId:d.buildingId}))fail('permission-denied');
+      if(!org.exists||org.data().accessVersion!==2||!allows(member.data(),deleting?'deleteBuildings':'manageProperty',{organizationId:d.organizationId,userId:uid,buildingId:d.buildingId}))fail('permission-denied');
       if((creating||preparing)&&member.data().buildingScope!=='all')fail('permission-denied');
-      if(deleting&&(member.data().buildingScope!=='all'||!allows(member.data(),'manageOrganization',{organizationId:d.organizationId,userId:uid})))fail('permission-denied');
       if(preparing)return {record:{id:d.buildingId,name:'',address:'',timeZone:'Asia/Ho_Chi_Minh',currency:'VND',revision:'new'}};
       const ref=db.doc(`buildings/${d.buildingId}`),doc=await tx.get(ref),old=doc.data();
       if(!creating&&!deleting&&(!old||old.organizationId!==d.organizationId))fail('not-found');
@@ -47,6 +47,7 @@ function createPropertyDetailsHandler({db,Timestamp,HttpsError}) {
         if(!members.empty||!invites.empty)throw new HttpsError('failed-precondition','property_has_assignments');
         if((await ref.listCollections()).length)throw new HttpsError('failed-precondition','property_not_empty');
         const now=Timestamp.now(),result={buildingId:d.buildingId,deleted:true};
+        retainDeletedRecord(tx,db,{type:'buildings',recordId:d.buildingId,data:old,actorId:uid,Timestamp,operationId:d.operationId});
         tx.delete(ref);
         tx.create(operation,{organizationId:d.organizationId,actorId:uid,fingerprint,result,createdAt:now});
         tx.create(db.doc(`teamActivity/${key}`),{organizationId:d.organizationId,actorId:uid,action:'property_deleted',targetId:d.buildingId,createdAt:now,before:{name:old.name??'',address:old.address??''},after:null});

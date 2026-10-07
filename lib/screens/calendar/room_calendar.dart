@@ -2190,7 +2190,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
             service: widget.service,
             create: false,
             canDelete:
-                a.allBuildings && a.allows(TeamPermission.manageOrganization),
+                a.allows(TeamPermission.deleteBuildings, buildingId: p.id),
             onBack: close,
           ),
         ),
@@ -2288,8 +2288,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
         service: widget.service,
         onlyRoomId: room.id,
         canDelete:
-            widget.access?.allBuildings == true &&
-            widget.access!.allows(TeamPermission.manageOrganization),
+            widget.access?.allows(TeamPermission.deleteRooms, buildingId: p.id) == true,
         onBuildingFees: buildingFees
             ? () {
                 close();

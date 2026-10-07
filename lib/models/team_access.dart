@@ -10,7 +10,7 @@
 // 'viewer' was removed (2026-09-29); a stored 'viewer' parses as no role (waiting).
 library;
 
-enum TeamPermission { manageOrganization, manageTeam, manageRoles, assignAdditionalWorkplace, manageProperty, manageLease, readBookings, createBookings, manageBookings, collectPayments, overridePrices, refundPayments, readFinancialReports, readOwnActivity, readAllActivity, exportData, importData, connectDrive, backdateRecords, readAssignedTasks, updateAssignedTasks, readGuestIds }
+enum TeamPermission { deleteBuildings, deleteRooms, deleteBookings, deleteTenants, deleteProblems, deleteStaffProfiles, manageOrganization, manageTeam, manageRoles, assignAdditionalWorkplace, manageProperty, manageLease, readBookings, createBookings, manageBookings, collectPayments, overridePrices, refundPayments, readFinancialReports, readOwnActivity, readAllActivity, exportData, importData, connectDrive, backdateRecords, readAssignedTasks, updateAssignedTasks, readGuestIds }
 
 /// How far a permission reaches.
 /// all: every property in the organization. managed: the member's own
@@ -29,6 +29,12 @@ class TeamPolicy {
 
   /// Scopes each permission may use (first = widest).
   static const Map<TeamPermission, List<GrantScope>> scopes = {
+    TeamPermission.deleteBuildings: _property,
+    TeamPermission.deleteRooms: _property,
+    TeamPermission.deleteBookings: _record,
+    TeamPermission.deleteTenants: _record,
+    TeamPermission.deleteProblems: _record,
+    TeamPermission.deleteStaffProfiles: _org,
     TeamPermission.manageOrganization: _org,
     TeamPermission.manageTeam: _org,
     TeamPermission.manageRoles: _org,
@@ -55,11 +61,11 @@ class TeamPolicy {
 
   /// Permission groups for the roles grid, in display order.
   static const groups = <String, List<TeamPermission>>{
-    'bookings': [TeamPermission.readBookings, TeamPermission.createBookings, TeamPermission.manageBookings, TeamPermission.readGuestIds],
+    'bookings': [TeamPermission.deleteBookings, TeamPermission.readBookings, TeamPermission.createBookings, TeamPermission.manageBookings, TeamPermission.readGuestIds],
     'money': [TeamPermission.collectPayments, TeamPermission.overridePrices, TeamPermission.refundPayments, TeamPermission.readFinancialReports],
-    'property': [TeamPermission.manageProperty, TeamPermission.manageLease, TeamPermission.backdateRecords],
-    'housekeeping': [TeamPermission.readAssignedTasks, TeamPermission.updateAssignedTasks],
-    'team': [TeamPermission.manageTeam, TeamPermission.manageRoles, TeamPermission.readAllActivity, TeamPermission.readOwnActivity],
+    'property': [TeamPermission.deleteBuildings, TeamPermission.deleteRooms, TeamPermission.deleteTenants, TeamPermission.manageProperty, TeamPermission.manageLease, TeamPermission.backdateRecords],
+    'housekeeping': [TeamPermission.deleteProblems, TeamPermission.readAssignedTasks, TeamPermission.updateAssignedTasks],
+    'team': [TeamPermission.deleteStaffProfiles, TeamPermission.manageTeam, TeamPermission.manageRoles, TeamPermission.readAllActivity, TeamPermission.readOwnActivity],
     'organization': [TeamPermission.manageOrganization, TeamPermission.exportData, TeamPermission.importData, TeamPermission.connectDrive],
   };
 
@@ -71,6 +77,9 @@ class TeamPolicy {
   static const _m = GrantScope.managed, _a = GrantScope.all, _o = GrantScope.own;
   static const Map<String, Grants> templates = {
     'owner': {
+      TeamPermission.deleteBuildings: _m, TeamPermission.deleteRooms: _m,
+      TeamPermission.deleteBookings: _m, TeamPermission.deleteTenants: _m,
+      TeamPermission.deleteProblems: _m, TeamPermission.deleteStaffProfiles: _a,
       TeamPermission.manageOrganization: _a, TeamPermission.manageTeam: _a, TeamPermission.manageRoles: _a,
       TeamPermission.manageProperty: _m, TeamPermission.manageLease: _m, TeamPermission.readBookings: _m,
       TeamPermission.createBookings: _m, TeamPermission.manageBookings: _m, TeamPermission.collectPayments: _m,

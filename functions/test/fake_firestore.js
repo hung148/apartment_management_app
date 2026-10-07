@@ -48,7 +48,7 @@ function fakeDb(seed={}){
     collection,doc:path=>ref(path),
     batch(){const w=[];return {create:(r,v)=>w.push(['create',r,v]),set:(r,v)=>w.push(['set',r,v]),update:(r,v)=>w.push(['update',r,v]),delete:r=>w.push(['delete',r]),commit:async()=>{db.calls++;apply(w);}};},
     async runTransaction(fn){const w=[];const tx={get:async r=>r.get(),
-      create:(r,v)=>w.push(['create',r,v]),update:(r,v)=>w.push(['update',r,v]),set:(r,v)=>w.push(['set',r,v])};
+      create:(r,v)=>w.push(['create',r,v]),update:(r,v)=>w.push(['update',r,v]),set:(r,v)=>w.push(['set',r,v]),delete:r=>w.push(['delete',r])};
       const out=await fn(tx);apply(w);return out;},
     async listCollections(){return [...new Set([...store.keys()].map(p=>p.split('/')[0]))].map(id=>({id}));},
     bulkWriter(){const w=[];return {create:(r,v)=>{w.push(['create',r,v]);},close:async()=>apply(w)};},

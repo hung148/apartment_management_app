@@ -335,6 +335,7 @@ function createTeamHandler({db, Timestamp, HttpsError}) {
       if (action !== 'setAccess') writes.push(['create',eventRef,{organizationId:orgId,actorId:uid,action,targetId,before,after,createdAt:now}]);
       writes.push(['create',operationRef,{organizationId:orgId,actorId:uid,fingerprint,result,createdAt:now}]);
       for (const commit of policyCommits) commit();
+      if(writes.some(([,ref])=>ref.path.startsWith('staffProfiles/')))tx.update(org.ref,{staffInventoryUpdatedAt:now});
       for (const [method,ref,value] of writes) tx[method](ref,value);
       return result;
     });

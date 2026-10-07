@@ -9,6 +9,9 @@ const {createCallableGroups}=require('./request_security');
 // createCallableGroups and the exports at the end of this file).
 const callables=createCallableGroups({onCall:functions.https.onCall,db,Timestamp:Timestamp,HttpsError:functions.https.HttpsError});
 const secureCallable=callables.register;
+const {createDeletedRecordsHandler}=require('./deleted_records');
+const deletedRecords=createDeletedRecordsHandler({db,Timestamp,HttpsError:functions.https.HttpsError});
+secureCallable('deletedRecords',request=>deletedRecords(request));
 // Always-running copies (minInstances): OFF (Tom, 2026-10-06) so the app stays
 // free. Grouped functions are called often enough to stay warm on their own;
 // turning this on ({minInstances:1}) costs money every month.
@@ -102,7 +105,7 @@ secureCallable('myProfile',request=>myProfileHandler(request));
 const {createOrganizationPurge}=require('./organization_purge');
 const purgeClosedOrganizations=createOrganizationPurge({db,Timestamp:Timestamp,logger:functions.logger});
 // Daily, server-only: permanently removes closed organizations after their 30-day retention.
-exports.purgeClosedOrganizations = functions.scheduler.onSchedule({region:require('./region').REGION,schedule:'15 3 * * *',timeZone:'Asia/Ho_Chi_Minh',timeoutSeconds:540,memory:'512MiB',maxInstances:1,retryCount:0},async()=>{await purgeClosedOrganizations();});
+exports.purgeClosedOrganizations = functions.scheduler.onSchedule({region:require('./region').REGION,schedule:'15 3 * * *',timeZone:'Asia/Ho_Chi_Minh',timeoutSeconds:540,memory:'512MiB',maxInstances:1,retryCount:0},async()=>{await require('./deleted_records').purgeDeletedRecords({db,Timestamp});await purgeClosedOrganizations();});
 const {createPaymentHandler}=require('./payments');
 const paymentHandler=createPaymentHandler({db,Timestamp:Timestamp,HttpsError:functions.https.HttpsError});
 secureCallable('mutateStandalonePayment',request=>paymentHandler(request));

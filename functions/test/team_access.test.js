@@ -85,7 +85,7 @@ test('templates retain operational grants and remove additional-workplace author
   // The table before R1 (2026-09-30). manageBookings now also means createBookings,
   // and owner/administrator keep backdating; nothing else changes for current users.
   const old = {
-    owner: permissions.filter(p => !['createBookings','backdateRecords','manageRoles','assignAdditionalWorkplace'].includes(p)),
+    owner: permissions.filter(p => !p.startsWith('delete')&&!['createBookings','backdateRecords','manageRoles','assignAdditionalWorkplace'].includes(p)),
     manager: ['manageProperty','manageLease','readBookings','manageBookings','collectPayments','overridePrices','readFinancialReports','readOwnActivity'],
     receptionist: ['readBookings','manageBookings','collectPayments','readOwnActivity'],
     housekeeper: ['readAssignedTasks','updateAssignedTasks','readOwnActivity'],
@@ -96,7 +96,7 @@ test('templates retain operational grants and remove additional-workplace author
     const expected = new Set(list);
     if (expected.has('manageBookings')) expected.add('createBookings');
     if (['owner','administrator'].includes(role)) expected.add('backdateRecords');
-    if (role === 'owner') { expected.add('manageRoles'); }
+    if (role === 'owner') { expected.add('manageRoles');for(const p of permissions.filter(p=>p.startsWith('delete')))expected.add(p); }
     assert.deepEqual(new Set(Object.keys(templates[role].grants)), expected, role);
     for (const s of Object.values(templates[role].grants)) assert.ok(['all','managed'].includes(s));
   }

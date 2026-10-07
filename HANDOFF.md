@@ -8,6 +8,50 @@ build next, decisions, design notes) and [tool/STAGING.md](tool/STAGING.md).
 
 ## What to do next (read this first)
 
+Individual-record recovery extension (Tom, 2026-10-06): ONE combined delete/restore
+permission for each of buildings, rooms, bookings, tenants, problems and staff
+profiles. Owner alone gets new defaults; managers need explicit grants and normal
+manage-access authority to assign them, with no grant escalation. Same property/
+own-record scope applies to both delete and restore. Account hub combines deleted
+record list, authorized delete-record view and owner-only merge-exclusion recovery.
+Older irreversible deletions cannot be reconstructed from partial audit fields.
+
+New building/room deletions save complete root snapshots first and keep existing
+empty/history/assignment rules. Other records use terminal/financial/dependency
+checks: no active stays, linked payments/deposits/settlements, linked staff logins
+or photos requiring provider review. Bounded nested histories are retained and
+restored atomically. Restore checks permission/status/parent, collisions, retention
+and overlapping occupancy; preserves original IDs/settings/amounts and never
+reactivates staff login access. Payments/invoices stay under existing financial
+reversal/settlement rules; role lifecycle stays under existing manageRoles controls.
+Snapshots are server-only; daily scheduler clears payloads after 30 days, retaining
+minimal ledgers. Limits: 350 nested documents and 700KiB snapshot; larger retained
+records require reviewed maintenance. Legacy direct-client deletions are outside
+the v2 recovery hub and require coordinated migration.
+
+Current validation: server 348/348; account-policy/team emulator 88/88, including
+server-only snapshot denial, booking-only worker recovery, denied room deletion,
+room/property deletion races and history restrictions. Permission/room/property
+widgets 26/26; full sequential Flutter regression 663/663. After a reproduced
+cached-label privacy regression was fixed, all 20 record-dialog tests passed.
+Final account-policy emulator 11/11 includes concurrent staff-code recovery:
+one winner, one collision refusal. Staff writers and restores share organization
+inventory serialization; reused codes and currency-mismatched room parents refuse.
+Actual-font desktop and VI 200% populated record-dialog screenshots inspected;
+deletion deadlines are localized, and property/room/date context distinguishes
+similar names. Final analysis zero errors (434 warnings/infos before context-only
+refinement); release web builds pass. Staging release includes app and daily
+retention purge. Final staging live check passed: the synthetic Recovery test room
+was deleted, appeared with its 30-day deadline, and restored to its original ID
+and organization with area 25, nightly price 750000 and hourly price 150000 intact.
+Archive status changed deleted → restored. Six combined permission labels were
+verified in the manager role editor; cancelled without changing any grants.
+Screenshots: `.dart_tool/recovery-layout/staging-record-recovery.jpg` and
+`staging-combined-permissions.jpg`. Separate staff browser login was not tested;
+its authorization and scope cases were verified in the emulator. No production
+data or deployment changed. Clearly named synthetic room/building remain staging
+fixtures. New hub label supersedes the historical merge-only menu label below.
+
 Retained merge-deletion recovery (Tom, 2026-10-06): owner Account menu now says
 “Khôi phục dữ liệu đã xóa” / “Recover deleted data”. Before the retention deadline,
 an owner can move excluded source data into their current organization, preserving

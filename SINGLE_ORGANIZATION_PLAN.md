@@ -321,6 +321,36 @@ landscape, desktop, 100/130/200% text, populated dialog and actual-font inspecti
 
 ### Retained-data recovery follow-up
 
+Individual-record extension approved by Tom: one combined delete-and-restore
+permission per type, never separate deletion/restoration permissions. Types:
+buildings, rooms, bookings, tenants, technical problems, staff profiles. Building/
+room scopes are all/managed; stays/problems may additionally be own; staff profiles
+use organization scope. Only owner gets new defaults. Managers may assign them
+through existing access/role controls only when their own grants and authority
+permit; the server retains the existing no-escalation checks.
+
+The Account recovery hub lists retained records and an optional delete-records
+view, filtered by current type/property/record permissions. Whole-organization
+merge exclusions remain an owner-only action inside that hub. A server-only
+deletedRecords snapshot retains the full root data and bounded nested history
+for 30 days. Building/room deletions retain their empty/dependency/assignment
+checks and now archive full settings before deletion. Other deletions refuse
+active stays, financial links/deposits, linked staff logins, fixed-problem photos
+needing provider review, and dependent roommates/history relationships. Bounded
+nested histories are moved into the snapshot atomically and restored with their
+original relative paths. Oversized snapshots (>700KiB or >350 child documents)
+require review instead of partially deleting data. Permanent retention purge
+removes the saved payload and keeps only a minimal type/ID ledger.
+
+Restore checks current membership and assigned permission, original parent
+building/room, ID and room-number collisions, retention, and stay-overlap rules.
+Parent records must be restored first. Staff profile restoration does not restore
+membership/sign-in access. Payments and invoices are retained financial history;
+their cancellation/refund/settlement controls remain separate rather than exposing
+raw deletion/recreation. Older hard-deleted records without a retained full
+snapshot cannot be faithfully restored from partial activity projections. Legacy
+direct-client deletions need coordinated migration; this recovery hub is v2-only.
+
 Tom approved recovery of organizations excluded during merging. Account now has
 an owner-only “Recover deleted data” item. It lists only sources excluded by the
 same current owner, pointing into their one current organization, before their

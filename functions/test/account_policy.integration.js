@@ -12,6 +12,32 @@ const auth=uid=>({uid,token:{email:uid+'@example.com',email_verified:true}});
 const member=(uid,org,role)=>({ownerId:uid,organizationId:org,role,status:'active',accessVersion:2,buildingScope:'all',buildingIds:[],email:uid+'@example.com'});
 const fields={name:'New',address:'',phone:'',email:'',taxCode:'',bankName:'',bankAccountNumber:'',bankAccountName:''};
 
+test('concurrent staff-profile restores cannot reuse one staff code',async()=>{
+ const handler=require('../deleted_records').createDeletedRecordsHandler({db,Timestamp,HttpsError:E});
+ for(const id of ['first','second'])await db.doc('deletedRecords/'+id).set({organizationId:'a',type:'staffProfiles',recordId:id,status:'deleted',deletedAt:Timestamp.now(),purgeAfter:Timestamp.fromMillis(Date.now()+60000),data:{organizationId:'a',displayName:'Synthetic '+id,code:'S99',accountId:null}});
+ const results=await Promise.allSettled(['first','second'].map(id=>handler({auth:auth('a'),data:{action:'restore',organizationId:'a',deletedRecordId:id,operationId:'restore'+id}})));
+ assert.equal(results.filter(r=>r.status==='fulfilled').length,1);
+ assert.equal(results.find(r=>r.status==='rejected').reason.message,'record_recovery_collision');
+ assert.equal((await db.collection('staffProfiles').where('organizationId','==','a').where('code','==','S99').get()).size,1);
+});
+
+test('combined record permission restores only its type and property; snapshots stay server-only',async()=>{
+ await db.doc('memberships/worker_a').set({...member('worker','a','custom'),buildingScope:'selected',buildingIds:['property'],roleGrants:{deleteBookings:'managed'}});
+ await db.doc('buildings/property').set({organizationId:'a'});
+ await db.doc('rooms/recordRoom').set({organizationId:'a',buildingId:'property',roomNumber:'101'});
+ await db.doc('bookings/recordBooking').set({organizationId:'a',buildingId:'property',roomId:'recordRoom',status:'cancelled',paidAmount:0,guestName:'Synthetic',startTime:Timestamp.fromMillis(1000),endTime:Timestamp.fromMillis(2000)});
+ const handler=require('../deleted_records').createDeletedRecordsHandler({db,Timestamp,HttpsError:E});
+ const call=data=>handler({auth:auth('worker'),data:{organizationId:'a',...data}});
+ await call({action:'delete',type:'bookings',recordId:'recordBooking',operationId:'delete'});
+ const row=(await call({action:'list'})).records[0];
+ const client=env.authenticatedContext('worker').firestore();await assertFails(getDoc(doc(client,'deletedRecords/'+row.id)));
+ await call({action:'restore',deletedRecordId:row.id,operationId:'restore'});
+ assert.equal((await db.doc('bookings/recordBooking').get()).data().guestName,'Synthetic');
+ const rooms=require('../room_details').createRoomDetailsHandler({db,Timestamp,HttpsError:E});
+ const room=await db.doc('rooms/recordRoom').get();
+ await assert.rejects(rooms({auth:auth('worker'),data:{action:'delete',organizationId:'a',buildingId:'property',roomId:'recordRoom',operationId:'notAllowed',revision:`${room.updateTime.seconds}:${room.updateTime.nanoseconds}`}}),/room_permission-denied/);
+});
+
 test('recovery and purge race: retained data moves completely or recovery is refused',async()=>{
  await db.doc('organizations/a').update({name:'Current organization'});
  const expiry=Date.now()+60000;

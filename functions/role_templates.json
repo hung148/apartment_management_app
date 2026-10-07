@@ -1,6 +1,12 @@
 {
   "note": "Shared by functions/team_access.js and lib/models/team_access.dart (parity tested). Scopes: all = every property in the organization, managed = the member's own property list, own = records they created or are in charge of (inside their properties).",
   "permissions": {
+    "deleteBuildings": ["all", "managed"],
+    "deleteRooms": ["all", "managed"],
+    "deleteBookings": ["all", "managed", "own"],
+    "deleteTenants": ["all", "managed", "own"],
+    "deleteProblems": ["all", "managed", "own"],
+    "deleteStaffProfiles": ["all"],
     "manageOrganization": ["all"],
     "manageTeam": ["all"],
     "manageRoles": ["all"],
@@ -26,7 +32,7 @@
   },
   "overridable": ["overridePrices", "refundPayments", "exportData", "importData"],
   "templates": {
-    "owner": {"color": "#6D4C41", "grants": {
+    "owner": {"color": "#6D4C41", "grants": {"deleteBuildings":"managed","deleteRooms":"managed","deleteBookings":"managed","deleteTenants":"managed","deleteProblems":"managed","deleteStaffProfiles":"all",
       "manageOrganization": "all", "manageTeam": "all", "manageRoles": "all",
       "manageProperty": "managed", "manageLease": "managed", "readBookings": "managed",
       "createBookings": "managed", "manageBookings": "managed", "collectPayments": "managed",

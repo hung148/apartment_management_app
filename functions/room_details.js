@@ -1,6 +1,7 @@
 'use strict';
 const {createHash}=require('node:crypto');
 const {allows}=require('./team_access');
+const {retainDeletedRecord}=require('./deleted_records');
 const id=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(v);
 const revision=doc=>`${doc.updateTime.seconds}:${doc.updateTime.nanoseconds}`;
 const normalized=v=>String(v??'').trim().normalize('NFKC').toLowerCase();
@@ -16,9 +17,8 @@ function createRoomDetailsHandler({db,Timestamp,HttpsError}) {
     return db.runTransaction(async tx=>{
       const org=await tx.get(db.doc(`organizations/${d.organizationId}`));
       const member=await tx.get(db.doc(`memberships/${uid}_${d.organizationId}`));
-      if(!org.exists||org.data().accessVersion!==2||!allows(member.data(),'manageProperty',{organizationId:d.organizationId,userId:uid,buildingId:d.buildingId}))fail('permission-denied');
+      if(!org.exists||org.data().accessVersion!==2||!allows(member.data(),deleting?'deleteRooms':'manageProperty',{organizationId:d.organizationId,userId:uid,buildingId:d.buildingId}))fail('permission-denied');
       if(deleting){
-        if(member.data().buildingScope!=='all'||!allows(member.data(),'manageOrganization',{organizationId:d.organizationId,userId:uid}))fail('permission-denied');
         const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
         const key=hash(['roomDetails',d.organizationId,uid,d.operationId]),fingerprint=hash(keys.map(k=>d[k]));
         const operation=db.doc(`roomOperations/${key}`),prior=await tx.get(operation);
@@ -37,6 +37,7 @@ function createRoomDetailsHandler({db,Timestamp,HttpsError}) {
         }
         if((await ref.listCollections()).length)throw new HttpsError('failed-precondition','room_not_empty');
         const now=Timestamp.now(),result={roomId:d.roomId,deleted:true};
+        retainDeletedRecord(tx,db,{type:'rooms',recordId:d.roomId,data:old,actorId:uid,Timestamp,operationId:d.operationId});
         tx.delete(ref);
         tx.update(building.ref,{roomInventoryUpdatedAt:now});
         tx.create(operation,{organizationId:d.organizationId,actorId:uid,fingerprint,result,createdAt:now});

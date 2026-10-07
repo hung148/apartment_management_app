@@ -398,6 +398,7 @@ test('empty room deletion enforces authority, revision, identities and immutable
 test('room deletion blocks all linked history including moved records, legacy links and nested data',async()=>{
   const room=createRoomDetailsHandler({db,Timestamp:Timestamp,HttpsError:class extends Error{constructor(code,message){super(message);this.code=code;}}});
   await setMember('admin','administrator',{buildingScope:'all',buildingIds:[]});
+  await db.doc('memberships/admin_org').update({roleGrants:{...require('../team_access').templates.administrator.grants,deleteRooms:'managed'}});
   await db.doc('rooms/empty').set({organizationId:'org',buildingId:'a',roomNumber:'101'});
   const run=data=>room({auth:{uid:'admin'},data:{organizationId:'org',buildingId:'a',roomId:'empty',...data}});
   const revision=(await run({action:'read'})).record.revision;
@@ -481,6 +482,7 @@ test('property deletion blocks historical records, assignments and nested data w
 test('property rental contract data blocks deletion and administrators can delete genuinely empty properties',async()=>{
   const property=createPropertyDetailsHandler({db,Timestamp:Timestamp,HttpsError:class extends Error{constructor(code,message){super(message);this.code=code;}}});
   await setMember('admin','administrator',{buildingScope:'all',buildingIds:[]});
+  await db.doc('memberships/admin_org').update({roleGrants:{...require('../team_access').templates.administrator.grants,deleteBuildings:'managed'}});
   const run=data=>property({auth:{uid:'admin'},data:{organizationId:'org',buildingId:'a',...data}});
   await db.doc('buildings/a').update({rentAmount:500});
   let revision=(await run({action:'read'})).record.revision;
