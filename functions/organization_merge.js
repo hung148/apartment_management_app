@@ -12,32 +12,60 @@ function createOrganizationMergeHandler({db,Timestamp,HttpsError,dryRun=false}){
  return async request=>{
   const uid=request.auth?.uid,d=request.data??{};
   if(!valid(uid))throw new HttpsError('unauthenticated','team_sign_in_required');
-  if(!['preview','merge'].includes(d.action)||Object.keys(d).some(k=>!['action','name','operationId','organizationIds','mergeIds','confirmDelete'].includes(k))||
+  const recovery=d.action==='recover';
+  if(!['preview','merge','recoveryList','recover'].includes(d.action)||Object.keys(d).some(k=>!['action','name','operationId','organizationIds','mergeIds','confirmDelete','sourceOrganizationId'].includes(k))||
+   (recovery&&(!valid(d.operationId)||!valid(d.sourceOrganizationId)))||
    (d.action==='merge'&&(!valid(d.operationId)||typeof d.name!=='string'||!d.name.trim()||d.name.trim().length>120)))
    throw new HttpsError('invalid-argument','org_invalid_input');
   const collections=await db.listCollections();
   return db.runTransaction(async tx=>{
    const op=db.collection('organizationMerges').doc(createHash('sha256').update(uid+':'+(d.operationId??'preview')).digest('hex'));
    const prior=await tx.get(op);
-   const fingerprint=JSON.stringify([d.name?.trim(),d.organizationIds,d.mergeIds,d.confirmDelete]);
-   if(d.action==='merge'&&prior.exists){if(prior.data().fingerprint!==fingerprint)fail('org_operation_reused');return prior.data().result;}
+   const fingerprint=recovery?JSON.stringify(['recover',d.sourceOrganizationId]):JSON.stringify([d.name?.trim(),d.organizationIds,d.mergeIds,d.confirmDelete]);
+   if((d.action==='merge'||recovery)&&prior.exists){if(prior.data().fingerprint!==fingerprint)fail('org_operation_reused');return prior.data().result;}
    const locks=await policyLocks(db,tx,uid,request.auth.token?.email);
    const policy=await accountPolicy(db,tx,uid);
    if(policy.deleting)fail('account_deletion_in_progress');
    if(policy.hasStaff)fail('org_merge_access_review');
-   const allIds=policy.organizationIds;
+   const currentId=policy.organizationIds.length===1&&policy.hasOwned?policy.organizationIds[0]:null;
+   if((recovery||d.action==='recoveryList')&&currentId){
+    const members=await tx.get(db.collection('memberships').where('organizationId','==',currentId));
+    const owners=members.docs.filter(m=>m.data().status==='active'&&m.data().role==='owner');
+    if(owners.length!==1||owners[0].data().ownerId!==uid||members.docs.some(m=>m.data().role==='coOwner'&&m.data().status!=='revoked'))fail('org_merge_owner_only');
+   }
+   if(d.action==='recoveryList'){
+    if(!currentId)fail('org_merge_owner_only');
+    const targetOrg=await tx.get(db.doc(`organizations/${currentId}`));
+    const member=await tx.get(db.doc(`memberships/${uid}_${currentId}`));
+    if(targetOrg.data()?.closedAt||targetOrg.data()?.mergedInto||(targetOrg.data()?.ownerTransferredTo??targetOrg.data()?.createdBy)!==uid||member.data()?.status!=='active'||member.data()?.role!=='owner')fail('org_merge_owner_only');
+    const sources=await tx.get(db.collection('organizations').where('closedBy','==',uid));
+    return {organizationId:currentId,organizations:sources.docs.filter(o=>{
+     const x=o.data();return x.excludedFromMerge&&x.mergedInto===currentId&&x.closedAt&&!x.purgeStartedAt&&x.purgeAfter?.toMillis()>Timestamp.now().toMillis()&&(x.ownerTransferredTo??x.createdBy)===uid;
+    }).map(o=>({id:o.id,name:o.data().name??'',deleteAt:o.data().purgeAfter.toDate().toISOString()}))};
+   }
+   if(recovery&&!currentId)fail('org_merge_owner_only');
+   const allIds=recovery?[currentId,d.sourceOrganizationId].sort():policy.organizationIds;
+   if(new Set(allIds).size!==allIds.length)fail('org_merge_changed');
    if(allIds.length<2)fail('org_merge_not_needed');
    const orgs=[];
    for(const id of allIds){
     const o=await tx.get(db.collection('organizations').doc(id)),m=await tx.get(db.collection('memberships').doc(`${uid}_${id}`));
     const x=o.data(),member=m.data();
-    if(!x||x.closedAt||x.mergedInto||(x.ownerTransferredTo??x.createdBy)!==uid||
-      (member&&member.status!=='active')||(x.accessVersion===2&&member?.role!=='owner'))fail('org_merge_owner_only');
+    const source=recovery&&id===d.sourceOrganizationId;
+    if(source&&(!x?.excludedFromMerge||x.mergedInto!==currentId||x.closedBy!==uid||x.purgeStartedAt||!x.closedAt||!(x.purgeAfter?.toMillis()>Timestamp.now().toMillis())))fail('org_restore_expired');
+    if(!x||(!source&&(x.closedAt||x.mergedInto))||(x.ownerTransferredTo??x.createdBy)!==uid||
+      (!source&&((member&&member.status!=='active')||(x.accessVersion===2&&member?.role!=='owner'))))fail('org_merge_owner_only');
     orgs.push(o);
    }
    const allConnections=[];
    for(const org of orgs){const c=await tx.get(db.collection('driveConnections').doc(org.id));if(c.exists)allConnections.push(c);}
    if(d.action==='preview')return {organizations:orgs.map(o=>({id:o.id,name:o.data().name??'',...(allConnections.some(c=>c.id===o.id)?{driveConnection:true}:{})}))};
+   if(recovery){
+    if(allConnections.some(c=>c.id!==currentId))fail('org_merge_drive_review');
+    d.organizationIds=allIds;d.mergeIds=allIds;d.confirmDelete=false;
+    d.name=orgs.find(o=>o.id===currentId).data().name;
+    if(typeof d.name!=='string'||!d.name.trim())fail('org_merge_changed');
+   }
    if(!Array.isArray(d.organizationIds)||JSON.stringify([...d.organizationIds].sort())!==JSON.stringify(allIds)||
     !Array.isArray(d.mergeIds)||!d.mergeIds.length||new Set(d.mergeIds).size!==d.mergeIds.length||d.mergeIds.some(id=>!allIds.includes(id)))fail('org_merge_changed');
    const ids=[...d.mergeIds].sort(),excluded=allIds.filter(id=>!ids.includes(id));
@@ -46,7 +74,7 @@ function createOrganizationMergeHandler({db,Timestamp,HttpsError,dryRun=false}){
    const records=new Map(),origins=new Map();
    for(const c of collections){
     if(['organizations','accountOrganizations','organizationMerges','requestLimits','accountPolicyLocks'].includes(c.id))continue;
-    for(const id of allIds)for(const field of ['organizationId','orgId']){
+    for(const id of (recovery?[d.sourceOrganizationId]:allIds))for(const field of ['organizationId','orgId']){
      const rows=await tx.get(db.collection(c.id).where(field,'==',id));
      for(const row of rows.docs){records.set(row.ref.path,row);origins.set(row.ref.path,id);}
     }
@@ -61,7 +89,7 @@ function createOrganizationMergeHandler({db,Timestamp,HttpsError,dryRun=false}){
    // Keep the Drive-connected organization so existing OAuth/folder references work.
    const connections=allConnections.filter(c=>ids.includes(c.id));
    if(connections.length>1)fail('org_merge_drive_review');
-   const target=connections[0]?.id??ids[0];
+   const target=recovery?currentId:connections[0]?.id??ids[0];
    const members=[...records.values()].filter(r=>r.ref.path.startsWith('memberships/'));
    const accounts=new Map(),staffLocks=[];
    for(const row of members){
@@ -151,11 +179,15 @@ function createOrganizationMergeHandler({db,Timestamp,HttpsError,dryRun=false}){
     writes.set(path,next);
    }
    const targetOrg=orgs.find(o=>o.id===target).data();
-   const ownerSource=members.find(r=>r.data().ownerId===uid&&r.data().organizationId===target)?.data()??{};
+   const ownerSource=recovery?(await tx.get(db.doc(`memberships/${uid}_${target}`))).data():members.find(r=>r.data().ownerId===uid&&r.data().organizationId===target)?.data()??{};
    writes.set(`memberships/${uid}_${target}`,{...ownerSource,ownerId:uid,organizationId:target,status:'active',role:targetOrg.accessVersion===2?'owner':'admin',...(targetOrg.accessVersion===2?{accessVersion:2,buildingScope:'all',buildingIds:[],permissionOverrides:{}}:{}),updatedAt:now});
-   for(const org of orgs)writes.set(org.ref.path,org.id===target?{...org.data(),name:d.name.trim(),mergedFrom:ids.filter(id=>id!==target),updatedAt:now}:excluded.includes(org.id)?
+   for(const org of orgs){
+    const sourceData={...org.data()};
+    if(recovery&&org.id!==target){delete sourceData.purgeAfter;sourceData.excludedFromMerge=false;sourceData.recoveredAt=now;}
+    writes.set(org.ref.path,org.id===target?{...org.data(),name:d.name.trim(),mergedFrom:[...new Set([...(org.data().mergedFrom??[]),...ids.filter(id=>id!==target)])],updatedAt:now}:excluded.includes(org.id)?
     {...org.data(),mergedInto:target,excludedFromMerge:true,closedAt:now,closedBy:uid,purgeAfter:Timestamp.fromMillis(now.toMillis()+30*86400000)}:
-    {...org.data(),mergedInto:target,mergedAt:now,closedAt:now,closedBy:uid});
+    {...sourceData,mergedInto:target,mergedAt:now,closedAt:now,closedBy:uid});
+   }
    writes.set(`accountOrganizations/${uid}`,{organizationId:target,state:'bound',source:'merge',updatedAtMs:Date.now()});
    const result={organizationId:target,deletedOrganizationIds:excluded,organizations:orgs.map(o=>({id:o.id,name:o.data().name??''})),records:records.size+children.length};
    if(writes.size+staffLocks.length*2+4>450||Buffer.byteLength(JSON.stringify([...writes]))>7*1024*1024)fail('org_merge_maintenance_required');

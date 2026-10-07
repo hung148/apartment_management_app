@@ -3,6 +3,14 @@ part of 'app_localizations.dart';
 // English translations, grouped by feature. Keep keys aligned with the other language.
 final Map<String, String> _enTranslations = {
   'account_menu': 'Account',
+  'org_recovery_title': 'Recover deleted data',
+  'org_recovery_action': 'Restore into current organization',
+  'org_recovery_confirm': 'Recover data',
+  'org_recovery_deadline': 'Permanent deletion deadline',
+  'org_recovery_empty': 'No deleted organization data is available for recovery.',
+  'org_recovery_success': 'Data was restored into your current organization.',
+  'org_recovery_error': 'Recovery could not finish. Retry the same request.',
+  'org_recovery_explanation': 'Recover data excluded when merging, before its deletion deadline. Buildings and operating records move into your current organization; its settings stay unchanged. Former staff access and invitations are not restored. Large accounts, mixed data versions or archived Drive connections require migration review.',
   'request_rate_limited': 'Too many requests. Wait a moment before retrying.',
   'org_operation_reused': 'This action was already submitted with different details. Close and reopen the dialog to review the current result.',
   'account_deletion_in_progress': 'Account deletion has started. Open account settings to review its status.',

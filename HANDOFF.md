@@ -8,6 +8,28 @@ build next, decisions, design notes) and [tool/STAGING.md](tool/STAGING.md).
 
 ## What to do next (read this first)
 
+Retained merge-deletion recovery (Tom, 2026-10-06): owner Account menu now says
+“Khôi phục dữ liệu đã xóa” / “Recover deleted data”. Before the retention deadline,
+an owner can move excluded source data into their current organization, preserving
+one account/one organization. Source metadata stays archived; recovery clears its
+purgeAfter and marks recoveredAt. Current settings/memberships are retained;
+revoked staff/invites stay revoked. Only source records are scanned/moved. A
+stable operation makes lost-response retry safe. Canonical sole owner, creator/
+transferred owner, closedBy, mergedInto target, retention and purge claim are
+rechecked in the transaction. Wrong owner/deleting account/started purge/expired
+data refuses; mixed versions, archived source Drive connections, malformed
+metadata, collisions and >450 writes/7MiB require review with no partial writes.
+
+Evidence: full server suite 338/338; account-policy emulator 9/9 including a real
+recovery/purge race; Flutter recovery dialog 19/19 (confirm/exact retry/empty,
+EN/VI phone/landscape/desktop 100/130/200%). Actual-font desktop and narrow VI
+200% screenshots inspected. Analysis zero errors (428 warnings/infos). Missing
+name and ambiguous-owner regressions reproduced before fixing. Staging app
+endpoint release `2026-10-07t03-02-32-669z` and hosting published; final live test
+uses source `recovery_verification_20261006` and invented building
+`recovery_verification_building`, under the existing staging owner only.
+See SINGLE_ORGANIZATION_PLAN.md section 14 for limitations and scenarios.
+
 Account-menu reorganization (Tom, 2026-10-06): header's separate organization
 icon removed; person action and its menu renamed “Tài khoản” / “Account”. Only
 owners see “Thông tin tổ chức”, directly below personal information. It opens

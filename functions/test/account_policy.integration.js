@@ -11,6 +11,22 @@ class E extends Error{constructor(code,message){super(message);this.code=code;}}
 const auth=uid=>({uid,token:{email:uid+'@example.com',email_verified:true}});
 const member=(uid,org,role)=>({ownerId:uid,organizationId:org,role,status:'active',accessVersion:2,buildingScope:'all',buildingIds:[],email:uid+'@example.com'});
 const fields={name:'New',address:'',phone:'',email:'',taxCode:'',bankName:'',bankAccountNumber:'',bankAccountName:''};
+
+test('recovery and purge race: retained data moves completely or recovery is refused',async()=>{
+ await db.doc('organizations/a').update({name:'Current organization'});
+ const expiry=Date.now()+60000;
+ await db.doc('organizations/deleted').set({createdBy:'a',closedBy:'a',name:'Deleted',accessVersion:2,closedAt:Timestamp.now(),excludedFromMerge:true,mergedInto:'a',purgeAfter:Timestamp.fromMillis(expiry)});
+ await db.doc('memberships/a_deleted').set({...member('a','deleted','owner'),status:'revoked',revokedReason:'organizationDeletedAtMerge'});
+ await db.doc('buildings/recoverBuilding').set({organizationId:'deleted',name:'Recovered'});
+ const recover=require('../organization_merge').createOrganizationMergeHandler({db,Timestamp,HttpsError:E});
+ const purge=require('../organization_purge').createOrganizationPurge({db,Timestamp,now:()=>expiry+1,logger:{info(){},warn(){},error(){}}});
+ const [r]=await Promise.allSettled([recover({auth:auth('a'),data:{action:'recover',sourceOrganizationId:'deleted',operationId:'race'}}),purge()]);
+ const building=await db.doc('buildings/recoverBuilding').get();
+ if(r.status==='fulfilled'){
+  assert.equal(building.data().organizationId,'a');assert.equal((await db.doc('organizations/deleted').get()).data().purgeAfter,undefined);
+ }else{assert.equal(r.reason.message,'org_restore_expired');assert.equal(building.exists,false);}
+ assert.equal((await db.doc('memberships/a_a').get()).data().role,'owner');
+});
 before(async()=>{
  if(!process.env.FIRESTORE_EMULATOR_HOST)throw Error('Emulator only');
  env=await initializeTestEnvironment({projectId:'demo-apartment-calendar',firestore:{rules:require('node:fs').readFileSync('../firestore.rules','utf8')}});

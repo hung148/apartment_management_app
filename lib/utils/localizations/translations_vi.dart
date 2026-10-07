@@ -3,6 +3,14 @@ part of 'app_localizations.dart';
 // Vietnamese translations, grouped by feature. Keep keys aligned with the other language.
 final Map<String, String> _viTranslations = {
   'account_menu': 'Tài khoản',
+  'org_recovery_title': 'Khôi phục dữ liệu đã xóa',
+  'org_recovery_action': 'Khôi phục vào tổ chức hiện tại',
+  'org_recovery_confirm': 'Khôi phục dữ liệu',
+  'org_recovery_deadline': 'Hạn xóa vĩnh viễn',
+  'org_recovery_empty': 'Không có dữ liệu tổ chức đã xóa có thể khôi phục.',
+  'org_recovery_success': 'Đã khôi phục dữ liệu vào tổ chức hiện tại.',
+  'org_recovery_error': 'Chưa hoàn tất khôi phục. Hãy thử lại cùng yêu cầu.',
+  'org_recovery_explanation': 'Khôi phục dữ liệu đã bỏ khi hợp nhất, trước hạn xóa. Tòa nhà và dữ liệu vận hành chuyển vào tổ chức hiện tại; cài đặt được giữ nguyên. Không khôi phục quyền nhân viên cũ hoặc lời mời. Dữ liệu lớn, khác phiên bản hoặc kết nối Drive lưu trữ cần kiểm tra chuyển đổi.',
   'request_rate_limited': 'Có quá nhiều yêu cầu. Hãy đợi một chút rồi thử lại.',
   'org_operation_reused': 'Thao tác đã được gửi với thông tin khác. Đóng và mở lại hộp thoại để kiểm tra kết quả hiện tại.',
   'account_deletion_in_progress': 'Đã bắt đầu xóa tài khoản. Mở cài đặt tài khoản để kiểm tra trạng thái.',

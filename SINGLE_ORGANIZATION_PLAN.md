@@ -319,6 +319,38 @@ landscape, desktop, 100/130/200% text, populated dialog and actual-font inspecti
 
 ## 14. Verification and rollout evidence (2026-10-06)
 
+### Retained-data recovery follow-up
+
+Tom approved recovery of organizations excluded during merging. Account now has
+an owner-only “Recover deleted data” item. It lists only sources excluded by the
+same current owner, pointing into their one current organization, before their
+purge deadline and before purge has claimed them. The action is “Restore into
+current organization”; it does not reopen a second organization. Each row names
+the source and shows the locally formatted permanent-deletion deadline.
+
+Recovery reuses the atomic record-moving/rekeying logic: current ID/settings and
+existing memberships stay intact; source buildings, operating IDs and nested
+histories move into the current organization. Revoked staff memberships and
+invitations stay revoked. The source metadata remains archived but its purge
+date is removed and a recovered timestamp is recorded. Owner/account locks,
+canonical sole ownership, source provenance, retention/purge state, data-version
+compatibility and key collisions are rechecked. Exact operation retries return
+the original result. Recovery and purge contend on the same source document;
+an already-started purge refuses recovery, and completed recovery prevents a
+later purge claim. Mixed versions, archived source Drive connections, malformed
+metadata and transactions above the 450-write/7MiB caps refuse before writes and
+require migration review. Deadline does not automatically extend on refusal.
+
+Verified locally: full server suite 338/338; nine account-policy emulator tests,
+including real recovery-versus-purge contention; 19 dialog tests covering exact
+lost-response retry, confirmation, empty result and EN/VI phone/landscape/desktop
+at 100/130/200% text. Rendered Roboto desktop and narrow Vietnamese 200% dialog
+screenshots were inspected. Analysis has zero errors (428 warning/info items).
+Missing-name and ambiguous-owner regressions were reproduced before correction.
+Live staging evidence follows after the invented retained-data fixture check.
+Not all recovery data kinds/large-volume migrations/provider reconnections or
+separate staff-login states were live-tested by these checks.
+
 Implementation is authorized; production data and deployment remain unchanged.
 Read-only inventory found four production owner accounts with multiple legacy
 organizations, and no historical co-owners or live sharing agreements. The new

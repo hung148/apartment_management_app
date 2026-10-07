@@ -117,14 +117,19 @@ extension _DashboardSettingsDialogs on _DashboardScreenState {
                         _showThemeColorDialog();
                       },
                     ),
-                    _buildSettingsTile(
+                    if (_accountIsOwner && _accountOrganization?.accessVersion == 2) _buildSettingsTile(
                       icon: Icons.restore_from_trash_rounded,
                       iconBg: _DS.primaryLight,
                       iconColor: _DS.primary,
-                      label: AppTranslations.of(ctx).text('recently_deleted_orgs'),
-                      onTap: () {
+                      label: AppTranslations.of(ctx).text('org_recovery_title'),
+                      onTap: () async {
                         Navigator.pop(ctx);
-                        _showRecentlyDeletedDialog();
+                        final changed = await showDialog<bool>(context: context, barrierDismissible: false,
+                          builder: (_) => DeletedOrganizationRecoveryDialog(transport: (name,data) async {
+                            final result=await appCallable(name).call(data);
+                            return Map<String,dynamic>.from(result.data as Map);
+                          }));
+                        if(changed==true&&mounted)setState(()=>_entryKey=UniqueKey());
                       },
                     ),
                     _buildSettingsTile(

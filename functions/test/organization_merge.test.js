@@ -32,6 +32,46 @@ function fixture(extra={}){
  return {db,call};
 }
 const merge={action:'merge',operationId:'merge1',name:'Unified',organizationIds:['a','b'],mergeIds:['a','b'],confirmDelete:false};
+
+test('recover excluded data into current organization without reviving deleted staff or a second organization',async()=>{
+ const {db,call}=fixture();await call({...merge,mergeIds:['a'],confirmDelete:true});
+ const list=await call({action:'recoveryList'});assert.equal(list.organizations[0].id,'b');
+ const payload={action:'recover',sourceOrganizationId:'b',operationId:'recover1'};
+ const result=await call(payload);assert.equal(result.organizationId,'a');
+ assert.equal(db.store.get('rooms/room').organizationId,'a');
+ assert.equal(db.store.get('tenants/tenant/rentHistory/history').organizationId,'a');
+ assert.equal(db.store.get('organizations/b').purgeAfter,undefined);
+ assert.equal(db.store.get('organizations/b').excludedFromMerge,false);
+ assert.deepEqual((await db.runTransaction(tx=>accountPolicy(db,tx,'owner'))).organizationIds,['a']);
+ assert.deepEqual(await call({...payload}),result);
+ assert.equal((await call({action:'recoveryList'})).organizations.length,0);
+});
+
+test('recovery refuses expired retention or a claimed purge without moving data',async()=>{
+ for(const patch of [{purgeStartedAt:Ts.now()},{purgeAfter:Ts.fromMillis(0)}]){
+  const {db,call}=fixture();await call({...merge,mergeIds:['a'],confirmDelete:true});
+  db.store.set('organizations/b',{...db.store.get('organizations/b'),...patch});
+  const before=JSON.stringify([...db.store]);
+  await assert.rejects(call({action:'recover',sourceOrganizationId:'b',operationId:'recover1'}),/org_restore_expired/);
+  assert.equal(JSON.stringify([...db.store]),before);
+ }
+});
+
+test('recovery fails without writes when current organization metadata needs repair',async()=>{
+ const {db,call}=fixture();await call({...merge,mergeIds:['a'],confirmDelete:true});
+ const target={...db.store.get('organizations/a')};delete target.name;db.store.set('organizations/a',target);
+ const before=JSON.stringify([...db.store]);
+ await assert.rejects(call({action:'recover',sourceOrganizationId:'b',operationId:'repair'}),/org_merge_changed/);
+ assert.equal(JSON.stringify([...db.store]),before);
+});
+
+test('recovery rejects ambiguous current ownership before moving retained data',async()=>{
+ const {db,call}=fixture();await call({...merge,mergeIds:['a'],confirmDelete:true});
+ db.store.set('memberships/other_a',{ownerId:'other',organizationId:'a',role:'owner',status:'active',accessVersion:2,buildingScope:'all'});
+ const before=JSON.stringify([...db.store]);
+ await assert.rejects(call({action:'recover',sourceOrganizationId:'b',operationId:'ambiguous'}),/org_merge_owner_only/);
+ assert.equal(JSON.stringify([...db.store]),before);
+});
 test('preview is read-only and exposes only organization names/ids',async()=>{
  const {db,call}=fixture(),before=JSON.stringify([...db.store]);
  assert.deepEqual(await call({action:'preview'}),{organizations:[{id:'a',name:'Alpha'},{id:'b',name:'Beta'}]});
