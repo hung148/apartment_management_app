@@ -2,6 +2,7 @@ part of 'app_localizations.dart';
 
 // English translations, grouped by feature. Keep keys aligned with the other language.
 final Map<String, String> _enTranslations = {
+  'account_menu': 'Account',
   'request_rate_limited': 'Too many requests. Wait a moment before retrying.',
   'org_operation_reused': 'This action was already submitted with different details. Close and reopen the dialog to review the current result.',
   'account_deletion_in_progress': 'Account deletion has started. Open account settings to review its status.',

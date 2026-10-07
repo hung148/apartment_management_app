@@ -1120,7 +1120,7 @@ extension _DashboardOrganizationDialogs on _DashboardScreenState {
     );
   }
 
-  Future<void> _showEditOrganizationDialog(Organization org, String ownerId) async {
+  Future<void> _showEditOrganizationDialog(Organization org, String ownerId, {bool information = false}) async {
     final nameCtrl            = TextEditingController(text: org.name);
     final addressCtrl         = TextEditingController(text: org.address ?? '');
     final phoneCtrl           = TextEditingController(text: org.phone ?? '');
@@ -1163,7 +1163,7 @@ extension _DashboardOrganizationDialogs on _DashboardScreenState {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      AppTranslations.of(ctx).text('edit_org'),
+                      AppTranslations.of(ctx).text(information ? 'org_info' : 'edit_org'),
                       style: const TextStyle(
                           fontSize: 17, fontWeight: FontWeight.w700, color: _DS.textPrimary),
                     ),

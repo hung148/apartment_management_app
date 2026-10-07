@@ -53,7 +53,8 @@ void main() {
       await fixtures.mount(t,Scaffold(body:RoleWorkspace(organizationId:'preview',title:'Riverside — Khu căn hộ và khách sạn phía Đông',service:store.service,onAccountSettings:()=>account++,onOrganizationSettings:()=>organization++)),locale:locale,size:size,scale:scale);
       await t.pumpAndSettle();
       await t.tap(find.byIcon(Icons.person_outline).first);expect(account,1);
-      await t.tap(find.byIcon(Icons.business_outlined).first);expect(organization,1);await t.pumpAndSettle();
+      expect(find.byIcon(Icons.business_outlined),findsNothing);expect(organization,0);
+      expect(find.byTooltip(locale=='vi'?'Tài khoản':'Account'),findsOneWidget);await t.pumpAndSettle();
       expect(find.byIcon(Icons.handshake_outlined),findsNothing);expect(t.takeException(),isNull);
       for(final label in find.descendant(of:find.byType(NavigationBar),matching:find.byType(Text)).evaluate()){
         expect(t.getRect(find.byWidget(label.widget)).bottom,lessThanOrEqualTo(size.height),reason:'Navigation label must stay inside the viewport');

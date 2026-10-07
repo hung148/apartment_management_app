@@ -376,8 +376,12 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   OrgLocation? _initialWorkspace;
   String? _workspaceId;
+  Organization? _accountOrganization;
+  bool _accountIsOwner = false;
 
   Widget _buildSingleWorkspace(AccountEntry entry, Organization org) {
+    _accountOrganization = org;
+    _accountIsOwner = entry.mode == 'owner';
     _canCreateOrganization = false;
     if (_workspaceId != org.id) {
       _workspaceId = org.id;
@@ -387,7 +391,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     if (org.accessVersion != 2) {
       return Scaffold(
         appBar: AppBar(title: Text(org.name), actions: [
-          IconButton(tooltip: AppTranslations.of(context)['settings'], onPressed: _showSettingsDialog, icon: const Icon(Icons.person_outline)),
+          IconButton(tooltip: AppTranslations.of(context)['account_menu'], onPressed: _showSettingsDialog, icon: const Icon(Icons.person_outline)),
         ]),
         body: WsPage(children: [
           WsNotice(AppTranslations.of(context)['org_legacy_workspace'], tone: WsTone.neutral),
@@ -406,10 +410,12 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   Widget _buildOrganizationEntry(AccountEntry entry) {
+    _accountOrganization = null;
+    _accountIsOwner = false;
     final t = AppTranslations.of(context);
     return Scaffold(
       appBar: AppBar(title: Text(t['org_entry_title']), actions: [
-        IconButton(tooltip: t['settings'], onPressed: _showSettingsDialog, icon: const Icon(Icons.person_outline)),
+        IconButton(tooltip: t['account_menu'], onPressed: _showSettingsDialog, icon: const Icon(Icons.person_outline)),
       ]),
       body: WsPage(maxWidth: 560, children: [
         WsHeader(title: t['org_entry_title']),
@@ -431,15 +437,9 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   Future<void> _showSingleOrganizationActions(Organization org) async {
     await _openV2Settings(org, (settings) {
-      final t = AppTranslations.of(context);
-      showModalBottomSheet<void>(context: context, builder: (sheet) => SafeArea(
-        child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-          ListTile(title: Text(t['org_info']), leading: const Icon(Icons.info_outline), onTap: () { Navigator.pop(sheet); _showOrganizationInfo(settings.organization); }),
-          if (settings.canManage) ListTile(title: Text(t['edit']), leading: const Icon(Icons.edit_outlined), onTap: () { Navigator.pop(sheet); _showEditOrganizationDialog(settings.organization, _authService.currentUser!.uid); }),
-          if (settings.canClose) ListTile(title: Text(t['org_close_action']), leading: const Icon(Icons.archive_outlined), onTap: () { Navigator.pop(sheet); _showDeleteOrganizationDialog(settings.organization, _authService.currentUser!.uid); }),
-          if (settings.canLeave) ListTile(title: Text(t['leave_org']), leading: const Icon(Icons.logout), onTap: () { Navigator.pop(sheet); _showLeaveOrganizationDialog(settings.organization, _authService.currentUser!.uid); }),
-        ])),
-      ));
+      if (_accountIsOwner && settings.canManage) {
+        _showEditOrganizationDialog(settings.organization, _authService.currentUser!.uid, information: true);
+      }
     });
   }
 

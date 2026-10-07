@@ -12,6 +12,7 @@ extension _DashboardSettingsDialogs on _DashboardScreenState {
     _showTrackedDialog(
       context: context,
       builder: (ctx) => AppDialog(
+        scrollable: true,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(cornerRadius),
         ),
@@ -42,16 +43,16 @@ extension _DashboardSettingsDialogs on _DashboardScreenState {
                       color: Colors.white.withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(14),
                     ),
-                    child: const Icon(Icons.settings_rounded, color: Colors.white, size: 22),
+                    child: const Icon(Icons.person_outline, color: Colors.white, size: 22),
                   ),
                   const SizedBox(width: 12),
-                  Text(
-                    AppTranslations.of(ctx).text('settings'),
+                  Expanded(child: Text(
+                    AppTranslations.of(ctx).text('account_menu'),
                     style: const TextStyle(
                       color: Colors.white, fontSize: 18,
                       fontWeight: FontWeight.w800, letterSpacing: -0.3,
                     ),
-                  ),
+                  )),
                 ]),
               ),
               Padding(
@@ -80,6 +81,22 @@ extension _DashboardSettingsDialogs on _DashboardScreenState {
                         _showPersonalInfoDialog();
                       },
                     ),
+                    if (_accountOrganization != null && _accountIsOwner)
+                      _buildSettingsTile(
+                        icon: Icons.business_outlined,
+                        iconBg: _DS.primaryLight,
+                        iconColor: _DS.primary,
+                        label: AppTranslations.of(ctx).text('org_info'),
+                        onTap: () {
+                          final organization = _accountOrganization!;
+                          Navigator.pop(ctx);
+                          if (organization.accessVersion == 2) {
+                            _showSingleOrganizationActions(organization);
+                          } else {
+                            _showEditOrganizationDialog(organization, _authService.currentUser!.uid, information: true);
+                          }
+                        },
+                      ),
                     _buildSettingsTile(
                       icon: Icons.language_rounded,
                       iconBg: _DS.primaryLight,

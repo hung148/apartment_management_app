@@ -794,11 +794,8 @@ class _HeaderBar extends StatelessWidget {
                   ],
                 ),
               ),
-              if(onOrganizationSettings != null)
-                IconButton(tooltip: AppTranslations.of(context)['org_info'], color: Colors.white,
-                  icon: const Icon(Icons.business_outlined), onPressed: onOrganizationSettings),
               if(onAccountSettings != null)
-                IconButton(tooltip: AppTranslations.of(context)['settings'], color: Colors.white,
+                IconButton(tooltip: AppTranslations.of(context)['account_menu'], color: Colors.white,
                   icon: const Icon(Icons.person_outline), onPressed: onAccountSettings),
               if (sections.isNotEmpty)
                 Row(

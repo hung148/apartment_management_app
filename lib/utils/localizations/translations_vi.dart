@@ -2,6 +2,7 @@ part of 'app_localizations.dart';
 
 // Vietnamese translations, grouped by feature. Keep keys aligned with the other language.
 final Map<String, String> _viTranslations = {
+  'account_menu': 'Tài khoản',
   'request_rate_limited': 'Có quá nhiều yêu cầu. Hãy đợi một chút rồi thử lại.',
   'org_operation_reused': 'Thao tác đã được gửi với thông tin khác. Đóng và mở lại hộp thoại để kiểm tra kết quả hiện tại.',
   'account_deletion_in_progress': 'Đã bắt đầu xóa tài khoản. Mở cài đặt tài khoản để kiểm tra trạng thái.',

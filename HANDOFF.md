@@ -8,6 +8,23 @@ build next, decisions, design notes) and [tool/STAGING.md](tool/STAGING.md).
 
 ## What to do next (read this first)
 
+Account-menu reorganization (Tom, 2026-10-06): header's separate organization
+icon removed; person action and its menu renamed “Tài khoản” / “Account”. Only
+owners see “Thông tin tổ chức”, directly below personal information. It opens
+the editable organization-details form directly, titled Organization information;
+no intermediate info/edit choices or close-organization button in the normal
+single-organization flow. Existing validation/save fields preserved. Staff do
+not get the item; legacy owner uses the same existing editor. Account menu scrolls
+on short screens. Workspace-entry matrix 26/26 passed (EN/VI, phone/landscape/
+desktop, enlarged text), asserting Account tooltip and absent organization icon.
+Live staging owner check passed: Account menu order matches, organization item
+opens the populated editable form directly, save/cancel reachable, no intermediate
+sheet or close action. Cancelled without changing data. Screenshots saved in
+`.dart_tool/calendar-layout/staging-account-menu.jpg` and
+`staging-organization-information.jpg`. Staff-only menu visibility follows the
+resolved owner policy but was not live-tested with a separate staff login;
+dialog large-text/landscape combinations were not covered by workspace tests.
+
 Import overlap prevention (2026-10-06): apply now refuses source-file overlaps,
 preview disables confirmation and explains correction. Server rechecks existing
 bookings/main tenants in each incoming room, allows adjacent stays, rechecks owner
