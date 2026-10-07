@@ -1,13 +1,16 @@
 'use strict';
 const {createHash}=require('node:crypto');
 const {allows}=require('./team_access');
+const {createBulkRoomsHandler}=require('./bulk_rooms');
 const {retainDeletedRecord}=require('./deleted_records');
 const id=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(v);
 const revision=doc=>`${doc.updateTime.seconds}:${doc.updateTime.nanoseconds}`;
 const normalized=v=>String(v??'').trim().normalize('NFKC').toLowerCase();
 function createRoomDetailsHandler({db,Timestamp,HttpsError}) {
+  const bulk=createBulkRoomsHandler({db,Timestamp,HttpsError});
   const fail=code=>{throw new HttpsError(code,'room_'+code);};
   return async request=>{
+    if(['prepareBulk','createBulk'].includes(request.data?.action))return bulk(request);
     const uid=request.auth?.uid,d=request.data||{},creating=d.action==='create',deleting=d.action==='delete',editing=d.action==='update'||creating;
     if(!uid)fail('unauthenticated');
     const keys=['action','organizationId','buildingId','roomId',...(deleting?['operationId','revision']:[]),...(editing?['operationId',...(!creating?['revision']:[]),'roomNumber','roomType','area']:[])];

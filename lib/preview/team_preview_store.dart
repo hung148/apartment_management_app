@@ -1384,6 +1384,22 @@ class TeamPreviewStore {
         );
       }
       final building = record(buildings, d['buildingId']);
+      if (d['action'] == 'prepareBulk') return {'record': {'currency': building['currency'] ?? 'VND', 'canSetRoomPrices': true}};
+      if (d['action'] == 'createBulk') {
+        final key='bulk-rooms-$workspaceRole-${d['operationId']}';
+        if(completed.containsKey(key)) return completed[key]!;
+        final drafts=(d['rooms'] as List).cast<Map>();
+        final names=rooms.where((r)=>r['buildingId']==d['buildingId']).map((r)=>(r['roomNumber'] as String).trim().toLowerCase()).toSet();
+        for(final r in drafts) {
+          if(!names.add((r['roomNumber'] as String).trim().toLowerCase())) throw FirebaseFunctionsException(code:'already-exists',message:'Duplicate');
+        }
+        final ids=<String>[];
+        for(final (i,r) in drafts.indexed) {
+          final id='$key-$i';ids.add(id);final currency=building['currency']??'VND';
+          rooms.add({'id':id,'organizationId':'preview','buildingId':d['buildingId'],'roomNumber':r['roomNumber'],'roomType':r['roomType'],'area':r['area']??0,'revision':'1:0','currency':currency,'rentalMode':'both',for(final k in ['roomPrice','nightlyPrice','hourlyPrice']) k:r['ratesMinor'][k]==null?null:(r['ratesMinor'][k] as num)/(currency=='USD'?100:1)});
+        }
+        return completed[key]={'roomIds':ids};
+      }
       if (d['action'] == 'prepareCreate') {
         return {
           'record': {

@@ -399,6 +399,8 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
                           currency: _currency,
                           locked: locked,
                           canSetPrices: _canSetRoomPrices,
+                          onGenerate: (rows) =>
+                              setState(() => _rooms.addAll(rows)),
                           onAdd: () =>
                               setState(() => _rooms.add(InitialRoomDraft())),
                           onRemove: (room) => setState(() {

@@ -566,6 +566,26 @@ test('bulk building creation is atomic, exact on retry, scoped and race safe',as
  assert.equal(raced.filter(r=>r.status==='fulfilled').length,1);assert.equal((await db.collection('rooms').where('buildingId','==','race').get()).size,2);
 });
 
+test('bulk room creation serializes duplicate names with batches and single-room creation',async()=>{
+ const api=createRoomDetailsHandler({db,Timestamp,HttpsError:class extends Error{constructor(code,message){super(message);this.code=code;}}});
+ const room=n=>({roomNumber:n,roomType:'',area:null,ratesMinor:{roomPrice:5000000,nightlyPrice:null,hourlyPrice:null}});
+ const command={action:'createBulk',organizationId:'org',buildingId:'a',operationId:'batch',rooms:[room('P001'),room('P002')]};
+ const run=d=>api({auth:{uid:'owner'},data:d});
+ const same=await Promise.all([run(command),run(command)]);assert.deepEqual(same[0],same[1]);
+ assert.equal((await db.collection('rooms').get()).size,2);
+ const race=await Promise.allSettled([
+   run({...command,operationId:'race-batch',rooms:[room('P003'),room('P004')]}),
+   run({action:'create',organizationId:'org',buildingId:'a',operationId:'race-single',roomId:'single',roomNumber:' p003 ',roomType:'',area:20}),
+ ]);
+ assert.equal(race.filter(r=>r.status==='fulfilled').length,1);
+ assert.equal(race.find(r=>r.status==='rejected').reason.code,'already-exists');
+ const rooms=(await db.collection('rooms').get()).docs.map(r=>r.data());
+ assert.equal(rooms.filter(r=>r.roomNumber.trim().toLowerCase()==='p003').length,1);
+ assert.equal(rooms.length,race[0].status==='fulfilled'?4:3);
+ await db.doc('memberships/owner_org').update({status:'revoked'});
+ await assert.rejects(run(command),e=>e.code==='permission-denied');
+});
+
 test('concurrent property creation cannot overwrite an existing or foreign property',async()=>{
   const property=createPropertyDetailsHandler({db,Timestamp:Timestamp,HttpsError:class extends Error{constructor(code,message){super(message);this.code=code;}}});
   const run=operationId=>property({auth:{uid:'owner'},data:{action:'create',organizationId:'org',buildingId:'shared-id',operationId,name:operationId,address:'Address',timeZone:'UTC',currency:'VND'}});

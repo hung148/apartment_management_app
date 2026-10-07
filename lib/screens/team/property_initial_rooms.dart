@@ -3,6 +3,7 @@ import '../../utils/app_number.dart';
 import '../../utils/localizations/app_localizations.dart';
 import 'room_rates_screen.dart' show rateFields;
 import 'ws_ui.dart';
+import 'room_batch_generator.dart';
 
 class InitialRoomDraft {
   final name = TextEditingController();
@@ -32,16 +33,20 @@ class InitialRoomDraft {
 class PropertyInitialRooms extends StatelessWidget {
   final List<InitialRoomDraft> rooms;
   final String currency;
+  final String? title;
   final bool locked, canSetPrices;
   final VoidCallback onAdd;
+  final void Function(List<InitialRoomDraft>)? onGenerate;
   final void Function(InitialRoomDraft) onRemove;
   const PropertyInitialRooms({
     super.key,
     required this.rooms,
     required this.currency,
+    this.title,
     required this.locked,
     required this.canSetPrices,
     required this.onAdd,
+    this.onGenerate,
     required this.onRemove,
   });
   @override
@@ -51,7 +56,7 @@ class PropertyInitialRooms extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          t['property_initial_rooms'],
+          title ?? t['property_initial_rooms'],
           style: Theme.of(context).textTheme.titleMedium,
         ),
         const SizedBox(height: 8),
@@ -189,6 +194,30 @@ class PropertyInitialRooms extends StatelessWidget {
         const SizedBox(height: 12),
         WsActions(
           children: [
+            if (onGenerate != null)
+              OutlinedButton.icon(
+                key: const ValueKey('rooms-generate'),
+                onPressed: locked || rooms.length >= 50
+                    ? null
+                    : () async {
+                        final rows = await generateRoomBatch(
+                          context,
+                          currency: currency,
+                          canSetPrices: canSetPrices,
+                          existing: rooms,
+                        );
+                        if (rows == null) return;
+                        if (!context.mounted) {
+                          for (final r in rows) {
+                            r.dispose();
+                          }
+                          return;
+                        }
+                        onGenerate!(rows);
+                      },
+                icon: const Icon(Icons.playlist_add),
+                label: Text(t['rooms_generate']),
+              ),
             OutlinedButton.icon(
               key: const ValueKey('property-add-room'),
               onPressed: locked || rooms.length >= 50 ? null : onAdd,

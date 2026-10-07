@@ -9,6 +9,56 @@ build next, decisions, design notes) and [tool/STAGING.md](tool/STAGING.md).
 ## What to do next (read this first)
 
 
+Room batch generator (Tom, 2026-10-07, completed): shared “Tạo nhiều phòng”
+option in new-building room list and existing-building Create room flow. Generate
+sequential names using prefix/start/count (leading zeros retained), or switch to
+floor numbering using starting floor, number of floors, rooms per floor: 101–103,
+201–203. Floor 0 produces 001 etc. Add batches for unequal floor counts; list max
+50. Shared monthly/nightly/hourly prices are optional, remain editable per room,
+and require overridePrices. Generated rows are drafts until the user saves.
+
+Existing-building createBulk uses the roomDetails callable and a single server
+transaction: recheck active membership/manageProperty/building scope and price
+grant; read building and all peer names (including normalized legacy labels),
+check deterministic target IDs, write rooms/audits/receipt and inventory revision.
+Same operation retry returns same IDs; changed payload is refused. Inventory
+write serializes with existing single-create and building-delete paths. Invalid,
+conflicting, foreign or unauthorized requests do not partially write a batch.
+Existing single-room create/edit is preserved, including its area requirement;
+batch optional area uses the same unknown=0 representation as new-building rooms.
+
+Review matrix: owner/admin/manager/custom grants, selected scope, foreign org,
+suspension/revocation, missing/legacy records; 0/1/50/51 rooms, floor total limit,
+prefix/leading zero/ground floor/unequal floors, generated and existing duplicate
+names including Unicode normalization; VND/USD/blank/invalid/shared/per-room prices;
+cancel, edit/remove, retries/double taps/lost reply, concurrent batch vs single
+create, late responses/context changes, loading/error/reload; EN/VI phone320,
+landscape812, desktop1440 at 100/130/200%, actual fonts and light/dark dialogs.
+
+Verified so far: 358 server unit tests and 80 full team emulator tests passed,
+including the concurrent batch vs single name race. 27 new widget tests passed:
+new-building and existing-room entry, generated edits, lost reply identical retry,
+duplicate/limit errors, denied save clears drafts, price-hidden permission, both
+numbering modes and floor-based layout matrix, actual calendar dialogs light/dark
+VI200. Actual-font renders in `.dart_tool/room-generator-layout/` inspected for
+EN desktop, VI320/200 and calendar dark/light. Full Flutter regression passed 853/853; targeted feature analysis is clean.
+Release web build passed. Backend staging release 2026-10-07t19-03-58-620z
+completed in asia-southeast1; staging identity/boundary verification passed.
+Initial hosting deployed and live owner saved 101/102/201/202 with shared monthly
+5,000,000 VND into the existing “Building cost & rooms verification 2026-10-07”
+fixture. Calendar shows all four plus its original QA rooms. New-building flow
+generated 101/201 as editable drafts, then was cancelled without saving.
+Live wording review found a wrong “Giữ phòng” close tooltip and new-building-only
+heading in the existing-building flow. Retained close-tooltip regression failed
+before the correction; final focused creation suite passed 57/57. The heading is
+now contextual, generator close says Đóng and the single-room return says Quay lại.
+Final label-only web build and staging hosting deployment completed. Live reload
+confirmed contextual heading, Quay lại and Đóng labels; floor-number generator
+remains available. Backend did not need redeployment. Production unchanged.
+Screenshot: `.dart_tool/room-generator-layout/staging-floor-rooms.jpg`. Live gaps remain staff/custom login, actual 50-room browser flow,
+OS keyboard, network interruption, and legacy-v1 UI (new flow is v2).
+
+
 Building cost and initial rooms (Tom, 2026-10-07, completed): optional
 `exploitationCostMinor`, labelled Giá thầu / Giá khai thác tòa nhà, is an amount
 in the building currency with NO billing period. It does not post an expense or

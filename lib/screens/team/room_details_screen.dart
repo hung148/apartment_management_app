@@ -2,6 +2,7 @@ import 'workspace_page_scope.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'ws_ui.dart';
+import 'bulk_rooms_screen.dart';
 import 'package:uuid/uuid.dart';
 import '../../services/team_service.dart';
 import '../../utils/app_number.dart';
@@ -44,6 +45,7 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
   bool _loading = true, _saving = false;
   int _generation = 0;
   Map<String, dynamic>? _pending;
+  bool _bulk = false;
   bool _created = false, _confirmDelete = false, _deleted = false;
   String _savedNumber = '';
   bool get _deleting => _pending?['action'] == 'delete';
@@ -66,6 +68,7 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
         old.service != widget.service) {
       _saving = false;
       _pending = null;
+      _bulk = false;
       _created = false;
       _confirmDelete = false;
       _deleted = false;
@@ -230,6 +233,15 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_bulk) {
+      return BulkRoomsScreen(
+        organizationId: widget.organizationId,
+        buildingId: widget.buildingId,
+        service: widget.service,
+        onBack: () => setState(() => _bulk = false),
+        onCreated: widget.onCreated ?? widget.onBack,
+      );
+    }
     final t = AppTranslations.of(context),
         locked = _loading || _saving || _pending != null || _confirmDelete,
         inDialog = DialogPageScope.contains(context),
@@ -267,6 +279,21 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
                 Text(
                   t[_creating ? 'room_create' : 'room_edit_details'],
                   style: Theme.of(context).textTheme.headlineSmall,
+                ),
+                const SizedBox(height: 16),
+              ],
+              if (_creating && _revision != null) ...[
+                WsActions(
+                  children: [
+                    OutlinedButton.icon(
+                      key: const ValueKey('room-bulk-mode'),
+                      onPressed: locked
+                          ? null
+                          : () => setState(() => _bulk = true),
+                      icon: const Icon(Icons.playlist_add),
+                      label: Text(t['rooms_generate']),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 16),
               ],
