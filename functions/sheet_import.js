@@ -234,7 +234,7 @@ function planImport(sheets,{organizationId,nowMs,fail}){
   }
  }
 
- // Overlapping stays in one room: imported anyway, listed for review.
+ // Overlapping stays are shown in preview and block application.
  const stays=[...bookings.map(s=>({...s,what:'booking',to:s.end})),...leases.map(s=>({...s,what:'lease',to:propertyDayStart(s.endDay,ZONE)}))];
  const byRoom=new Map();
  for(const s of stays){if(!byRoom.has(s.roomId))byRoom.set(s.roomId,[]);byRoom.get(s.roomId).push(s);}
@@ -410,14 +410,52 @@ function createSheetImportHandler({db,Timestamp,HttpsError,driveAccess}){
   if(d.action==='preview')return summary(plan,existing);
 
   if(!id(d.operationId))fail('invalid-argument','import_invalid_file');
+  if(plan.overlaps.length)fail('failed-precondition','import_overlap');
   const missing=docs.filter(x=>!there.has(x.path));
-  for(let i=0;i<missing.length;i+=400){
-   const batch=db.batch();
-   for(const x of missing.slice(i,i+400))batch.create(db.doc(x.path),x.data);
-   await batch.commit();
-  }
+  // One transaction prevents partial imports and uses the same room revision
+  // lock as normal reservations/leases. Large files need a smaller split.
+  const incoming=missing.filter(x=>['bookings','tenants'].includes(x.kind));
+  const roomIds=[...new Set(incoming.map(x=>x.data.roomId))];
+  if(missing.length+roomIds.length>450)fail('invalid-argument','import_too_large');
+  const millis=v=>v?.toMillis?v.toMillis():null;
+  const interval=(kind,x)=>kind==='bookings'?[millis(x.startTime),millis(x.endTime)]:
+    [millis(x.moveInDate),millis(x.moveOutDate)??Infinity];
+  const applied=await db.runTransaction(async tx=>{
+   const member=await tx.get(db.doc(`memberships/${uid}_${d.organizationId}`));
+   const organization=await tx.get(db.doc(`organizations/${d.organizationId}`));
+   if(member.data()?.status!=='active'||member.data()?.role!=='owner'||organization.data()?.closedAt||organization.data()?.mergedInto||
+     (organization.data()?.ownerTransferredTo??organization.data()?.createdBy)!==uid)
+    fail('permission-denied','import_owner_only');
+   const roomLocks=[];
+   for(const roomId of roomIds){
+    const ref=db.doc(`rooms/${roomId}`),room=await tx.get(ref);
+    if(room.exists&&room.data().organizationId!==d.organizationId)fail('failed-precondition','import_conflict');
+    roomLocks.push({ref,exists:room.exists,revision:room.data()?.bookingRevision??0});
+    for(const kind of ['bookings','tenants']){
+     const existing=await tx.get(db.collection(kind).where('roomId','==',roomId));
+     for(const row of existing.docs){const x=row.data();
+      if(kind==='bookings'&&['cancelled','noShow'].includes(x.status))continue;
+      if(kind==='tenants'&&x.isMainTenant===false)continue;
+      const [start,end]=interval(kind,x);if(start===null)continue;
+      for(const candidate of incoming.filter(v=>v.data.roomId===roomId&&v.path!==row.ref.path)){
+       const [a,b]=interval(candidate.kind,candidate.data);
+       if(a<end&&(b??Infinity)>start)fail('failed-precondition','import_overlap');
+      }
+     }
+    }
+   }
+   // Recheck all deterministic IDs so concurrent retry does not duplicate data.
+   const create=[];
+   for(const x of missing){const saved=await tx.get(db.doc(x.path));
+    if(saved.exists){if(saved.data().organizationId!==d.organizationId)fail('failed-precondition','import_conflict');}
+    else create.push(x);
+   }
+   for(const x of create)tx.create(db.doc(x.path),x.data);
+   for(const room of roomLocks)if(room.exists)tx.update(room.ref,{bookingRevision:room.revision+1});
+   return create;
+  });
   const created={};
-  for(const x of missing)created[x.kind]=(created[x.kind]??0)+1;
+  for(const x of applied)created[x.kind]=(created[x.kind]??0)+1;
   await db.doc(`importRuns/${d.organizationId}_${runId}`).set({organizationId:d.organizationId,actorId:uid,createdAt:now,created,counts:plan.counts,problemCount:plan.problems.length,overlapCount:plan.overlaps.length});
   await db.collection('teamActivity').doc().set({organizationId:d.organizationId,actorId:uid,createdAt:now,action:'sheet_import',targetId:d.organizationId,after:{created,problems:plan.problems.length,overlaps:plan.overlaps.length}});
   return {...summary(plan,existing),created,sheet:exportTabs(plan)};

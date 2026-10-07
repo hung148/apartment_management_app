@@ -1243,7 +1243,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
                           }
                           return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                             Align(alignment: AlignmentDirectional.centerStart, child: nav),
-                            Transform.translate(offset: const Offset(0, -2),
+                            Transform.translate(offset: const Offset(0, 4),
                               child: Row(children: [modes, const Spacer(), menu])),
                           ]);
                         })

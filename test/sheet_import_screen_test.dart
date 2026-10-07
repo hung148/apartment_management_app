@@ -11,6 +11,19 @@ import 'staff_editor_test.dart' show reveal;
 
 // Sheet import (2026-10-05): made-up file only (tool/import_sample.xlsx).
 void main() {
+  testWidgets('overlapping preview disables import confirmation', (tester) async {
+    final calls=<Map<String,dynamic>>[];
+    await mountReview(tester, SheetImportScreen(organizationId:'org',
+      pickFile: () async => (name:'sample.xlsx', bytes:Uint8List.fromList(File('tool/import_sample.xlsx').readAsBytesSync())),
+      service: TeamService(transport:(name,data)async {
+        calls.add(data);return {'counts':{'bookings':2},'existing':{},'problems':[],
+          'overlapCount':1,'overlaps':[]};
+      })));
+    await tester.tap(find.byKey(const ValueKey('import-choose')));await tester.pumpAndSettle();
+    final start=find.byKey(const ValueKey('import-start'));
+    expect(tester.widget<FilledButton>(start).onPressed,isNull);
+    expect(calls.length,1);expect(find.byKey(const ValueKey('import-apply')),findsNothing);
+  });
   testWidgets('choose, preview, import, then save the new Google Sheet', (
     tester,
   ) async {
@@ -51,7 +64,7 @@ void main() {
           'b': {'guest': 'Khách Mẫu 03', 'start': 'c', 'end': 'd'},
         },
       ],
-      'overlapCount': 1,
+      'overlapCount': 0,
       if (created != null) 'created': created,
       if (created != null)
         'sheet': [
@@ -102,7 +115,7 @@ void main() {
       find.text('Room not in the Phòng tab: added (1)'),
       findsOneWidget,
     );
-    expect(find.byKey(const ValueKey('import-overlaps')), findsOneWidget);
+    expect(find.byKey(const ValueKey('import-overlaps')), findsNothing);
     // Nothing is created before the second, confirming tap.
     await reveal(tester, find.byKey(const ValueKey('import-start')));
     await tester.tap(find.byKey(const ValueKey('import-start')));

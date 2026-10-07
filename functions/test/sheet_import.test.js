@@ -72,10 +72,34 @@ test('preview: counts, problems and overlaps; nothing written',async()=>{
  assert.equal(r.existing.bookings.there,0);
 });
 
+test('apply rejects overlapping source stays before any write',async()=>{
+ const store=fakeDb(seed()),before=JSON.stringify([...store.store]);
+ await assert.rejects(call(store,{action:'apply',sheets:sheets(),operationId:'conflict'}),/import_overlap/);
+ assert.equal(JSON.stringify([...store.store]),before);
+});
+
+test('apply rejects an existing-room conflict atomically; adjacent checkout is accepted',async()=>{
+ const source=sheets();source['Đặt phòng'].rows[1][9]='2026-09-11 12:00:00';
+ const store=fakeDb(seed());
+ const preview=await call(store,{action:'preview',sheets:source});
+ const {planImport,documents}=require('../sheet_import');
+ const plan=planImport(source,{organizationId:'org',nowMs:Ts.now().toMillis(),fail:(c,m)=>{throw new CodeError(c,m);}});
+ const room=plan.bookings[0].roomId;
+ store.store.set(`rooms/${room}`,{organizationId:'org',bookingRevision:4});
+ store.store.set('bookings/existing',{organizationId:'org',roomId:room,status:'checkedOut',startTime:Ts.fromMillis(plan.bookings[0].start),endTime:Ts.fromMillis(plan.bookings[0].end)});
+ const before=JSON.stringify([...store.store]);
+ await assert.rejects(call(store,{action:'apply',sheets:source,operationId:'existing'}),/import_overlap/);
+ assert.equal(JSON.stringify([...store.store]),before);
+ store.store.set('bookings/existing',{...store.store.get('bookings/existing'),endTime:Ts.fromMillis(plan.bookings[0].start),startTime:Ts.fromMillis(plan.bookings[0].start-3600000)});
+ await call(store,{action:'apply',sheets:source,operationId:'adjacent'});
+ assert.equal(store.store.get(`rooms/${room}`).bookingRevision,5);
+});
+
 test('apply: records in the app shapes; the same file again creates nothing',async()=>{
  Ts.clock=Date.parse('2026-09-28T05:00:00Z');
  const store=fakeDb(seed());
- const r=await call(store,{action:'apply',sheets:sheets(),operationId:'op1'});
+ const validSheets=sheets();validSheets['Đặt phòng'].rows[1][9]='2026-09-11 12:00:00';
+ const r=await call(store,{action:'apply',sheets:validSheets,operationId:'op1'});
  // payments: 4 stay payments + 1 expense.
  assert.deepEqual(r.created,{buildings:1,rooms:4,staffProfiles:2,bookings:3,tenants:2,payments:5});
  const all=[...store.store.entries()];
@@ -116,7 +140,7 @@ test('apply: records in the app shapes; the same file again creates nothing',asy
  // The owner fixes a name; the same file again: nothing new, nothing overwritten.
  store.store.set(`bookings/${k1.id}`,{...store.store.get(`bookings/${k1.id}`),guestName:'Đã sửa'});
  const size=store.store.size;
- const again=await call(store,{action:'apply',sheets:sheets(),operationId:'op2'});
+ const again=await call(store,{action:'apply',sheets:validSheets,operationId:'op2'});
  assert.deepEqual(again.created,{});
  assert.equal(store.store.get(`bookings/${k1.id}`).guestName,'Đã sửa');
  assert.equal(again.existing.bookings.there,3);

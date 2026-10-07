@@ -8,6 +8,30 @@ build next, decisions, design notes) and [tool/STAGING.md](tool/STAGING.md).
 
 ## What to do next (read this first)
 
+Import overlap prevention (2026-10-06): apply now refuses source-file overlaps,
+preview disables confirmation and explains correction. Server rechecks existing
+bookings/main tenants in each incoming room, allows adjacent stays, rechecks owner
+and organization in the transaction and touches bookingRevision (the same room
+lock as normal reservations). Import data writes are atomic; cap 450 writes
+including room locks, so larger files must split. No partial import on conflict.
+Full server suite 334/334; targeted import 7/7 after final owner/count refinement;
+Flutter import-screen tests pass, including disabled conflict confirmation.
+Final calendar tests 29/29 pass. Live staging confirms compact short-label box
+and P101/P102/P103 equal row heights after date correction. Actual import race
+was not exercised on a cloud/emulator database; serialization is covered by the
+shared room-revision design and unit assertions, not claimed as live concurrency
+evidence. Import transaction writes capped at 450; large-file rollout requires
+splitting/review rather than the former 20,000-record batch behavior.
+The root regression failed before fixing. No production mutation/deploy.
+
+Tom authorized correction of synthetic staging P101 dates. The 13-hour stay
+`imp_k_a69b8d7e021166964470f481` moved from Sep 26 21:00–Sep 27 10:00 to Sep 27
+21:00–Sep 28 10:00 (Vietnam time), after the other stay ends at Sep 27 12:00.
+Duration and amounts preserved, check-in/out timestamps kept consistent, original
+dates recorded in teamActivity/staging_import_overlap_correction_20261006.
+No existing production conflicts were rewritten. Existing historical conflicts
+elsewhere still need review; viewport-dependent lane sizing remains separate.
+
 Selected-label sizing follow-up: selector now measures only the selected name;
 selectedItemBuilder uses that name for each indexed slot so hidden long options
 cannot inflate short selections. Reduced field vertical padding. Compact toggle

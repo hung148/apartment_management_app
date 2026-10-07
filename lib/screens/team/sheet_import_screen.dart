@@ -53,6 +53,7 @@ class _SheetImportScreenState extends State<SheetImportScreen> {
     'import_missing_column',
     'import_secret_column',
     'import_conflict',
+    'import_overlap',
     'import_too_large',
     'request_too_large',
     'request_rate_limited',
@@ -104,6 +105,9 @@ class _SheetImportScreenState extends State<SheetImportScreen> {
           'Some records from this file belong to another organization.',
           'Một số dữ liệu trong file thuộc tổ chức khác.',
         );
+      case 'import_overlap':
+        return x.tr('Stays overlap in the same room. Correct their dates before importing. No records were changed.',
+          'Lượt thuê trùng giờ trong cùng phòng. Hãy sửa ngày giờ trước khi nhập. Chưa thay đổi dữ liệu.');
       case 'import_too_large':
       case 'request_too_large':
         return x.tr(
@@ -473,8 +477,8 @@ class _SheetImportScreenState extends State<SheetImportScreen> {
             tilePadding: EdgeInsets.zero,
             title: Text(
               x.tr(
-                'Stays that overlap in one room ($overlapTotal): imported, check them on the calendar',
-                'Lượt thuê trùng giờ trong một phòng ($overlapTotal): vẫn nhập, hãy xem lại trên lịch',
+                'Stays that overlap in one room ($overlapTotal): correct the file before importing',
+                'Lượt thuê trùng giờ trong một phòng ($overlapTotal): sửa file trước khi nhập',
               ),
             ),
             children: [
@@ -574,7 +578,7 @@ class _SheetImportScreenState extends State<SheetImportScreen> {
             if (_preview != null && _result == null && !_confirm)
               FilledButton(
                 key: const ValueKey('import-start'),
-                onPressed: _busy ? null : () => setState(() => _confirm = true),
+                onPressed: _busy || (_preview?['overlapCount'] as num? ?? 0) > 0 ? null : () => setState(() => _confirm = true),
                 child: Text(x.tr('Import', 'Nhập')),
               ),
             if (_confirm && _result == null) ...[
