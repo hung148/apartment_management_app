@@ -8,6 +8,16 @@ build next, decisions, design notes) and [tool/STAGING.md](tool/STAGING.md).
 
 ## What to do next (read this first)
 
+Selected-label sizing follow-up: selector now measures only the selected name;
+selectedItemBuilder uses that name for each indexed slot so hidden long options
+cannot inflate short selections. Reduced field vertical padding. Compact toggle
+row removes the extra gap and compensates 2px for its visible internal padding.
+Calendar suite 29/29 passed before final 2px offset; actual-font narrow render
+inspected. P101's taller day row comes from overlapping September stays within
+the loaded three-month window: lane count currently applies to the entire row,
+including when October alone is visible. No overlap data or lane was removed;
+viewport-dependent lane sizing is a separate unresolved design improvement.
+
 Responsive selector correction: removed the horizontal scroller around property
 selector/gear. The box now shrinks to available row width and text wraps only
 when necessary; non-dense dropdown and variable item heights prevent clipping.

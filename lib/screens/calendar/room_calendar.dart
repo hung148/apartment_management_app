@@ -985,10 +985,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
       return painter.width.ceilToDouble() + 112;
     }
 
-    final pickerWidth = _properties.fold<double>(
-      240,
-      (width, p) => math.max(width, nameWidth(p.name)),
-    );
+    final pickerWidth = current == null ? 240.0 : nameWidth(current.name);
     final Widget? buildingName = current == null
         ? null
         : _properties.length < 2
@@ -1018,8 +1015,10 @@ class _RoomCalendarState extends State<RoomCalendar> {
               isExpanded: true,
               isDense: false,
               itemHeight: null,
+              selectedItemBuilder: (_) => [for (final _ in _properties) Text(current.name)],
               style: theme.textTheme.titleSmall,
               decoration: const InputDecoration(
+                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 prefixIcon: Icon(Icons.apartment_outlined, size: 18),
               ),
               items: [
@@ -1244,8 +1243,8 @@ class _RoomCalendarState extends State<RoomCalendar> {
                           }
                           return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                             Align(alignment: AlignmentDirectional.centerStart, child: nav),
-                            const SizedBox(height: 6),
-                            Row(children: [modes, const Spacer(), menu]),
+                            Transform.translate(offset: const Offset(0, -2),
+                              child: Row(children: [modes, const Spacer(), menu])),
                           ]);
                         })
                       else Row(
