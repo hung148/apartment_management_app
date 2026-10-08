@@ -9,6 +9,25 @@ build next, decisions, design notes) and [tool/STAGING.md](tool/STAGING.md).
 ## What to do next (read this first)
 
 
+Direct bulk entry (Tom, 2026-10-07, completed): Create room -> Generate
+rooms now prepares authorized currency/price access and opens the generator
+immediately, without an intermediate empty room list asking the same choice.
+Generated rows go to the editable batch list. Cancel returns to the single-room
+form preserving its draft; re-entry opens a fresh generator. Preparation failures
+show retry, and a successful retry opens the generator. Additional batches from
+an existing list and new-building generation retain their current behavior.
+Review scenarios: allowed/denied/unavailable preparation, retry, cancel/reopen,
+draft preservation, generation/save/lost reply, no intermediate list or background
+loading animation, existing populated responsive generator matrix. Retained direct
+entry assertion failed before the fix. Focused room creation/generator suite passed
+33/33 plus dedicated preparation-retry test; targeted analysis clean. No backend
+change. Release build and staging hosting deployed. Live owner click opened the
+generator directly; close returned to the single-room form preserving its draft.
+Screenshot: `.dart_tool/room-generator-layout/staging-direct-generator.jpg`.
+No live data saved in this check. Full 853-test suite
+passed on the preceding feature; this narrow navigation fix uses targeted tests.
+
+
 Room batch generator (Tom, 2026-10-07, completed): shared “Tạo nhiều phòng”
 option in new-building room list and existing-building Create room flow. Generate
 sequential names using prefix/start/count (leading zeros retained), or switch to

@@ -235,6 +235,7 @@ class _RoomDetailsScreenState extends State<RoomDetailsScreen> {
   Widget build(BuildContext context) {
     if (_bulk) {
       return BulkRoomsScreen(
+        openGenerator: true,
         organizationId: widget.organizationId,
         buildingId: widget.buildingId,
         service: widget.service,

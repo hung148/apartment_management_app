@@ -86,7 +86,13 @@ void main() {
       );
       await mountReview(t, room.create(service));
       await press(t, 'Generate rooms');
-      await generate(t);
+      expect(find.byKey(const ValueKey('rooms_prefix')), findsOneWidget);
+      expect(find.byKey(const ValueKey('rooms-generate')), findsNothing);
+      await enter(t, 'rooms_prefix', 'P');
+      await enter(t, 'rooms_start', '001');
+      await enter(t, 'rooms_count', '3');
+      await enter(t, 'batch-roomPrice', '5000000');
+      await press(t, 'Add to room list');
       await press(t, 'Create all rooms');
       expect(find.textContaining('Retry'), findsWidgets);
       expect(
@@ -108,6 +114,45 @@ void main() {
       );
     },
   );
+  testWidgets(
+    'cancel direct generator returns to single room with draft intact',
+    (t) async {
+      final store = TeamPreviewStore();
+      await mountReview(t, room.create(store.service));
+      await enter(t, 'room-edit-number', 'Draft 301');
+      await press(t, 'Generate rooms');
+      expect(find.byKey(const ValueKey('rooms_prefix')), findsOneWidget);
+      await t.tap(find.byTooltip(AppTranslations(const Locale('en'))['close']));
+      await t.pumpAndSettle();
+      expect(find.byKey(const ValueKey('rooms_prefix')), findsNothing);
+      expect(
+        t
+            .widget<TextFormField>(
+              find.byKey(const ValueKey('room-edit-number')),
+            )
+            .controller!
+            .text,
+        'Draft 301',
+      );
+      await press(t, 'Generate rooms');
+      expect(find.byKey(const ValueKey('rooms_prefix')), findsOneWidget);
+    },
+  );
+  testWidgets('direct generator waits for authorized preparation and opens after retry', (t) async {
+    final store = TeamPreviewStore(); bool unavailable = true;
+    final service = TeamService(transport: (name, data) async {
+      if (data['action'] == 'prepareBulk' && unavailable) throw StateError('Offline');
+      return store.call(name, data);
+    });
+    await mountReview(t, room.create(service));
+    await press(t, 'Generate rooms');
+    expect(find.byKey(const ValueKey('rooms_prefix')), findsNothing);
+    expect(find.byKey(const ValueKey('rooms-generate')), findsNothing);
+    unavailable = false;
+    await press(t, AppTranslations(const Locale('en'))['room_edit_reload']);
+    expect(find.byKey(const ValueKey('rooms_prefix')), findsOneWidget);
+    expect(t.takeException(), isNull);
+  });
   testWidgets(
     'generator rejects over-limit and duplicate batches without changing list',
     (t) async {
