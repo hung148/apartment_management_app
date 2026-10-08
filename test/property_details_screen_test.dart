@@ -26,6 +26,35 @@ Future<void> enter(WidgetTester tester, String key, String value) async {
 }
 
 void main() {
+  testWidgets('timezone list selects a zone and keeps manual entry available', (
+    tester,
+  ) async {
+    final store = TeamPreviewStore();
+    await mountReview(tester, page(store.service));
+    await reveal(tester, find.byKey(const ValueKey('property-timezone')));
+    await tester.tap(find.byKey(const ValueKey('property-timezone-choose')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('timezone-search')),
+      'New York',
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('America/New_York'));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<TextFormField>(
+            find.byKey(const ValueKey('property-timezone')),
+          )
+          .controller!
+          .text,
+      'America/New_York',
+    );
+    await enter(tester, 'property-timezone', 'Asia/Singapore');
+    await press(tester, 'Save property details');
+    expect(store.buildings.first['timeZone'], 'Asia/Singapore');
+  });
+
   testWidgets('large text shows the whole address without an inner scroll area', (
     tester,
   ) async {

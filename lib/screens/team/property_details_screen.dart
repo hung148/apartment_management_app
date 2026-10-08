@@ -7,6 +7,7 @@ import '../../services/team_service.dart';
 import '../../utils/localizations/app_localizations.dart';
 import '../../utils/app_number.dart';
 import 'property_initial_rooms.dart';
+import '../../widgets/time_zone_picker.dart';
 
 class PropertyDetailsScreen extends StatefulWidget {
   final String organizationId, buildingId;
@@ -331,6 +332,27 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
                               maxLines: null,
                               decoration: InputDecoration(
                                 labelText: t['property_timezone'],
+                                suffixIcon: IconButton(
+                                  key: const ValueKey(
+                                    'property-timezone-choose',
+                                  ),
+                                  tooltip: t['timezone_choose'],
+                                  icon: const Icon(Icons.arrow_drop_down),
+                                  onPressed: locked
+                                      ? null
+                                      : () async {
+                                          final generation = _generation;
+                                          final zone = await chooseTimeZone(
+                                            context,
+                                            _zone.text.trim(),
+                                          );
+                                          if (mounted &&
+                                              generation == _generation &&
+                                              zone != null) {
+                                            setState(() => _zone.text = zone);
+                                          }
+                                        },
+                                ),
                               ),
                             ),
                             Text(

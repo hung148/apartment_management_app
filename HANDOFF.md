@@ -9,6 +9,39 @@ build next, decisions, design notes) and [tool/STAGING.md](tool/STAGING.md).
 ## What to do next (read this first)
 
 
+Account currency and time-zone follow-up (Tom, 2026-10-07, IN PROGRESS):
+Direct bulk-entry fix was committed/pushed as 2dfb636 before this work.
+Currency implementation is pending the user's async choice: shared owner-controlled
+organization currency preserving saved financial records (recommended), or personal
+currency display with exchange-rate conversion. Do not relabel historical amounts.
+Current currency is stored on buildings/rooms and copied to bookings/tenants/payments;
+propertyDetails prepareCreate defaults to VND, create accepts VND/USD. Account actions
+live in dashboard_settings_dialogs.dart and account_workspace_dialog.dart. No currency
+code/data has changed yet. Finish the agreed semantics before the combined staging release.
+
+Time-zone chooser implemented locally: arrow in existing create/edit building field
+opens a searchable list of 420 IANA identifiers, includes the current value/alias,
+manual entry remains available, cancel preserves the draft. The list is generated
+from Intl.supportedValuesOf with explicit Ho_Chi_Minh and UTC; every entry passed the
+existing server validZone validator. No offset labels that would become wrong with DST.
+Server authorization, required-on-create, and operating-hours change guard unchanged.
+
+Review matrix: owner/authorized manager vs denied/scoped/suspended/foreign access;
+create/edit/legacy/no zone/current alias; populated list, search spaces/underscores,
+no matches, select/cancel/manual entry, invalid/required zone and server rejection;
+loading/failed preparation/retry/save/lost response/context switch; EN/VI 320-phone,
+812-landscape/1440-desktop at 100/130/200%, dark/light and keyboard/scroll/close.
+Verified: retained missing-chooser regression failed before implementation; 30 focused
+picker/property create/edit tests passed, plus narrow VI200 dark keyboard test. Existing
+property suites cover grants, denied/lost saves, late responses and populated layout.
+Rendered actual-font VI320/200, EN1440/100 and dark keyboard screenshots inspected in
+.dart_tool/timezone-layout; found and fixed clipped floating search label by placing it
+above the input. Selection/manual save and cancel/no matches automated. No backend change.
+Gaps: real browser/OS keyboard, legacy-v1 building editor (this field is v2), fresh server
+emulator run, and final hosting build/deploy/live check remain. No staging deployment yet;
+batch with the currency feature after clarification. Full suite not rerun for this local
+field addition; prior full suite 853 passed on room generator.
+
 Direct bulk entry (Tom, 2026-10-07, completed): Create room -> Generate
 rooms now prepares authorized currency/price access and opens the generator
 immediately, without an intermediate empty room list asking the same choice.

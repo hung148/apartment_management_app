@@ -491,6 +491,9 @@ final Map<String, String> _enTranslations = {
   'property_create_timezone_hint':
       'Vietnam time is suggested. Review or change the timezone before creating this property, for example Asia/Ho_Chi_Minh or America/New_York.',
   'activity_action_property_created': 'Property created',
+  'timezone_choose': 'Choose a time zone',
+  'timezone_search': 'Search city or time zone',
+  'timezone_no_results': 'No matching time zones. Close this list to enter one manually.',
   'property_timezone': 'Property timezone',
   'property_timezone_hint':
       'Enter a timezone such as Asia/Ho_Chi_Minh, Asia/Singapore, Europe/London or America/New_York. Leave blank if not configured. Required before enabling room operating hours.',

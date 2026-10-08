@@ -494,6 +494,9 @@ final Map<String, String> _viTranslations = {
   'property_create_timezone_hint':
       'Múi giờ Việt Nam được gợi ý. Kiểm tra hoặc đổi múi giờ trước khi tạo tòa nhà, ví dụ Asia/Ho_Chi_Minh hoặc America/New_York.',
   'activity_action_property_created': 'Đã tạo tòa nhà',
+  'timezone_choose': 'Chọn múi giờ',
+  'timezone_search': 'Tìm thành phố hoặc múi giờ',
+  'timezone_no_results': 'Không tìm thấy múi giờ. Đóng danh sách để nhập thủ công.',
   'property_timezone': 'Múi giờ tòa nhà',
   'property_timezone_hint':
       'Nhập múi giờ như Asia/Ho_Chi_Minh, Asia/Singapore, Europe/London hoặc America/New_York. Để trống nếu chưa cấu hình. Cần đặt múi giờ trước khi giới hạn giờ hoạt động của phòng.',
