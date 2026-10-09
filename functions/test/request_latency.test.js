@@ -3,6 +3,20 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {accountPolicy}=require('../account_policy');
 const {fakeDb}=require('./fake_firestore');
+const {createRequestGuard}=require('../request_security');
+
+test('rate limiter starts membership and bucket reads together without charging an outsider organization',async()=>{
+ const db=fakeDb(),events=[];
+ const transaction=db.runTransaction.bind(db);
+ db.runTransaction=fn=>transaction(tx=>fn({...tx,get:async ref=>{
+  events.push(['start',ref.path]);
+  const result=await tx.get(ref);events.push(['finish',ref.path]);return result;
+ }}));
+ const guard=createRequestGuard({db,Timestamp:{fromMillis:v=>v},HttpsError:Error});
+ await guard('readWorkspace',{auth:{uid:'user'},app:{appId:'app'},data:{organizationId:'other'}});
+ assert.deepEqual(events.slice(0,3).map(e=>e[0]),['start','start','start']);
+ assert.equal([...db.store.keys()].filter(k=>k.startsWith('requestLimits/')).length,1);
+});
 
 test('account policy starts independent reads together while retaining deletion denial',async()=>{
  const db=fakeDb({'accountDeletions/user':{status:'pending'}}),events=[];

@@ -8,6 +8,26 @@ build next, decisions, design notes) and [tool/STAGING.md](tool/STAGING.md).
 
 ## What to do next (read this first)
 
+Performance continuation 2026-10-09:
+- Request limiter reads membership and candidate token-bucket snapshots together
+  inside the same transaction, removing one serial database wait on org requests.
+  Only identity-matched active members charge the organization bucket. Outsiders
+  incur one extra read, but cannot consume/write a foreign organization's budget.
+- Regression reproduced old serial behavior before fix; security/latency15 pass,
+  full server399 pass; full Firestore emulator84 pass. Staging backend release
+  2026-10-09t02-08-23-101z finished; verification: all4 functions active,
+  unauthenticated boundary denied, indexesREADY.
+- Scenario review: authenticated/unauthenticated, missing App Check, active/revoked
+  or identity-mismatched membership, owner ambiguity, legacy calendar scope,
+  oversized/forbidden attempts, clock rollback, exhausted buckets and concurrent
+  limits retain existing checks. No UI, amount, cache, or region changes.
+- Fresh cloud timing query failed first with429 quota then500 provider error;
+  no measured millisecond improvement claimed. Existing timings identify request
+  guard as dominant on slow calls. No authorization caching or paid warm instances.
+  Follow-up log query succeeded but returned no requests in the last15minutes;
+  actual before/after browser latency remains unmeasured for this small change.
+
+
 2026-10-09 release update (supersedes older unfinished notes below):
 - Currency display/input and source-preserving accounting are implemented across
   buildings/rooms, leases, bookings, payments, invoices, service tariffs, repairs

@@ -28,14 +28,19 @@ function createRequestGuard({db,Timestamp,HttpsError,now=Date.now}){
  const consume=async(uid,userGroups,orgId=null,orgGroup='general')=>db.runTransaction(async tx=>{
   const time=now();
   const buckets=userGroups.map(g=>({key:['user',uid,g],capacity:policies[g].capacity,rate:policies[g].perMinute}));
+  // Read candidate buckets alongside membership in the same transaction.
+  // Only a validated member's organization bucket is evaluated or written.
+  const candidate=orgId?{key:['organization',orgId,orgGroup],capacity:policies[orgGroup].orgCapacity,rate:policies[orgGroup].orgPerMinute}:null;
+  const [member,records]=await Promise.all([
+   orgId?tx.get(db.doc(`memberships/${uid}_${orgId}`)):Promise.resolve(null),
+   Promise.all([...buckets,...(candidate?[candidate]:[])].map(b=>tx.get(db.doc(`requestLimits/${hash(b.key)}`)))),
+  ]);
   if(orgId){
-   const member=await tx.get(db.doc(`memberships/${uid}_${orgId}`));
    const m=member.data();
    // An outsider cannot exhaust another organization's shared budget by naming it.
    if(m?.ownerId===uid&&m.organizationId===orgId&&m.status==='active'&&m.accessVersion===2&&hasRole(m))
-    buckets.push({key:['organization',orgId,orgGroup],capacity:policies[orgGroup].orgCapacity,rate:policies[orgGroup].orgPerMinute});
+    buckets.push(candidate);
   }
-  const records=await Promise.all(buckets.map(b=>tx.get(db.doc(`requestLimits/${hash(b.key)}`))));
   const updates=buckets.map((b,i)=>{
    const old=records[i].data();
    const tokens=old&&Number.isFinite(old.tokens)&&Number.isFinite(old.updatedAtMs)
