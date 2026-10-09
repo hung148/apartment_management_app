@@ -1,3 +1,4 @@
+import 'organization_money.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/owner_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/app_logger.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -102,6 +103,7 @@ class AuthService {
 
   // Logout
   Future<void> signOut() async {
+    OrganizationMoney.shared.clear();
     await _auth.signOut();
     logger.i('User signed out');
   }

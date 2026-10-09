@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/team/period_invoice_form.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/team_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/organization_money.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/exchange_rate_service.dart';
 import 'account_entry_test.dart' as fixtures;
 
 Map<String, dynamic> _preview({
@@ -84,6 +86,39 @@ Widget _form(TeamService s, {String? tenantId = 't', VoidCallback? onDone}) => S
 );
 
 void main() {
+  testWidgets('new period invoice pins selected currency and server rate through review and save', (t) async {
+    final money = OrganizationMoney.shared;
+    money.clear();
+    addTearDown(money.clear);
+    final rateId = List.filled(64, 'a').join();
+    money.configure('o', 'USD', ExchangeRateSnapshot(perUsd: {'USD': 1, 'VND': 25000}, dates: {'VND': '2026-10-08'}, snapshotId: rateId));
+    final requests = <Map<String, dynamic>>[];
+    final service = TeamService(transport: (_, data) async {
+      requests.add(Map.of(data));
+      if (data['action'] == 'periodPreview') {
+        return {'record': {..._preview(), 'currency': 'USD', 'monthlyRentMinor': 20000,
+          'periodRentMinor': 60000, 'fees': <Map>[], 'readings': <Map>[]}};
+      }
+      if (data['action'] == 'quote') {
+        return {'record': {'currency': 'USD', 'totalMinor': 60000, 'quoteRevision': 'usd-q',
+          'lines': [{'type': 'rent', 'amountMinor': 60000, 'startDate': '2026-10-01', 'endDate': '2027-01-01', 'basis': 'period', 'months': 3}]}};
+      }
+      return {'invoiceId': 'new-usd'};
+    });
+    await fixtures.mount(t, _form(service));
+    await t.pumpAndSettle();
+    expect(requests.first['ratesId'], rateId);
+    money.configure('o', 'VND', ExchangeRateSnapshot(perUsd: {'USD': 1, 'VND': 27000}, dates: {}, snapshotId: List.filled(64, 'b').join()));
+    await _enter(t, find.byKey(const ValueKey('period-reason')), 'Period');
+    await _tap(t, find.byKey(const ValueKey('period-review')));
+    final quote = requests.last;
+    expect(quote['inputCurrency'], 'USD');
+    expect(quote['ratesId'], rateId);
+    await _tap(t, find.byKey(const ValueKey('period-create')));
+    expect(requests.last['action'], 'create');
+    expect(requests.last['ratesId'], rateId);
+    expect(requests.last['inputCurrency'], 'USD');
+  });
   testWidgets('suggested period, everything ticked, discount by percent, exact retry', (t) async {
     final creates = <Map<String, dynamic>>[];
     Map<String, dynamic>? quoted, previewed;

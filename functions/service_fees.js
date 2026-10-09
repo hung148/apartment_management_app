@@ -15,7 +15,7 @@ function createServiceFeesHandler({db,Timestamp,HttpsError}){
  return async request=>{
   const uid=request.auth?.uid,d=request.data??{},write=['define','rename','roomRate'].includes(d.action);
   if(!uid)fail('unauthenticated');
-  const keys=['action','organizationId','buildingId',...(d.action==='read'?['roomId']:[]),...(write?['operationId','revision','reason']:[]),
+  const keys=[...(d.inputCurrency!==undefined?['inputCurrency']:[]),'action','organizationId','buildingId',...(d.action==='read'?['roomId']:[]),...(write?['operationId','revision','reason']:[]),
    ...(d.action==='define'?['feeId','name','basis','unitLabel','version']:[]),...(d.action==='rename'?['feeId','name','unitLabel']:[]),...(d.action==='roomRate'?['roomId','feeId','override']:[])];
   if(!['read','define','rename','roomRate'].includes(d.action)||!id(d.organizationId)||!id(d.buildingId)||Object.keys(d).some(k=>!keys.includes(k)))fail('invalid-argument');
   if(d.action==='read'&&d.roomId!=null&&!id(d.roomId))fail('invalid-argument');
@@ -56,15 +56,17 @@ function createServiceFeesHandler({db,Timestamp,HttpsError}){
      tenants=[...ids.values()].slice(0,20);
     }
     const fees=defs.fees.map(f=>({id:f.id,name:f.name,basis:f.basis,unitLabel:f.unitLabel??'',versions:f.versions,billedThrough:f.billedThrough??null,
-     ...(roomId?{overrides:rates.overrides?.[f.id]??[],roomBilledThrough:rates.billedThrough?.[f.id]??null,current:today?resolveFee(f,rates.overrides?.[f.id]??[],today):null}:{current:today?resolveFee(f,[],today):null})}));
+     ...(roomId?{overrides:rates.overrides?.[f.id]??[],roomBilledThrough:rates.billedThrough?.[f.id]??null,current:today?resolveFee({...f,currency:defs.currency??currency},rates.overrides?.[f.id]??[],today):null}:{current:today?resolveFee({...f,currency:defs.currency??currency},[],today):null})}));
     return {record:{currency,today,revision:defs.revision,roomRevision:rates?.revision??null,roomNumber:room?.roomNumber??null,canPrice,canBill:allows(m,'readFinancialReports',scope)&&allows(m,'collectPayments',scope),fees,tenants}};
    }
    const opRef=db.doc(`serviceFeeOperations/${hash(['serviceFees',d.organizationId,uid,d.operationId])}`),prior=await tx.get(opRef),fingerprint=hash(keys.map(k=>d[k]??null));
    if(prior.exists){if(prior.data().fingerprint!==fingerprint)fail('failed-precondition');return prior.data().result;}
+   if(d.inputCurrency!==undefined&&(!['USD','VND'].includes(d.inputCurrency)||d.inputCurrency!==(org.data().displayCurrency??currency)))fail('failed-precondition','service_currency_mismatch');
+   if(d.inputCurrency!==undefined){if(version?.active)version={...version,currency:d.inputCurrency};if(override?.mode==='rate')override={...override,currency:d.inputCurrency};}
    const now=Timestamp.now();let result,before=null,after;
    if(d.action==='roomRate'){
     if(rates.revision!==d.revision)fail('aborted','service_changed');
-    if(room.currency&&room.currency!==currency)fail('failed-precondition','service_currency_mismatch');
+
     const fee=defs.fees.find(f=>f.id===d.feeId);if(!fee)fail('not-found','service_fee_not_found');
     if(fee.basis==='quantity'&&override.mode==='off')fail('invalid-argument','service_invalid_override');
     let history;try{history=addDated(rates.overrides?.[d.feeId]??[],override,rates.billedThrough?.[d.feeId]??null);}catch(e){fail('failed-precondition',e.message);}

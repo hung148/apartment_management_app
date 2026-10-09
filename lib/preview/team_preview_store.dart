@@ -1,3 +1,4 @@
+import '../services/organization_money.dart';
 import 'dart:convert';
 import 'package:cloud_functions/cloud_functions.dart';
 import '../services/team_service.dart';
@@ -6,6 +7,8 @@ part 'operational_preview.dart';
 
 /// Disposable UI fixtures. This transport never contacts Firebase.
 class TeamPreviewStore {
+  String organizationCurrency = 'VND';
+  int currencyRevision = 0;
   Map<String,dynamic>? ownershipTransfer;
   /// "Today" at the preview property (YYYY-MM-DD); tests may set it.
   String previewToday = () {
@@ -510,6 +513,19 @@ class TeamPreviewStore {
         'records': accountWorkplaces,
         'nextCursor': null,
       };
+    if (name == 'organizationSettings' && ['readCurrency','updateCurrency'].contains(d['action'])) {
+      final allowed = workspaceRole == 'owner';
+      if(d['action']=='updateCurrency') {
+        if(!allowed) throw FirebaseFunctionsException(code:'permission-denied',message:'Denied');
+        final key='currency-${d['operationId']}';
+        if(completed.containsKey(key)) return completed[key]!;
+        if(d['revision']!=currencyRevision) throw FirebaseFunctionsException(code:'aborted',message:'Changed');
+        organizationCurrency=d['currency'] as String;
+        currencyRevision++;
+        return completed[key]={'currency':organizationCurrency,'revision':currencyRevision,'canChange':allowed};
+      }
+      return {'currency':organizationCurrency,'revision':currencyRevision,'canChange':allowed};
+    }
     if (name == 'organizationSettings' &&
         const ['create', 'createLegacy', 'restore'].contains(d['action']) &&
         (accountMode != 'normal' || accountWorkplaces.isNotEmpty)) {
@@ -905,7 +921,7 @@ class TeamPreviewStore {
           message: 'lease_property_timezone_required',
         );
       }
-      final currency = room['currency'] ?? building['currency'] ?? 'VND';
+      final currency = organizationCurrency;
       if (d['action'] == 'prepare') {
         return {
           'record': {
@@ -1530,7 +1546,7 @@ class TeamPreviewStore {
             'name': '',
             'address': '',
             'timeZone': 'Asia/Ho_Chi_Minh',
-            'currency': 'VND',
+            'currency': organizationCurrency,
             'revision': 'new',
             'canSetRoomPrices': true,
             'exploitationCostMinor': null,

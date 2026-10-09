@@ -76,14 +76,20 @@ function createRequestGuard({db,Timestamp,HttpsError,now=Date.now}){
   // Binding is identity, membership remains authorization. Recovery actions
   // can resolve historical conflicts; operational reads/writes fail closed.
   if(orgId){
-   const organization=(await db.doc(`organizations/${orgId}`).get()).data();
+   const [organizationDoc,memberDoc]=await Promise.all([
+    db.doc(`organizations/${orgId}`).get(),
+    db.doc(`memberships/${uid}_${orgId}`).get(),
+   ]);
+   const organization=organizationDoc.data();
    if(organization?.mergedInto)fail('failed-precondition','org_organization_merged');
-   const m=(await db.doc(`memberships/${uid}_${orgId}`).get()).data();
+   const m=memberDoc.data();
    if(m?.ownerId===uid&&m.organizationId===orgId){
     const recovery=name==='organizationSettings'&&['read','close','leave','closedList'].includes(request.data?.action)||name==='mutateTeam'&&request.data?.action==='setAccess'&&request.data?.status==='revoked';
-    const policy=await db.runTransaction(tx=>accountPolicy(db,tx,uid));
+    const [policy,coOwners]=await Promise.all([
+     db.runTransaction(tx=>accountPolicy(db,tx,uid)),
+     db.collection('memberships').where('organizationId','==',orgId).get(),
+    ]);
     if(policy.deleting)fail('failed-precondition','account_deletion_in_progress');
-    const coOwners=await db.collection('memberships').where('organizationId','==',orgId).get();
     const historicalCoOwner=coOwners.docs.some(d=>d.data().role==='coOwner'&&d.data().status!=='revoked');
     const activeOwners=coOwners.docs.filter(d=>d.data().role==='owner'&&d.data().status==='active');
     const currentOwner=organization?.ownerTransferredTo??organization?.createdBy;
@@ -117,7 +123,7 @@ function createSecureCallable({onCall,...dependencies}){
 // size and rate limits), and only reaches the handler registered for it in that
 // group. An unknown name is charged like any request, then refused.
 const NAME=/^[A-Za-z][A-Za-z0-9]{0,63}$/;
-function createCallableGroups({onCall,...dependencies}){
+function createCallableGroups({onCall,observe,...dependencies}){
  const guard=createRequestGuard(dependencies);
  const {REGION}=require('./region');
  const handlers=new Map();
@@ -132,9 +138,15 @@ function createCallableGroups({onCall,...dependencies}){
   // Only {fn, data}: anything else around the data would skip the size limit.
   const known=entry?.group===groupName&&Object.keys(outer).every(k=>k==='fn'||k==='data');
   const inner={...request,data:known?outer.data??null:null};
+  const run=async()=>{
+   if(!known)throw new dependencies.HttpsError('not-found','unknown_call');
+   return entry.handler(inner);
+  };
+  if(observe)return require('./request_timing').timeRequest({
+   name:known?fn:'unknownCall',guard:()=>guard(known?fn:'unknownCall',inner),handler:run,observe,
+  });
   await guard(known?fn:'unknownCall',inner);
-  if(!known)throw new dependencies.HttpsError('not-found','unknown_call');
-  return entry.handler(inner);
+  return run();
  });
  const names=groupName=>[...handlers].filter(([,e])=>e.group===groupName).map(([n])=>n);
  return {register,group,names};

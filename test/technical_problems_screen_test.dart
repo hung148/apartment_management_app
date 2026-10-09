@@ -1,4 +1,6 @@
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/organization_money.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/exchange_rate_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/team/technical_problems_screen.dart';
@@ -63,6 +65,24 @@ Widget _screen(TeamService s) => Scaffold(
 );
 
 void main() {
+  testWidgets('new repair cost is sent in selected currency without converting back to building currency', (t) async {
+    OrganizationMoney.shared.configure('o','USD',ExchangeRateSnapshot(perUsd:{'USD':1,'VND':25000},dates:{}));
+    addTearDown(OrganizationMoney.shared.clear);
+    Map<String,dynamic>? sent;
+    final service=TeamService(transport:(name,d) async {
+      if(d['action']=='list')return _list();
+      sent=Map.of(d);return {'problemId':'p1','expenseId':null,'warnings':[]};
+    });
+    await fixtures.mount(t,_screen(service));
+    await t.pumpAndSettle();
+    await _tap(t,find.byKey(const ValueKey('problem-p1')));
+    await _tap(t,find.byKey(const ValueKey('problem-fix')));
+    await _enter(t,find.byKey(const ValueKey('problem-fixed-by')),'Repairer');
+    await _enter(t,find.byKey(const ValueKey('problem-cost')),'12.34');
+    await _tap(t,find.byKey(const ValueKey('problem-save')));
+    expect(sent?['inputCurrency'],'USD');
+    expect(sent?['costMinor'],1234);
+  });
   testWidgets('report a problem that stops renting the room; existing bookings are listed', (t) async {
     final sent = <Map<String, dynamic>>[];
     final service = TeamService(

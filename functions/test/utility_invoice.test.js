@@ -3,6 +3,7 @@ const {fakeDb}=require('./fake_firestore');
 const {utilityInvoiceSource,meterId}=require('../utility_invoice');
 const {createInvoiceHandler}=require('../invoices');
 const {Ts,CodeError}=require('./fake_firestore');
+const {normalizeRates}=require('../reference_rates');
 function setup(){
  const path=`utilityMeters/${meterId('o','r','electricity')}/readings/x`;
  const row={organizationId:'o',buildingId:'b',roomId:'r',kind:'electricity',startDate:'2026-09-01',date:'2026-10-01',calculation:{currency:'VND',amountMinor:35000,usageMilli:10000},tariff:{currency:'VND'},invoiceId:null};
@@ -12,6 +13,22 @@ function setup(){
 }
 test('utility invoice uses stored server charge and tariff',async()=>{
  const {load}=setup();const result=await load();assert.equal(result.calculation.amountMinor,35000);assert.equal(result.calculation.readingId,'x');assert.equal(result.calculation.tariff.currency,'VND');
+});
+
+test('cross-currency utility invoice pins a server rate and preserves original reading amounts',async()=>{
+ const {db,path,load}=setup();
+ const rates=normalizeRates([{base:'USD',quote:'VND',rate:25000,date:'2026-10-08'}]);
+ db.store.set(`referenceExchangeRates/${rates.id}`,rates);
+ const before=structuredClone(db.store.get(path));
+ const result=await load({currency:'USD',ratesId:rates.id});
+ assert.equal(result.calculation.currency,'USD');
+ assert.equal(result.calculation.amountMinor,140);
+ assert.equal(result.calculation.usageMilli,10000);
+ assert.equal(result.calculation.sourceCalculation.amountMinor,35000);
+ assert.equal(result.calculation.sourceCalculation.currency,'VND');
+ assert.equal(result.calculation.exchangeRateSnapshotId,rates.id);
+ assert.deepEqual(db.store.get(path),before);
+ await assert.rejects(load({currency:'USD',ratesId:'f'.repeat(64)}),/rates_required/);
 });
 test('utility billing refuses duplicate, foreign scope, mismatched dates, currency and zero charges',async()=>{
  for(const [patch,key] of [[{invoiceId:'invoice'},'already_billed'],[{buildingId:'other'},'not_found'],[{calculation:null},'no_billable_charge']]){

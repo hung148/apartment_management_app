@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../../services/team_service.dart';
+import '../../services/organization_money.dart';
+import '../../utils/money_conversion.dart';
 import 'service_fee_text.dart';
 import 'ws_ui.dart';
 import '../../utils/app_number.dart';
@@ -42,6 +44,8 @@ class _LineDraft {
 }
 
 class _PeriodInvoiceFormState extends State<PeriodInvoiceForm> {
+  late final _money = MoneyForm(OrganizationMoney.shared.forOrganization(widget.organizationId));
+  String get _inputCurrency => _money.currency(_currency);
   final _form = GlobalKey<FormState>();
   final _start = TextEditingController(),
       _end = TextEditingController(),
@@ -120,6 +124,8 @@ class _PeriodInvoiceFormState extends State<PeriodInvoiceForm> {
     try {
       final data = await widget.service.invoices({
         'action': 'periodPreview',
+        if (_money.conversion?.snapshotId != null)
+          'ratesId': _money.conversion!.snapshotId,
         ..._scope,
         'tenantId': _tenant,
       });
@@ -153,9 +159,8 @@ class _PeriodInvoiceFormState extends State<PeriodInvoiceForm> {
         _chargeOn.clear();
         for (final c in (p['surcharges'] as List? ?? const []).cast<Map>()) {
           final id = c['id'] as String, minor = c['amountMinor'] as int;
-          _charges[id] = TextEditingController(
-            text: appMoneyInputText(minor, _currencyOf(p)),
-          );
+          _charges[id] = TextEditingController();
+          _money.set(_charges[id]!, minor, _currencyOf(p));
           if (c['billed'] != true) _chargeOn.add(id);
         }
       });
@@ -218,7 +223,7 @@ class _PeriodInvoiceFormState extends State<PeriodInvoiceForm> {
       } else {
         final text = l.amount.text.trim();
         final negative = l.kind == 'other' && text.startsWith('-');
-        final v = parseMinor(negative ? text.substring(1) : text, _currency);
+        final v = _money.parseText(negative ? text.substring(1) : text, _currency);
         if (v == null || v == 0)
           return x.tr(
             'Enter an amount above 0 for each line.',
@@ -234,7 +239,7 @@ class _PeriodInvoiceFormState extends State<PeriodInvoiceForm> {
     if (_busy || !_form.currentState!.validate()) return;
     for (final c in _surcharges) {
       if (!_chargeOn.contains(c['id'])) continue;
-      final v = parseMinor(_charges[c['id']]!.text.trim(), _currency);
+      final v = _money.parse(_charges[c['id']]!, _currency);
       if (v == null || v <= 0) {
         setState(
           () => _error = x.tr(
@@ -260,7 +265,10 @@ class _PeriodInvoiceFormState extends State<PeriodInvoiceForm> {
           },
     ];
     final payload = {
+      if (_money.conversion?.snapshotId != null)
+        'ratesId': _money.conversion!.snapshotId,
       'kind': 'period',
+      'inputCurrency': _currency,
       ..._scope,
       'tenantId': _tenant,
       'startDate': _start.text.trim(),
@@ -290,8 +298,8 @@ class _PeriodInvoiceFormState extends State<PeriodInvoiceForm> {
             if (_chargeOn.contains(c['id']))
               {
                 'id': c['id'],
-                'amountMinor': parseMinor(
-                  _charges[c['id']]!.text.trim(),
+                'amountMinor': _money.parse(
+                  _charges[c['id']]!,
                   _currency,
                 ),
               },
@@ -311,7 +319,7 @@ class _PeriodInvoiceFormState extends State<PeriodInvoiceForm> {
               'amountMinor': () {
                 final text = l.amount.text.trim();
                 final negative = l.kind == 'other' && text.startsWith('-');
-                final v = parseMinor(
+                final v = _money.parseText(
                   negative ? text.substring(1) : text,
                   _currency,
                 )!;
@@ -646,7 +654,7 @@ class _PeriodInvoiceFormState extends State<PeriodInvoiceForm> {
                         ValueKey('period-reading-${r['readingId']}'),
                         _readings.contains(_readingKey(r)),
                         '${_utilityName(x, r['kind'] as String)} ${r['startDate']} – ${r['date']}',
-                        '${x.quantity(r['usageMilli'] as int)} ${_unit(r['kind'] as String)} · ${x.money(r['amountMinor'] as num, _currency)}',
+                        '${x.quantity(r['usageMilli'] as int)} ${_unit(r['kind'] as String)} · ${x.money(r['amountMinor'] as num, r['currency'] as String? ?? _currency)}',
                         (v) => v
                             ? _readings.add(_readingKey(r))
                             : _readings.remove(_readingKey(r)),
@@ -697,28 +705,28 @@ class _PeriodInvoiceFormState extends State<PeriodInvoiceForm> {
                             keyboardType: const TextInputType.numberWithOptions(
                               decimal: true,
                             ),
-                            inputFormatters: appMoneyInput(_currency),
+                            inputFormatters: appMoneyInput(_inputCurrency),
                             decoration: InputDecoration(
                               labelText:
                                   c['frequency'] == 'month' &&
                                       c['basis'] != 'person'
                                   ? x.tr(
-                                      'Per month ($_currency)',
-                                      'Mỗi tháng ($_currency)',
+                                      'Per month ($_inputCurrency)',
+                                      'Mỗi tháng ($_inputCurrency)',
                                     )
                                   : c['frequency'] == 'month'
                                   ? x.tr(
-                                      'Per person per month ($_currency)',
-                                      'Mỗi người mỗi tháng ($_currency)',
+                                      'Per person per month ($_inputCurrency)',
+                                      'Mỗi người mỗi tháng ($_inputCurrency)',
                                     )
                                   : c['basis'] == 'person'
                                   ? x.tr(
-                                      'Amount per person ($_currency)',
-                                      'Số tiền mỗi người ($_currency)',
+                                      'Amount per person ($_inputCurrency)',
+                                      'Số tiền mỗi người ($_inputCurrency)',
                                     )
                                   : x.tr(
-                                      'Amount ($_currency)',
-                                      'Số tiền ($_currency)',
+                                      'Amount ($_inputCurrency)',
+                                      'Số tiền ($_inputCurrency)',
                                     ),
                             ),
                           ),
@@ -831,7 +839,7 @@ class _PeriodInvoiceFormState extends State<PeriodInvoiceForm> {
                               signed: true,
                             ),
                             inputFormatters: appMoneyInput(
-                              _currency,
+                              _inputCurrency,
                               signed: true,
                             ),
                             decoration: InputDecoration(
@@ -843,8 +851,8 @@ class _PeriodInvoiceFormState extends State<PeriodInvoiceForm> {
                                       'Phần trăm tiền thuê',
                                     )
                                   : x.tr(
-                                      'Amount ($_currency)',
-                                      'Số tiền ($_currency)',
+                                      'Amount ($_inputCurrency)',
+                                      'Số tiền ($_inputCurrency)',
                                     ),
                               helperText: _lines[i].kind == 'other'
                                   ? x.tr(
@@ -862,7 +870,7 @@ class _PeriodInvoiceFormState extends State<PeriodInvoiceForm> {
                           children: [
                             ChoiceChip(
                               key: ValueKey('period-line-$i-vnd'),
-                              label: Text(_currency),
+                              label: Text(_inputCurrency),
                               selected: !_lines[i].percent,
                               onSelected: _locked || !_editing
                                   ? null

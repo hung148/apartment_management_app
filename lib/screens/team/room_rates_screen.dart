@@ -5,6 +5,8 @@ import 'ws_ui.dart';
 import 'package:uuid/uuid.dart';
 import '../../services/team_service.dart';
 import '../../utils/app_number.dart';
+import '../../utils/money_conversion.dart';
+import '../../services/organization_money.dart';
 import '../../utils/localizations/app_localizations.dart';
 
 // 2026-10-04: monthly price, price per night, price per hour. Day and
@@ -37,6 +39,12 @@ class _RoomRatesScreenState extends State<RoomRatesScreen> {
   final _prices = {
     for (final field in rateFields) field: TextEditingController(),
   };
+  final _moneyBindings = <String, MoneyInputBinding>{};
+  String get _inputCurrency =>
+      _moneyBindings.values.firstOrNull?.currency ?? _currency;
+  int? _rate(String field) => _moneyBindings.containsKey(field)
+      ? _moneyBindings[field]!.sourceMinor
+      : parseRoomRate(_prices[field]!.text, _currency);
   final _form = GlobalKey<FormState>();
   String? _revision, _message;
   String _currency = 'VND', _name = '';
@@ -64,6 +72,9 @@ class _RoomRatesScreenState extends State<RoomRatesScreen> {
 
   @override
   void dispose() {
+    for (final binding in _moneyBindings.values) {
+      binding.dispose();
+    }
     for (final c in _prices.values) {
       c.dispose();
     }
@@ -76,6 +87,10 @@ class _RoomRatesScreenState extends State<RoomRatesScreen> {
     'roomId': widget.roomId,
   };
   void _clear() {
+    for (final binding in _moneyBindings.values) {
+      binding.dispose();
+    }
+    _moneyBindings.clear();
     for (final c in _prices.values) {
       c.clear();
     }
@@ -104,6 +119,16 @@ class _RoomRatesScreenState extends State<RoomRatesScreen> {
         final rates = row['ratesMinor'] as Map;
         for (final field in rateFields) {
           final value = (rates[field] as num?)?.toInt();
+          final conversion = OrganizationMoney.shared.forOrganization(
+            widget.organizationId,
+          );
+          if (conversion != null) {
+            _moneyBindings[field] = MoneyInputBinding(
+              conversion: conversion,
+              sourceCurrency: _currency,
+              originalMinor: value,
+            );
+          }
           _prices[field]!.text = value == null
               ? ''
               : appMoneyInputText(value, _currency);
@@ -114,6 +139,7 @@ class _RoomRatesScreenState extends State<RoomRatesScreen> {
     } catch (_) {
       if (mounted && generation == _generation) {
         setState(() {
+          _clear();
           _busy = false;
           _message = 'rates_unavailable';
         });
@@ -131,9 +157,12 @@ class _RoomRatesScreenState extends State<RoomRatesScreen> {
       'revision': _revision,
       'ratesMinor': {
         for (final field in rateFields)
-          field: _prices[field]!.text.trim().isEmpty
+          field:
+              (_moneyBindings[field]?.controller ?? _prices[field]!).text
+                  .trim()
+                  .isEmpty
               ? null
-              : parseRoomRate(_prices[field]!.text, _currency),
+              : _rate(field),
       },
     });
     final generation = _generation;
@@ -226,13 +255,13 @@ class _RoomRatesScreenState extends State<RoomRatesScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text('${t['rates_currency']} $_currency'),
+                      Text('${t['rates_currency']} $_inputCurrency'),
                       Text(t['rates_info']),
                       const SizedBox(height: 16),
                       // 2026-10-04: no rental mode; every room takes short stays
                       // and leases, and each price is optional.
                       Text(
-                        t[_currency == 'USD'
+                        t[_inputCurrency == 'USD'
                             ? 'rates_usd_hint'
                             : 'rates_vnd_hint'],
                       ),
@@ -240,20 +269,22 @@ class _RoomRatesScreenState extends State<RoomRatesScreen> {
                         const SizedBox(height: 16),
                         TextFormField(
                           key: ValueKey('rates-$field'),
-                          controller: _prices[field],
+                          controller:
+                              _moneyBindings[field]?.controller ??
+                              _prices[field],
                           enabled: !locked,
                           readOnly: !editable,
                           keyboardType: const TextInputType.numberWithOptions(
                             decimal: true,
                           ),
-                          inputFormatters: appMoneyInput(_currency),
+                          inputFormatters: appMoneyInput(_inputCurrency),
                           decoration: InputDecoration(
                             labelText: t['rates_$field'],
                             errorMaxLines: 8,
                           ),
                           validator: (v) {
                             if ((v ?? '').trim().isEmpty) return null;
-                            return parseRoomRate(v!, _currency) == null
+                            return (_rate(field) ?? 0) <= 0
                                 ? t['rates_invalid']
                                 : null;
                           },

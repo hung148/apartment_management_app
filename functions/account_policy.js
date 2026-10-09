@@ -11,8 +11,21 @@ async function policyLocks(db,tx,uid,email){
  return ()=>{for(const r of refs)tx.set(r,{revision:randomUUID()});};
 }
 async function accountPolicy(db,tx,uid,email='',ignoreStaffOrg=null){
- const memberships=await tx.get(db.collection('memberships').where('ownerId','==',uid));
- const created=await tx.get(db.collection('organizations').where('createdBy','==',uid));
+ // Independent reads share the same transaction snapshot. Start them together;
+ // retain every policy check without making each request wait four round trips.
+ const [memberships,created,bindingDoc,deletionDoc]=await Promise.all([
+  tx.get(db.collection('memberships').where('ownerId','==',uid)),
+  tx.get(db.collection('organizations').where('createdBy','==',uid)),
+  tx.get(db.collection('accountOrganizations').doc(uid)),
+  tx.get(db.collection('accountDeletions').doc(uid)),
+ ]);
+ // Request-local snapshots only: never retain authorization data across calls.
+ // A membership, binding and invitation often point at the same organization.
+ const orgSnapshots=new Map(created.docs.map(doc=>[doc.id,Promise.resolve(doc)]));
+ const readOrg=organizationId=>{
+  if(!orgSnapshots.has(organizationId))orgSnapshots.set(organizationId,tx.get(db.collection('organizations').doc(organizationId)));
+  return orgSnapshots.get(organizationId);
+ };
  const owned=new Set(),organizations=new Set(),states=new Map(); let hasStaff=false,hasCoOwner=false;
  for(const d of created.docs){
   const o=d.data();
@@ -25,15 +38,15 @@ async function accountPolicy(db,tx,uid,email='',ignoreStaffOrg=null){
  for(const doc of memberships.docs){
   const m=doc.data();
   if(!validId(m.organizationId)||doc.id!==`${uid}_${m.organizationId}`||(m.status==='revoked'&&m.revokedReason!=='organizationClosed'))continue;
-  const org=await tx.get(db.collection('organizations').doc(m.organizationId));if(!org.exists||org.data().mergedInto)continue;
+  const org=await readOrg(m.organizationId);if(!org.exists||org.data().mergedInto)continue;
   organizations.add(org.id);states.set(org.id,org.data().closedAt?'closed':m.status==='suspended'?'suspended':m.status==='assignmentRequired'?'waiting':'ready');
   const o=org.data(),owner=['owner','coOwner'].includes(m.role)||(o.accessVersion!==2&&(o.ownerTransferredTo??o.createdBy)===uid);
   if(owner)owned.add(org.id);else if(org.id!==ignoreStaffOrg)hasStaff=true;
   if(m.role==='coOwner')hasCoOwner=true;
  }
- const binding=(await tx.get(db.collection('accountOrganizations').doc(uid))).data();
+ const binding=bindingDoc.data();
  if(binding?.organizationId&&binding.state!=='released'){
-  const org=await tx.get(db.collection('organizations').doc(binding.organizationId));
+  const org=await readOrg(binding.organizationId);
   if(org.exists&&!org.data().mergedInto)organizations.add(org.id);
  }
  const address=emailOf(email);
@@ -41,10 +54,10 @@ async function accountPolicy(db,tx,uid,email='',ignoreStaffOrg=null){
   const invites=await tx.get(db.collection('teamInvitations').where('email','==',address));
   for(const doc of invites.docs){
    const inv=doc.data();if(inv.status!=='pending'||(inv.expiresAt!=null&&inv.expiresAt.toMillis()<=Date.now())||!validId(inv.organizationId)||inv.organizationId===ignoreStaffOrg)continue;
-   const org=await tx.get(db.collection('organizations').doc(inv.organizationId));if(org.exists&&!org.data().closedAt&&!org.data().mergedInto)hasStaff=true;
+   const org=await readOrg(inv.organizationId);if(org.exists&&!org.data().closedAt&&!org.data().mergedInto)hasStaff=true;
   }
  }
- const deletion=(await tx.get(db.collection('accountDeletions').doc(uid))).data();
+ const deletion=deletionDoc.data();
  const deletionBlocked=['pending','complete'].includes(deletion?.status)||binding?.state==='deleting';
  const organizationIds=[...organizations].sort(),conflict=organizations.size>1||hasCoOwner||(owned.size>0&&hasStaff);
  return {mode:conflict?'conflict':owned.size?'owner':hasStaff?'staff':'normal',canCreate:organizations.size===0&&!hasStaff&&!deletionBlocked,hasStaff,hasOwned:owned.size>0,organizationIds,

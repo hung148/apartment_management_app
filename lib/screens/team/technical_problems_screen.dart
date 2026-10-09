@@ -1,3 +1,5 @@
+import '../../utils/money_conversion.dart';
+import '../../services/organization_money.dart';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../../services/team_service.dart';
@@ -116,6 +118,8 @@ class _TechnicalProblemsScreenState extends State<TechnicalProblemsScreen> {
       .toList();
   List<Map> get _accounts =>
       ((_data?['accounts'] as List?) ?? const []).cast<Map>();
+  late final MoneyForm _money = MoneyForm(OrganizationMoney.shared.forOrganization(widget.organizationId));
+  String get _inputCurrency => _money.currency(_currency);
   String get _currency => '${_data?['currency'] ?? 'VND'}';
   bool get _canReport => _data?['canReport'] == true;
   bool get _canManage => _data?['canManage'] == true;
@@ -166,6 +170,7 @@ class _TechnicalProblemsScreenState extends State<TechnicalProblemsScreen> {
   }
 
   static const _keys = [
+    'problem_currency_changed',
     'problem_block_needs_manager',
     'problem_changed',
     'problem_not_open',
@@ -184,6 +189,11 @@ class _TechnicalProblemsScreenState extends State<TechnicalProblemsScreen> {
 
   String _message(FeeText x, Object e, {bool uncertain = false}) {
     switch (serverReason(e, _keys)) {
+      case 'problem_currency_changed':
+        return x.tr(
+          'The currency changed. Close and reopen this form before entering the cost again.',
+          'Tiền tệ đã thay đổi. Đóng và mở lại biểu mẫu trước khi nhập lại chi phí.',
+        );
       case 'problem_block_needs_manager':
         return x.tr(
           'Only a property manager can stop renting the room.',
@@ -320,7 +330,7 @@ class _TechnicalProblemsScreenState extends State<TechnicalProblemsScreen> {
         }
       case _View.fix:
         final costText = _cost.text.trim();
-        final cost = costText.isEmpty ? null : parseMinor(costText, _currency);
+        final cost = costText.isEmpty ? null : appParseMoney(_cost.text, _inputCurrency);
         if (_fixedBy.text.trim().isEmpty) {
           problem = x.tr('Enter who fixed it.', 'Nhập ai đã sửa.');
         } else if (!feeDate(_fixedDate.text.trim())) {
@@ -349,6 +359,7 @@ class _TechnicalProblemsScreenState extends State<TechnicalProblemsScreen> {
             'fixedByName': _fixedBy.text.trim(),
             'fixedDate': _fixedDate.text.trim(),
             'costMinor': cost,
+            'inputCurrency': _inputCurrency,
             'recordExpense': _expense,
             'paymentMethod': _expense ? _method : null,
             'accountId': _expense && _method == 'bankTransfer'
@@ -888,12 +899,12 @@ class _TechnicalProblemsScreenState extends State<TechnicalProblemsScreen> {
               controller: _cost,
               enabled: !_locked,
               keyboardType: TextInputType.numberWithOptions(
-                decimal: _currency == 'USD',
+                decimal: _inputCurrency == 'USD',
               ),
-              inputFormatters: appMoneyInput(_currency),
+              inputFormatters: appMoneyInput(_inputCurrency),
               decoration: InputDecoration(
                 labelText:
-                    '${x.tr('Cost (optional)', 'Chi phí (không bắt buộc)')} ($_currency)',
+                    '${x.tr('Cost (optional)', 'Chi phí (không bắt buộc)')} ($_inputCurrency)',
               ),
             ),
             if (_canExpense) ...[

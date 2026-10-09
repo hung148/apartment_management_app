@@ -2,6 +2,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/organization_money.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/exchange_rate_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/team/booking_workspace_screen.dart';
 import 'package:phan_mem_quan_ly_can_ho/preview/team_preview_store.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/team_service.dart';
@@ -102,6 +104,7 @@ void main() {
   Future<TeamPreviewStore> openNew(
     WidgetTester tester, {
     String role = 'owner',
+    int nightlyPrice = 500000,
   }) async {
     final s = store()
       ..workspaceRole = role
@@ -109,7 +112,7 @@ void main() {
     s.rooms.last.addAll({
       'rentalMode': 'both',
       'hourlyPrice': 100000,
-      'dailyPrice': 500000,
+      'dailyPrice': nightlyPrice,
       'currency': 'VND',
     });
     await mountReview(
@@ -132,6 +135,27 @@ void main() {
 
   String text(WidgetTester tester, String key) =>
       tester.widget<TextFormField>(find.byKey(ValueKey(key))).controller!.text;
+
+  testWidgets(
+    'new converted custom nights use selected currency and preserve source room price',
+    (tester) async {
+      OrganizationMoney.shared.configure(
+        'preview',
+        'USD',
+        ExchangeRateSnapshot(perUsd: {'USD': 1, 'VND': 25000}, dates: {}),
+      );
+      addTearDown(OrganizationMoney.shared.clear);
+      final s = await openNew(tester, nightlyPrice: 500001);
+      await tapKey(tester, 'booking-custom-nights');
+      await enter(tester, 'ops-nightsField', '3');
+      await press(tester, 'Review calculation');
+      await press(tester, 'Confirm and save');
+      expect(s.operationalBookings.single['totalPrice'], 60);
+      expect(s.operationalBookings.single['currency'], 'USD');
+      expect(s.rooms.last['dailyPrice'], 500001);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'per night: the nights box and the check-out follow each other; price × nights',

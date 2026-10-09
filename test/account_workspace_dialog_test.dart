@@ -310,10 +310,10 @@ void main() {
       );
       await t.pumpAndSettle();
       final expected = role == 'owner'
-          ? ['ownership', 'drive', 'accounts', 'import']
+          ? ['ownership', 'drive', 'accounts', 'import', 'currency']
           : role == 'administrator'
-          ? ['ownership', 'accounts']
-          : ['ownership'];
+          ? ['ownership', 'accounts', 'currency']
+          : ['ownership', 'currency'];
       for (final o in accountWorkspaceOptions) {
         expect(
           find.text(o.id),

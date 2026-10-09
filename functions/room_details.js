@@ -49,7 +49,7 @@ function createRoomDetailsHandler({db,Timestamp,HttpsError}) {
       }
       const building=await tx.get(db.doc(`buildings/${d.buildingId}`));
       if(!building.exists||building.data().organizationId!==d.organizationId)fail('not-found');
-      const currency=building.data().currency??'VND';
+      const currency=org.data().displayCurrency??building.data().currency??'VND';
       if((creating||d.action==='prepareCreate')&&!['VND','USD'].includes(currency))fail('failed-precondition');
       if(d.action==='prepareCreate')return {record:{id:d.roomId,roomNumber:building.data().roomPrefix??'',roomType:building.data().roomType??'',area:building.data().roomArea??0,revision:'new',currency}};
       const ref=db.doc(`rooms/${d.roomId}`),doc=await tx.get(ref),old=doc.data();

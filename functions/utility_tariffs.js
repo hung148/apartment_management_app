@@ -16,7 +16,7 @@ function resolveTariff(roomHistory,propertyHistory,startDate,endDate,currency){
  const at=(rows,date)=>rows.filter(x=>x.effectiveDate<=date).at(-1)?.tariff??null;
  const pick=date=>at(roomHistory,date)??at(propertyHistory,date);
  const tariff=pick(startDate);
- if(!tariff||tariff.currency!==currency)throw Error('utility_tariff_required');
+ if(!tariff||(currency!==undefined&&tariff.currency!==currency))throw Error('utility_tariff_required');
  const changes=[...roomHistory,...propertyHistory].filter(x=>x.effectiveDate>startDate&&x.effectiveDate<endDate);
  if(changes.some(x=>JSON.stringify(pick(x.effectiveDate))!==JSON.stringify(tariff)))throw Error('utility_tariff_boundary_required');
  return tariff;

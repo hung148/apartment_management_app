@@ -3,10 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
 import '../../services/team_service.dart';
+import '../../services/organization_money.dart';
+import '../../utils/money_conversion.dart';
 import '../../utils/app_number.dart';
 import '../../utils/localizations/app_localizations.dart';
 import 'property_contract_screen.dart' show contractDate;
-import 'room_rates_screen.dart' show parseRoomRate;
 import 'ws_ui.dart';
 
 /// Lease page actions (2026-10-04, Tom): the short forms that used to be
@@ -789,6 +790,7 @@ class _RentDialog extends StatefulWidget {
 }
 
 class _RentDialogState extends State<_RentDialog> {
+  late final _conversion = MoneyForm(OrganizationMoney.shared.forOrganization(widget.identity['organizationId'] as String));
   final _form = GlobalKey<FormState>();
   final _date = TextEditingController(),
       _amount = TextEditingController(),
@@ -820,7 +822,7 @@ class _RentDialogState extends State<_RentDialog> {
       'effectiveDate': cancel ?? _date.text.trim(),
       'reason': _reason.text.trim(),
       if (cancel == null)
-        'amountMinor': parseRoomRate(_amount.text, '${r['currency']}'),
+        'amountMinor': _conversion.parse(_amount, '${r['currency']}'),
     };
     setState(() {
       _busy = true;
@@ -898,14 +900,14 @@ class _RentDialogState extends State<_RentDialog> {
                   context,
                   'lease-rent-amount',
                   _amount,
-                  '${lt('rentNew')} ($currency)',
+                  '${lt('rentNew')} (${_conversion.currency(currency)})',
                   enabled: !locked,
                   keyboard: TextInputType.numberWithOptions(
-                    decimal: currency == 'USD',
+                    decimal: _conversion.currency(currency) == 'USD',
                   ),
-                  formatters: appMoneyInput(currency),
+                  formatters: appMoneyInput(_conversion.currency(currency)),
                   helper: lt('rentHelp'),
-                  check: (v) => (parseRoomRate(v, currency) ?? 0) <= 0
+                  check: (v) => (_conversion.parse(_amount, currency) ?? 0) <= 0
                       ? lt('rentBad')
                       : null,
                 ),

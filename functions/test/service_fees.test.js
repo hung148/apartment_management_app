@@ -19,6 +19,16 @@ function setup(){
 }
 const version=o=>({effectiveDate:'2026-09-01',active:true,rateMinor:100000,rule:{mode:'days'},includedPeople:0,roundingMinor:0,...o});
 const define=(call,o={},uid='owner')=>call({action:'define',revision:0,feeId:null,name:'Rác',basis:'person',unitLabel:'',version:version(),...o},uid);
+test('new service price version retains selected currency without rewriting old versions',async()=>{
+ const {db,call,bill}=setup();const first=await define(call);
+ db.store.get('organizations/o').displayCurrency='USD';
+ await define(call,{revision:1,feeId:first.feeId,inputCurrency:'USD',version:version({effectiveDate:'2026-10-01',rateMinor:400})});
+ const doc=db.store.get(`serviceFees/${feesId('o','b')}`);
+ assert.equal(doc.fees[0].versions[0].rateMinor,100000);
+ assert.equal(doc.fees[0].versions[1].currency,'USD');
+ const q=await bill({action:'quote',...invoice({feeId:first.feeId,startDate:'2026-10-01',endDate:'2026-11-01'}),inputCurrency:'USD'});
+ assert.equal(q.record.currency,'USD');assert.equal(q.record.totalMinor,800);
+});
 const invoice=o=>({kind:'service',tenantId:'t',roomId:'r',quantityMilli:null,startDate:'2026-09-01',endDate:'2026-10-01',dueDate:'2026-10-05',feesMinor:fees0,reason:'Phí tháng 9',...o});
 async function create(bill,o={},operationId='inv1'){const q=await bill({action:'quote',...invoice(o)});return bill({action:'create',...invoice(o),operationId,quoteRevision:q.record.quoteRevision});}
 
@@ -117,6 +127,27 @@ test('billing refuses another room, a lease outside the period, an unknown fee a
  await assert.rejects(bill({action:'quote',...invoice({feeId,roomId:'r2'})}),e=>e.message==='service_tenant_not_in_room');
  db.store.get('tenants/t').currency='USD';
  await assert.rejects(bill({action:'quote',...invoice({feeId})}),e=>e.message==='service_currency_mismatch');
+});
+
+test('billing a service in the lease currency preserves source terms and pins the rate on the invoice',async()=>{
+ const {call,bill,db}=setup();const {feeId}=await define(call);
+ const {normalizeRates}=require('../reference_rates');
+ const rates=normalizeRates([{base:'USD',quote:'VND',rate:25000,date:'2026-10-08'}]);
+ db.store.set(`referenceExchangeRates/${rates.id}`,rates);
+ db.store.get('tenants/t').currency='USD';
+ const payload={...invoice({feeId}),ratesId:rates.id};
+ const q=(await bill({action:'quote',...payload})).record;
+ assert.equal(q.currency,'USD');assert.equal(q.exchangeRateSnapshotId,rates.id);
+ assert.equal(q.sourceCalculation.currency,'VND');
+ assert.equal(q.amountMinor,q.lines.reduce((sum,line)=>sum+line.amountMinor,0));
+ assert.equal(q.terms.rateMinor,400);
+ assert.equal(q.sourceCalculation.terms.rateMinor,100000);
+ const command={action:'create',...payload,operationId:'fxinvoice',quoteRevision:q.quoteRevision};
+ const result=await bill(command),stored=db.store.get('payments/'+result.invoiceId);
+ assert.equal(stored.calculation.exchangeRateSnapshotId,rates.id);
+ assert.equal(stored.currency,'USD');
+ assert.deepEqual(await bill(command),result);
+ await assert.rejects(bill({...command,ratesId:'f'.repeat(64)}),e=>e.code==='failed-precondition');
 });
 test('a past room is billed from the move history; staff need collect-payment authority to bill',async()=>{
  const {call,bill,db}=setup();const {feeId}=await define(call);

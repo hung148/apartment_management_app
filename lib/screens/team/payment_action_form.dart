@@ -1,3 +1,5 @@
+import '../../utils/money_conversion.dart';
+import '../../services/organization_money.dart';
 import 'workspace_page_scope.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
@@ -28,6 +30,13 @@ class PaymentActionForm extends StatefulWidget {
 }
 
 class _PaymentActionFormState extends State<PaymentActionForm> {
+  late final MoneyForm _money;
+  String? _restoredInputCurrency;
+  bool _needsReload = false;
+  String get _inputCurrency =>
+      _restoredInputCurrency ??
+      _pending?.payload['inputCurrency'] as String? ??
+      _money.currency('${widget.invoice['currency']}');
   final _form = GlobalKey<FormState>();
   final _amount = TextEditingController(), _reason = TextEditingController();
   PaymentOperation? _pending;
@@ -41,10 +50,14 @@ class _PaymentActionFormState extends State<PaymentActionForm> {
       _saving ||
       _pending != null ||
       _result != null ||
+      _needsReload ||
       _storageFailed;
   @override
   void initState() {
     super.initState();
+    _money = MoneyForm(
+      OrganizationMoney.shared.forOrganization(widget.organizationId),
+    );
     _action = widget.invoice['canCollect'] == true ? 'collect' : 'refund';
     _key = widget.journal.key(
       widget.accountId,
@@ -78,10 +91,20 @@ class _PaymentActionFormState extends State<PaymentActionForm> {
         _action = data['action'] as String;
         _method = data['paymentMethod'] as String? ?? 'cash';
         _reason.text = data['reason'] as String? ?? '';
-        _amount.text = appMoneyInputText(
-          data['amountMinor'] as int,
-          '${widget.invoice['currency']}',
-        );
+        if (data['inputCurrency'] is String &&
+            data['inputAmountMinor'] is int) {
+          _restoredInputCurrency = data['inputCurrency'] as String;
+          _amount.text = appMoneyInputText(
+            data['inputAmountMinor'] as int,
+            data['inputCurrency'] as String,
+          );
+        } else {
+          _money.set(
+            _amount,
+            data['amountMinor'] as int,
+            '${widget.invoice['currency']}',
+          );
+        }
         _message = 'payment_action_uncertain';
       }
       setState(() => _loading = false);
@@ -97,12 +120,17 @@ class _PaymentActionFormState extends State<PaymentActionForm> {
   }
 
   int? _minor() {
-    final minor = appParseMoney(_amount.text, '${widget.invoice['currency']}');
+    final minor = _money.parse(_amount, '${widget.invoice['currency']}');
     return minor != null && minor > 0 ? minor : null;
   }
 
   Future<void> _submit() async {
-    if (_loading || _saving || _storageFailed || _result != null) return;
+    if (_loading ||
+        _saving ||
+        _storageFailed ||
+        _needsReload ||
+        _result != null)
+      return;
     if (_pending == null) {
       if (!_form.currentState!.validate()) return;
       if (_action == 'collect' && widget.invoice['canCollect'] != true ||
@@ -115,12 +143,18 @@ class _PaymentActionFormState extends State<PaymentActionForm> {
               paymentId: widget.invoice['id'] as String,
               amountMinor: _minor()!,
               paymentMethod: _method,
+              inputCurrency: _inputCurrency,
+              inputAmountMinor: appParseMoney(_amount.text, _inputCurrency),
+              ratesId: _money.conversion?.snapshotId,
             )
           : widget.service.refund(
               organizationId: widget.organizationId,
               paymentId: widget.invoice['id'] as String,
               amountMinor: _minor()!,
               reason: _reason.text.trim(),
+              inputCurrency: _inputCurrency,
+              inputAmountMinor: appParseMoney(_amount.text, _inputCurrency),
+              ratesId: _money.conversion?.snapshotId,
             );
     }
     FocusScope.of(context).unfocus();
@@ -174,8 +208,15 @@ class _PaymentActionFormState extends State<PaymentActionForm> {
           ].contains(error.code)) {
         try {
           await widget.journal.clear(_key);
+          // A restored entry belongs to its original currency/rate. Once its
+          // retry is rejected, reopen a fresh form before accepting a new entry.
+          _needsReload =
+              error.message == 'payment_currency_changed' ||
+              _restoredInputCurrency != null;
           _pending = null;
-          message = 'payment_action_rejected';
+          message = _needsReload
+              ? 'payment_action_reopen'
+              : 'payment_action_rejected';
         } catch (_) {
           message = 'payment_action_storage';
         }
@@ -272,12 +313,9 @@ class _PaymentActionFormState extends State<PaymentActionForm> {
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
-                    inputFormatters: appMoneyInput(
-                      '${widget.invoice['currency']}',
-                    ),
+                    inputFormatters: appMoneyInput(_inputCurrency),
                     decoration: InputDecoration(
-                      labelText:
-                          '${t['workspace_amount']} (${widget.invoice['currency']})',
+                      labelText: '${t['workspace_amount']} ($_inputCurrency)',
                     ),
                     validator: (_) => _minor() == null
                         ? t['payment_action_invalid_amount']
@@ -324,7 +362,11 @@ class _PaymentActionFormState extends State<PaymentActionForm> {
                     WsActions(
                       children: [
                         FilledButton(
-                          onPressed: _loading || _saving || _storageFailed
+                          onPressed:
+                              _loading ||
+                                  _saving ||
+                                  _storageFailed ||
+                                  _needsReload
                               ? null
                               : _submit,
                           child: Text(

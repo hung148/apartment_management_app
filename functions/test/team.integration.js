@@ -507,6 +507,7 @@ test('property deletion serializes with room creation',async()=>{
 });
 
 test('property creation requires organization-wide management, validates inputs and records one server-owned result',async()=>{
+ await db.doc('organizations/org').update({displayCurrency:'USD'});
   const property=createPropertyDetailsHandler({db,Timestamp:Timestamp,HttpsError:class extends Error{constructor(code,message){super(message);this.code=code;}}});
   const run=(data,uid='owner')=>property({auth:{uid},data:{organizationId:'org',buildingId:'new-property',...data}});
   const command={action:'create',operationId:'create-property',name:'  Riverside  ',address:'  Da Nang  ',timeZone:'Asia/Ho_Chi_Minh',currency:'USD'};
@@ -545,6 +546,7 @@ test('property creation requires organization-wide management, validates inputs 
 });
 
 test('bulk building creation is atomic, exact on retry, scoped and race safe',async()=>{
+ await db.doc('organizations/org').update({displayCurrency:'USD'});
  const api=createPropertyDetailsHandler({db,Timestamp,HttpsError:class extends Error{constructor(code,message){super(message);this.code=code;}}});
  const command={action:'create',organizationId:'org',buildingId:'bulk',operationId:'bulk',name:'Bulk test',address:'Synthetic',timeZone:'UTC',currency:'USD',exploitationCostMinor:123456,
   rooms:[{roomNumber:'101',roomType:'Studio',area:25,ratesMinor:{roomPrice:125099,nightlyPrice:3500,hourlyPrice:null}},{roomNumber:'102',roomType:'',area:null,ratesMinor:{roomPrice:null,nightlyPrice:null,hourlyPrice:1050}}]};
@@ -1130,7 +1132,8 @@ test('security: concurrent lookup limits are atomic and clients cannot edit rate
  const {createRequestGuard}=require('../request_security');
  const guard=createRequestGuard({db,Timestamp:Timestamp,now:()=>1000000,HttpsError:class extends Error{constructor(code,message){super(message);this.code=code;}}});
  const result=await Promise.allSettled(Array.from({length:16},()=>guard('lookupTeamInvitation',{auth:{uid:'owner'},app:{appId:'test-app'},data:{}})));
- assert.equal(result.filter(x=>x.status==='fulfilled').length,12);
+ assert.equal(result.filter(x=>x.status==='fulfilled').length,12,
+  `rejected codes: ${result.filter(x=>x.status==='rejected').map(x=>x.reason.code).join(', ')}`);
  assert(result.filter(x=>x.status==='rejected').every(x=>x.reason.code==='resource-exhausted'));
  const buckets=await db.collection('requestLimits').get();assert.equal(buckets.size,2);
  const client=env.authenticatedContext('owner').firestore();
@@ -1441,6 +1444,58 @@ test('booking workspace calculates receptionist prices, replays exact operations
  await setMember('reception','receptionist',{buildingIds:['b']});await assert.rejects(run(pay),e=>e.code==='permission-denied');
 });
 
+test('converted booking serializes duplicate saves and retains original currency on edit',async()=>{
+ const {createBookingWorkspaceHandler}=require('../booking_workspace');
+ const {normalizeRates}=require('../reference_rates');
+ const rates=normalizeRates([{base:'USD',quote:'VND',rate:25000,date:'2026-10-08'}]);
+ await db.doc(`referenceExchangeRates/${rates.id}`).set(rates);
+ await db.doc('organizations/org').update({displayCurrency:'USD'});
+ await db.doc('buildings/a').update({timeZone:'Asia/Ho_Chi_Minh'});
+ await db.doc('rooms/r').set({organizationId:'org',buildingId:'a',currency:'VND',nightlyPrice:500000});
+ const api=createBookingWorkspaceHandler({db,Timestamp,HttpsError:class extends Error{constructor(code,message){super(message);this.code=code;}},calendar});
+ const run=d=>api({auth:{uid:'owner'},data:{organizationId:'org',buildingId:'a',...d}});
+ const fields={roomId:'r',startLocal:'2026-10-10 14:00',endLocal:'2026-10-12 12:00',pricingType:'nightly',inputCurrency:'USD',ratesId:rates.id};
+ const q=(await run({action:'quote',...fields})).record;
+ const save={action:'save',...fields,bookingId:'converted',operationId:'converted-create',roomRevision:q.roomRevision,guestName:'Guest',guestPhone:'',notes:'',depositMinor:0};
+ const results=await Promise.all([run(save),run(save)]);
+ assert.deepEqual(results[0],results[1]);
+ assert.equal((await db.collection('bookings').get()).size,1);
+ assert.equal((await db.doc('bookings/converted').get()).data().totalPrice,40);
+ await db.doc('organizations/org').update({displayCurrency:'VND'});
+ assert.deepEqual(await run(save),results[0]);
+ const record=(await run({action:'read',bookingId:'converted'})).record;
+ const editQuote=(await run({action:'quote',...fields,bookingId:'converted'})).record;
+ await run({...save,operationId:'converted-edit',revision:record.revision,roomRevision:editQuote.roomRevision,guestName:'Updated'});
+ assert.equal((await db.doc('bookings/converted').get()).data().currency,'USD');
+ assert.equal((await db.doc('rooms/r').get()).data().nightlyPrice,500000);
+ const updated=(await run({action:'read',bookingId:'converted'})).record;
+ const payment={action:'command',bookingId:'converted',operationId:'converted-payment',revision:updated.revision,command:'payment',amountMinor:1000,inputCurrency:'VND',inputAmountMinor:250000,ratesId:rates.id,paymentMethod:'cash',reason:'Receipt'};
+ const paid=await run(payment);
+ assert.deepEqual((await db.doc(`payments/${paid.paymentId}`).get()).data().originalInput,{currency:'VND',amountMinor:250000,exchangeRateSnapshotId:rates.id});
+ assert.equal((await db.doc('bookings/converted').get()).data().paidAmount,10);
+ await db.doc('organizations/org').update({displayCurrency:'USD'});
+ assert.deepEqual(await run(payment),paid);
+});
+
+test('mixed currency settlement preserves invoice units in Firestore and replays exactly',async()=>{
+ const {createSettlementHandler}=require('../move_out_settlement');
+ const {normalizeRates}=require('../reference_rates');
+ const rates=normalizeRates([{base:'USD',quote:'VND',rate:25000,date:'2026-10-08'}]);
+ await db.doc(`referenceExchangeRates/${rates.id}`).set(rates);
+ await db.doc('buildings/a').update({timeZone:'Asia/Ho_Chi_Minh'});
+ await db.doc('tenants/mixed').set({organizationId:'org',buildingId:'a',roomId:'r',isMainTenant:true,status:'moveOut',currency:'VND',fullName:'Guest',moveInDate:Timestamp.fromMillis(Date.parse('2026-09-01T00:00:00Z')),moveOutDate:Timestamp.fromMillis(Date.parse('2026-10-01T00:00:00Z')),depositMinor:5000000});
+ await db.doc('payments/usd').set({organizationId:'org',buildingId:'a',tenantId:'mixed',invoiceVersion:2,invoiceKind:'other',currency:'USD',amount:100,amountMinor:10000,totalMinor:10000,paidAmount:0,status:'pending'});
+ const api=createSettlementHandler({db,Timestamp,HttpsError:class extends Error{constructor(code,message){super(message);this.code=code;}}});
+ const run=d=>api({auth:{uid:'owner'},data:{organizationId:'org',buildingId:'a',tenantId:'mixed',ratesId:rates.id,...d}});
+ const p=(await run({action:'settlementPreview'})).record;
+ const fields={effectiveDate:'2026-10-01',dueDate:'2026-10-01',includeRent:false,serviceFeeIds:[],readings:[],lines:[],creditRent:false,creditFees:false,refundMethod:'cash',refundAccountId:null,reason:'Move out'};
+ const q=(await run({action:'settlementQuote',...fields})).record;
+ const request={action:'settle',...fields,operationId:'mixed',revision:p.revision,timeZone:p.timeZone,quoteRevision:q.quoteRevision};
+ const result=await run(request);assert.deepEqual(await run(request),result);
+ const invoice=(await db.doc('payments/usd').get()).data();assert.equal(invoice.paidAmount,100);assert.equal(invoice.currency,'USD');assert.equal(invoice.totalMinor,10000);
+ assert.equal(result.refundMinor,2500000);
+});
+
 test('property layout suggests new room defaults and preserves existing inventory',async()=>{
  const {createPropertyLayoutHandler}=require('../property_layout');const api=createPropertyLayoutHandler({db,Timestamp:Timestamp,HttpsError:class extends Error{constructor(code,message){super(message);this.code=code;}}});
  await db.doc('rooms/r').set({organizationId:'org',buildingId:'a',roomNumber:'Original',roomType:'Original',area:20});const before=(await db.doc('rooms/r').get()).data();
@@ -1592,3 +1647,44 @@ test('account deletion hands over or closes owned organizations and removes pers
  const client=env.authenticatedContext('owner').firestore();
  await assertFails(getDoc(doc(client,'accountDeletions/owner')));
 });
+
+test('organization currency serializes concurrent edits and enforces delegated grants',async()=>{
+ const {createOrganizationSettingsHandler}=require('../organization_settings');
+ const api=createOrganizationSettingsHandler({db,Timestamp,HttpsError:class extends Error{constructor(code,message){super(message);this.code=code;}}});
+ const run=(d,uid='owner')=>api({auth:{uid},data:{organizationId:'org',...d}});
+ await db.doc('rooms/r').set({organizationId:'org',buildingId:'a',currency:'VND',roomPrice:5000000});
+ await setMember('manager','manager');
+ await assert.rejects(run({action:'updateCurrency',operationId:'no',currency:'USD',revision:0},'manager'),e=>e.code==='permission-denied');
+ await db.doc('memberships/manager_org').update({roleGrants:{changeOrganizationCurrency:'all'}});
+ const outcomes=await Promise.allSettled([
+  run({action:'updateCurrency',operationId:'first',currency:'USD',revision:0},'manager'),
+  run({action:'updateCurrency',operationId:'second',currency:'VND',revision:0}),
+ ]);
+ assert.equal(outcomes.filter(r=>r.status==='fulfilled').length,1);
+ assert.equal(outcomes.find(r=>r.status==='rejected').reason.code,'aborted');
+ assert.equal((await run({action:'readCurrency'})).revision,1);
+ assert.equal((await db.doc('rooms/r').get()).data().roomPrice,5000000);
+ assert.equal((await db.doc('rooms/r').get()).data().currency,'VND');
+ await db.doc('memberships/manager_org').update({status:'suspended'});
+ await assert.rejects(run({action:'readCurrency'},'manager'),e=>e.code==='permission-denied');
+});
+
+test('reference rates are server-owned immutable snapshots and current access is required',async()=>{
+ const {createOrganizationCurrencyHandler}=require('../organization_currency');
+ let fetched=0;
+ const api=createOrganizationCurrencyHandler({db,Timestamp,HttpsError:CodeErrorForRates,fetchRates:async()=>{
+  fetched++;return [{base:'USD',quote:'VND',rate:25000,date:'2026-10-08'}];
+ }});
+ const request={auth:{uid:'owner'},data:{organizationId:'org',action:'readRates'}};
+ const results=await Promise.all([api(request),api(request)]);
+ assert.deepEqual(results[0],results[1]);assert.equal(fetched,1);
+ const snapshot=results[0],path=`referenceExchangeRates/${snapshot.id}`;
+ assert.deepEqual((await db.doc(path).get()).data(),snapshot);
+ const client=env.authenticatedContext('owner').firestore();
+ await assertFails(getDoc(doc(client,path)));
+ await assertFails(setDoc(doc(client,path),{...snapshot,perUsd:{USD:'1',VND:'1'}}));
+ await assertFails(setDoc(doc(client,'referenceExchangeRateCache/latest'),{snapshot}));
+ await db.doc('memberships/owner_org').update({status:'revoked'});
+ await assert.rejects(api(request),e=>e.code==='permission-denied');
+});
+class CodeErrorForRates extends Error{constructor(code,message){super(message);this.code=code;}}

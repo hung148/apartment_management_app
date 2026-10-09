@@ -1,3 +1,5 @@
+import '../../utils/money_conversion.dart';
+import '../../services/organization_money.dart';
 import 'workspace_page_scope.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
@@ -7,7 +9,6 @@ import '../../services/team_service.dart';
 import '../../utils/app_number.dart';
 import '../../utils/localizations/app_localizations.dart';
 import 'property_contract_screen.dart' show contractDate;
-import 'room_rates_screen.dart' show parseRoomRate;
 import 'tenant_rent_history.dart';
 
 class TenantRentScreen extends StatefulWidget {
@@ -27,6 +28,7 @@ class TenantRentScreen extends StatefulWidget {
 }
 
 class _TenantRentScreenState extends State<TenantRentScreen> {
+  MoneyForm _money = MoneyForm(null);
   final _date = TextEditingController(),
       _amount = TextEditingController(),
       _reason = TextEditingController(),
@@ -89,6 +91,9 @@ class _TenantRentScreenState extends State<TenantRentScreen> {
       if (!mounted || generation != _generation) return;
       setState(() {
         _record = Map<String, dynamic>.from(r['record'] as Map);
+        _money = MoneyForm(
+          OrganizationMoney.shared.forOrganization(widget.organizationId),
+        );
         _busy = false;
         _message = saved ? 'rent_plan_saved' : null;
       });
@@ -115,10 +120,7 @@ class _TenantRentScreenState extends State<TenantRentScreen> {
       'effectiveDate': _date.text.trim(),
       'reason': _reason.text.trim(),
       if (!_cancel)
-        'amountMinor': parseRoomRate(
-          _amount.text,
-          _record!['currency'] as String,
-        ),
+        'amountMinor': _money.parse(_amount, _record!['currency'] as String),
     });
     final generation = _generation;
     setState(() {
@@ -197,7 +199,9 @@ class _TenantRentScreenState extends State<TenantRentScreen> {
                       return t['rent_plan_invalid_date'];
                     }
                     if (key == 'amount' &&
-                        parseRoomRate(v, r!['currency'] as String) == null) {
+                        (_money.parse(_amount, r!['currency'] as String) ??
+                                0) <=
+                            0) {
                       return t['lease_form_invalid_rent'];
                     }
                     if (key == 'reason' && (v.isEmpty || v.length > 1000)) {
@@ -320,7 +324,7 @@ class _TenantRentScreenState extends State<TenantRentScreen> {
                         if (!_cancel)
                           field(
                             'amount',
-                            '${t['lease_form_rent']} (${r['currency']})',
+                            '${t['lease_form_rent']} (${_money.currency(r['currency'] as String)})',
                             _amount,
                           ),
                         field('reason', t['rent_plan_reason'], _reason),

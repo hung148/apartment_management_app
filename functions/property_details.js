@@ -1,6 +1,7 @@
 'use strict';
 const {createHash}=require('node:crypto');
 const {allows}=require('./team_access');
+const {organizationCurrency}=require('./organization_currency');
 const {validZone}=require('./booking_settings');
 const {retainDeletedRecord}=require('./deleted_records');
 const id=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(v);
@@ -44,7 +45,7 @@ function createPropertyDetailsHandler({db,Timestamp,HttpsError}) {
       if((creating||preparing)&&member.data().buildingScope!=='all')fail('permission-denied');
       const canSetRoomPrices=allows(member.data(),'overridePrices',{organizationId:d.organizationId,userId:uid,buildingId:d.buildingId});
       if(creating&&(d.rooms??[]).some(r=>priceFields.some(k=>r.ratesMinor[k]!==null))&&!canSetRoomPrices)fail('permission-denied');
-      if(preparing)return {record:{id:d.buildingId,name:'',address:'',timeZone:'Asia/Ho_Chi_Minh',currency:'VND',exploitationCostMinor:null,canSetRoomPrices,revision:'new'}};
+      if(preparing)return {record:{id:d.buildingId,name:'',address:'',timeZone:'Asia/Ho_Chi_Minh',currency:organizationCurrency(org.data()),exploitationCostMinor:null,canSetRoomPrices,revision:'new'}};
       const ref=db.doc(`buildings/${d.buildingId}`),doc=await tx.get(ref),old=doc.data();
       if(!creating&&!deleting&&(!old||old.organizationId!==d.organizationId))fail('not-found');
       if(!editing&&!deleting)return {record:{id:doc.id,name:old.name??'',address:old.address??'',timeZone:old.timeZone??null,currency:old.currency??'VND',exploitationCostMinor:old.exploitationCostMinor??null,revision:revision(doc)}};
@@ -55,6 +56,7 @@ function createPropertyDetailsHandler({db,Timestamp,HttpsError}) {
       if(prior.exists){if(prior.data().fingerprint!==fingerprint)fail('already-exists');return prior.data().result;}
       if(deleting&&(!old||old.organizationId!==d.organizationId))fail('not-found');
       if(creating&&old)fail('already-exists');
+      if(creating&&d.currency!==organizationCurrency(org.data()))fail('aborted');
       if(!creating&&revision(doc)!==d.revision)fail('aborted');
       if(deleting){
         if(old.rentalContract!=null||old.managementType==='rented'||['renterName','renterPhone','rentAmount','rentDueDay','rentContractStart','rentContractEnd','renterNotes'].some(field=>old[field]!=null&&old[field]!==''))throw new HttpsError('failed-precondition','property_not_empty');

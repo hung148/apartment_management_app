@@ -35,6 +35,84 @@ async function firstPeriod(bill,db,paidMinor=0){
  return invoiceId;
 }
 const choice=o=>({effectiveDate:'2026-11-20',includeRent:false,serviceFeeIds:[],readings:[],lines:[],creditRent:false,creditFees:false,refundMethod:null,refundAccountId:null,dueDate:'2026-11-20',reason:'Trả phòng',...o});
+test('converted prepaid service credit uses original terms before rounding into invoice units',async()=>{
+ const {db,call}=setup();
+ const {normalizeRates}=require('../reference_rates');
+ const rates=normalizeRates([{base:'USD',quote:'VND',rate:25000,date:'2026-11-20'}]);
+ db.store.set(`referenceExchangeRates/${rates.id}`,rates);
+ const terms={rateMinor:126,rule:{mode:'days'},includedPeople:0,roundingMinor:0};
+ db.store.set('payments/fee',{organizationId:'o',buildingId:'b',tenantId:'t',roomId:'r',invoiceVersion:2,invoiceKind:'service',currency:'USD',amount:0.01,totalMinor:1,paidAmount:0.01,status:'paid',billingStartLocalDate:'2026-11-01',billingEndLocalDate:'2026-12-01',calculation:{currency:'USD',basis:'room',roomId:'r',feeId:'f',feeName:'Fee',amountMinor:1,terms:{...terms,rateMinor:1},exchangeRateSnapshotId:rates.id,sourceCalculation:{currency:'VND',terms}}});
+ const p=(await call({action:'settlementPreview',ratesId:rates.id})).record;
+ // 126 * 19/30 = 80 VND rounds to zero US cents used; credit the billed cent.
+ assert.equal(p.feeCredits[0]?.creditMinor,250);
+});
+test('new settlement uses selected currency and preserves original deposit',async()=>{
+ const {db,call}=setup();
+ const rates=require('../reference_rates').normalizeRates([{base:'USD',quote:'VND',rate:25000,date:'2026-11-20'}]);
+ db.store.set(`referenceExchangeRates/${rates.id}`,rates);db.store.get('organizations/o').displayCurrency='USD';
+ const p=(await call({action:'settlementPreview',ratesId:rates.id})).record;
+ assert.equal(p.currency,'USD');assert.equal(p.depositMinor,20000);
+ const input=choice({refundMethod:'cash',lines:[{kind:'damage',label:'Repair',amountMinor:1234}]});
+ const q=(await call({action:'settlementQuote',...input,inputCurrency:'USD',ratesId:rates.id})).record;
+ const result=await call({action:'settle',...input,inputCurrency:'USD',ratesId:rates.id,operationId:'selected',revision:p.revision,timeZone:p.timeZone,quoteRevision:q.quoteRevision});
+ assert.equal(db.store.get(`payments/${result.finalInvoiceId}`).currency,'USD');
+ assert.equal(db.store.get(`payments/${result.finalInvoiceId}`).amount,12.34);
+ assert.equal(db.store.get('tenants/t').depositMinor,5000000);
+});
+test('mixed currency invoice is included and paid in original units from the lease deposit',async()=>{
+ const {db,call}=setup();
+ const rates=require('../reference_rates').normalizeRates([{base:'USD',quote:'VND',rate:25000,date:'2026-11-20'}]);
+ db.store.set(`referenceExchangeRates/${rates.id}`,rates);
+ db.store.set('payments/usd',{organizationId:'o',buildingId:'b',tenantId:'t',invoiceVersion:2,invoiceKind:'other',currency:'USD',amount:100,amountMinor:10000,totalMinor:10000,paidAmount:0,status:'pending'});
+ const preview=(await call({action:'settlementPreview',ratesId:rates.id})).record;
+ assert.equal(preview.openInvoices[0].balanceMinor,2500000);
+ const q=(await call({action:'settlementQuote',...choice({refundMethod:'cash'}),ratesId:rates.id})).record;
+ assert.equal(q.refundMinor,2500000);assert.equal(q.owedMinor,0);
+ const result=await call({action:'settle',...choice({refundMethod:'cash'}),ratesId:rates.id,operationId:'mixed',revision:preview.revision,timeZone:preview.timeZone,quoteRevision:q.quoteRevision});
+ assert.equal(db.store.get('payments/usd').currency,'USD');
+ assert.equal(db.store.get('payments/usd').paidAmount,100);
+ assert.equal(db.store.get('payments/usd').totalMinor,10000);
+ assert.equal(db.store.get(`leaseSettlements/${result.settlementId}`).applications[0].sourceAmountMinor,10000);
+});
+test('mixed currency partial payment never spends more than deposit and missing rates fail visibly',async()=>{
+ const {db,call}=setup();
+ const rates=require('../reference_rates').normalizeRates([{base:'USD',quote:'VND',rate:25000,date:'2026-11-20'}]);
+ db.store.set(`referenceExchangeRates/${rates.id}`,rates);
+ db.store.get('tenants/t').depositMinor=250001;
+ db.store.set('payments/usd',{organizationId:'o',buildingId:'b',tenantId:'t',invoiceVersion:2,invoiceKind:'other',currency:'USD',amount:100,amountMinor:10000,totalMinor:10000,paidAmount:0,status:'pending'});
+ await assert.rejects(call({action:'settlementPreview'}),e=>e.message==='settlement_rates_required');
+ const q=(await call({action:'settlementQuote',...choice({refundMethod:'cash'}),ratesId:rates.id})).record;
+ assert.equal(q.applications[0].sourceAmountMinor,1000);
+ assert.equal(q.applications[0].amountMinor,250000);
+ assert.equal(q.refundMinor,1);assert.equal(q.owedMinor,2250000);
+});
+
+test('mixed currency prepaid rent is not billed twice and credit returns original invoice units',async()=>{
+ const {db,call}=setup();
+ const rates=require('../reference_rates').normalizeRates([{base:'USD',quote:'VND',rate:25000,date:'2026-11-20'}]);
+ db.store.set(`referenceExchangeRates/${rates.id}`,rates);
+ db.store.set('payments/usd',{organizationId:'o',buildingId:'b',tenantId:'t',invoiceVersion:2,invoiceKind:'tenantRent',currency:'USD',amount:200,amountMinor:20000,totalMinor:20000,paidAmount:200,status:'paid',billingStartLocalDate:'2026-11-20',billingEndLocalDate:'2026-12-20'});
+ const preview=(await call({action:'settlementPreview',ratesId:rates.id})).record;
+ assert.equal(preview.rent,null);
+ assert.equal(preview.credits[0].creditMinor,5000000);
+ const input=choice({refundMethod:'cash',creditRent:true});
+ const q=(await call({action:'settlementQuote',...input,ratesId:rates.id})).record;
+ assert.equal(q.returnedMinor,5000000);assert.equal(q.refundMinor,10000000);
+ await call({action:'settle',...input,ratesId:rates.id,operationId:'credit',revision:preview.revision,timeZone:preview.timeZone,quoteRevision:q.quoteRevision});
+ assert.equal(db.store.get('payments/usd').paidAmount,0);assert.equal(db.store.get('payments/usd').currency,'USD');
+ assert.equal(db.store.get('payments/usd').moveOutCredit.creditMinor,20000);
+});
+test('mixed currency utility readings remain selectable with source calculation audit',async()=>{
+ const {db,call}=setup();
+ const rates=require('../reference_rates').normalizeRates([{base:'USD',quote:'VND',rate:25000,date:'2026-11-20'}]);
+ db.store.set(`referenceExchangeRates/${rates.id}`,rates);
+ const reading=db.store.get(readingPath('x'));reading.calculation.currency='USD';reading.calculation.amountMinor=350;reading.tariff.currency='USD';
+ const p=(await call({action:'settlementPreview',ratesId:rates.id})).record;
+ assert.equal(p.readings[0].amountMinor,87500);assert.equal(p.readings[0].sourceCurrency,'USD');
+ const q=(await call({action:'settlementQuote',...choice({readings:[{roomId:'r',kind:'electricity',readingId:'x'}]}),ratesId:rates.id})).record;
+ assert.equal(q.finalMinor,87500);assert.equal(q.lines[0].sourceCalculation.amountMinor,350);
+ assert.equal(reading.calculation.currency,'USD');
+});
 async function settle(call,o={},operationId='s1'){
  const q=await call({action:'settlementQuote',...choice(o)});
  const p=(await call({action:'settlementPreview',effectiveDate:choice(o).effectiveDate})).record;

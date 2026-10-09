@@ -17,6 +17,27 @@ const seed=()=>({
 const setup=()=>{const db=fakeDb(seed());return {db,call:data=>createTenantLeasesHandler({db,Timestamp:Ts,HttpsError:CodeError})({auth:{uid:'owner'},data:{organizationId:'org',buildingId:'b1',roomId:'r1',...data}})};};
 const base=async call=>{const p=(await call({action:'prepare'})).record;return {action:'create',operationId:'op1',roomRevision:p.roomRevision,timeZone:p.timeZone,currency:p.currency,fullName:'Le Van Chinh',phoneNumber:'0909',moveInDate:p.today,contractEndDate:'2027-10-01',rentMinor:5000000,backdateReason:''};};
 
+test('new lease stores selected currency without relabeling the room price or existing leases',async()=>{
+ const {db,call}=setup();
+ db.store.get('organizations/org').displayCurrency='USD';
+ const prepared=(await call({action:'prepare'})).record;
+ assert.equal(prepared.currency,'USD');
+ assert.equal(prepared.monthlyRentMinor,null);
+ assert.deepEqual(prepared.roomRent,{amountMinor:5000000,currency:'VND'});
+ const command={...await base(call),rentMinor:20000,depositMinor:12345,periodMonths:3,
+  coTenants:[{fullName:'Roommate'}],surcharges:[{label:'Water',amountMinor:250,basis:'person',frequency:'month',kind:'water'}]};
+ const result=await call(command),lease=db.store.get(`tenants/${result.tenantId}`);
+ assert.equal(lease.currency,'USD');assert.equal(lease.monthlyRent,200);
+ assert.equal(lease.monthlyRentMinor,20000);assert.equal(lease.periodRentMinor,60000);
+ assert.equal(lease.deposit,123.45);assert.equal(lease.surcharges[0].amountMinor,250);
+ assert.equal(db.store.get(`tenants/${result.coTenantIds[0]}`).currency,'USD');
+ assert.equal(db.store.get('rooms/r1').roomPrice,5000000);
+ db.store.get('organizations/org').displayCurrency='VND';
+ assert.deepEqual(await call(command),result,'committed retry retains original currency');
+ assert.equal(db.store.get(`tenants/${result.tenantId}`).currency,'USD');
+ await assert.rejects(call({...command,operationId:'new-intent'}),e=>e.code==='aborted');
+});
+
 test('prepare offers staff, accounts and the room monthly price',async()=>{
   const {call}=setup();const p=(await call({action:'prepare'})).record;
   assert.deepEqual(p.staff.map(s=>s.displayName),['Lan']);assert.deepEqual(p.accounts,[{id:'vcb',label:'Vietcombank 1234'}]);assert.equal(p.monthlyRentMinor,5000000);

@@ -1,9 +1,11 @@
+import '../../services/organization_money.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../services/organization_settings_service.dart';
 import '../../services/team_service.dart';
 import '../../utils/app_router.dart';
+import '../../utils/localizations/app_localizations.dart';
 import 'back_steps.dart';
 import 'org_location.dart';
 import 'role_workspace.dart';
@@ -39,25 +41,54 @@ class OrgShell extends StatefulWidget {
 class _OrgShellState extends State<OrgShell> {
   final _steps = BackSteps();
   String? _name;
+  int _nameGeneration = 0;
 
   @override
   void initState() {
     super.initState();
     _name = widget.name;
+    OrganizationMoney.shared.activate(widget.organizationId);
+    OrganizationMoney.shared.addListener(_moneyChanged);
+    OrganizationMoney.shared.load(widget.organizationId, widget.service).catchError((Object _) {});
     if (_name == null || _name!.isEmpty) _loadName();
   }
 
   @override
   void dispose() {
+    OrganizationMoney.shared.removeListener(_moneyChanged);
     _steps.dispose();
     super.dispose();
   }
 
+  @override
+  void didUpdateWidget(covariant OrgShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.organizationId != widget.organizationId ||
+        oldWidget.service != widget.service) {
+      OrganizationMoney.shared.activate(widget.organizationId);
+      OrganizationMoney.shared
+          .load(widget.organizationId, widget.service)
+          .catchError((Object _) {});
+    }
+    if (oldWidget.organizationId != widget.organizationId ||
+        oldWidget.settings != widget.settings ||
+        oldWidget.name != widget.name) {
+      ++_nameGeneration;
+      _name = widget.name;
+      if (_name == null || _name!.isEmpty) _loadName();
+    }
+  }
+
+  void _moneyChanged() { if (mounted) setState(() {}); }
+
   Future<void> _loadName() async {
+    final generation = ++_nameGeneration;
     try {
       final read = await (widget.settings ?? OrganizationSettingsService())
           .read(widget.organizationId);
-      if (mounted) setState(() => _name = read.organization.name);
+      if (mounted && generation == _nameGeneration) {
+        setState(() => _name = read.organization.name);
+      }
     } catch (_) {
       // The workspace shows the access problem; the title just stays empty.
     }
@@ -87,7 +118,18 @@ class _OrgShellState extends State<OrgShell> {
       steps: _steps,
       child: Scaffold(
         // The workspace draws its own organization-colored top bar.
-        body: RoleWorkspace(
+        body: Column(children: [
+          if (OrganizationMoney.shared.refreshFailed(widget.organizationId))
+            MaterialBanner(
+              content: Semantics(liveRegion: true, child: Text(AppTranslations.of(context)['organization_currency_rates_failed'])),
+              actions: [TextButton(
+                onPressed: () => OrganizationMoney.shared
+                    .load(widget.organizationId, widget.service)
+                    .catchError((Object _) {}),
+                child: Text(AppTranslations.of(context)['retry']),
+              )],
+            ),
+          Expanded(child: RoleWorkspace(
           organizationId: widget.organizationId,
           service: widget.service,
           initial: widget.initial,
@@ -98,7 +140,8 @@ class _OrgShellState extends State<OrgShell> {
           onOrganizationSettings: widget.onOrganizationSettings,
           onLocationChanged: _addressChanged,
           onLeave: _leave,
-        ),
+        )),
+        ]),
       ),
     );
   }

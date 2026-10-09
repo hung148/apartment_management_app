@@ -3,6 +3,8 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/organization_money.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/exchange_rate_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/team/tenant_contacts_screen.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/team/tenant_rent_screen.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/team_service.dart';
@@ -122,6 +124,76 @@ void main() {
       await tapKey('lease-rent-change');
       await enter(tester, 'lease-rent-date', '2026-10-01');
       await enter(tester, 'lease-rent-amount', '2100000');
+      await enter(tester, 'lease-rent-reason', 'Correct planned amount');
+      await tapKey('lease-rent-save');
+      expect((s.tenants.first['rentSchedule'] as List).length, 1);
+      await tapKey('lease-rent-cancel-2026-10-01');
+      await enter(tester, 'lease-rent-reason', 'Agreement withdrawn');
+      await tapKey('lease-rent-save');
+      expect(s.tenants.first['rentSchedule'], isEmpty);
+      expect(find.textContaining('planned'), findsNothing);
+      final records = s.rentHistory['tenant-anh']!;
+      expect(records.length, 3);
+      expect(records.first['after'], isNull);
+      expect((records.first['before'] as Map)['amountMinor'], 2100000);
+      expect((records[1]['before'] as Map)['amountMinor'], 2000000);
+      expect((records[1]['after'] as Map)['amountMinor'], 2100000);
+      expect(records.last['before'], isNull);
+    },
+  );
+  testWidgets(
+    'converted directory rent scheduling retains original ledger currency',
+    (tester) async {
+      final s = store();
+      OrganizationMoney.shared.configure('preview', 'USD', ExchangeRateSnapshot(perUsd: {'USD': 1, 'VND': 25000}, dates: {}));
+      addTearDown(OrganizationMoney.shared.clear);
+      await mountReview(
+        tester,
+        TenantContactsScreen(
+          organizationId: 'preview',
+          buildingId: 'riverside',
+          service: s.service,
+          onBack: () {},
+        ),
+      );
+      // Lease actions live on the tenant page (2026-10-01).
+      final open = find.byKey(const ValueKey('tenant-contact-tenant-anh'));
+      await reveal(tester, open);
+      await tester.tap(open);
+      await tester.pumpAndSettle();
+      // 2026-10-04: "Change" next to the rent opens a small dialog.
+      Future<void> tapKey(String key) async {
+        final f = find.byKey(ValueKey(key));
+        await reveal(tester, f);
+        await tester.tap(f);
+        await tester.pumpAndSettle();
+      }
+
+      await tapKey('lease-rent-change');
+      await enter(tester, 'lease-rent-date', '2026-09-27');
+      await enter(tester, 'lease-rent-amount', '80.00');
+      await enter(tester, 'lease-rent-reason', 'Renewal');
+      await tapKey('lease-rent-save');
+      expect(
+        s.tenants.first['rentSchedule'],
+        isNull,
+        reason: 'not after today',
+      );
+      await enter(tester, 'lease-rent-date', '2026-10-01');
+      await tapKey('lease-rent-save');
+      expect(
+        (s.tenants.first['rentSchedule'] as List).single['amountMinor'],
+        2000000,
+      );
+      expect(s.tenants.first['monthlyRentMinor'], 1500000);
+      expect(
+        find.text('From 2026-10-01 · 2,000,000 VND · planned'),
+        findsOneWidget,
+      );
+      // The same day again replaces the planned amount.
+      await tapKey('lease-rent-change');
+      await enter(tester, 'lease-rent-date', '2026-10-01');
+      await enter(tester, 'lease-rent-amount', '84.00');
       await enter(tester, 'lease-rent-reason', 'Correct planned amount');
       await tapKey('lease-rent-save');
       expect((s.tenants.first['rentSchedule'] as List).length, 1);

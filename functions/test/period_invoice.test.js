@@ -31,6 +31,51 @@ async function create(bill,o={},operationId='p1'){const q=await bill({action:'qu
 test('months add with month-end clamping',()=>{
  assert.equal(addMonths('2026-10-02',3),'2027-01-02');assert.equal(addMonths('2026-01-31',1),'2026-02-28');assert.equal(addMonths('2024-01-31',1),'2024-02-29');
 });
+
+test('USD lease period includes original VND readings and fees without changing their stored money',async()=>{
+ const {db,bill,defineFee}=setup();const {feeId}=await defineFee();
+ Object.assign(db.store.get('tenants/t'),{currency:'USD',monthlyRentMinor:20000,monthlyRent:200,periodRentMinor:60000});
+ const {normalizeRates}=require('../reference_rates');
+ const rates=normalizeRates([{base:'USD',quote:'VND',rate:25000,date:'2026-10-08'}]);
+ db.store.set(`referenceExchangeRates/${rates.id}`,rates);
+ const preview=(await bill({action:'periodPreview',tenantId:'t'})).record;
+ assert.equal(preview.readings[0].currency,'VND');assert.equal(preview.readings[0].amountMinor,87500);
+ const payload=period({ratesId:rates.id,serviceFeeIds:[feeId],readings:[{roomId:'r',kind:'electricity',readingId:'x'}]});
+ const q=(await bill({action:'quote',...payload})).record;
+ assert.equal(q.currency,'USD');
+ assert.deepEqual(q.lines.map(l=>[l.type,l.amountMinor]),[['rent',60000],['service',480],['utility',350]]);
+ assert.equal(q.totalMinor,60830);
+ const created=await bill({action:'create',...payload,operationId:'mixed-period',quoteRevision:q.quoteRevision});
+ const invoice=db.store.get('payments/'+created.invoiceId);
+ assert.equal(invoice.amount,608.30);
+ assert.equal(invoice.calculation.lines[1].sourceCalculation.amountMinor,120000);
+ assert.equal(invoice.calculation.lines[2].sourceCalculation.amountMinor,87500);
+ assert.equal(invoice.calculation.lines[2].exchangeRateSnapshotId,rates.id);
+ assert.equal(db.store.get(readingPath('x')).calculation.amountMinor,87500);
+ assert.equal(db.store.get(`serviceFees/${feesId('o','b')}`).currency,'VND');
+});
+
+test('a new invoice uses selected currency while the existing lease remains original',async()=>{
+ const {db,bill,defineFee}=setup();const {feeId}=await defineFee();
+ db.store.get('organizations/o').displayCurrency='USD';
+ const {normalizeRates}=require('../reference_rates');
+ const rates=normalizeRates([{base:'USD',quote:'VND',rate:25000,date:'2026-10-08'}]);
+ db.store.set(`referenceExchangeRates/${rates.id}`,rates);
+ const payload=period({inputCurrency:'USD',ratesId:rates.id,serviceFeeIds:[feeId],readings:[{roomId:'r',kind:'electricity',readingId:'x'}],lines:[{kind:'late',label:'Late fee',amountMinor:25}]});
+ const q=(await bill({action:'quote',...payload})).record;
+ assert.equal(q.currency,'USD');assert.equal(q.totalMinor,60855);
+ assert.deepEqual(q.lines.map(l=>l.amountMinor),[60000,480,350,25]);
+ const command={action:'create',...payload,operationId:'selected-period',quoteRevision:q.quoteRevision};
+ const result=await bill(command);
+ assert.equal(db.store.get('payments/'+result.invoiceId).currency,'USD');
+ assert.equal(db.store.get('payments/'+result.invoiceId).calculation.lines[0].sourceCalculation.amountMinor,15000000);
+ assert.equal(db.store.get('payments/'+result.invoiceId).calculation.lines[0].exchangeRateSnapshotId,rates.id);
+ assert.equal(db.store.get('tenants/t').monthlyRentMinor,5000000);
+ assert.equal(db.store.get('tenants/t').currency,'VND');
+ db.store.get('organizations/o').displayCurrency='VND';
+ assert.deepEqual(await bill(command),result);
+ await assert.rejects(bill({...command,operationId:'different'}),e=>e.code==='aborted');
+});
 test('the preview suggests the next lease period, due day, and what can go on it',async()=>{
  const {bill,defineFee}=setup();const {feeId}=await defineFee();
  const p=(await bill({action:'periodPreview',tenantId:'t'})).record;
@@ -40,6 +85,23 @@ test('the preview suggests the next lease period, due day, and what can go on it
  assert.deepEqual(p.readings.map(r=>r.readingId),['x'],'readings from before the lease are not offered');
  // The latest electricity reading of the lease and its state (2026-10-04).
  assert.deepEqual(p.lastElectricity,{date:'2026-10-31',status:'unbilled'});
+});
+
+test('selected-currency surcharge preview and invoice retain the original lease price',async()=>{
+ const {db,bill}=setup();db.store.get('organizations/o').displayCurrency='USD';
+ db.store.get('tenants/t').surcharges=[{id:'water',label:'Water',amountMinor:25001,basis:'person',frequency:'month',kind:'water'}];
+ const {normalizeRates}=require('../reference_rates');
+ const rates=normalizeRates([{base:'USD',quote:'VND',rate:25000,date:'2026-10-08'}]);
+ db.store.set(`referenceExchangeRates/${rates.id}`,rates);
+ const preview=(await bill({action:'periodPreview',tenantId:'t',ratesId:rates.id})).record;
+ assert.equal(preview.currency,'USD');assert.equal(preview.surcharges[0].amountMinor,100);
+ const payload=period({inputCurrency:'USD',ratesId:rates.id,surcharges:[{id:'water',amountMinor:100}]});
+ const quote=(await bill({action:'quote',...payload})).record;
+ const line=quote.lines.find(l=>l.type==='surcharge');
+ assert.equal(line.amountMinor,600);assert.equal(line.count,2);
+ assert.deepEqual(line.sourceTerms,{currency:'VND',unitMinor:25001});
+ assert.equal(line.exchangeRateSnapshotId,rates.id);
+ assert.equal(db.store.get('tenants/t').surcharges[0].amountMinor,25001);
 });
 test('a whole period uses the lease price; fees for 3 months; usage behind; late fee and discount lines',async()=>{
  const {bill,defineFee,db}=setup();const {feeId}=await defineFee();

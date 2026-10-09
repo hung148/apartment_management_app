@@ -290,6 +290,17 @@ class TeamService {
   Future<Map<String, dynamic>> tenantContacts(Map<String, dynamic> payload) =>
       _transport('tenantContacts', payload);
 
+  /// Display-only saved tenant list, followed by an authoritative fresh list.
+  /// Deliberately excludes contact edits and private tenant detail requests.
+  Stream<Saved<Map<String, dynamic>>> tenantListLive(
+    Map<String, dynamic> payload,
+  ) {
+    if (payload['action'] != 'list') {
+      throw ArgumentError('Only tenant list reads may use this stream');
+    }
+    return _live('tenantContacts', payload);
+  }
+
   Future<Map<String, dynamic>> tenantLeases(Map<String, dynamic> payload) =>
       _transport('tenantLeases', payload);
 
@@ -336,6 +347,9 @@ class TeamService {
 
   Future<Map<String, dynamic>> propertyContract(Map<String, dynamic> payload) =>
       _transport('propertyContract', payload);
+
+  Future<Map<String, dynamic>> organizationCurrency(Map<String, dynamic> payload) =>
+      _transport('organizationSettings', payload);
 
   Future<Map<String, dynamic>> propertyDetails(Map<String, dynamic> payload) =>
       _transport('propertyDetails', payload);

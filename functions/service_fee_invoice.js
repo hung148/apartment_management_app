@@ -1,5 +1,6 @@
 'use strict';
 const {createHash}=require('node:crypto');
+const {readReferenceRates,convertCalculation}=require('./reference_rates');
 const {propertyDate}=require('./lease_dates');
 const {resolvePeriod,serviceCharge,nextDate}=require('./service_fee_math');
 const hash=v=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
@@ -26,18 +27,21 @@ async function roomPeople({tx,db,organizationId,buildingId,roomId,tenantId,zone}
 }
 
 /** Server-priced service charge for one fee, room, lease and period. */
-async function serviceInvoiceSource({tx,db,organizationId,buildingId,roomId,feeId,tenantId,startDate,endDate,quantityMilli,currency,zone}){
+async function serviceInvoiceSource({tx,db,organizationId,buildingId,roomId,feeId,tenantId,startDate,endDate,quantityMilli,currency,zone,ratesId}){
  const feesRef=db.doc(`serviceFees/${feesId(organizationId,buildingId)}`),feesDoc=await tx.get(feesRef),defs=feesDoc.data();
  const fee=defs?.organizationId===organizationId&&defs.buildingId===buildingId?(defs.fees??[]).find(f=>f.id===feeId):null;
  if(!fee)throw Error('service_fee_not_found');
- if((defs.currency??'VND')!==currency)throw Error('service_currency_mismatch');
+
  if(fee.basis==='quantity'){if(endDate!==nextDate(startDate))throw Error('service_invalid_period');}
  else if(quantityMilli!==null)throw Error('service_invalid_quantity');
  const roomRef=db.doc(`serviceFeeRooms/${roomFeesId(organizationId,roomId)}`),roomDoc=await tx.get(roomRef),room=roomDoc.data();
  const overrides=room?.organizationId===organizationId?room.overrides?.[feeId]??[]:[];
- let terms;try{terms=resolvePeriod(fee,overrides,startDate,endDate);}catch(e){throw e;}
+ let terms;try{terms=resolvePeriod({...fee,currency:defs.currency??'VND'},overrides,startDate,endDate);}catch(e){throw e;}
+ const sourceCurrency=terms.currency??defs.currency??'VND';
+ if(sourceCurrency!==currency&&!ratesId)throw Error('service_currency_mismatch');
  const people=await roomPeople({tx,db,organizationId,buildingId,roomId,tenantId,zone});
- const calculation=serviceCharge({basis:fee.basis,terms,startDate,endDate,people,quantityMilli,currency});
+ const original=serviceCharge({basis:fee.basis,terms,startDate,endDate,people,quantityMilli,currency:sourceCurrency});
+ const calculation=sourceCurrency===currency?original:convertCalculation(original,currency,await readReferenceRates(tx,db,ratesId));
  return {feesRef,feesDoc:defs,roomRef,room,fee,calculation:{...calculation,chargeType:'service',feeId,feeName:fee.name,unitLabel:fee.unitLabel??'',roomId,timeZone:zone}};
 }
 

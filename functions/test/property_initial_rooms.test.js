@@ -4,7 +4,7 @@ const {createPropertyDetailsHandler,validInitialRooms}=require('../property_deta
 const {fakeDb,Ts,CodeError}=require('./fake_firestore');
 const room=(name='101')=>({roomNumber:name,roomType:'Studio',area:25.5,ratesMinor:{roomPrice:125099,nightlyPrice:3500,hourlyPrice:null}});
 const command=()=>({action:'create',organizationId:'org',buildingId:'new',operationId:'op',name:'Building',address:'Address',timeZone:'UTC',currency:'USD',exploitationCostMinor:999999,rooms:[room(),room('102')]});
-function fixture(){const db=fakeDb({'organizations/org':{accessVersion:2},'memberships/owner_org':{organizationId:'org',ownerId:'owner',role:'owner',status:'active',accessVersion:2,buildingScope:'all'}});const api=createPropertyDetailsHandler({db,Timestamp:Ts,HttpsError:CodeError});return {db,run:d=>api({auth:{uid:'owner'},data:d})};}
+function fixture(){const db=fakeDb({'organizations/org':{accessVersion:2,displayCurrency:'USD'},'memberships/owner_org':{organizationId:'org',ownerId:'owner',role:'owner',status:'active',accessVersion:2,buildingScope:'all'}});const api=createPropertyDetailsHandler({db,Timestamp:Ts,HttpsError:CodeError});return {db,run:d=>api({auth:{uid:'owner'},data:d})};}
 test('building cost and multiple rooms commit once with exact cents; retry is idempotent',async()=>{
  const {db,run}=fixture(),d=command();await run(d);await run(d);
  const rooms=[...db.store].filter(([k])=>k.startsWith('rooms/')).map(([,v])=>v);
@@ -42,6 +42,6 @@ test('deterministic room collision refuses all writes and preserves foreign data
  await assert.rejects(run(d),e=>e.code==='already-exists');assert.equal(db.store.size,3);assert.equal(db.store.get(`rooms/${id}`).roomNumber,'Keep');
 });
 test('maximum list is bounded and VND preserves whole amounts',async()=>{
- const {db,run}=fixture();await run({...command(),currency:'VND',rooms:Array.from({length:50},(_,i)=>room(String(i)))});
+ const {db,run}=fixture();db.store.get('organizations/org').displayCurrency='VND';await run({...command(),currency:'VND',rooms:Array.from({length:50},(_,i)=>room(String(i)))});
  const rooms=[...db.store].filter(([k])=>k.startsWith('rooms/'));assert.equal(rooms.length,50);assert.equal(rooms[0][1].roomPrice,125099);
 });

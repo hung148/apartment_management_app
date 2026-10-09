@@ -29,7 +29,7 @@ const KEYS={
  list:['status'],
  report:['operationId','roomId','title','description','blocksRoom'],
  update:['operationId','problemId','revision','title','description','blocksRoom'],
- fix:['operationId','problemId','revision','fixedByName','fixedDate','costMinor','recordExpense','paymentMethod','accountId','note'],
+ fix:['inputCurrency','operationId','problemId','revision','fixedByName','fixedDate','costMinor','recordExpense','paymentMethod','accountId','note'],
  reopen:['operationId','problemId','revision','note'],
  addPhoto:['operationId','problemId','mimeType','dataBase64'],
  photo:['problemId','photoId'],
@@ -59,6 +59,7 @@ function invalidProblemInput(d){
   if(!text(d.title,120)||!optText(d.description,2000)||typeof d.blocksRoom!=='boolean')return 'problem_invalid_text';
  }
  if(d.action==='fix'){
+  if(d.inputCurrency!==undefined&&!['VND','USD'].includes(d.inputCurrency))return 'problem_invalid_cost';
   if(!text(d.fixedByName,120)||!validDate(d.fixedDate)||!optText(d.note,1000))return 'problem_invalid_fix';
   if(d.costMinor!==null&&(!Number.isSafeInteger(d.costMinor)||d.costMinor<0||d.costMinor>MAX))return 'problem_invalid_cost';
   if(typeof d.recordExpense!=='boolean')return 'problem_invalid_fix';
@@ -92,7 +93,7 @@ function createTechnicalProblemsHandler({db,Timestamp,HttpsError,drive=null}){
    const building=await tx.get(db.doc(`buildings/${d.buildingId}`)),b=building.data();
    if(!b||b.organizationId!==d.organizationId)fail('not-found','problem_property_not_found');
    const zone=b.timeZone,now=Timestamp.now(),today=zone?propertyDate(now.toMillis(),zone):null;
-   const currency=b.currency==='USD'?'USD':'VND',scale=currency==='USD'?100:1;
+   const currency=org.data().displayCurrency??(b.currency==='USD'?'USD':'VND'),scale=currency==='USD'?100:1;
 
    if(d.action==='list'){
     const rows=(await tx.get(db.collection('technicalProblems').where('organizationId','==',d.organizationId).where('buildingId','==',d.buildingId))).docs;
@@ -100,7 +101,7 @@ function createTechnicalProblemsHandler({db,Timestamp,HttpsError,drive=null}){
     const records=rows.filter(v=>status==='all'||v.data().status===status).map(v=>{const x=v.data();return {
      id:v.id,revision:revision(v),roomId:x.roomId,roomNumber:x.roomNumber??'',title:x.title,description:x.description??'',status:x.status,blocksRoom:x.blocksRoom===true,
      reportedByName:x.reportedByName??'',reportedLocalDate:x.reportedLocalDate??null,occupant:x.occupant??null,fixedByName:x.fixedByName??null,fixedLocalDate:x.fixedLocalDate??null,
-     costMinor:x.costMinor??null,currency:x.currency??currency,expenseId:x.expenseId??null,note:x.note??'',
+     costMinor:x.costMinor??null,currency:x.currency??(b.currency==='USD'?'USD':'VND'),expenseId:x.expenseId??null,note:x.note??'',
      photos:(x.photos??[]).map(p=>({id:p.id,mimeType:p.mimeType,addedBy:p.addedBy,addedByName:p.addedByName??'',addedLocalDate:p.addedLocalDate??null}))};})
      .sort((a,b2)=>(a.status===b2.status?0:a.status==='open'?-1:1)||String(b2.reportedLocalDate).localeCompare(String(a.reportedLocalDate))||a.id.localeCompare(b2.id)).slice(0,300);
     const rooms=(await tx.get(db.collection('rooms').where('organizationId','==',d.organizationId).where('buildingId','==',d.buildingId))).docs
@@ -113,8 +114,9 @@ function createTechnicalProblemsHandler({db,Timestamp,HttpsError,drive=null}){
    if(d.action==='report'?!canReport:!canManage)fail('permission-denied','problem_access_denied');
    if(d.blocksRoom===true&&!canManage)fail('permission-denied','problem_block_needs_manager');
    const key=hash(['problem',d.organizationId,uid,d.operationId]),op=db.doc(`problemOperations/${key}`),prior=await tx.get(op);
-   const fingerprint=hash(['action','organizationId','buildingId',...KEYS[d.action]].map(k=>d[k]));
+   const fingerprint=hash(['action','organizationId','buildingId',...KEYS[d.action].filter(k=>k!=='inputCurrency'||d.inputCurrency!==undefined)].map(k=>d[k]));
    if(prior.exists){if(prior.data().fingerprint!==fingerprint)fail('failed-precondition','problem_operation_reused');return prior.data().result;}
+   if(d.action==='fix'&&d.costMinor!==null&&(d.inputCurrency??b.currency??'VND')!==currency)fail('failed-precondition','problem_currency_changed');
    if(!today)fail('failed-precondition','lease_property_timezone_required');
 
    // The problem (existing or new) and its room.
@@ -176,7 +178,7 @@ function createTechnicalProblemsHandler({db,Timestamp,HttpsError,drive=null}){
      tx.create(eref.collection('invoiceHistory').doc(key),{organizationId:d.organizationId,actorId:uid,createdAt:now,action:'create',reason:`Sự cố: ${old.title}`.slice(0,1000),before:null,after:{totalMinor:d.costMinor,paidAmount:d.costMinor/scale,status:'paid'},problemId:ref.id});
      tx.update(building.ref,{invoiceRevision:(b.invoiceRevision??0)+1});
     }
-    patch={status:'fixed',fixedByName:d.fixedByName.trim(),fixedLocalDate:d.fixedDate,fixedAt:now,fixedBy:uid,costMinor:d.costMinor,expenseId,note:d.note.trim(),updatedAt:now,updatedBy:uid};
+    patch={status:'fixed',fixedByName:d.fixedByName.trim(),fixedLocalDate:d.fixedDate,fixedAt:now,fixedBy:uid,costMinor:d.costMinor,currency,expenseId,note:d.note.trim(),updatedAt:now,updatedBy:uid};
     tx.update(ref,patch);historyAction='fix';blocks.delete(ref.id);
     result={problemId:ref.id,expenseId,warnings:[]};
    }else{ // reopen

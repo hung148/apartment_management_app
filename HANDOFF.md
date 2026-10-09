@@ -8,16 +8,389 @@ build next, decisions, design notes) and [tool/STAGING.md](tool/STAGING.md).
 
 ## What to do next (read this first)
 
+2026-10-09 release update (supersedes older unfinished notes below):
+- Currency display/input and source-preserving accounting are implemented across
+  buildings/rooms, leases, bookings, payments, invoices, service tariffs, repairs
+  and move-out settlement. New records use selected currency; existing records
+  retain source units; entered cross-currency payments retain originalInput and
+  immutable backend rate snapshot IDs. Service price versions own their currency.
+- Settlement now uses selected currency, preserving original deposit and invoice
+  units. Historical prepaid service/rent credits use original rates and terms.
+  Deposit creation rechecks currency in final transaction. Regression failures
+  reproduced before both fixes; exact retries and authorization remain checked.
+- Rates refresh failure has a translated visible retry banner; missing rates never
+  silently relabel source amounts. Legacy v1 reports/export flows retain their
+  existing original-currency/reporting behavior; not newly live-tested here.
+- Post-merge lockout reproduced: invitation-claim needsVerifiedEmail incorrectly
+  blocked existing owners. AccountEntryService now separates ownership from
+  invitation verification. No server verification/authorization check removed.
+  Translated raw key, removed duplicate entry heading, removed 560px cap and
+  made reload a content-sized action. Targeted entry/translation suite56 passes.
+- Performance: independent policy reads parallelized, request-local org reads
+  deduplicated, tenant list uses encrypted cached projection with fresh authority.
+  Recovery-list/preview no longer enumerate database collections (14 tests pass).
+  Request timings log aggregate guard/handler durations, never payload/identity.
+- Validation: final server398 pass; full Flutter943 pass before last entry fix,
+  entry56 pass after it; full Firestore emulator84 pass plus final currency6 pass.
+  Focused analyzer no errors/warnings (13 existing brace infos). Web build passes.
+  Visual inspection: actual-font currency screenshots EN desktop, VI320 at200%;
+  live VI390 phone currency dialog and converted building form. Automated matrices
+  cover EN/VI phone/landscape/desktop, 100/130/200%, populated roles/forms.
+- Live staging confirmed USD save, dated rates, invoice USD input, existing building
+  amount displayed USD964.39; closed currency returns Account. Restored VND after
+  verification. No financial records created by these UI checks.
+- Backend staging release2026-10-09t01-35-13-577z verified all4functions active,
+  indexesREADY. Hosting currency release and final entry-fix hosting deployed successfully. Production untouched. No paid minimum-instance increase.
+- Performance target NOT universally met: observed browser currency ready833ms,
+  save744ms, invoice navigation904ms, first tenant3121ms/repeat1013ms (automation
+  overhead included; not a Vietnam ISP measurement). Sample server invoices n5
+  median247ms max345ms; settings n6 median253ms max1964ms; readTeam n4 median916ms
+  max1661ms. Cold starts/concurrent guard work still exceed1s. Do not claim all
+  actions under1s. Baseline median431ms p951741ms over96 calls, different workload.
+- Remaining verification limits: no live reproduction on user's exact merged
+  login; fix reproduced locally with unverified owner plus ready merged policy.
+  Legacy exports not converted to a new v2 export flow. Recheck actual Vietnam
+  network and broader populated data latency before any universal speed claim.
+
+
+Move-out mixed currency fix (latest, local/uncommitted):
+- Removed silent invoice/reading currency exclusion. Settlement preview converts
+  balances to lease accounting currency using pinned server ratesId from MoneyForm.
+  Actual invoice state remains in source minor units throughout credit/application
+  arithmetic. Writes divide by each invoice's own currency scale, never lease scale.
+  Settlement applications store sourceAmountMinor/sourceCurrency for cross-currency
+  payments; plan stores snapshot ID; utility/service lines retain source calculations.
+- Partial payments use integer binary search for largest source amount whose
+  converted cost fits the available deposit; never overspends pool. Missing rates
+  fail explicitly with EN/VI message rather than hide a record. Prepaid rent used
+  portion requires original invoice calculation rate ID when currencies differ;
+  current rates convert the resulting source credit into settlement units.
+- Regression failed before fix. Verified mixed full payment and original write
+  units; partial payment + rounding remainder; missing rates; prepaid rent credit
+  and no duplicate billing; cross-currency utility inclusion/source calculation;
+  existing credits/deposit/permissions/date scenarios. Settlement server14 passed.
+  Full server391 passed before final added utility test (then targeted14 passed).
+  Flutter settlement22 passed (automated EN/VI sizes/scales); analyzer no errors or
+  warnings, five brace infos. Emulator mixed settlement writes/exact retry passed.
+  No full current Flutter/emulator rerun or rendered/live visual check this turn.
+- This fixes omitted invoices, not all remaining currency work. Settlement ledger
+  and final invoice still use lease currency; new selected-currency settlement
+  recording/input-original metadata remains to audit. Partial historical prepaid
+  credits without original rate deliberately block (message says review invoice).
+  Audit service converted terms/rounding more broadly, remaining tariff/service,
+  booking creation-time deposit metadata, exports/legacy and latency. No deploy/push.
+
+Repair currency continuation (latest, local/uncommitted):
+- New repair costs use explicit inputCurrency and selected org currency. Form
+  parses entered amount directly into selected minor units; no conversion back
+  to old building currency. Repair record and generated expense share currency.
+  Legacy command fingerprints preserved by omitting absent inputCurrency from
+  fingerprint keys. Exact committed retry remains before stale-currency guard.
+  Legacy cost records missing currency still project building-source currency.
+  Added EN/VI stale-currency message asking to close/reopen form.
+- Regression failed before fix, then server repair suite5 passed; full server388
+  passed (.dart_tool/currency-repair-server.txt). UI new USD12.34 payload regression
+  added to technical_problems_screen_test.dart. Targeted Flutter38/38 passed
+  (repair and photo suites, currency input/retries/permissions/EN-VI layout matrix).
+  Automated layout checks only; no new rendered visual or live deployment checks.
+- Important next blocker: move_out_settlement.js filters invoiceDocs by lease
+  currency (line~119), and utility readings by same currency (line~188). This
+  silently excludes new selected-currency invoices for old leases. Must reconcile
+  source amounts/credits/applications without rewriting originals. Service credit
+  calculations and rent used-vs-charged also assume a single currency. Do not
+  simply remove currency filters: amounts would then be added in incompatible units.
+  No release until fixed. Other remaining scopes below still apply. No deploy/push.
+
+Booking payment continuation (latest, local/uncommitted):
+- Booking command payment/deposit/refund/refundRent now carry inputCurrency,
+  inputAmountMinor and ratesId. Calendar validates conversion using backend
+  snapshots inside final transaction, preserves invoice/booking source balances,
+  and stores originalInput on payment + booking operation. Exact committed retry
+  still checks authorization before returning and survives selected-currency change.
+- Reproduced full-balance rounding defect (500001 VND displayed as USD20.00).
+  Exact source remainder is accepted ONLY for the complete outstanding balance
+  whose forward conversion matches entered input; partial mismatches reject.
+  Audit records roundingAdjustmentMinor in source units. Full refunds covered.
+- Verified 387 server tests (.dart_tool/currency-booking-payments-server.txt);
+  21 booking/workflow/resilience Flutter tests plus added exact input payload test
+  (operational_workflows suite6 passed). Targeted real emulator converted-booking
+  test now also checks payment metadata, source balance and committed retry after
+  selected currency change, passed. Prior full Flutter939/emulator83 were before
+  these latest payment changes. No fresh full Flutter/emulator run or visual review.
+- Remaining: creation-time booking deposit input metadata on edits of historical
+  currency; checkout has server-computed balance rather than typed input. Repair,
+  service/tariff, move-out, exports/legacy, rates-error UX and live performance
+  checks still pending; no deployment/commit/push. Tests additionally exposed
+  initialRecordId list-entry generation handling (calendar onClose entry works);
+  investigate separately, not fixed here.
+
+2026-10-08 booking currency continuation (newest, local/uncommitted):
+- Booking workspace quote/save now accept inputCurrency and pinned ratesId;
+  editing quotes also identify bookingId. New bookings use selected currency,
+  existing bookings retain their stored currency. Convert source room rates with
+  backend snapshots; retain sourceRates (original currency/prices/rate ID) on new
+  bookings. Calendar rechecks selected currency inside the final transaction.
+- New request fingerprints bind the raw workspace request, avoiding recomputed
+  quote/revision/rate differences on exact retries. Current membership, scope,
+  manage/create and deposit collection rights are checked before receipt replay.
+  Legacy operation fingerprints remain supported. Currency changes between quote
+  and commit reject new saves; committed retries still work after currency changes.
+- Actual form now sends currency/rate ID, converts room suggestions into new
+  booking units, and passes booking identity for editing quotes. Preview uses the
+  same selected units. Updated the earlier NEW-booking 500001-VND rounding test
+  for intended behavior: three new USD nights total USD60; source remains500001.
+  Existing-booking exact VND1000002 preservation is retained in server regression.
+- Scenario coverage: new selected currency and original source audit; edit old
+  currency/exact amounts; stale currency/missing snapshot denied; revoked replay
+  denied; staff without override can use only converted standard rate; setting
+  change between transactions; duplicate concurrent saves and edit after setting
+  change in real emulator. New backend regression failed before implementation.
+  Targeted booking Flutter13 passed; server full385 passed
+  (.dart_tool/currency-booking-server.txt). New emulator concurrency test passed
+  after fixing fixture missing guestPhone/notes and obtaining fresh edit quote.
+  First full emulator82/83 (only fixture failure); final full rerun83/83 passed
+  .dart_tool/currency-booking-emulator-final.txt. Full Flutter939/939 passed
+  .dart_tool/currency-full-booking.txt. Analyzer on booking workspace/preview has
+  no errors or warnings, nine brace-style infos. No layout changes/rendered screenshots.
+- Still remaining: booking payment/deposit/refund original INPUT metadata (amounts
+  currently converted back to booking source correctly but original entered units
+  not separately retained), repair/service/tariff new-record currency audit,
+  move-out mixed-currency sources, legacy/report/export audit, missing-rate UX,
+  final live latency check and complete feature staging deployment/commit/push.
+  No deploy or push in this continuation. Production untouched.
+
+2026-10-08 payment currency continuation (newest; still local/uncommitted):
+- Standalone collection/refund commands now include original entered currency,
+  input minor units and pinned server rate snapshot ID. Server validates conversion
+  before updating the invoice in its original currency; stores originalInput on
+  paymentOperations and v2 invoiceHistory. Legacy payload fingerprints retained.
+  Prior committed retries return before changed-currency checks, after authorization.
+- Form journals preserve original input text/currency when reopening uncertain
+  payments, even after organization currency/rate changes. Reproduced a second
+  bug: rejected restored USD input was relabeled VND without changing the number.
+  Retained failing regression, then fixed: keep original label, lock entry and
+  explain in EN/VI to go back/reopen with current settings after definitive rejection.
+- Verified scenarios: valid conversion preserves source invoice; forged amounts,
+  missing rates and changed currency rejected; refund source metadata; revoked
+  retry denied; exact lost-response retries; rejected retries never relabel;
+  storage failure sends nothing; refund reason/cents; populated/uncertain widget
+  layouts EN/VI, sizes/scales/themes (automated, no new rendered visual inspection).
+  All 380 server tests passed (.dart_tool/currency-payment-server.txt), all nine
+  payment Flutter tests passed (payment_currency, payment_action_form,
+  payment_command_service). Full current Flutter/emulator reruns remain outstanding.
+- Prior approval-service usage limit no longer blocks: test escalation succeeded
+  on this continuation. No staging deploy, commit or push yet. Production untouched.
+- Next: booking new-record currency integration remains unchanged/incomplete.
+  Actual v2 UI is lib/screens/team/booking_workspace_screen.dart (not legacy
+  booking_form_dialog.dart). Backend booking_workspace.js quotes/saves in room
+  source; calendar.js stamps new records with room currency. Must carry trusted
+  quote currency, pinned snapshot and original request identity through both
+  transactions without breaking retries after settings changes. Existing booking
+  edits must retain original currency, and quotes need booking identity for this.
+  Other remaining scope in billing entry below still applies.
+
+2026-10-08 billing continuation (newer than entries below; still uncommitted):
+- New lease creation now uses org.displayCurrency when set, legacy fallback room
+  currency. Prepare returns source roomRent with its own currency and null old-style
+  monthlyRentMinor when mismatched, avoiding old clients relabeling the price.
+  UI converts only the suggestion, then saves new lease amounts in selected units.
+  Retained regression failed before fix; USD rent/deposit/roommate/surcharge tests
+  pass and exact committed retries survive a later currency change.
+- Added functions/reference_rates.js and readRates organizationSettings action.
+  Backend fetches Frankfurter USD/VND, validates immutable hash-addressed snapshots
+  in referenceExchangeRates, caches latest for 6h, checks membership before and after
+  provider call. Local fetch coalescing fixed after emulator reproduced duplicate
+  concurrent fetch. Direct clients cannot read/write snapshots/cache (emulator).
+  Client OrganizationMoney now reads server snapshots, retains ID through offline
+  cache and pinned forms; old list cache is still readable. Dependency-injected
+  exchange providers remain supported in tests. No new deployment endpoint.
+- New invoices use selected currency with explicit inputCurrency guard; old clients
+  with different source currency must reload. Original tenant/building terms stay
+  unchanged. Billing reads persisted ratesId (never client rate values), converts
+  service/utility/rent calculations, retains sourceCalculation/rate IDs, and pins
+  rates across quote/create/retry. Period preview exposes readings with source
+  currency and converts rent/surcharge suggestions. Forms send inputCurrency/ratesId.
+  Converted period rent line now retains source calculation as well as service/usage.
+- Verified 375 server unit tests (.dart_tool/currency-billing-current-server.txt);
+  latest server suite now 377/377 after rent/surcharge audit metadata and rounding
+  reconciliation tests. Period suite 13/13 passed. Targeted Flutter 48 passed
+  (.dart_tool/currency-billing-current-flutter.txt), plus new pinned period form
+  regression passed separately (added after that suite started). Earlier lease
+  matrix 26 passed; rate/billing targeted 50; workflow/currency dialog 28.
+- Fresh full emulator run .dart_tool/currency-billing-current-emulator.txt: 81/82
+  passed, including currency/rate snapshot security. Concurrent lookup test got 11
+  successes instead of expected 12. Retained assertion; added rejection-code text
+  for diagnosis. Targeted diagnostic .dart_tool/currency-lookup-emulator.txt,
+  targeted diagnostic passed unchanged (1/1); original intermittent cause remains
+  unconfirmed, so do not report the full emulator suite as all-green.
+  emulators:exec reported shutdown but Java retained
+  demo port 8092, so diagnostic uses FIRESTORE_EMULATOR_HOST directly.
+  Analyzer .dart_tool/currency-billing-analyze.txt: no errors; pre-existing redundant
+  p!=null warning in period_invoice_form (confirmed in HEAD), ten brace style infos.
+  No new screenshots/live deployment in this continuation.
+- Remaining: booking creation/edit currency integration (still room source), payment
+  action original-currency metadata, new repair/service/tariff currency audit,
+  move-out settlement cross-currency sources, legacy/report/export inventory, useful
+  rate-unavailable user messages and retry, final complete suites/visual/live check,
+  staging deploy and commit/push. Do not deploy incomplete currency feature.
+  Production untouched; no measured live performance improvement yet.
+
+2026-10-08 latest verification and context/performance fixes (still local):
+- Reproduced reused OrgShell retaining the previous organization's display currency.
+  It now activates/reloads currency when organization/service changes; title reads
+  are generation-guarded so an old organization cannot replace the current title.
+  Retained regression failed USD vs VND before fix; shell and currency-state tests
+  passed 6/6. This is lifecycle behavior; no layout changes were made.
+- Reproduced three organization-document reads in one accountPolicy check for
+  membership + binding + invitation. Reuse transaction-local snapshots (including
+  creator-query results), never cross-request authorization caching. Regression
+  verifies one read and fresh merged-organization state on the next call. All 36
+  targeted account-policy/request-security tests passed.
+- Full Flutter suite now clean: 934/934 passed, .dart_tool/currency-full-oct8.txt.
+  Full server unit suite 367/367 passed, .dart_tool/currency-server-oct8.txt.
+  Analyzer on shell/new regression: no errors/warnings, one style info.
+- Emulator startup found existing Java PID 20988 on 127.0.0.1:8092, confirmed
+  demo-apartment-calendar with this repository's rules. Reused it directly with
+  FIRESTORE_EMULATOR_HOST; 81/81 integration tests passed, including concurrent
+  currency edits, scoped permissions, exact retries, ownership, and request limits.
+  Result: .dart_tool/currency-emulator-oct8.txt. Existing emulator left running.
+- Audit confirms new lease/booking/invoice currencies still derive from their
+  room/tenant; utility/service billing rejects mismatched currencies. Simply
+  relabeling new records would break ledger arithmetic. This remaining integration
+  is NOT complete. Legacy report exports belong to _LegacyOrganizationScreen;
+  v2 OrganizationScreen routes to OrgShell. No deploy/commit/push yet.
+
+
+Latest currency continuation (2026-10-08, still local/uncommitted):
+- Reproduced bulk-room old-client ambiguity after changing display currency.
+  Reject uncommitted mismatched/ambiguous room amounts; exact committed retries
+  remain valid. Eight bulk-room/organization currency server tests pass.
+- Reproduced currency/report state remaining after permission denial. Loading
+  currency now clears that organization's rates and report preferences on access
+  errors; transient offline failure still preserves dated in-memory rates.
+  Fifteen currency state/conversion/exchange-rate tests pass.
+- Reproduced converted booking custom-night rounding loss: 500001 VND per night
+  became 1500000 for three nights. Both toggling custom nights and adding nights
+  now use MoneyForm original minor values instead of copying rounded text.
+  Full booking_form_test.dart 13/13 passed (.dart_tool/currency-booking-regression.txt).
+  Targeted analyzer: no errors/warnings, four existing brace-style info items.
+  git diff --check passes. No new visual changes in this continuation.
+- Remaining scope below is unchanged; this is not a finished currency release.
+
+2026-10-08 continuation — latency investigation and currency, still local:
+User reports almost every data action and every new page slow in Vietnam.
+Firebase CLI login was refreshed by user successfully. Read-only staging cloud
+inspection confirms Firestore and callable region asia-southeast1. Last 24h sample
+192 app requests excluding 89 OPTIONS: median 406ms, p95 1601ms, max 3497ms.
+App deployment: 512Mi, 1 CPU, minInstances 0, maxInstances 2, concurrency 80.
+This is server latency only, not Vietnam browser/network timing. No definitive
+network/ISP diagnosis or post-deploy improvement measurement yet.
+Found repeated serial policy reads and per-request shared limiter transactions.
+Parallelized independent accountPolicy reads within existing transactions and
+independent guard reads, retaining every authorization check. Added aggregate-only
+request phase logs (guard/handler/total, known function name/outcome; no payload,
+identity, or error text). tool/request_phase_times.cjs reads those after deployment;
+function_times.cjs now excludes OPTIONS and shows p95/regions/instance config.
+No paid warm instances or security relaxation; minInstances stays 0.
+Tenant list previously bypassed device cache. Now tenantListLive shows encrypted
+saved list while refreshing, marks it saved, keeps actions locked until fresh,
+replaces saved rows, and clears visible/cache data after denial. Regression failed
+before fix. First entry/unremembered device still waits; other pages need audit.
+Verification: 365 server unit tests pass; Firestore emulator team suite 81/81 pass
+(.dart_tool/performance-emulator-tests.txt). Tenant existing suite 5 pass; cache+
+currency state targeted run 21/21 pass (.dart_tool/currency-navigation-targeted.txt).
+Currency: selected currency retained before rates load; missing rates keep explicit
+original units, offline refresh retains in-memory rate snapshot. Shared loading and
+failure state added. Currency dialog rate date and refresh control added; 20 layout/
+behavior tests pass (.dart_tool/currency-status-layout-tests.txt), actual-font VI320
+200% screenshot inspected: controls separated, scroll works, Close reachable.
+Full currency feature remains incomplete: new-record/ledger currency consistency,
+legacy reports/forms, remaining offline UX and comprehensive final verification.
+No commit/push/deploy this continuation; do not imply measured live speed gains.
 
 Account currency and time-zone follow-up (Tom, 2026-10-07, IN PROGRESS):
 Direct bulk-entry fix was committed/pushed as 2dfb636 before this work.
-Currency implementation is pending the user's async choice: shared owner-controlled
-organization currency preserving saved financial records (recommended), or personal
-currency display with exchange-rate conversion. Do not relabel historical amounts.
-Current currency is stored on buildings/rooms and copied to bookings/tenants/payments;
-propertyDetails prepareCreate defaults to VND, create accepts VND/USD. Account actions
-live in dashboard_settings_dialogs.dart and account_workspace_dialog.dart. No currency
-code/data has changed yet. Finish the agreed semantics before the combined staging release.
+Currency follow-up now IN PROGRESS, NOT DEPLOYED OR COMMITTED: user approved a
+separate changeOrganizationCurrency permission, owner automatically granted,
+assignable through custom roles, no default grant to administrator/manager/staff.
+Implemented shared currency Account dialog plus read-only access for active staff,
+server auth/revision/idempotency/audit checks, and inherited new-building currency
+with per-building create dropdown removed. Existing saved amounts stay unchanged.
+
+LATEST STEERING CONFIRMED: user wants ALL displayed money automatically converted
+from original stored amounts to current app currency; stored amounts/currencies
+remain original. Inputs ALSO follow app currency, convert edited values back on save,
+retain exact originals when untouched, pin rate for an open form. Display-only setting
+must use displayCurrency (separate from record currency). Latest user approval:
+NEW records use the selected app currency at creation; existing records keep their
+original currency and edits convert back to it. Do not blanket-change invoice/payment
+currency without preserving related ledger arithmetic. Default-only implementation
+is superseded and must not deploy. Continue the full inventory of displays, inputs,
+reports and exports; legacy missing record currency remains VND. Existing
+ExchangeRateService/ReportingMoney already provides dated reference rates from
+Frankfurter and non-mutating Payment projection; reuse rather than adding a provider.
+No data conversion/migration is authorized or needed.
+
+Continuation 2026-10-07 (still NOT deployed/committed):
+- Shared exact minor-unit conversion, pinned form snapshots, and unchanged-value
+  preservation are implemented locally. Existing forms adapted include room rates,
+  property costs/contracts, payment actions, tenant rent/lease, booking workspace,
+  invoice, utility tariffs, repair costs and service fees.
+- This continuation added room service-fee overrides, lease surcharge/water editors,
+  period-invoice surcharges/manual lines, move-out manual amounts, and the
+  tenant-page scheduled-rent dialog. Percentages,
+  counts, readings and dates are not converted. Original server currency is retained.
+- Reproduced and fixed stale ReportingMoney after selecting currency; sign-out now
+  clears report preferences. A late rate load cannot undo a selection or sign-out.
+  Reproduced mutable reference snapshots; provider maps are now defensively copied.
+- Verification includes exact unchanged originals with identical rounded display,
+  edited USD input to original VND, pinned room-fee rate through setting/rate change,
+  invoice converted surcharge input, late completion after sign-out/selection.
+  Combined targeted run: .dart_tool/currency-followup-tests.txt passed 104/104.
+  Full Flutter run .dart_tool/currency-full-flutter-current.txt finished 925 pass,
+  one failure in the new converted scheduled-rent test added during the run.
+  Fresh tenant_rent_test.dart invocation passed all 5, including that test. The
+  running compiler appears to have used earlier lease_actions source with the
+  newly added test. Do not call the broad run an all-green full-suite pass.
+  Final git diff --check passed. Server run: .dart_tool/currency-server-current.txt.
+  Earlier focused runs: 31 money/service-fee tests and 16 lease/water tests passed;
+  8 asynchronous/invoice-surcharge tests passed. Period/settlement run had only an
+  incorrect new expectation for comma formatting, corrected and retested.
+- No fresh visual screenshot inspection or live deployment in this continuation.
+  Existing EN/VI service-fee/invoice/settlement widget layout matrices ran; these
+  do not establish visual correctness of all converted states.
+Remaining before delivery: currency/rate loading and offline/error UX; audit all
+legacy forms, reports/exports and duplicated labels; new booking/lease/payment
+creation currency and related ledger consistency; all touched field readers/writers;
+full Flutter/server/emulator suites, actual-font converted UI visual review, final
+staging build/deploy/live verification, and commit/push. Do not claim the feature
+finished or deploy this partial implementation. Production data remains untouched.
+Review matrix: owner/custom grant/default staff/suspended/revoked/foreign org;
+legacy missing currency; old vs newly created money records; exact unchanged/edit/
+clear/negative/refund/percent/rounding/limits; missing/stale rates, offline cache,
+load failure/retry, switching organization, sign-out, concurrent setting changes,
+late completion, lost write response/exact retry; EN/VI phone/landscape/desktop
+100/130/200 text, both themes, clear units and reachable actions. Only scenarios
+explicitly covered above or by earlier recorded tests are verified.
+
+Current local verification: server unit suite 361/361 passed; currency and Account
+UI targeted suite 150/150 passed. Actual-font VI320/200 and EN1440 renders inspected
+in .dart_tool/currency-layout, with 16+ pixel separation between Save and Reload.
+Full Flutter and team emulator suites were started; check logs
+.dart_tool/currency-full-flutter.txt and .dart_tool/currency-emulator-tests.txt.
+First emulator run had two expected fixture failures: property creation tests sent
+USD while org default was VND. Fixtures now explicitly set organization USD; rerun
+those two after the running suite completes. Emulator is Java on port 8092; direct
+FIRESTORE_EMULATOR_HOST execution from functions works. emulators:exec left it
+running after shutdown, so do not start another against that port.
+
+Review matrix for the permission/default work: owner/custom grant vs default roles,
+active/suspended/revoked/foreign/legacy/closed organization; read-only UI, loading,
+error/reload, stale revisions, lost response/exact retry, changed retry, concurrent
+writers, context changes, server recheck after revocation; shared default vs retained
+building/room/payment amounts, old client mismatches; EN/VI phone/landscape/desktop
+100/130/200 text, reachable dialog close, action spacing. Server legacy v1 is denied;
+UI Account currency entry exists only for v2. No production or staging data changed.
 
 Time-zone chooser implemented locally: arrow in existing create/edit building field
 opens a searchable list of 420 IANA identifiers, includes the current value/alias,

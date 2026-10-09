@@ -1,5 +1,6 @@
 'use strict';
 const {createHash}=require('node:crypto');
+const {readReferenceRates,convertCalculation,convertMinor}=require('./reference_rates');
 const {utilityInvoiceSource}=require('./utility_invoice');
 const {serviceInvoiceSource,markBilled,markBilledAll,feesId,roomFeesId}=require('./service_fee_invoice');
 const {validatePeriodInput,periodInvoiceSource,periodConflict,addMonths,leasePeople,surchargeBilled}=require('./period_invoice');
@@ -17,8 +18,10 @@ const feeKeys=['internetFee','cableTVFee','hotWaterFee','lateFee','taxAmount'];
 function createInvoiceHandler({db,Timestamp,HttpsError}){
  const fail=(code,key='invoice_'+code)=>{throw new HttpsError(code,key);};
  return async request=>{
-  const d=request.data||{},uid=request.auth?.uid,write=['create','edit','void','payExpense','reverseExpense'].includes(d.action);
+  const {ratesId,inputCurrency,...d}=request.data||{},uid=request.auth?.uid,write=['create','edit','void','payExpense','reverseExpense'].includes(d.action);
   if(!uid)fail('unauthenticated');
+  if(inputCurrency!==undefined&&(!['quote','create'].includes(d.action)||!['VND','USD'].includes(inputCurrency)))fail('invalid-argument');
+  if(ratesId!==undefined&&(!['quote','create','periodPreview'].includes(d.action)||typeof ratesId!=='string'||! /^[a-f0-9]{64}$/.test(ratesId)))fail('invalid-argument');
   const keys=['action','organizationId','buildingId',...(['read','history','edit','void','payExpense','reverseExpense'].includes(d.action)?['invoiceId']:[]),...(['list','history'].includes(d.action)?['cursor']:[]),...(['quote','create'].includes(d.action)?['kind','tenantId','startDate','endDate','dueDate','feesMinor','reason',...(d.kind==='charge'?['chargeType','unitPriceMinor','quantityMilli']:d.kind==='utility'?['chargeType','roomId','readingId']:d.kind==='service'?['feeId','roomId','quantityMilli']:d.kind==='period'?['includeRent','serviceFeeIds','readings','lines','surcharges']:[])]:[]),...(d.action==='periodPreview'?['tenantId']:[]),...(write?['operationId']:[]),...(['edit','void','payExpense','reverseExpense'].includes(d.action)?['revision','reason']:[]),...(d.action==='create'?['quoteRevision']:[]),...(d.action==='edit'?['feesMinor','dueDate']:[]),...(['payExpense','reverseExpense'].includes(d.action)?['amountMinor','paymentMethod']:[])];
   if(!['list','read','history','quote','create','edit','void','payExpense','reverseExpense','tenants','periodPreview'].includes(d.action)||!id(d.organizationId)||!id(d.buildingId)||Object.keys(d).some(k=>!keys.includes(k))||(keys.includes('invoiceId')&&!id(d.invoiceId))||(d.cursor!=null&&!id(d.cursor))||(write&&!id(d.operationId)))fail('invalid-argument');
   if(d.action==='periodPreview'&&!id(d.tenantId))fail('invalid-argument');
@@ -40,7 +43,7 @@ function createInvoiceHandler({db,Timestamp,HttpsError}){
    if(d.action==='reverseExpense'&&!allows(m,'refundPayments',scope))fail('permission-denied');
    const building=await tx.get(db.doc(`buildings/${d.buildingId}`)),b=building.data();if(!b||b.organizationId!==d.organizationId)fail('not-found');
    const zone=b.timeZone,now=Timestamp.now(),today=propertyDate(now.toMillis(),zone);if(!validZone(zone)||!today)fail('failed-precondition','lease_property_timezone_required');
-   const key=write?hash(['invoice',d.organizationId,uid,d.operationId]):null,op=write?db.doc(`invoiceOperations/${key}`):null,prior=write?await tx.get(op):null,fingerprint=hash(keys.map(k=>d[k]));
+   const key=write?hash(['invoice',d.organizationId,uid,d.operationId]):null,op=write?db.doc(`invoiceOperations/${key}`):null,prior=write?await tx.get(op):null,fingerprint=hash([...keys.map(k=>d[k]),...(ratesId===undefined?[]:[ratesId]),...(inputCurrency===undefined?[]:[inputCurrency])]);
    if(prior?.exists){if(prior.data().fingerprint!==fingerprint)fail('failed-precondition');return prior.data().result;}
    const projection=doc=>{const x=doc.data();return {id:doc.id,revision:revision(doc),kind:x.invoiceKind??null,direction:x.direction??'income',tenantId:x.tenantId??null,tenantName:x.tenantName??'',currency:x.currency,status:x.status,amountMinor:x.amountMinor??null,totalMinor:x.totalMinor??null,paidMinor:Math.round(x.paidAmount*(x.currency==='USD'?100:1)),startDate:x.billingStartLocalDate??null,endDate:x.billingEndLocalDate??null,dueDate:x.dueLocalDate??null,feesMinor:x.feesMinor??null,calculation:x.calculation??null,notes:x.description??'',roomId:x.roomId??null,overdue:['pending','partial','overdue'].includes(x.status)&&x.direction!=='expense'&&typeof x.dueLocalDate==='string'&&x.dueLocalDate<today,canEdit:x.invoiceVersion===2&&x.invoiceKind!=='repair'&&allows(m,'overridePrices',scope),canSettle:x.direction==='expense'&&allows(m,'collectPayments',scope),canReverse:x.direction==='expense'&&allows(m,'refundPayments',scope)};};
    if(d.action==='list'){
@@ -50,7 +53,7 @@ function createInvoiceHandler({db,Timestamp,HttpsError}){
     const rows=await tx.get(db.collection('tenants').where('organizationId','==',d.organizationId).where('buildingId','==',d.buildingId));
     const past=await tx.get(db.collection('leaseOccupancy').where('buildingId','==',d.buildingId));const known=new Map(rows.docs.map(v=>[v.id,v]));
     for(const h of past.docs){if(h.data().organizationId!==d.organizationId||known.has(h.data().tenantId))continue;const tenant=await tx.get(db.doc(`tenants/${h.data().tenantId}`));if(tenant.exists&&tenant.data().organizationId===d.organizationId)known.set(tenant.id,tenant);}
-    return {records:[...known.values()].filter(v=>v.data().isMainTenant===true).map(v=>({id:v.id,fullName:v.data().fullName??'',roomId:v.data().roomId,currency:v.data().currency??'VND'})),today,timeZone:zone,currency:b.currency??'VND'};
+    return {records:[...known.values()].filter(v=>v.data().isMainTenant===true).map(v=>({id:v.id,fullName:v.data().fullName??'',roomId:v.data().roomId,currency:org.data().displayCurrency??v.data().currency??'VND'})),today,timeZone:zone,currency:org.data().displayCurrency??b.currency??'VND'};
    }
    const datePolicy=date=>{if(date<today&&!allows(m,'backdateRecords',{organizationId:d.organizationId,userId:uid}))fail('permission-denied','invoice_backdate_owner_required');};
    let ref,snapshot,old,patch,result,utilitySource,serviceSource,periodSource;
@@ -90,36 +93,42 @@ function createInvoiceHandler({db,Timestamp,HttpsError}){
       // 2026-10-04 (Tom): the latest electricity reading of the lease, billed or
       // not, so the form can say why there is no electricity line.
       if(kind==='electricity'&&r.organizationId===d.organizationId&&!r.reversedAt&&typeof r.date==='string'&&intervals.some(i=>i.roomId===roomId&&i.startDate<=r.date&&(!i.endDate||i.endDate>=r.date))&&(!lastElectricity||r.date>lastElectricity.date))lastElectricity={date:r.date,status:r.invoiceId?'invoiced':r.calculation&&r.calculation.amountMinor>0?'unbilled':'noCharge'};
-      if(r.organizationId!==d.organizationId||r.reversedAt||r.invoiceId||!r.calculation||!(r.calculation.amountMinor>0)||r.calculation.currency!==(t.currency??'VND'))continue;if(!intervals.some(i=>i.roomId===roomId&&i.startDate<=r.startDate&&(!i.endDate||i.endDate>=r.date)))continue;readings.push({roomId,kind,readingId:v.id,startDate:r.startDate,date:r.date,usageMilli:r.calculation.usageMilli,amountMinor:r.calculation.amountMinor});}
+      if(r.organizationId!==d.organizationId||r.reversedAt||r.invoiceId||!r.calculation||!(r.calculation.amountMinor>0))continue;if(!intervals.some(i=>i.roomId===roomId&&i.startDate<=r.startDate&&(!i.endDate||i.endDate>=r.date)))continue;readings.push({roomId,kind,readingId:v.id,startDate:r.startDate,date:r.date,usageMilli:r.calculation.usageMilli,amountMinor:r.calculation.amountMinor,currency:r.calculation.currency});}
     }
     readings.sort((a,b)=>a.date.localeCompare(b.date)||a.kind.localeCompare(b.kind));
     // 2026-10-04: the lease's surcharges, with what this period would charge.
     const defsHere=Array.isArray(t.surcharges)?t.surcharges.filter(x=>x&&id(x.id)):[];
     const people=defsHere.some(x=>x.basis==='person')&&!finished&&room?await leasePeople({tx,db,organizationId:d.organizationId,buildingId:d.buildingId,roomId:room,tenantId:d.tenantId,startDate,endDate,zone}):1;
-    const surcharges=defsHere.map(x=>({id:x.id,label:x.label,amountMinor:x.amountMinor,basis:x.basis,frequency:x.frequency,...(x.kind?{kind:x.kind}:{}),count:x.basis==='person'?people:1,billed:x.frequency==='once'&&existing.docs.some(v=>surchargeBilled(v.data(),{tenantId:d.tenantId,surchargeId:x.id,frequency:'once'}))}));
-    return {record:{tenantName:t.fullName??'',currency:t.currency??'VND',roomId:room,today,periodMonths:t.paymentPeriodMonths??1,dueDay:t.paymentDueDay??null,periodRentMinor:t.periodRentMinor??null,monthlyRentMinor:rentForDate(t,startDate),finished,suggestion:finished?null:{startDate,endDate,dueDate},fees,readings,lastElectricity,surcharges,canPrice:allows(m,'overridePrices',scope),canBackdate:allows(m,'backdateRecords',{organizationId:d.organizationId,userId:uid})}};
+    const viewCurrency=org.data().displayCurrency??t.currency??'VND',sourceCurrency=t.currency??'VND';
+    let rateSnapshot=null;
+    if(viewCurrency!==sourceCurrency){try{rateSnapshot=await readReferenceRates(tx,db,ratesId);}catch(e){fail('failed-precondition',e.message);}}
+    const viewMinor=value=>Number.isSafeInteger(value)&&rateSnapshot?convertMinor(value,sourceCurrency,viewCurrency,rateSnapshot):value;
+    const surcharges=defsHere.map(x=>({id:x.id,label:x.label,amountMinor:viewMinor(x.amountMinor),basis:x.basis,frequency:x.frequency,...(x.kind?{kind:x.kind}:{}),count:x.basis==='person'?people:1,billed:x.frequency==='once'&&existing.docs.some(v=>surchargeBilled(v.data(),{tenantId:d.tenantId,surchargeId:x.id,frequency:'once'}))}));
+    return {record:{tenantName:t.fullName??'',currency:viewCurrency,roomId:room,today,periodMonths:t.paymentPeriodMonths??1,dueDay:t.paymentDueDay??null,periodRentMinor:viewMinor(t.periodRentMinor??null),monthlyRentMinor:viewMinor(rentForDate(t,startDate)),finished,suggestion:finished?null:{startDate,endDate,dueDate},fees,readings,lastElectricity,surcharges,canPrice:allows(m,'overridePrices',scope),canBackdate:allows(m,'backdateRecords',{organizationId:d.organizationId,userId:uid})}};
    }
    if(['quote','create'].includes(d.action)){
     datePolicy(d.startDate);datePolicy(d.dueDate);
     if(feeKeys.some(k=>d.feesMinor[k]>0)&&!allows(m,'overridePrices',scope))fail('permission-denied');
     let calculation,currency,roomId='',tenantName='',sourceRevision,direction='income',contractSnapshot=null;
+    const selectCurrency=source=>{const selected=org.data().displayCurrency??source;if((inputCurrency??source)!==selected)fail('aborted');return selected;};
     if(['tenantRent','charge','utility','service','period'].includes(d.kind)){
      const tenant=await tx.get(db.doc(`tenants/${d.tenantId}`)),t=tenant.data();if(!t||t.organizationId!==d.organizationId||t.isMainTenant!==true)fail('not-found');
+     currency=selectCurrency(t.currency??'VND');
      const history=await tx.get(db.collection('leaseOccupancy').where('tenantId','==',d.tenantId));
      const intervals=history.docs.filter(v=>v.data().organizationId===d.organizationId&&v.data().buildingId===d.buildingId).map(v=>({roomId:v.data().roomId,startDate:propertyDate(v.data().start.toMillis(),zone),endDate:propertyDate(v.data().end.toMillis(),zone)}));
      if(t.buildingId===d.buildingId)intervals.push({roomId:t.roomId,startDate:propertyDate((t.occupancyStartDate??t.moveInDate).toMillis(),zone),endDate:t.moveOutDate?propertyDate(t.moveOutDate.toMillis(),zone):null});
      if(!intervals.length)fail('not-found');
      if(d.kind==='utility'){
-      try{utilitySource=await utilityInvoiceSource({tx,db,organizationId:d.organizationId,buildingId:d.buildingId,roomId:d.roomId,kind:d.chargeType,readingId:d.readingId,startDate:d.startDate,endDate:d.endDate,currency:t.currency??'VND',intervals});}catch(e){fail('failed-precondition',e.message);}
+      try{utilitySource=await utilityInvoiceSource({tx,db,organizationId:d.organizationId,buildingId:d.buildingId,roomId:d.roomId,kind:d.chargeType,readingId:d.readingId,startDate:d.startDate,endDate:d.endDate,ratesId,currency,intervals});}catch(e){fail('failed-precondition',e.message);}
       calculation={...utilitySource.calculation,timeZone:zone};
      }else if(d.kind==='service'){
-      try{serviceSource=await serviceInvoiceSource({tx,db,organizationId:d.organizationId,buildingId:d.buildingId,roomId:d.roomId,feeId:d.feeId,tenantId:d.tenantId,startDate:d.startDate,endDate:d.endDate,quantityMilli:d.quantityMilli,currency:t.currency??'VND',zone});}catch(e){fail('failed-precondition',e.message);}
+      try{serviceSource=await serviceInvoiceSource({tx,db,organizationId:d.organizationId,buildingId:d.buildingId,roomId:d.roomId,feeId:d.feeId,tenantId:d.tenantId,startDate:d.startDate,endDate:d.endDate,quantityMilli:d.quantityMilli,ratesId,currency,zone});}catch(e){fail('failed-precondition',e.message);}
       calculation=serviceSource.calculation;
      }else if(d.kind==='period'){
       // Manual lines (discounts, late fees, other) change the price.
       if(d.lines.length&&!allows(m,'overridePrices',scope))fail('permission-denied','period_lines_need_price_authority');
       const leaseRoom=t.buildingId===d.buildingId?t.roomId:history.docs.find(v=>v.data().buildingId===d.buildingId)?.data().roomId??'';
-      try{periodSource=await periodInvoiceSource({tx,db,d,tenant:t,intervals,roomId:leaseRoom,currency:t.currency??'VND',zone});}catch(e){fail('failed-precondition',e.message);}
+      try{periodSource=await periodInvoiceSource({tx,db,d:{...d,ratesId},tenant:t,intervals,roomId:leaseRoom,ratesId,currency,zone});}catch(e){fail('failed-precondition',e.message);}
       // A surcharge priced differently from the lease is a price change too.
       if(periodSource.surchargeChanged&&!allows(m,'overridePrices',scope))fail('permission-denied','period_lines_need_price_authority');
       calculation=periodSource.calculation;
@@ -128,10 +137,12 @@ function createInvoiceHandler({db,Timestamp,HttpsError}){
       const amountMinor=Number((BigInt(d.unitPriceMinor)*BigInt(d.quantityMilli)+500n)/1000n);if(!Number.isSafeInteger(amountMinor)||amountMinor<=0||amountMinor>1e12)fail('invalid-argument');
       calculation={amountMinor,days:0,lines:[],timeZone:zone,startDate:d.startDate,endDate:d.endDate,chargeType:d.chargeType,unitPriceMinor:d.unitPriceMinor,quantityMilli:d.quantityMilli};
      }else{try{calculation=proratedRent({tenant:t,startDate:d.startDate,endDate:d.endDate,intervals,timeZone:zone});}catch(e){fail('failed-precondition',e.message);}}
-     currency=t.currency??'VND';tenantName=t.fullName??'';roomId=['utility','service'].includes(d.kind)?d.roomId:t.buildingId===d.buildingId?t.roomId:history.docs.find(v=>v.data().buildingId===d.buildingId)?.data().roomId??'';sourceRevision=revision(tenant);
+     if(['tenantRent'].includes(d.kind)&&currency!==(t.currency??'VND')){try{calculation=convertCalculation({...calculation,currency:t.currency??'VND'},currency,await readReferenceRates(tx,db,ratesId));}catch(e){fail('failed-precondition',e.message);}}
+     tenantName=t.fullName??'';roomId=['utility','service'].includes(d.kind)?d.roomId:t.buildingId===d.buildingId?t.roomId:history.docs.find(v=>v.data().buildingId===d.buildingId)?.data().roomId??'';sourceRevision=revision(tenant);
     }else{
-     const c=b.rentalContract;if(!validContract(c))fail('failed-precondition','invoice_contract_required');contractSnapshot=c;currency=b.currency??'VND';direction=c.direction==='rentIn'?'expense':'income';tenantName=c.partyName;
-     try{calculation=proratedRent({tenant:{currency,monthlyRentMinor:c.amountMinor},startDate:d.startDate,endDate:d.endDate,intervals:[{startDate:c.startDate,endDate:c.endDate?nextDate(c.endDate):null}],timeZone:zone});}catch(e){fail('failed-precondition',e.message);}
+     const c=b.rentalContract;if(!validContract(c))fail('failed-precondition','invoice_contract_required');contractSnapshot=c;const sourceCurrency=b.currency??'VND';currency=selectCurrency(sourceCurrency);direction=c.direction==='rentIn'?'expense':'income';tenantName=c.partyName;
+     try{calculation=proratedRent({tenant:{currency:sourceCurrency,monthlyRentMinor:c.amountMinor},startDate:d.startDate,endDate:d.endDate,intervals:[{startDate:c.startDate,endDate:c.endDate?nextDate(c.endDate):null}],timeZone:zone});}catch(e){fail('failed-precondition',e.message);}
+     if(currency!==sourceCurrency){try{calculation=convertCalculation({...calculation,currency:sourceCurrency},currency,await readReferenceRates(tx,db,ratesId));}catch(e){fail('failed-precondition',e.message);}}
      sourceRevision=revision(building);
     }
     if(!['VND','USD'].includes(currency))fail('failed-precondition');

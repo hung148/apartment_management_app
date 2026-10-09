@@ -74,7 +74,7 @@ function createTenantLeasesHandler({db,Timestamp,HttpsError}){
    const hash=v=>createHash('sha256').update(JSON.stringify(v)).digest('hex'),key=create?hash(['tenantLease',d.organizationId,uid,d.operationId]):null;
    const op=create?db.doc(`tenantLeaseOperations/${key}`):null,prior=create?await tx.get(op):null,fingerprint=create?hash(keys.map(k=>d[k])):null;
    if(prior?.exists){if(prior.data().fingerprint!==fingerprint)fail('failed-precondition');return prior.data().result;}
-   const zone=building.data().timeZone,currency=r.currency??'VND',now=Timestamp.now();
+   const zone=building.data().timeZone,currency=org.data().displayCurrency??r.currency??'VND',now=Timestamp.now();
    if(!validZone(zone))fail('failed-precondition','lease_property_timezone_required');
    if(!['VND','USD'].includes(currency))fail('failed-precondition','lease_room_not_monthly');
    // B7: a room with an open "room unavailable" problem takes no new lease.
@@ -83,7 +83,10 @@ function createTenantLeasesHandler({db,Timestamp,HttpsError}){
     const staffDocs=await tx.get(db.collection('staffProfiles').where('organizationId','==',d.organizationId));
     const staff=staffDocs.docs.filter(v=>v.data().employmentStatus!=='inactive').map(v=>({id:v.id,displayName:String(v.data().displayName??'')})).sort((a,b)=>a.displayName.localeCompare(b.displayName));
     const accounts=(Array.isArray(org.data().paymentAccounts)?org.data().paymentAccounts:[]).filter(plain).map(a=>({id:a.id,label:a.label}));
-    return {record:{roomNumber:r.roomNumber??'',roomRevision:revision(room),currency,timeZone:zone,today:propertyDate(now.toMillis(),zone),canBackdate:allows(member,'backdateRecords',{organizationId:d.organizationId,userId:uid}),staff,accounts,canPrice:allows(member,'overridePrices',scope),monthlyRentMinor:Number.isFinite(r.roomPrice)&&r.roomPrice>0?Math.round(r.roomPrice*(currency==="USD"?100:1)):null}};
+    const roomCurrency=r.currency??'VND';
+    const roomRent=Number.isFinite(r.roomPrice)&&r.roomPrice>0?{amountMinor:Math.round(r.roomPrice*(roomCurrency==='USD'?100:1)),currency:roomCurrency}:null;
+    // Old clients must not treat a VND room price as a USD lease price.
+    return {record:{roomNumber:r.roomNumber??'',roomRevision:revision(room),currency,timeZone:zone,today:propertyDate(now.toMillis(),zone),canBackdate:allows(member,'backdateRecords',{organizationId:d.organizationId,userId:uid}),staff,accounts,canPrice:allows(member,'overridePrices',scope),monthlyRentMinor:roomCurrency===currency?roomRent?.amountMinor??null:null,roomRent}};
    }
    if(d.roomRevision!==revision(room)||d.currency!==currency||d.timeZone!==zone)fail('aborted');
    const start=propertyDayStart(d.moveInDate,zone),end=d.contractEndDate===null?null:propertyDayStart(d.contractEndDate,zone);

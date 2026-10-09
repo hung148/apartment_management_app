@@ -2,6 +2,10 @@
 // the lease, the stay status and the ended-contract reminder.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/organization_money.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/exchange_rate_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/screens/team/lease_surcharges.dart';
+import 'package:phan_mem_quan_ly_can_ho/utils/money_conversion.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/team/period_invoice_form.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/team_service.dart';
 import 'tenant_lease_test.dart' as lease show store, page, room, fill;
@@ -19,6 +23,26 @@ Future<void> tapKey(WidgetTester tester, String key) async {
 }
 
 void main() {
+  test('surcharge preserves exact original and converts edited app input', () {
+    final draft = LeaseSurchargeDraft.from(
+      {
+        'id': 'fee',
+        'label': 'Parking',
+        'amountMinor': 100001,
+        'basis': 'room',
+        'frequency': 'period',
+      },
+      'VND',
+      conversion: MoneyConversion(currency: 'USD', perUsd: {'VND': '25000'}),
+    );
+    addTearDown(draft.dispose);
+    expect(draft.amount.text, '4.00');
+    expect(draft.toJson('VND')!['amountMinor'], 100001);
+    draft.amount.text = '4.25';
+    expect(draft.toJson('VND')!['amountMinor'], 106250);
+    draft.amount.clear();
+    expect(draft.toJson('VND'), isNull);
+  });
   testWidgets('the lease form sends surcharges and the electricity price', (
     tester,
   ) async {
@@ -116,9 +140,14 @@ void main() {
     },
   );
 
+  for (final convert in [false, true]) {
   testWidgets(
-    'a period invoice ticks open surcharges, keeps billed ones off, and sends the amount',
+    'period invoice preserves billing and converts surcharge input: $convert',
     (t) async {
+      if (convert) {
+        OrganizationMoney.shared.configure('o', 'USD', ExchangeRateSnapshot(perUsd: {'USD': 1, 'VND': 25000}, dates: {}));
+        addTearDown(OrganizationMoney.shared.clear);
+      }
       Map<String, dynamic>? quoted;
       final service = TeamService(
         transport: (name, d) async {
@@ -218,7 +247,8 @@ void main() {
       );
       final amount = find.byKey(const ValueKey('period-surcharge-park-amount'));
       await t.ensureVisible(amount);
-      await t.enterText(amount, '120000');
+      expect(t.widget<TextFormField>(amount).controller!.text, convert ? '4.00' : '100,000');
+      await t.enterText(amount, convert ? '4.80' : '120000');
       final reason = find.byKey(const ValueKey('period-reason'));
       await t.ensureVisible(reason);
       await t.enterText(reason, 'Kỳ 1');
@@ -233,4 +263,5 @@ void main() {
       expect(find.text('120,000 VND'), findsOneWidget);
     },
   );
+  }
 }

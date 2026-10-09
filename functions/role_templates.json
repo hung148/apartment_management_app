@@ -8,6 +8,7 @@
     "deleteProblems": ["all", "managed", "own"],
     "deleteStaffProfiles": ["all"],
     "manageOrganization": ["all"],
+    "changeOrganizationCurrency": ["all"],
     "manageTeam": ["all"],
     "manageRoles": ["all"],
     "assignAdditionalWorkplace": ["all"],
@@ -33,7 +34,7 @@
   "overridable": ["overridePrices", "refundPayments", "exportData", "importData"],
   "templates": {
     "owner": {"color": "#6D4C41", "grants": {"deleteBuildings":"managed","deleteRooms":"managed","deleteBookings":"managed","deleteTenants":"managed","deleteProblems":"managed","deleteStaffProfiles":"all",
-      "manageOrganization": "all", "manageTeam": "all", "manageRoles": "all",
+      "manageOrganization": "all", "changeOrganizationCurrency": "all", "manageTeam": "all", "manageRoles": "all",
       "manageProperty": "managed", "manageLease": "managed", "readBookings": "managed",
       "createBookings": "managed", "manageBookings": "managed", "collectPayments": "managed",
       "overridePrices": "managed", "refundPayments": "managed", "readFinancialReports": "managed",

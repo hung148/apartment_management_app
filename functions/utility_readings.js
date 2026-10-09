@@ -59,7 +59,7 @@ function createUtilityReadingsHandler({db,Timestamp,HttpsError,drive,getDrive}){
     patch.lastDate=reading.startDate;patch.lastReadingMilli=reading.previousReadingMilli;patch.lastReadingId=reading.previousReadingId??null;
    }else if(d.action==='tariff'){
     if(property.revision!==d.propertyRevision)fail('aborted','utility_changed');
-    const expectedCurrency=d.tariffScope==='property'?(building.data().currency??'VND'):currency;
+    const expectedCurrency=org.data().displayCurrency??(d.tariffScope==='property'?(building.data().currency??'VND'):currency);
     if(d.tariff!==null&&d.tariff.currency!==expectedCurrency)fail('failed-precondition','utility_currency_changed');
     const tariff=d.tariff===null?null:{currency:expectedCurrency,bands:d.tariff.bands.map(b=>({throughMilli:b.throughMilli,priceMinor:b.priceMinor}))};
     if(d.tariffScope==='property'){
@@ -82,7 +82,7 @@ function createUtilityReadingsHandler({db,Timestamp,HttpsError,drive,getDrive}){
     const baseline=old.lastReadingMilli==null;
     if(baseline&&(d.oldFinalMilli!=null||d.newStartMilli!=null))fail('invalid-argument','utility_invalid_reset');
     let tariff=null;
-    if(!baseline)try{tariff=resolveTariff(old.tariffHistory??[],property.history,old.lastDate,d.date,currency);}catch(e){fail('failed-precondition',e.message);}
+    if(!baseline)try{tariff=resolveTariff(old.tariffHistory??[],property.history,old.lastDate,d.date);}catch(e){fail('failed-precondition',e.message);}
     let calculation=null;
     if(!baseline)try{calculation=utilityCharge(meterUsage(old.lastReadingMilli,d.readingMilli,{oldFinalMilli:d.oldFinalMilli??null,newStartMilli:d.newStartMilli??null}),tariff);}catch(e){fail('invalid-argument',e.message);}
     const readingId=hash([uid,d.operationId]);

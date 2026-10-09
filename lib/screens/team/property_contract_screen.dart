@@ -5,10 +5,11 @@ import 'ws_ui.dart';
 import 'package:uuid/uuid.dart';
 import '../../services/team_service.dart';
 import '../../utils/localizations/app_localizations.dart';
-import 'room_rates_screen.dart' show parseRoomRate;
 import 'property_contract_history.dart';
 import 'back_steps.dart';
 import '../../utils/app_number.dart';
+import '../../utils/money_conversion.dart';
+import '../../services/organization_money.dart';
 
 bool contractDate(String value) {
   final d = DateTime.tryParse('${value}T00:00:00Z');
@@ -37,6 +38,8 @@ class PropertyContractScreen extends StatefulWidget {
 }
 
 class _PropertyContractScreenState extends State<PropertyContractScreen> {
+  MoneyForm _money = MoneyForm(null);
+  String get _inputCurrency => _money.currency(_currency);
   final _form = GlobalKey<FormState>();
   final _fields = {
     for (final k in [
@@ -116,6 +119,10 @@ class _PropertyContractScreenState extends State<PropertyContractScreen> {
       setState(() {
         _revision = r['revision'];
         _currency = r['currency'];
+        _money = MoneyForm(
+          OrganizationMoney.shared.forOrganization(widget.organizationId),
+        );
+        _money.set(_fields['amount']!, null, _currency);
         _name = r['name'];
         _legacy = r['legacy'] as Map? ?? {};
         _direction = c?['direction'];
@@ -125,12 +132,13 @@ class _PropertyContractScreenState extends State<PropertyContractScreen> {
         }
         if (c != null) {
           final amount = c['amountMinor'] as int;
-          _fields['amount']!.text = appMoneyInputText(amount, _currency);
+          _money.set(_fields['amount']!, amount, _currency);
         } else if (r['importedRentInMinor'] is int) {
           // Sheet import (2026-10-05): the rent the business pays for the
           // building in the old app; the owner adds the landlord and dates.
           _direction = 'rentIn';
-          _fields['amount']!.text = appMoneyInputText(
+          _money.set(
+            _fields['amount']!,
             r['importedRentInMinor'] as int,
             _currency,
           );
@@ -163,7 +171,7 @@ class _PropertyContractScreenState extends State<PropertyContractScreen> {
         'status': _status,
         'partyName': _fields['partyName']!.text.trim(),
         'partyPhone': _fields['partyPhone']!.text.trim(),
-        'amountMinor': parseRoomRate(_fields['amount']!.text, _currency),
+        'amountMinor': _money.parse(_fields['amount']!, _currency),
         'dueDay': int.parse(_fields['dueDay']!.text.trim()),
         'startDate': _fields['startDate']!.text.trim(),
         'endDate': _fields['endDate']!.text.trim().isEmpty
@@ -254,7 +262,9 @@ class _PropertyContractScreenState extends State<PropertyContractScreen> {
               readOnly: !editable,
               minLines: lines,
               maxLines: null,
-              inputFormatters: k == 'amount' ? appMoneyInput(_currency) : null,
+              inputFormatters: k == 'amount'
+                  ? appMoneyInput(_inputCurrency)
+                  : null,
               decoration: InputDecoration(
                 helperText: helper,
                 helperMaxLines: 12,
@@ -378,8 +388,11 @@ class _PropertyContractScreenState extends State<PropertyContractScreen> {
                         field('partyPhone', t['contract_phone'], max: 80),
                         field(
                           'amount',
-                          '${t['contract_amount']} ($_currency)',
-                          check: (v) => parseRoomRate(v, _currency) == null
+                          '${t['contract_amount']} ($_inputCurrency)',
+                          check: (v) =>
+                              (_money.parse(_fields['amount']!, _currency) ??
+                                      0) <=
+                                  0
                               ? t['contract_amount_invalid']
                               : null,
                         ),

@@ -29,6 +29,23 @@ function setup(){
 const report=o=>({action:'report',operationId:'p1',roomId:'r1',title:'Máy lạnh hỏng',description:'Chảy nước',blocksRoom:false,...o});
 const fix=(problemId,o)=>({action:'fix',operationId:'f1',problemId,revision:'0:0',fixedByName:'Thợ Hùng',fixedDate:'2026-11-20',costMinor:500000,recordExpense:false,paymentMethod:null,accountId:null,note:'',...o});
 
+test('new repair cost uses selected currency and exact retry survives later currency change',async()=>{
+ const {db,call}=setup();
+ const {problemId}=await call(report());
+ db.store.get('organizations/o').displayCurrency='USD';
+ const request=fix(problemId,{costMinor:1234,inputCurrency:'USD',recordExpense:true,paymentMethod:'cash'});
+ const result=await call(request);
+ assert.equal(db.store.get(`technicalProblems/${problemId}`).currency,'USD');
+ assert.equal(db.store.get(`technicalProblems/${problemId}`).costMinor,1234);
+ assert.equal(db.store.get(`payments/${result.expenseId}`).currency,'USD');
+ assert.equal(db.store.get(`payments/${result.expenseId}`).amount,12.34);
+ assert.equal(db.store.get('buildings/b').currency,'VND');
+ db.store.get('organizations/o').displayCurrency='VND';
+ assert.deepEqual(await call(request),result);
+ const other=await call(report({operationId:'p2'}));
+ await assert.rejects(call(fix(other.problemId,{operationId:'stale',inputCurrency:'USD'})),e=>e.message==='problem_currency_changed');
+});
+
 test('who can see, report, block and fix',async()=>{
  const {call}=setup();
  // Housekeeping and reception can report; only a manager can block the room.

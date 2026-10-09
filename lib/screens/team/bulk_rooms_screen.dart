@@ -131,6 +131,7 @@ class _BulkRoomsScreenState extends State<BulkRoomsScreen> {
     if (_pending == null && !_form.currentState!.validate()) return;
     _pending ??= {
       'action': 'createBulk',
+      'currency': _currency,
       'organizationId': widget.organizationId,
       'buildingId': widget.buildingId,
       'operationId': const Uuid().v4(),

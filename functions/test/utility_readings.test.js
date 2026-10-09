@@ -9,6 +9,15 @@ function setup(){
  return {db,call};
 }
 const tariff={currency:'VND',bands:[{throughMilli:null,priceMinor:3500}]};
+test('new selected-currency tariff keeps old readings original and prices future usage in its own currency',async()=>{
+ const {db,call}=setup();
+ await call({action:'record',revision:0,date:'2026-09-01',readingMilli:0});
+ db.store.get('organizations/o').displayCurrency='USD';
+ await call({action:'tariff',revision:1,tariff:{currency:'USD',bands:[{throughMilli:null,priceMinor:14}]}});
+ const result=await call({action:'record',revision:2,date:'2026-10-01',readingMilli:25000});
+ assert.equal(result.calculation.currency,'USD');assert.equal(result.calculation.amountMinor,350);
+ assert.equal(db.store.get('buildings/b').currency,'VND');
+});
 test('baseline, tariff snapshot, consumption and reset preserve meter history',async()=>{
  const {call}=setup();assert.equal((await call({action:'read'})).record.revision,0);
  await call({action:'record',revision:0,date:'2026-09-01',readingMilli:100000});

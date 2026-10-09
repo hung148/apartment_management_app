@@ -54,6 +54,7 @@ class _TenantContactsScreenState extends State<TenantContactsScreen> {
   Map<String, dynamic>? _detail;
   bool _busy = true, _saving = false;
   bool _creating = false;
+  bool _showingSaved = false;
   // B6: the period invoice form for this tenant is open.
   String? _periodTenant;
   // B6b: the move-out settlement for this tenant is open.
@@ -150,6 +151,7 @@ class _TenantContactsScreenState extends State<TenantContactsScreen> {
     final generation = ++_generation;
     setState(() {
       _busy = true;
+      _showingSaved = false;
       _message = null;
       _selected = null;
       _clear();
@@ -159,27 +161,35 @@ class _TenantContactsScreenState extends State<TenantContactsScreen> {
       }
     });
     try {
-      final result = await widget.service.tenantContacts({
+      final existing = more ? List<Map<String, dynamic>>.of(_rows) : <Map<String, dynamic>>[];
+      await for (final answer in widget.service.tenantListLive({
         'action': 'list',
         ..._identity,
         if (more) 'cursor': _cursor,
-      });
-      if (!mounted || generation != _generation) return;
-      setState(() {
-        final known = _rows.map((v) => v['id']).toSet();
-        _rows.addAll(
-          (result['records'] as List)
-              .map((v) => Map<String, dynamic>.from(v as Map))
-              .where((v) => known.add(v['id'])),
-        );
-        _cursor = result['nextCursor'] as String?;
-        _busy = false;
-      });
+      })) {
+        if (!mounted || generation != _generation) return;
+        final result = answer.data;
+        setState(() {
+          final known = existing.map((v) => v['id']).toSet();
+          _rows = [
+            ...existing,
+            ...(result['records'] as List)
+                .map((v) => Map<String, dynamic>.from(v as Map))
+                .where((v) => known.add(v['id'])),
+          ];
+          _cursor = result['nextCursor'] as String?;
+          _showingSaved = answer.saved;
+          // Show the copy immediately, but do not unlock actions until the
+          // current server response has checked access.
+          _busy = answer.saved;
+        });
+      }
     } catch (_) {
       if (mounted && generation == _generation) {
         setState(() {
           _rows = [];
           _cursor = null;
+          _showingSaved = false;
           _busy = false;
           _message = 'tenant_contacts_unavailable';
         });
@@ -889,6 +899,8 @@ class _TenantContactsScreenState extends State<TenantContactsScreen> {
               padding: EdgeInsets.only(bottom: WsSpace.sm),
               child: LinearProgressIndicator(),
             ),
+          if (_showingSaved && _selected == null)
+            WsNotice(w('Showing saved data while refreshing.', 'Đang hiển thị dữ liệu đã lưu trong khi cập nhật.'), tone: WsTone.info),
           if (_message != null)
             Semantics(
               liveRegion: true,

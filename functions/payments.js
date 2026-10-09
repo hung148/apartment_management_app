@@ -2,6 +2,7 @@
 
 const {createHash} = require('node:crypto');
 const {allows} = require('./team_access');
+const {readReferenceRates,convertMinor}=require('./reference_rates');
 
 // V2 only. Amounts in commands are integer minor units (VND dong, USD cents).
 // Invoice creation/editing and booking payments have separate workflows.
@@ -14,7 +15,8 @@ function createPaymentHandler({db, Timestamp, HttpsError}) {
     if (!uid) fail('unauthenticated', 'payment_sign_in_required');
     const input = request.data;
     const collect = input?.action === 'collect';
-    const fields = ['organizationId','paymentId','operationId','action','amountMinor', collect ? 'paymentMethod' : 'reason'];
+    const hasInput=input?.inputCurrency!==undefined||input?.inputAmountMinor!==undefined||input?.ratesId!==undefined;
+    const fields = ['organizationId','paymentId','operationId','action','amountMinor', collect ? 'paymentMethod' : 'reason',...(hasInput?['inputCurrency','inputAmountMinor','ratesId']:[])];
     if (!input || !['collect','refund'].includes(input.action) ||
         Object.keys(input).some(key => !fields.includes(key)) ||
         !id(input.organizationId) || !id(input.paymentId) || !id(input.operationId) ||
@@ -23,6 +25,8 @@ function createPaymentHandler({db, Timestamp, HttpsError}) {
         (!collect && (typeof input.reason !== 'string' || !input.reason.trim() || input.reason.length > 500))) {
       fail('invalid-argument', 'payment_invalid_input');
     }
+    if(hasInput&&(!['VND','USD'].includes(input.inputCurrency)||!Number.isSafeInteger(input.inputAmountMinor)||input.inputAmountMinor<=0||input.inputAmountMinor>1e12||
+      (input.ratesId!==undefined&&(typeof input.ratesId!=='string'||! /^[a-f0-9]{64}$/.test(input.ratesId)))))fail('invalid-argument','payment_invalid_input');
     const {organizationId, paymentId, operationId} = input;
     const key = hash(['standalone-payment', organizationId, uid, operationId]);
     const fingerprint = hash(fields.map(field => input[field]));
@@ -69,6 +73,17 @@ function createPaymentHandler({db, Timestamp, HttpsError}) {
       const totalMinor = ['amount','internetFee','cableTVFee','hotWaterFee','lateFee','taxAmount']
         .reduce((sum, field) => sum + minor(field === 'amount' ? payment[field] : (payment[field] ?? 0)), 0);
       const previousMinor = minor(payment.paidAmount);
+      let originalInput;
+      if(hasInput){
+        if(input.inputCurrency!==(org.data().displayCurrency??payment.currency))fail('failed-precondition','payment_currency_changed');
+        let converted=input.inputAmountMinor;
+        if(input.inputCurrency!==payment.currency){
+          try{converted=convertMinor(input.inputAmountMinor,input.inputCurrency,payment.currency,await readReferenceRates(tx,db,input.ratesId));}
+          catch(e){fail('failed-precondition',e.message);}
+        }
+        if(converted!==input.amountMinor)fail('invalid-argument','payment_invalid_conversion');
+        originalInput={currency:input.inputCurrency,amountMinor:input.inputAmountMinor,...(input.ratesId?{exchangeRateSnapshotId:input.ratesId}:{})};
+      }
       if (!Number.isSafeInteger(totalMinor) || totalMinor <= 0 || previousMinor > totalMinor) fail('failed-precondition', 'payment_invalid_stored_amount');
       if (input.amountMinor > (collect ? totalMinor - previousMinor : previousMinor)) fail('failed-precondition', 'payment_amount_exceeds_balance');
       const paidMinor = previousMinor + (collect ? input.amountMinor : -input.amountMinor);
@@ -80,8 +95,9 @@ function createPaymentHandler({db, Timestamp, HttpsError}) {
       const result = {paymentId, operationId, status, paidMinor, totalMinor, currency: payment.currency, recordedAt: now.toDate().toISOString()};
       const summary = (paidAmount, status) => ({buildingId: payment.buildingId, currency: payment.currency, paidAmount, status});
       tx.update(paymentRef, patch);
-      if(payment.invoiceVersion===2)tx.create(paymentRef.collection('invoiceHistory').doc(key),{organizationId,actorId:uid,createdAt:now,action:input.action,reason:collect?input.paymentMethod:input.reason.trim(),before:{totalMinor,paidAmount:payment.paidAmount,status:payment.status},after:{totalMinor,paidAmount:patch.paidAmount,status:patch.status}});
+      if(payment.invoiceVersion===2)tx.create(paymentRef.collection('invoiceHistory').doc(key),{organizationId,actorId:uid,createdAt:now,action:input.action,reason:collect?input.paymentMethod:input.reason.trim(),...(originalInput?{originalInput}:{}),before:{totalMinor,paidAmount:payment.paidAmount,status:payment.status},after:{totalMinor,paidAmount:patch.paidAmount,status:patch.status}});
       tx.create(operationRef, {organizationId, paymentId, actorId: uid, action: input.action,
+        ...(originalInput?{originalInput}:{}),
         amountMinor: input.amountMinor, currency: payment.currency, fingerprint, createdAt: now, result,
         ...(collect ? {paymentMethod: input.paymentMethod} : {reason: input.reason.trim()})});
       tx.create(db.collection('teamActivity').doc(key), {organizationId, actorId: uid,

@@ -549,6 +549,7 @@ class _UtilityReadingsScreenState extends State<UtilityReadingsScreen> {
                 if (_record!['canPrice'] == true) ...[
                   const SizedBox(height: 24),
                   UtilityTariffForm(
+                    organizationId: widget.organizationId,
                     key: ValueKey(
                       '$_kind-${_record!['revision']}-${_record!['propertyRevision']}',
                     ),

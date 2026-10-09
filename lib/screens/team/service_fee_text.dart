@@ -31,7 +31,7 @@ class FeeText {
         ? ' / ${(fee['unitLabel'] as String?)?.isNotEmpty == true ? fee['unitLabel'] : tr('unit', 'đơn vị')}'
         : tr(' / room', ' / phòng');
     final period = fee['basis'] == 'quantity' ? '' : tr(' / period', ' / kỳ');
-    return '${money(terms['rateMinor'] as num, currency)}$unit$period';
+    return '${money(terms['rateMinor'] as num, terms['currency'] as String? ?? currency)}$unit$period';
   }
 
   /// [prefix]: false when a label next to it already says "partial periods".

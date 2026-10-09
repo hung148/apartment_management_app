@@ -7,7 +7,8 @@ const db = getFirestore();
 const {createCallableGroups}=require('./request_security');
 // Calls are registered by name and served by a few grouped functions (see
 // createCallableGroups and the exports at the end of this file).
-const callables=createCallableGroups({onCall:functions.https.onCall,db,Timestamp:Timestamp,HttpsError:functions.https.HttpsError});
+const callables=createCallableGroups({onCall:functions.https.onCall,db,Timestamp:Timestamp,HttpsError:functions.https.HttpsError,
+ observe:timing=>console.info(JSON.stringify(timing))});
 const secureCallable=callables.register;
 const {createDeletedRecordsHandler}=require('./deleted_records');
 const deletedRecords=createDeletedRecordsHandler({db,Timestamp,HttpsError:functions.https.HttpsError});

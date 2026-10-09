@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'package:phan_mem_quan_ly_can_ho/services/organization_money.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/exchange_rate_service.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -14,10 +16,7 @@ import 'room_directory_test.dart' show directory;
 Future<void> reveal(WidgetTester tester, Finder finder) async {
   FocusManager.instance.primaryFocus?.unfocus();
   await tester.pumpAndSettle();
-  tester
-      .state<ScrollableState>(staff.mainScrollable())
-      .position
-      .jumpTo(0);
+  tester.state<ScrollableState>(staff.mainScrollable()).position.jumpTo(0);
   await tester.pumpAndSettle();
   await staff.reveal(tester, finder);
 }
@@ -48,6 +47,38 @@ Future<void> enterRate(WidgetTester tester, String field, String value) async {
 
 void main() {
   testWidgets(
+    'selected currency inputs preserve untouched originals and convert edited rates',
+    (t) async {
+      final store = TeamPreviewStore();
+      store.rooms.first['currency'] = 'VND';
+      store.rooms.first['roomPrice'] = 5000001;
+      store.rooms.first['nightlyPrice'] = 5000002;
+      OrganizationMoney.shared.configure(
+        'preview',
+        'USD',
+        ExchangeRateSnapshot(
+          perUsd: {'USD': 1, 'VND': 25000},
+          dates: {'VND': '2026-10-07'},
+        ),
+      );
+      addTearDown(OrganizationMoney.shared.clear);
+      await mountReview(t, page(store.service));
+      final monthly = find.byKey(const ValueKey('rates-roomPrice'));
+      await reveal(t, monthly);
+      expect(t.widget<TextFormField>(monthly).controller!.text, '200.00');
+      await press(t, 'Save pricing and mode');
+      expect(store.rooms.first['roomPrice'], 5000001);
+      expect(store.rooms.first['nightlyPrice'], 5000002);
+      await reveal(t, monthly);
+      await t.enterText(monthly, '201.25');
+      await press(t, 'Save pricing and mode');
+      expect(store.rooms.first['roomPrice'], 5031250);
+      expect(store.rooms.first['nightlyPrice'], 5000002);
+      expect(store.rooms.first['currency'], 'VND');
+    },
+  );
+
+  testWidgets(
     'missing room prices use pricing guidance, preserving exchange-rate guidance',
     (tester) async {
       for (final language in ['en', 'vi']) {
@@ -66,10 +97,18 @@ void main() {
       }
     },
   );
-  testWidgets('no rental mode: every room takes short stays and leases', (tester) async {
+  testWidgets('no rental mode: every room takes short stays and leases', (
+    tester,
+  ) async {
     final store = TeamPreviewStore();
     store.rooms.first['rentalMode'] = 'monthly';
-    await mountReview(tester, page(store.service), language: 'vi', size: const Size(320, 740), scale: 2);
+    await mountReview(
+      tester,
+      page(store.service),
+      language: 'vi',
+      size: const Size(320, 740),
+      scale: 2,
+    );
     expect(find.byKey(const ValueKey('rates-selected-mode')), findsNothing);
     expect(find.text('Hình thức cho thuê'), findsNothing);
     await press(tester, 'Lưu giá và hình thức cho thuê');
@@ -256,7 +295,9 @@ void main() {
             if (const bool.fromEnvironment('RATES_GOLDENS')) {
               await expectLater(
                 find.byKey(const ValueKey('capture')),
-                matchesGoldenFile('../.dart_tool/rates-required-$language-${size.width.toInt()}-$scale-${brightness.name}.png'),
+                matchesGoldenFile(
+                  '../.dart_tool/rates-required-$language-${size.width.toInt()}-$scale-${brightness.name}.png',
+                ),
               );
             }
             await enterRate(tester, 'roomPrice', '1200.50');
@@ -285,34 +326,46 @@ void main() {
   });
 
   // 2026-10-04: monthly, per night and per hour only.
-  testWidgets('an older day price shows as the night price; prices may be empty', (tester) async {
-    final store = TeamPreviewStore();
-    store.rooms.first.addAll({
-      'rentalMode': 'hourly',
-      'currency': 'VND',
-      'dailyPrice': 450000,
-      'dailyPriceThresholdHours': 8,
-      'hourlyPrice': null,
-    });
-    await mountReview(tester, page(store.service));
-    for (final gone in ['rates-dailyPrice', 'rates-overnightPrice', 'rates-threshold']) {
-      expect(find.byKey(ValueKey(gone)), findsNothing, reason: gone);
-    }
-    expect(find.text('Price per night'), findsOneWidget);
-    expect(find.text('Price per hour'), findsOneWidget);
-    await reveal(tester, find.byKey(const ValueKey('rates-nightlyPrice')));
-    expect(
-      tester.widget<TextFormField>(find.byKey(const ValueKey('rates-nightlyPrice'))).controller!.text,
-      '450,000',
-    );
-    await enterRate(tester, 'nightlyPrice', '');
-    await enterRate(tester, 'hourlyPrice', '120000');
-    await press(tester, 'Save pricing and mode');
-    expect(store.rooms.first['hourlyPrice'], 120000);
-    expect(store.rooms.first['nightlyPrice'], isNull);
-    // The old day price and its threshold are cleared.
-    expect(store.rooms.first['dailyPrice'], isNull);
-    expect(store.rooms.first['dailyPriceThresholdHours'], isNull);
-    expect(find.text('Pricing and rental mode saved.'), findsOneWidget);
-  });
+  testWidgets(
+    'an older day price shows as the night price; prices may be empty',
+    (tester) async {
+      final store = TeamPreviewStore();
+      store.rooms.first.addAll({
+        'rentalMode': 'hourly',
+        'currency': 'VND',
+        'dailyPrice': 450000,
+        'dailyPriceThresholdHours': 8,
+        'hourlyPrice': null,
+      });
+      await mountReview(tester, page(store.service));
+      for (final gone in [
+        'rates-dailyPrice',
+        'rates-overnightPrice',
+        'rates-threshold',
+      ]) {
+        expect(find.byKey(ValueKey(gone)), findsNothing, reason: gone);
+      }
+      expect(find.text('Price per night'), findsOneWidget);
+      expect(find.text('Price per hour'), findsOneWidget);
+      await reveal(tester, find.byKey(const ValueKey('rates-nightlyPrice')));
+      expect(
+        tester
+            .widget<TextFormField>(
+              find.byKey(const ValueKey('rates-nightlyPrice')),
+            )
+            .controller!
+            .text,
+        '450,000',
+      );
+      await enterRate(tester, 'nightlyPrice', '');
+      await enterRate(tester, 'hourlyPrice', '120000');
+      await press(tester, 'Save pricing and mode');
+      expect(store.rooms.first['hourlyPrice'], 120000);
+      expect(store.rooms.first['nightlyPrice'], isNull);
+      // The old day price and its threshold are cleared.
+      expect(store.rooms.first['dailyPrice'], isNull);
+      expect(store.rooms.first['dailyPriceThresholdHours'], isNull);
+      expect(find.text('Pricing and rental mode saved.'), findsOneWidget);
+    },
+  );
 }

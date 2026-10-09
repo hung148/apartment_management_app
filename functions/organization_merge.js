@@ -17,7 +17,9 @@ function createOrganizationMergeHandler({db,Timestamp,HttpsError,dryRun=false}){
    (recovery&&(!valid(d.operationId)||!valid(d.sourceOrganizationId)))||
    (d.action==='merge'&&(!valid(d.operationId)||typeof d.name!=='string'||!d.name.trim()||d.name.trim().length>120)))
    throw new HttpsError('invalid-argument','org_invalid_input');
-  const collections=await db.listCollections();
+  // Discovery is only needed when moving records. Account-menu recovery lists
+  // and merge previews must not wait for a database-wide metadata request.
+  const collections=['merge','recover'].includes(d.action)?await db.listCollections():[];
   return db.runTransaction(async tx=>{
    const op=db.collection('organizationMerges').doc(createHash('sha256').update(uid+':'+(d.operationId??'preview')).digest('hex'));
    const prior=await tx.get(op);

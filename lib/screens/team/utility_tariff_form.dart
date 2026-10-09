@@ -1,3 +1,5 @@
+import '../../utils/money_conversion.dart';
+import '../../services/organization_money.dart';
 import 'package:flutter/material.dart';
 import '../../utils/localizations/app_localizations.dart';
 import 'utility_readings_screen.dart' show meterMilli;
@@ -11,11 +13,13 @@ bool utilityDate(String value) {
 
 class UtilityTariffForm extends StatefulWidget {
   final String currency;
+  final String? organizationId;
   final bool locked;
   final Future<void> Function(Map<String, dynamic>) onSave;
   const UtilityTariffForm({
     super.key,
     required this.currency,
+    this.organizationId,
     required this.locked,
     required this.onSave,
   });
@@ -24,6 +28,8 @@ class UtilityTariffForm extends StatefulWidget {
 }
 
 class _UtilityTariffFormState extends State<UtilityTariffForm> {
+  late final MoneyForm _money = MoneyForm(widget.organizationId == null ? null : OrganizationMoney.shared.forOrganization(widget.organizationId!));
+  String get _inputCurrency => _money.currency(widget.currency);
   final _form = GlobalKey<FormState>();
   final _date = TextEditingController(), _reason = TextEditingController();
   final _limits = <TextEditingController>[TextEditingController()];
@@ -32,7 +38,7 @@ class _UtilityTariffFormState extends State<UtilityTariffForm> {
   bool _default = false;
   String tr(String en, String vi) =>
       AppTranslations.of(context).locale.languageCode == 'vi' ? vi : en;
-  int? price(String s) => appParseMoney(s, widget.currency);
+  int? price(TextEditingController c) => appParseMoney(c.text, _inputCurrency);
   @override
   void dispose() {
     for (final c in [_date, _reason, ..._limits, ..._prices]) {
@@ -50,14 +56,14 @@ class _UtilityTariffFormState extends State<UtilityTariffForm> {
       'tariff': _default
           ? null
           : {
-              'currency': widget.currency,
+              'currency': _inputCurrency,
               'bands': [
                 for (var i = 0; i < _prices.length; i++)
                   {
                     'throughMilli': i == _prices.length - 1
                         ? null
                         : meterMilli(_limits[i].text),
-                    'priceMinor': price(_prices[i].text),
+                    'priceMinor': price(_prices[i]),
                   },
               ],
             },
@@ -172,7 +178,7 @@ class _UtilityTariffFormState extends State<UtilityTariffForm> {
                       tr('All remaining usage', 'Toàn bộ mức tiêu thụ còn lại'),
                     ),
                   Text(
-                    '${tr('Price per unit', 'Đơn giá mỗi đơn vị')} (${widget.currency})',
+                    '${tr('Price per unit', 'Đơn giá mỗi đơn vị')} ($_inputCurrency)',
                   ),
                   TextFormField(
                     controller: _prices[i],
@@ -180,8 +186,8 @@ class _UtilityTariffFormState extends State<UtilityTariffForm> {
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
                     ),
-                    inputFormatters: appMoneyInput(widget.currency),
-                    validator: (v) => price(v ?? '') != null
+                    inputFormatters: appMoneyInput(_inputCurrency),
+                    validator: (v) => price(_prices[i]) != null
                         ? null
                         : tr(
                             'Enter a valid non-negative price.',

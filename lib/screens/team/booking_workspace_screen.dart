@@ -1,3 +1,5 @@
+import '../../utils/money_conversion.dart';
+import '../../services/organization_money.dart';
 import 'dart:convert';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
@@ -293,6 +295,10 @@ class BookingWorkspaceScreen extends StatefulWidget {
 }
 
 class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
+  late final MoneyForm _conversion = MoneyForm(
+    OrganizationMoney.shared.forOrganization(widget.organizationId),
+  );
+  String get _inputCurrency => _conversion.currency(_currency);
   final _fields = {
         for (final k in [
           'guest',
@@ -488,9 +494,6 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
     return appMoney(value is num ? value : 0, currency ?? _currency);
   }
 
-  // Grouped for the input box: 500,000 (2026-10-05, Tom).
-  String _plain(num v) => appMoneyInputValue(v, _currency);
-
   String _nightsLabel(int n) =>
       n == 1 ? bt('oneNight') : bt('nightsCount').replaceAll('{n}', '$n');
 
@@ -511,13 +514,17 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
   int? get _nightCount =>
       _nightsBetween(_fields['startLocal']!.text, _fields['endLocal']!.text);
 
-  int? get _roomNightMinor =>
-      _rooms.where((v) => v['id'] == _room).firstOrNull?['nightlyPriceMinor']
-          as int?;
+  int? _roomRate(String field) {
+    final room = _rooms.where((v) => v['id'] == _room).firstOrNull;
+    final value = room?[field] as int?;
+    if (value == null) return null;
+    final source = room?['currency'] as String? ?? 'VND';
+    if (source == _currency) return value;
+    return _conversion.conversion?.convertMinor(value, source, _currency);
+  }
 
-  int? get _roomHourMinor =>
-      _rooms.where((v) => v['id'] == _room).firstOrNull?['hourlyPriceMinor']
-          as int?;
+  int? get _roomNightMinor => _roomRate('nightlyPriceMinor');
+  int? get _roomHourMinor => _roomRate('hourlyPriceMinor');
 
   /// The room's price for the chosen way of pricing (per night / per hour).
   int? get _roomUnitMinor =>
@@ -548,7 +555,7 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
   /// Fills the price box with the room's price (new room or way of pricing).
   void _resetUnit() {
     final m = _roomUnitMinor;
-    _fields['unitPrice']!.text = m == null ? '' : _plain(m / _scale);
+    _conversion.set(_fields['unitPrice']!, m, _currency);
   }
 
   static DateTime? _parseLocal(String s) {
@@ -613,7 +620,7 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
 
   /// "2 nights × 500,000 = 1,000,000" (the server's quote is final).
   String? _estimate() {
-    final unit = operationalMoney(_fields['unitPrice']!.text, _currency);
+    final unit = _conversion.parse(_fields['unitPrice']!, _currency);
     if (_pricing == 'hourly') {
       final h = _hours;
       if (h == null || unit == null || unit <= 0) return null;
@@ -624,7 +631,7 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
     if (n == null) return null;
     if (_customNights) {
       final list = [
-        for (final c in _nightPrices) operationalMoney(c.text, _currency),
+        for (final c in _nightPrices) _conversion.parse(c, _currency),
       ];
       if (list.length != n || list.any((v) => v == null || v <= 0)) return null;
       return '${_nightsLabel(n)} = ${_money(list.fold<int>(0, (a, b) => a + b!) / _scale)}';
@@ -638,15 +645,18 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
     if (!_customNights) return;
     final n = _nightCount;
     if (n == null) return;
-    final fallback = _roomNightMinor == null
-        ? ''
-        : _plain(_roomNightMinor! / _scale);
     while (_nightPrices.length < n) {
-      _nightPrices.add(
-        TextEditingController(
-          text: _nightPrices.isEmpty ? fallback : _nightPrices.last.text,
-        ),
-      );
+      final previous = _nightPrices.lastOrNull;
+      final original = previous == null
+          ? _roomNightMinor
+          : _conversion.parse(previous, _currency);
+      final controller = TextEditingController();
+      if (original != null) {
+        _conversion.set(controller, original, _currency);
+      } else {
+        controller.text = previous?.text ?? '';
+      }
+      _nightPrices.add(controller);
     }
     while (_nightPrices.length > n) {
       _retired.add(_nightPrices.removeLast());
@@ -897,6 +907,7 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
             _rooms.where((v) => v['id'] == _room).firstOrNull?['currency']
                 as String? ??
             'VND';
+        if (r == null) _currency = _conversion.currency(_currency);
         // New bookings start per night when the room has a nightly price.
         _pricing =
             r?['pricingType'] as String? ??
@@ -944,16 +955,17 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
         for (final s in (r?['surcharges'] as List? ?? const [])) {
           final m = Map<String, dynamic>.from(s as Map);
           final person = m['basis'] == 'person';
-          _charges.add(
-            _ChargeRow(
-              label: '${m['label'] ?? ''}',
-              // Per person: the price for one guest.
-              amount: _plain(
-                (person ? m['unitAmount'] : m['amount']) as num? ?? 0,
-              ),
-              basis: person ? 'person' : 'room',
-            ),
+          final row = _ChargeRow(
+            label: '${m['label'] ?? ''}',
+            basis: person ? 'person' : 'room',
           );
+          _conversion.set(
+            row.amount,
+            (((person ? m['unitAmount'] : m['amount']) as num? ?? 0) * _scale)
+                .round(),
+            _currency,
+          );
+          _charges.add(row);
         }
         final nights = (r?['nightPrices'] as List?)?.cast<num>();
         _customNights =
@@ -963,7 +975,11 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
             nights.toSet().length > 1;
         if (_customNights) {
           _nightPrices.addAll(
-            nights!.map((v) => TextEditingController(text: _plain(v))),
+            nights!.map((v) {
+              final c = TextEditingController();
+              _conversion.set(c, (v * _scale).round(), _currency);
+              return c;
+            }),
           );
         }
         // The price box: the booking's own price when it has one, else the room's.
@@ -978,7 +994,11 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
             : null;
         final own = _pricing == 'nightly' ? ownNight : ownHour;
         if (own != null) {
-          _fields['unitPrice']!.text = _plain(own);
+          _conversion.set(
+            _fields['unitPrice']!,
+            (own * _scale).round(),
+            _currency,
+          );
         } else {
           _resetUnit();
         }
@@ -1006,10 +1026,10 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
   /// Price inputs shared by the quote and the save. Null: a line is incomplete.
   Map<String, dynamic>? _pricePayload() {
     final out = <String, dynamic>{};
-    final unit = operationalMoney(_fields['unitPrice']!.text, _currency);
+    final unit = _conversion.parse(_fields['unitPrice']!, _currency);
     if (_pricing == 'nightly' && _customNights) {
       final list = [
-        for (final c in _nightPrices) operationalMoney(c.text, _currency),
+        for (final c in _nightPrices) _conversion.parse(c, _currency),
       ];
       if (list.length != _nightCount || list.any((v) => v == null || v <= 0)) {
         return null;
@@ -1038,7 +1058,7 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
     for (final row in _charges) {
       final label = row.label.text.trim(), amount = row.amount.text.trim();
       if (label.isEmpty && amount.isEmpty) continue;
-      final minor = operationalMoney(amount, _currency);
+      final minor = _conversion.parse(row.amount, _currency);
       if (label.isEmpty || minor == null || minor <= 0) return null;
       charges.add({
         'label': label,
@@ -1072,6 +1092,10 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
       final r = await widget.service.bookingWorkspace({
         ..._identity,
         'action': 'quote',
+        if (_record != null) 'bookingId': _record!['id'],
+        'inputCurrency': _currency,
+        if (_conversion.conversion?.snapshotId != null)
+          'ratesId': _conversion.conversion!.snapshotId,
         'roomId': _room,
         'startLocal': _fields['startLocal']!.text.trim(),
         'endLocal': _fields['endLocal']!.text.trim(),
@@ -1111,6 +1135,7 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
   static String _quoteProblem(Object e) {
     if (e is! FirebaseFunctionsException) return 'unavailable';
     return switch (serverReason(e, const [
+      'booking_currency_changed',
       'booking_invalid_dates',
       'booking_invalid-argument',
       'booking_rate_required',
@@ -1122,6 +1147,7 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
       'booking_night_prices_invalid',
       'booking_invalid_surcharge',
     ])) {
+      'booking_currency_changed' => 'changedAgain',
       'booking_invalid_dates' || 'booking_invalid-argument' => 'badDates',
       'booking_night_prices_invalid' ||
       'booking_invalid_surcharge' => 'priceRows',
@@ -1145,6 +1171,7 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
 
   /// Refusals the person can fix in the form (what was typed stays).
   static const _fixable = {
+    'booking_currency_changed': 'changedAgain',
     'booking_conflict': 'conflict',
     'room_has_open_problem': 'roomProblem',
     'booking_staff_invalid': 'staffInvalid',
@@ -1193,7 +1220,11 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
         'refundRent' => n('paidAmount'),
         _ => 0,
       };
-      _fields['amount']!.text = open > 0 ? _plain(open) : '';
+      _conversion.set(
+        _fields['amount']!,
+        open > 0 ? (open * _scale).round() : null,
+        _currency,
+      );
     });
   }
 
@@ -1215,6 +1246,9 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
         _pending = {
           ..._identity,
           'action': 'save',
+          'inputCurrency': _currency,
+          if (_conversion.conversion?.snapshotId != null)
+            'ratesId': _conversion.conversion!.snapshotId,
           'bookingId': _record?['id'] ?? const Uuid().v4(),
           'operationId': const Uuid().v4(),
           'revision': _record?['revision'],
@@ -1249,12 +1283,15 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
           if (deposit != null)
             'deposit': {
               'amountMinor': deposit,
+              'inputCurrency': _inputCurrency,
+              'inputAmountMinor': appParseMoney(_fields['depositAmount']!.text, _inputCurrency),
+              if (_conversion.conversion?.snapshotId != null) 'ratesId': _conversion.conversion!.snapshotId,
               'method': _depositMethod,
               'paidOn': _fields['depositDate']!.text.trim(),
             },
         };
       } else {
-        final amount = operationalMoney(_fields['amount']!.text, _currency);
+        final amount = _conversion.parse(_fields['amount']!, _currency);
         final money = [
           'payment',
           'deposit',
@@ -1279,6 +1316,15 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
           'reason': _fields['reason']!.text.trim(),
           'paymentMethod': _method,
           'amountMinor': amount,
+          if (money && _command != 'checkout') ...{
+            'inputCurrency': _inputCurrency,
+            'inputAmountMinor': appParseMoney(
+              _fields['amount']!.text,
+              _inputCurrency,
+            ),
+            if (_conversion.conversion?.snapshotId != null)
+              'ratesId': _conversion.conversion!.snapshotId,
+          },
           if (money && _account != 'transfer') 'accountId': _account,
         };
       }
@@ -1342,7 +1388,7 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
     if (!_canCollect || _record?['depositPayment'] is Map) return null;
     final text = _fields['depositAmount']!.text.trim();
     if (text.isEmpty) return null;
-    final v = operationalMoney(text, _currency);
+    final v = _conversion.parse(_fields['depositAmount']!, _currency);
     return v == null || v <= 0 ? null : v;
   }
 
@@ -1505,9 +1551,11 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
     );
     final nights = _nightCount;
     final editing = _record != null;
-    final money = TextInputType.numberWithOptions(decimal: _currency == 'USD');
+    final money = TextInputType.numberWithOptions(
+      decimal: _inputCurrency == 'USD',
+    );
     String? moneyCheck(String v) =>
-        v.isNotEmpty && operationalMoney(v, _currency) == null
+        v.isNotEmpty && operationalMoney(v, _inputCurrency) == null
         ? opsText(context, 'required')
         : null;
     Widget pickButton(String key) => IconButton(
@@ -1540,7 +1588,9 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
                         ? null
                         : (v) => setState(() {
                             _room = v;
-                            _currency = room['currency'] as String? ?? 'VND';
+                            _currency = _conversion.currency(
+                              room['currency'] as String? ?? 'VND',
+                            );
                             _resetUnit();
                             _autoPick();
                           }),
@@ -1760,7 +1810,7 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
                   'unitPrice',
                   bt(_pricing == 'hourly' ? 'pricePerHour' : 'pricePerNight'),
                   keyboard: money,
-                  formatters: appMoneyInput(_currency),
+                  formatters: appMoneyInput(_inputCurrency),
                   enabled: _canPrice,
                   helper: _canPrice ? null : bt('unitLocked'),
                   onChanged: (_) => setState(() => _pricingChosen = true),
@@ -1785,11 +1835,22 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
                             _nightPrices.clear();
                             final n = _nightCount ?? 0;
                             for (var i = 0; i < n; i++) {
-                              _nightPrices.add(
-                                TextEditingController(
-                                  text: _fields['unitPrice']!.text.trim(),
-                                ),
+                              final controller = TextEditingController();
+                              final original = _conversion.parse(
+                                _fields['unitPrice']!,
+                                _currency,
                               );
+                              if (original != null) {
+                                _conversion.set(
+                                  controller,
+                                  original,
+                                  _currency,
+                                );
+                              } else {
+                                controller.text = _fields['unitPrice']!.text
+                                    .trim();
+                              }
+                              _nightPrices.add(controller);
                             }
                           }
                           _syncNights();
@@ -1818,7 +1879,7 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
                         bt('night').replaceAll('{n}', '${i + 1}'),
                         controller: c,
                         keyboard: money,
-                        formatters: appMoneyInput(_currency),
+                        formatters: appMoneyInput(_inputCurrency),
                         required: true,
                         check: moneyCheck,
                         onChanged: (_) => setState(() {}),
@@ -1867,7 +1928,7 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
                               opsText(context, 'amount'),
                               controller: c.amount,
                               keyboard: money,
-                              formatters: appMoneyInput(_currency),
+                              formatters: appMoneyInput(_inputCurrency),
                               check: moneyCheck,
                               onChanged: (_) => setState(() {}),
                             ),
@@ -1901,7 +1962,7 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
                           key: ValueKey('booking-surcharge-$i-$basis'),
                         ),
                       if (c.basis == 'person')
-                        if (operationalMoney(c.amount.text, _currency)
+                        if (_conversion.parse(c.amount, _currency)
                             case final unit? when unit > 0)
                           Text(
                             bt('perPersonLine')
@@ -1954,7 +2015,7 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
               'depositAmount',
               bt('depositLine'),
               keyboard: money,
-              formatters: appMoneyInput(_currency),
+              formatters: appMoneyInput(_inputCurrency),
               check: moneyCheck,
               helper: bt('depositHelp'),
               onChanged: (_) => setState(() {}),
@@ -2436,12 +2497,12 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
               controller: _fields['amount'],
               enabled: !_locked,
               keyboardType: TextInputType.numberWithOptions(
-                decimal: _currency == 'USD',
+                decimal: _inputCurrency == 'USD',
               ),
-              inputFormatters: appMoneyInput(_currency),
+              inputFormatters: appMoneyInput(_inputCurrency),
               decoration: InputDecoration(
                 labelText: opsText(context, 'amount'),
-                suffixText: _currency,
+                suffixText: _inputCurrency,
               ),
             ),
           ),

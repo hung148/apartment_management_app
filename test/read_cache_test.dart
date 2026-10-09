@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:phan_mem_quan_ly_can_ho/services/device_sealer.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -7,6 +8,9 @@ import 'package:phan_mem_quan_ly_can_ho/services/team_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'room_calendar_test.dart' show bar, calendarFixture, mountCalendar;
+import 'tenant_contacts_test.dart' as tenants;
+import 'package:phan_mem_quan_ly_can_ho/screens/team/ws_ui.dart';
+import 'team_review_test.dart' show mountReview;
 
 // The copy of server answers kept on the device (2026-10-06, speed step 1).
 void main() {
@@ -22,6 +26,34 @@ void main() {
     account = 'u1';
     now = DateTime(2026, 10, 6, 12);
   });
+
+  for (final denied in [false,true]) {
+  testWidgets('tenant navigation shows saved rows then applies fresh access: denied=$denied', (tester) async {
+    final c=cache(), pending=Completer<Map<String,dynamic>>();
+    final payload={'action':'list','organizationId':'preview','buildingId':'riverside'};
+    await c.write('tenantContacts',payload,{'records':[
+      {'id':'old','fullName':'Saved tenant','roomNumber':'101','status':'active'}
+    ]},organizationId:'preview');
+    final service=TeamService(cache:c,transport:(_,__)=>pending.future);
+    await mountReview(tester,tenants.page(service),settle:false);
+    await tester.pump(const Duration(milliseconds:100));
+    await tester.pump();
+    expect(find.text('Saved tenant'),findsOneWidget);
+    expect(tester.widget<WsRecord>(find.byType(WsRecord)).onTap,isNull);
+    if (denied) {
+      pending.completeError(FirebaseFunctionsException(code:'permission-denied',message:'Revoked'));
+    } else {
+    pending.complete({'records':[
+      {'id':'new','fullName':'Fresh tenant','roomNumber':'102','status':'active'}
+    ]});
+    }
+    await tester.pumpAndSettle();
+    expect(find.text('Saved tenant'),findsNothing);
+    expect(find.text('Fresh tenant'),denied?findsNothing:findsOneWidget);
+    if(denied)expect(await c.read('tenantContacts',payload),isNull);
+    expect(tester.takeException(),isNull);
+  });
+  }
 
   test('the same request reads back, whatever the key order', () async {
     final c = cache();

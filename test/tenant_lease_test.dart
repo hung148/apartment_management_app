@@ -7,6 +7,8 @@ import 'package:phan_mem_quan_ly_can_ho/screens/team/tenant_lease_screen.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/team/tenant_contacts_screen.dart';
 import 'package:phan_mem_quan_ly_can_ho/preview/team_preview_store.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/team_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/organization_money.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/exchange_rate_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/localizations/app_localizations.dart';
 import 'team_review_test.dart' show mountReview;
 import 'room_rates_test.dart' show press, reveal;
@@ -42,6 +44,36 @@ Future<void> fill(WidgetTester tester, {String date = '2026-09-27'}) async {
 }
 
 void main() {
+  testWidgets('new lease converts the room suggestion and stores inputs in selected currency', (tester) async {
+    final s = store();
+    final money = OrganizationMoney.shared;
+    money.configure('preview', 'USD', ExchangeRateSnapshot(perUsd: {'USD': 1, 'VND': 25000}, dates: {}));
+    addTearDown(money.clear);
+    Map<String, dynamic>? saved;
+    final service = TeamService(transport: (name, data) async {
+      if (name == 'tenantLeases' && data['action'] == 'create') {
+        saved = Map.of(data);
+        return {'tenantId': 'created'};
+      }
+      final response = await s.call(name, data);
+      if (name == 'tenantLeases' && data['action'] == 'prepare') {
+        final record = Map<String, dynamic>.from(response['record'] as Map);
+        return {'record': {...record, 'currency': 'USD', 'monthlyRentMinor': null,
+          'roomRent': {'amountMinor': 5000001, 'currency': 'VND'}}};
+      }
+      return response;
+    });
+    await mountReview(tester, page(service));
+    await room(tester, 'room-102');
+    expect(tester.widget<TextFormField>(find.byKey(const ValueKey('lease-rent'))).controller!.text, '200.00');
+    await fill(tester);
+    await enter(tester, 'lease-rent', '201.25');
+    await enter(tester, 'lease-deposit', '123.45');
+    await press(tester, 'Create tenant and lease');
+    expect(saved?['currency'], 'USD');
+    expect(saved?['rentMinor'], 20125);
+    expect(saved?['depositMinor'], 12345);
+  });
   testWidgets(
     'directory starts lease, validates past reason and returns new contact without collecting money',
     (tester) async {

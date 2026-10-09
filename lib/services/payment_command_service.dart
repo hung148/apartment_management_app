@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:uuid/uuid.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -77,12 +76,18 @@ class PaymentCommandService {
     required String paymentId,
     required int amountMinor,
     required String paymentMethod,
+    String? inputCurrency,
+    int? inputAmountMinor,
+    String? ratesId,
   }) => _prepare({
     'organizationId': organizationId,
     'paymentId': paymentId,
     'action': 'collect',
     'amountMinor': amountMinor,
     'paymentMethod': paymentMethod,
+    if (inputCurrency != null) 'inputCurrency': inputCurrency,
+    if (inputAmountMinor != null) 'inputAmountMinor': inputAmountMinor,
+    if (ratesId != null) 'ratesId': ratesId,
   });
 
   PaymentOperation refund({
@@ -90,12 +95,18 @@ class PaymentCommandService {
     required String paymentId,
     required int amountMinor,
     required String reason,
+    String? inputCurrency,
+    int? inputAmountMinor,
+    String? ratesId,
   }) => _prepare({
     'organizationId': organizationId,
     'paymentId': paymentId,
     'action': 'refund',
     'amountMinor': amountMinor,
     'reason': reason,
+    if (inputCurrency != null) 'inputCurrency': inputCurrency,
+    if (inputAmountMinor != null) 'inputAmountMinor': inputAmountMinor,
+    if (ratesId != null) 'ratesId': ratesId,
   });
 
   PaymentOperation _prepare(Map<String, dynamic> fields) {

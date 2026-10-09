@@ -6,6 +6,7 @@
 // it is never billed twice; void releases the links.
 const {proratedRent}=require('./invoice_math');
 const {rentForDate}=require('./tenant_rent');
+const {readReferenceRates,convertCalculation,convertMinor}=require('./reference_rates');
 const {validDate}=require('./property_contract');
 const {utilityInvoiceSource,meterId}=require('./utility_invoice');
 const {serviceInvoiceSource,roomPeople}=require('./service_fee_invoice');
@@ -93,16 +94,19 @@ function surchargeBilled(x,{tenantId,surchargeId,frequency,startDate,endDate}){
 
 async function periodInvoiceSource({tx,db,d,tenant,intervals,roomId,currency,zone}){
  const lines=[];let rent=null;
+ const sourceCurrency=tenant.currency??'VND';
+ const snapshot=sourceCurrency===currency?null:await readReferenceRates(tx,db,d.ratesId);
  if(d.includeRent){
   try{rent=periodRent({tenant,startDate:d.startDate,endDate:d.endDate,intervals,timeZone:zone});}catch(e){throw Error(e.message==='invoice_empty_or_invalid_total'?'period_no_rent_days':e.message);}
-  lines.push({type:'rent',amountMinor:rent.amountMinor,startDate:d.startDate,endDate:d.endDate,basis:rent.basis,...(rent.basis==='period'?{months:rent.months}:rent.basis==='months'?{monthsFraction:rent.monthsFraction}:{days:rent.days})});
+  if(snapshot)rent=convertCalculation({...rent,currency:sourceCurrency},currency,snapshot);
+  lines.push({type:'rent',amountMinor:rent.amountMinor,startDate:d.startDate,endDate:d.endDate,basis:rent.basis,...(rent.sourceCalculation?{sourceCalculation:rent.sourceCalculation,exchangeRateSnapshotId:rent.exchangeRateSnapshotId}:{}),...(rent.basis==='period'?{months:rent.months}:rent.basis==='months'?{monthsFraction:rent.monthsFraction}:{days:rent.days})});
  }
  const serviceSources=[];
  for(const feeId of d.serviceFeeIds){
-  const source=await serviceInvoiceSource({tx,db,organizationId:d.organizationId,buildingId:d.buildingId,roomId,feeId,tenantId:d.tenantId,startDate:d.startDate,endDate:d.endDate,quantityMilli:null,currency,zone});
+  const source=await serviceInvoiceSource({tx,db,organizationId:d.organizationId,buildingId:d.buildingId,roomId,feeId,tenantId:d.tenantId,startDate:d.startDate,endDate:d.endDate,quantityMilli:null,ratesId:d.ratesId,currency,zone});
   if(source.fee.basis==='quantity')throw Error('period_quantity_fee');
   serviceSources.push(source);
-  lines.push({type:'service',feeId,feeName:source.fee.name,amountMinor:source.calculation.amountMinor,people:source.calculation.lines,terms:source.calculation.terms,periodDays:source.calculation.periodDays});
+  lines.push({type:'service',feeId,feeName:source.fee.name,amountMinor:source.calculation.amountMinor,people:source.calculation.lines,terms:source.calculation.terms,periodDays:source.calculation.periodDays,...(source.calculation.sourceCalculation?{sourceCalculation:source.calculation.sourceCalculation,exchangeRateSnapshotId:source.calculation.exchangeRateSnapshotId}:{})});
  }
  const utilitySources=[];
  for(const r of d.readings){
@@ -110,9 +114,9 @@ async function periodInvoiceSource({tx,db,d,tenant,intervals,roomId,currency,zon
   // for the whole measured interval.
   const ref=db.doc(`utilityMeters/${meterId(d.organizationId,r.roomId,r.kind)}/readings/${r.readingId}`),snap=await tx.get(ref),reading=snap.data();
   if(!reading)throw Error('utility_reading_not_found');
-  const source=await utilityInvoiceSource({tx,db,organizationId:d.organizationId,buildingId:d.buildingId,roomId:r.roomId,kind:r.kind,readingId:r.readingId,startDate:reading.startDate,endDate:reading.date,currency,intervals});
+  const source=await utilityInvoiceSource({tx,db,organizationId:d.organizationId,buildingId:d.buildingId,roomId:r.roomId,kind:r.kind,readingId:r.readingId,startDate:reading.startDate,endDate:reading.date,ratesId:d.ratesId,currency,intervals});
   utilitySources.push(source);
-  lines.push({type:'utility',kind:r.kind,roomId:r.roomId,readingId:r.readingId,startDate:reading.startDate,endDate:reading.date,usageMilli:source.calculation.usageMilli,amountMinor:source.calculation.amountMinor});
+  lines.push({type:'utility',kind:r.kind,roomId:r.roomId,readingId:r.readingId,startDate:reading.startDate,endDate:reading.date,usageMilli:source.calculation.usageMilli,amountMinor:source.calculation.amountMinor,...(source.calculation.sourceCalculation?{sourceCalculation:source.calculation.sourceCalculation,exchangeRateSnapshotId:source.calculation.exchangeRateSnapshotId}:{})});
  }
  let surchargeChanged=false;
  if(d.surcharges?.length){
@@ -120,13 +124,15 @@ async function periodInvoiceSource({tx,db,d,tenant,intervals,roomId,currency,zon
   for(const x of d.surcharges){
    const def=(Array.isArray(tenant.surcharges)?tenant.surcharges:[]).find(s=>s&&s.id===x.id);
    if(!def)throw Error('period_surcharge_unknown');
-   if(x.amountMinor!==def.amountMinor)surchargeChanged=true;
+   const expected=snapshot?convertMinor(def.amountMinor,sourceCurrency,currency,snapshot):def.amountMinor;
+   if(x.amountMinor!==expected)surchargeChanged=true;
    const n=def.basis==='person'?count:1;
    // Per month (water): the months of this invoice, part months by days.
    let amountMinor=x.amountMinor*n,months=null;
    if(def.frequency==='month'){const [mn,md]=monthsBetween(d.startDate,d.endDate);months=[Number(mn),Number(md)];amountMinor=Number((BigInt(x.amountMinor*n)*mn*2n+md)/(2n*md));}
    if(!Number.isSafeInteger(amountMinor)||amountMinor<=0)throw Error('period_invalid');
-   lines.push({type:'surcharge',surchargeId:def.id,label:def.label,basis:def.basis,frequency:def.frequency,...(def.kind?{kind:def.kind}:{}),unitMinor:x.amountMinor,count:n,...(months?{monthsFraction:months}:{}),amountMinor});
+   lines.push({type:'surcharge',surchargeId:def.id,label:def.label,basis:def.basis,frequency:def.frequency,...(def.kind?{kind:def.kind}:{}),unitMinor:x.amountMinor,count:n,...(months?{monthsFraction:months}:{}),amountMinor,
+    ...(snapshot?{sourceTerms:{currency:sourceCurrency,unitMinor:def.amountMinor},exchangeRateSnapshotId:snapshot.id}:{})});
   }
  }
  for(const l of d.lines){

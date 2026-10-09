@@ -5,6 +5,8 @@ import 'package:phan_mem_quan_ly_can_ho/screens/team/room_service_fees_screen.da
 import 'package:phan_mem_quan_ly_can_ho/screens/team/service_fee_text.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/team/service_fees_screen.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/team_service.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/organization_money.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/exchange_rate_service.dart';
 import 'account_entry_test.dart' as fixtures;
 
 const _version = {
@@ -91,6 +93,72 @@ Widget _room(TeamService s) => Scaffold(
 );
 
 void main() {
+  testWidgets('new service price and rounding preview use selected currency', (t) async {
+    final money = OrganizationMoney.shared;
+    addTearDown(money.clear);
+    money.configure('o', 'USD', ExchangeRateSnapshot(perUsd: {'USD': 1, 'VND': 25000}, dates: {}));
+    final writes = <Map<String, dynamic>>[];
+    final service = TeamService(transport: (_, d) async {
+      if (d['action'] == 'read') return {'record': _record([_fee()])};
+      writes.add(Map<String, dynamic>.from(d));
+      return {'revision': 4, 'feeId': 'f2'};
+    });
+    await fixtures.mount(t, _property(service));
+    await t.pumpAndSettle();
+    await _tap(t, find.byKey(const ValueKey('fee-add')));
+    await _enter(t, find.byKey(const ValueKey('fee-name')), 'Cleaning');
+    await _enter(t, find.byKey(const ValueKey('fee-rate')), '4.25');
+    await _tap(t, find.byKey(const ValueKey('fee-rounding-100')));
+    expect(find.textContaining('pays 1.00 USD'), findsOneWidget,
+      reason: t.widgetList<Text>(find.byType(Text)).map((w) => w.data).join('\n'));
+    await _enter(t, find.byKey(const ValueKey('fee-reason')), 'New price');
+    await _tap(t, find.byKey(const ValueKey('fee-save')));
+    expect(writes.single['inputCurrency'], 'USD');
+    expect((writes.single['version'] as Map)['rateMinor'], 425);
+    expect((writes.single['version'] as Map)['roundingMinor'], 100);
+    expect(t.takeException(), isNull);
+  });
+  testWidgets('room override accepts selected currency with a pinned rate', (
+    t,
+  ) async {
+    final money = OrganizationMoney.shared;
+    addTearDown(money.clear);
+    money.configure(
+      'o',
+      'USD',
+      ExchangeRateSnapshot(perUsd: {'USD': 1, 'VND': 25000}, dates: {}),
+    );
+    final writes = <Map<String, dynamic>>[];
+    final service = TeamService(
+      transport: (name, d) async {
+        if (d['action'] == 'read')
+          return {
+            'record': _record([_fee()]),
+          };
+        writes.add(Map<String, dynamic>.from(d));
+        return {'revision': 1};
+      },
+    );
+    await fixtures.mount(t, _room(service));
+    await t.pumpAndSettle();
+    await _tap(t, find.byKey(const ValueKey('room-fee-rate-f1')));
+    expect(find.text('Price (USD)'), findsOneWidget);
+    await _enter(t, find.byKey(const ValueKey('room-rate-amount')), '4.25');
+    money.configure(
+      'o',
+      'VND',
+      ExchangeRateSnapshot(perUsd: {'USD': 1, 'VND': 27000}, dates: {}),
+    );
+    await _enter(
+      t,
+      find.byKey(const ValueKey('room-rate-reason')),
+      'Custom price',
+    );
+    await _tap(t, find.byKey(const ValueKey('room-rate-save')));
+    expect((writes.single['override'] as Map)['rateMinor'], 425);
+    expect(writes.single['inputCurrency'], 'USD');
+    expect(t.takeException(), isNull);
+  });
   test('money parsing accepts thousands separators and rejects decimals for VND', () {
     expect(parseMinor('100000', 'VND'), 100000);
     expect(parseMinor('100.000', 'VND'), 100000);

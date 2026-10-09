@@ -12,7 +12,6 @@ import 'support/calendar_nav.dart';
 import 'team_review_test.dart' show mountReview;
 import 'room_rates_test.dart' show press, reveal;
 import 'room_booking_settings_test.dart' show enter;
-import 'access_editor_test.dart' show choose;
 
 Widget create(TeamService service, {String id = 'new-property'}) =>
     PropertyDetailsScreen(
@@ -28,7 +27,9 @@ Future<void> fill(WidgetTester tester) async {
 }
 
 void main() {
-  testWidgets('correcting the required timezone clears its validation error', (tester) async {
+  testWidgets('correcting the required timezone clears its validation error', (
+    tester,
+  ) async {
     final store = TeamPreviewStore();
     await mountReview(tester, create(store.service));
     await fill(tester);
@@ -43,7 +44,9 @@ void main() {
   testWidgets(
     'empty workspace creates property, validates required fields and returns to editable details',
     (tester) async {
-      final store = TeamPreviewStore()..workspaceRole = 'manager';
+      final store = TeamPreviewStore()
+        ..workspaceRole = 'manager'
+        ..organizationCurrency = 'USD';
       store.buildings.clear();
       await mountReview(
         tester,
@@ -59,7 +62,7 @@ void main() {
       await press(tester, 'Create property');
       expect(store.buildings, isEmpty);
       await enter(tester, 'property-timezone', 'America/New_York');
-      await choose(tester, 'property-currency-VND', 'USD');
+      expect(find.byKey(const ValueKey('property-currency-VND')), findsNothing);
       await press(tester, 'Create property');
       expect(store.buildings.single['name'], 'Riverside East');
       expect(store.buildings.single['timeZone'], 'America/New_York');
@@ -73,8 +76,14 @@ void main() {
       await press(tester, 'Save property details');
       expect(store.buildings.single['name'], 'Riverside renamed');
       // No reload or "back" in the dialog: its X closes it.
-      expect(find.text(AppTranslations(const Locale('en'))['property_reload']), findsNothing);
-      expect(find.text(AppTranslations(const Locale('en'))['workspace_title']), findsNothing);
+      expect(
+        find.text(AppTranslations(const Locale('en'))['property_reload']),
+        findsNothing,
+      );
+      expect(
+        find.text(AppTranslations(const Locale('en'))['workspace_title']),
+        findsNothing,
+      );
       await closeCalendarDialog(tester);
       expect(find.text('Riverside renamed'), findsWidgets);
       expect(
@@ -213,20 +222,33 @@ void main() {
             for (final brightness in Brightness.values) {
               final store = TeamPreviewStore();
               final t = AppTranslations(Locale(language));
-              store.buildings.first['name'] = 'Riverside — Khu căn hộ và khách sạn phía Đông thành phố Đà Nẵng';
+              store.buildings.first['name'] =
+                  'Riverside — Khu căn hộ và khách sạn phía Đông thành phố Đà Nẵng';
               await mountReview(
                 tester,
-                RoleWorkspace(key: UniqueKey(), organizationId: 'preview', service: store.service),
+                RoleWorkspace(
+                  key: UniqueKey(),
+                  organizationId: 'preview',
+                  service: store.service,
+                ),
                 language: language,
                 size: size,
                 scale: scale,
                 brightness: brightness,
               );
               await openNewBuilding(tester);
-              expect(find.byKey(const ValueKey('property-name')), findsOneWidget);
+              expect(
+                find.byKey(const ValueKey('property-name')),
+                findsOneWidget,
+              );
               expect(tester.takeException(), isNull);
               if (const bool.fromEnvironment('PROPERTY_CREATE_GOLDENS')) {
-                await expectLater(find.byKey(const ValueKey('capture')), matchesGoldenFile('../.dart_tool/property-create-entry-$language-${size.width.toInt()}-$scale-${brightness.name}.png'));
+                await expectLater(
+                  find.byKey(const ValueKey('capture')),
+                  matchesGoldenFile(
+                    '../.dart_tool/property-create-entry-$language-${size.width.toInt()}-$scale-${brightness.name}.png',
+                  ),
+                );
               }
               await enter(
                 tester,
@@ -241,7 +263,10 @@ void main() {
               await enter(tester, 'property-timezone', '');
               // In Vietnamese the toolbar's "Tạo tòa nhà" sits under the
               // dialog with the same label, so press the form's own button.
-              final create = find.widgetWithText(FilledButton, t['property_create']);
+              final create = find.widgetWithText(
+                FilledButton,
+                t['property_create'],
+              );
               await reveal(tester, create);
               await tester.tap(create);
               await tester.pumpAndSettle();

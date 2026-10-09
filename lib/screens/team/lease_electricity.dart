@@ -1,3 +1,5 @@
+import '../../utils/money_conversion.dart';
+import '../../services/organization_money.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -12,7 +14,6 @@ import '../calendar/room_calendar.dart' show CalendarPageDialog;
 import 'problem_photos.dart'
     show PickedPhoto, photoType, pickProblemPhotos, maxPhotoBytes;
 import 'property_contract_screen.dart' show contractDate;
-import 'room_rates_screen.dart' show parseRoomRate;
 import 'utility_readings_screen.dart' show UtilityReadingsScreen, meterMilli;
 import 'ws_ui.dart';
 
@@ -720,6 +721,8 @@ class _PriceDialog extends StatefulWidget {
 }
 
 class _PriceDialogState extends State<_PriceDialog> {
+  late final MoneyForm _money = MoneyForm(OrganizationMoney.shared.forOrganization(widget.scope['organizationId'] as String));
+  String get _inputCurrency => _money.currency(_currency);
   final _form = GlobalKey<FormState>();
   final _price = TextEditingController();
   late final _from = TextEditingController(
@@ -759,7 +762,7 @@ class _PriceDialogState extends State<_PriceDialog> {
         'bands': [
           {
             'throughMilli': null,
-            'priceMinor': parseRoomRate(_price.text, _currency),
+            'priceMinor': _money.parse(_price, _currency),
           },
         ],
       },
@@ -817,14 +820,14 @@ class _PriceDialogState extends State<_PriceDialog> {
                 enabled: !_saving && _pending == null,
                 autofocus: true,
                 keyboardType: TextInputType.numberWithOptions(
-                  decimal: _currency == 'USD',
+                  decimal: _inputCurrency == 'USD',
                 ),
-                inputFormatters: appMoneyInput(_currency),
+                inputFormatters: appMoneyInput(_inputCurrency),
                 decoration: InputDecoration(
-                  labelText: '${lt('priceInput')} ($_currency)',
+                  labelText: '${lt('priceInput')} ($_inputCurrency)',
                 ),
                 validator: (v) {
-                  final m = parseRoomRate(v ?? '', _currency);
+                  final m = _money.parse(_price, _currency);
                   return m == null || m <= 0 ? lt('invalidPrice') : null;
                 },
               ),

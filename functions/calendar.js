@@ -1,3 +1,4 @@
+const {readReferenceRates,convertMinor}=require('./reference_rates');
 const {bookingPrice}=require('./booking_quote');
 const {createHash}=require('node:crypto');
 const ACTIVE = new Set(['pending', 'confirmed', 'checkedIn']);
@@ -115,7 +116,7 @@ function createCalendarHandler({db, Timestamp, FieldValue, HttpsError}) {
       let commandRef,commandFingerprint;
       if(v2&&id(operationId)){
         const commandKey=createHash('sha256').update(JSON.stringify(['booking',orgId,context.auth.uid,operationId])).digest('hex');commandRef=db.doc(`bookingOperations/${commandKey}`);commandFingerprint=createHash('sha256').update(JSON.stringify(Object.fromEntries(Object.entries(input).filter(([key])=>key!=='propertyRevision').map(([key,value])=>key==='depositPayment'&&value?[key,{...value,paidAt:undefined}]:[key,value])))).digest('hex');// a deposit paid today is timed when the save arrives, so a retry has another time
-        const prior=await tx.get(commandRef);if(prior.exists){if(prior.data().fingerprint!==commandFingerprint)fail('failed-precondition','booking_operation_reused');return prior.data().result;}
+        const prior=await tx.get(commandRef);if(prior.exists){if(context.workspaceFingerprint?prior.data().workspaceFingerprint!==context.workspaceFingerprint:prior.data().fingerprint!==commandFingerprint)fail('failed-precondition','booking_operation_reused');return prior.data().result;}
       }
       if(v2&&input.propertyRevision){const property=await tx.get(db.doc(`buildings/${room.buildingId}`));if(!property.exists||property.data().organizationId!==orgId||input.propertyRevision!==`${property.updateTime.seconds}:${property.updateTime.nanoseconds}`)fail('aborted','booking_property_changed');}
       if(v2&&input.revision&&(!existing.exists||input.revision!==`${existing.updateTime.seconds}:${existing.updateTime.nanoseconds}`))fail('aborted','booking_changed');
@@ -124,7 +125,9 @@ function createCalendarHandler({db, Timestamp, FieldValue, HttpsError}) {
       else if(v2&&input.serverPricing===true&&['create','edit'].includes(action)){
         try{const quote=bookingPrice(room,ms(proposed.startTime??old?.startTime),ms(proposed.endTime??old?.endTime),proposed.pricingType??old?.pricingType);proposed.totalPrice=quote.totalMinor/(quote.currency==='USD'?100:1);proposed.pricingType=quote.pricingType;}catch(e){fail('failed-precondition',e.message);}
       }
-      const validMoney=value => amount(value) && Math.abs(value*((old?.currency || room.currency) === 'USD' ? 100 : 1)-Math.round(value*((old?.currency || room.currency) === 'USD' ? 100 : 1))) < 0.00001;
+      const bookingCurrency=old?.currency||serverQuote?.currency||room.currency||'VND';
+      if(v2&&action==='create'&&bookingCurrency!==(org.data().displayCurrency??room.currency??'VND'))fail('failed-precondition','booking_currency_changed');
+      const validMoney=value => amount(value) && Math.abs(value*(bookingCurrency === 'USD' ? 100 : 1)-Math.round(value*(bookingCurrency === 'USD' ? 100 : 1))) < 0.00001;
       // Every booking mutation reads AND writes this shared document. Concurrent
       // requests for the same room therefore serialize, even with zero bookings.
       if (action === 'create' && old) {
@@ -133,12 +136,12 @@ function createCalendarHandler({db, Timestamp, FieldValue, HttpsError}) {
       }
       let next = old ? {...old} : {
         organizationId: orgId, roomId, buildingId: room.buildingId,
-        currency: room.currency || 'VND', status: 'pending', paidAmount: 0,
+        currency: bookingCurrency, ...(serverQuote?.sourceRates?{sourceRates:serverQuote.sourceRates}:{}), status: 'pending', paidAmount: 0,
         depositPaidAmount: 0, depositRefundedAmount: 0, depositRefunded: false,
         createdAt: Timestamp.now(), createdBy: context.auth.uid,
       };
       const now = Timestamp.now();
-      let paymentRef, payment;
+      let paymentRef, payment, originalInput;
       if (action === 'create' || action === 'edit') {
         if (old && !ACTIVE.has(old.status)) fail('failed-precondition','booking_invalid_transition');
         for (const key of EDITABLE) if (key in proposed) next[key] = proposed[key];
@@ -180,15 +183,16 @@ function createCalendarHandler({db, Timestamp, FieldValue, HttpsError}) {
         // The deposit is part of the total: it is recorded as a payment, dated the day it was paid.
         if (depositPayment) {
           const dp = depositPayment;
-          if (!v2 || !id(operationId) || !plainObject(dp) || Object.keys(dp).some(k => !['amount','paymentMethod','paidOn','paidAt'].includes(k)) ||
+          if(dp.originalInput && dp.originalInput.currency !== (org.data().displayCurrency??bookingCurrency)) fail('failed-precondition','booking_currency_changed');
+          if (!v2 || !id(operationId) || !plainObject(dp) || Object.keys(dp).some(k => !['amount','paymentMethod','paidOn','paidAt','originalInput'].includes(k)) ||
               !validMoney(dp.amount) || dp.amount <= 0 || !['cash','bankTransfer','creditCard'].includes(dp.paymentMethod) ||
               typeof dp.paidOn !== 'string' || typeof dp.paidAt?.toMillis !== 'function') fail('invalid-argument','booking_invalid_request');
           if (plainObject(old?.depositPayment)) fail('failed-precondition','booking_deposit_recorded');
           if (cents(next.paidAmount)+cents(dp.amount) > cents(next.totalPrice)) fail('invalid-argument','booking_overpayment');
           paymentRef = db.collection('payments').doc(`booking_${bookingId}_${operationId}`);
           next.paidAmount = (cents(next.paidAmount)+cents(dp.amount))/100;
-          next.depositPayment = {amount:dp.amount, paymentMethod:dp.paymentMethod, paidOn:dp.paidOn, paidAt:dp.paidAt, paymentId:paymentRef.id};
-          payment = {organizationId:orgId, buildingId:room.buildingId, roomId, tenantId:null,
+          next.depositPayment = {...(dp.originalInput?{originalInput:dp.originalInput}:{}),amount:dp.amount, paymentMethod:dp.paymentMethod, paidOn:dp.paidOn, paidAt:dp.paidAt, paymentId:paymentRef.id};
+          payment = {...(dp.originalInput?{originalInput:dp.originalInput}:{}),organizationId:orgId, buildingId:room.buildingId, roomId, tenantId:null,
             tenantName:next.guestName, bookingId, type:'hourlyRent', status:'paid', amount:dp.amount,
             paidAmount:dp.amount, currency:next.currency || 'VND', paymentMethod:dp.paymentMethod,
             dueDate:next.endTime, paidAt:dp.paidAt, createdAt:now, billingStartDate:next.startTime, billingEndDate:next.endTime,
@@ -224,6 +228,22 @@ function createCalendarHandler({db, Timestamp, FieldValue, HttpsError}) {
         }
         const value = action === 'checkout' ? (cents(old.totalPrice)-cents(old.paidAmount))/100 : input.amount;
         if (!validMoney(value) || (action !== 'checkout' && value <= 0)) fail('invalid-argument','booking_invalid_amount');
+        if(input.inputCurrency!==undefined||input.inputAmountMinor!==undefined||input.ratesId!==undefined){
+          if(action==='checkout'||!['USD','VND'].includes(input.inputCurrency)||!Number.isSafeInteger(input.inputAmountMinor)||input.inputAmountMinor<=0||input.inputAmountMinor>1e12)fail('invalid-argument','booking_invalid_amount');
+          if(input.inputCurrency!==(org.data().displayCurrency??bookingCurrency))fail('failed-precondition','booking_currency_changed');
+          let converted=input.inputAmountMinor,rates=null;
+          if(input.inputCurrency!==bookingCurrency){
+            try{rates=await readReferenceRates(tx,db,input.ratesId);converted=convertMinor(input.inputAmountMinor,input.inputCurrency,bookingCurrency,rates);}
+            catch(e){fail('failed-precondition',e.message);}
+          }
+          const sourceMinor=Math.round(value*(bookingCurrency==='USD'?100:1));
+          const balance=action==='payment'?old.totalPrice-old.paidAmount:action==='deposit'?old.depositAmount-old.depositPaidAmount:action==='refund'?old.depositPaidAmount-old.depositRefundedAmount:old.paidAmount;
+          const balanceMinor=Math.round(balance*(bookingCurrency==='USD'?100:1));
+          // Only the exact outstanding balance may preserve a source-unit
+          // remainder hidden by display rounding. Arbitrary partial amounts may not.
+          if(converted!==sourceMinor&&!(rates&&sourceMinor===balanceMinor&&convertMinor(balanceMinor,bookingCurrency,input.inputCurrency,rates)===input.inputAmountMinor))fail('invalid-argument','booking_invalid_conversion');
+          originalInput={currency:input.inputCurrency,amountMinor:input.inputAmountMinor,...(input.ratesId?{exchangeRateSnapshotId:input.ratesId}:{}),...(converted!==sourceMinor?{roundingAdjustmentMinor:sourceMinor-converted}:{})};
+        }
         if ((action === 'payment' || action === 'checkout') && cents(value)+cents(old.paidAmount) > cents(old.totalPrice)) fail('invalid-argument','booking_overpayment');
         if (action === 'deposit' && cents(value)+cents(old.depositPaidAmount) > cents(old.depositAmount)) fail('invalid-argument','booking_overpayment');
         if (action === 'refund' && cents(value) > cents(old.depositPaidAmount)-cents(old.depositRefundedAmount)) fail('invalid-argument','booking_refund_exceeds_deposit');
@@ -234,7 +254,7 @@ function createCalendarHandler({db, Timestamp, FieldValue, HttpsError}) {
           next.depositRefundedAmount = (cents(old.depositRefundedAmount)+cents(value))/100;
           next.depositRefunded = cents(next.depositRefundedAmount) === cents(old.depositPaidAmount);
         } else next.paidAmount = (cents(old.paidAmount)+cents(value))/100;
-        payment = {organizationId:orgId, buildingId:room.buildingId, roomId, tenantId:null,
+        payment = {...(originalInput?{originalInput}:{}),organizationId:orgId, buildingId:room.buildingId, roomId, tenantId:null,
           tenantName:old.guestName, bookingId, type:['deposit','refund'].includes(action) ? 'deposit' : 'hourlyRent',
           status:['refund','refundRent'].includes(action) ? 'refunded' : 'paid', amount:value,
           paidAmount:['refund','refundRent'].includes(action) ? 0 : value, currency:old.currency || 'VND',
@@ -253,7 +273,7 @@ function createCalendarHandler({db, Timestamp, FieldValue, HttpsError}) {
       if (payment) tx.create(paymentRef,payment);
       if(v2) auditOperation(db,tx,{organizationId:orgId,actorId:context.auth.uid,action:`booking_${action}`,targetId:bookingId,old,next,createdAt:now});
       const result={id:bookingId, ...(payment ? {paymentId:paymentRef.id} : {})};
-      if(commandRef)tx.create(commandRef,{organizationId:orgId,actorId:context.auth.uid,createdAt:now,fingerprint:commandFingerprint,result,...(input.priceOverrideReason?{priceOverrideReason:input.priceOverrideReason}:{}),...(input.reason?{reason:input.reason}:{})});
+      if(commandRef)tx.create(commandRef,{organizationId:orgId,actorId:context.auth.uid,createdAt:now,fingerprint:commandFingerprint,...(originalInput?{originalInput}:{}),...(context.workspaceFingerprint?{workspaceFingerprint:context.workspaceFingerprint}:{}),result,...(input.priceOverrideReason?{priceOverrideReason:input.priceOverrideReason}:{}),...(input.reason?{reason:input.reason}:{})});
       return result;
     });
   };

@@ -1,5 +1,6 @@
 'use strict';
 const {createHash}=require('node:crypto');
+const {createOrganizationCurrencyHandler}=require('./organization_currency');
 const {accountPolicy,policyLocks,prepareBinding}=require('./account_policy');
 const {allows,hasRole}=require('./team_access');
 const {ownerMember,authorizeSensitive,companyOf,control,owners}=require('./governance_access');
@@ -36,6 +37,7 @@ const plain=v=>v!==null&&typeof v==='object'&&Object.getPrototypeOf(v)===Object.
 // allowCreate: release switch for creating version-2 organizations (G8). On in
 // staging; production turns it on once v2 has the calendar and statistics.
 function createOrganizationSettingsHandler({db,Timestamp,HttpsError,allowCreate=false}){
+ const currencyHandler=createOrganizationCurrencyHandler({db,Timestamp,HttpsError});
  const fail=(code,key)=>{throw new HttpsError(code,key);};
  const id=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(v);
  const hash=v=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
@@ -63,6 +65,7 @@ function createOrganizationSettingsHandler({db,Timestamp,HttpsError,allowCreate=
   const uid=request.auth?.uid;
   if(!uid)fail('unauthenticated','team_sign_in_required');
   const d=request.data||{};
+  if(['readCurrency','updateCurrency','readRates'].includes(d.action))return currencyHandler(request);
   if(!Object.hasOwn(ACTIONS,d.action)||(!['closedList','create','createLegacy'].includes(d.action)&&!id(d.organizationId))||Object.keys(d).some(k=>!ACTIONS[d.action].includes(k))||
     (!['read','copyPreview','closedList'].includes(d.action)&&!id(d.operationId)))fail('invalid-argument','org_invalid_input');
   // Organizations this account closed that can still be restored.

@@ -95,7 +95,9 @@ class AccountEntryService {
       workplaces: workplaces,
       waitingIds: waiting,
       staffConflict: staffConflict,
-      needsVerifiedEmail: _needsVerifiedEmail,
+      // Claiming an invitation requires verified email. Existing ownership is
+      // established independently by the server's account policy and membership.
+      needsVerifiedEmail: _needsVerifiedEmail && mode != 'owner',
     );
   }
 }

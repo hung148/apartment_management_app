@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../services/team_service.dart';
+import '../../services/organization_money.dart';
+import '../../utils/money_conversion.dart';
 import '../../utils/app_number.dart';
 import '../../utils/localizations/app_localizations.dart';
-import 'room_rates_screen.dart' show parseRoomRate;
 import 'ws_ui.dart';
 
 /// Long-stay surcharges (phụ thu, 2026-10-04). Each line is per room or per
@@ -75,15 +76,22 @@ class LeaseSurchargeDraft {
   final String? kind;
   final label = TextEditingController(), amount = TextEditingController();
   String basis, frequency;
+  final MoneyForm money;
   LeaseSurchargeDraft({
     this.id,
     this.kind,
     this.basis = 'room',
     this.frequency = 'period',
-  });
+    MoneyConversion? conversion,
+  }) : money = MoneyForm(conversion);
 
-  factory LeaseSurchargeDraft.from(Map s, String currency) {
+  factory LeaseSurchargeDraft.from(
+    Map s,
+    String currency, {
+    MoneyConversion? conversion,
+  }) {
     final d = LeaseSurchargeDraft(
+      conversion: conversion,
       id: s['id'] as String?,
       kind: s['kind'] == 'water' ? 'water' : null,
       basis: s['basis'] == 'person' ? 'person' : 'room',
@@ -96,7 +104,7 @@ class LeaseSurchargeDraft {
     d.label.text = '${s['label'] ?? ''}';
     final minor = s['amountMinor'];
     if (minor is int) {
-      d.amount.text = appMoneyInputText(minor, currency);
+      d.money.set(d.amount, minor, currency);
     }
     return d;
   }
@@ -108,7 +116,7 @@ class LeaseSurchargeDraft {
 
   /// The line for the server, or null when it is not filled in correctly.
   Map<String, dynamic>? toJson(String currency) {
-    final minor = parseRoomRate(amount.text, currency);
+    final minor = money.parse(amount, currency);
     if (label.text.trim().isEmpty || minor == null || minor <= 0) return null;
     return {
       'id': ?id,
@@ -168,6 +176,7 @@ String leaseSurchargeLine(BuildContext context, Map s, String currency) {
 /// every period / once. Changes the [drafts] list in place.
 class LeaseSurchargeEditor extends StatelessWidget {
   final List<LeaseSurchargeDraft> drafts;
+  final MoneyConversion? conversion;
   final String currency;
   final bool enabled;
   final VoidCallback onChanged;
@@ -175,6 +184,7 @@ class LeaseSurchargeEditor extends StatelessWidget {
   const LeaseSurchargeEditor({
     super.key,
     required this.drafts,
+    this.conversion,
     required this.currency,
     required this.enabled,
     required this.onChanged,
@@ -231,14 +241,17 @@ class LeaseSurchargeEditor extends StatelessWidget {
                             controller: c.amount,
                             enabled: enabled,
                             keyboardType: TextInputType.numberWithOptions(
-                              decimal: currency == 'USD',
+                              decimal: c.money.currency(currency) == 'USD',
                             ),
-                            inputFormatters: appMoneyInput(currency),
+                            inputFormatters: appMoneyInput(
+                              c.money.currency(currency),
+                            ),
                             decoration: InputDecoration(
-                              labelText: '${lt('amount')} ($currency)',
+                              labelText:
+                                  '${lt('amount')} (${c.money.currency(currency)})',
                             ),
                             validator: (v) {
-                              final m = parseRoomRate(v ?? '', currency);
+                              final m = c.money.parse(c.amount, currency);
                               return m == null || m <= 0 ? lt('invalid') : null;
                             },
                           ),
@@ -313,7 +326,7 @@ class LeaseSurchargeEditor extends StatelessWidget {
               key: const ValueKey('lease-add-surcharge'),
               onPressed: enabled
                   ? () {
-                      drafts.add(LeaseSurchargeDraft());
+                      drafts.add(LeaseSurchargeDraft(conversion: conversion));
                       onChanged();
                     }
                   : null,
@@ -416,10 +429,14 @@ class _SurchargeDialog extends StatefulWidget {
 }
 
 class _SurchargeDialogState extends State<_SurchargeDialog> {
+  late final _conversion = OrganizationMoney.shared.forOrganization(
+    widget.organizationId,
+  );
   final _form = GlobalKey<FormState>();
   late final List<LeaseSurchargeDraft> _drafts = [
     for (final s in widget.surcharges)
-      if (s['kind'] != 'water') LeaseSurchargeDraft.from(s, widget.currency),
+      if (s['kind'] != 'water')
+        LeaseSurchargeDraft.from(s, widget.currency, conversion: _conversion),
   ];
   final _retired = <LeaseSurchargeDraft>[];
   bool _saving = false;
@@ -494,6 +511,7 @@ class _SurchargeDialogState extends State<_SurchargeDialog> {
                         LeaseSurchargeEditor(
                           drafts: _drafts,
                           currency: widget.currency,
+                          conversion: _conversion,
                           enabled: !_saving,
                           onChanged: () => setState(() {}),
                           onRemoved: _retired.add,
@@ -619,12 +637,21 @@ class _WaterDialog extends StatefulWidget {
 
 class _WaterDialogState extends State<_WaterDialog> {
   final _form = GlobalKey<FormState>();
-  late final _amount = TextEditingController(
-    text: switch (leaseWater(widget.surcharges)?['amountMinor']) {
-      final int m => appMoneyInputText(m, widget.currency),
-      _ => '',
-    },
+  late final _money = MoneyForm(
+    OrganizationMoney.shared.forOrganization(widget.organizationId),
   );
+  String get _inputCurrency => _money.currency(widget.currency);
+  final _amount = TextEditingController();
+  @override
+  void initState() {
+    super.initState();
+    _money.set(
+      _amount,
+      leaseWater(widget.surcharges)?['amountMinor'] as int?,
+      widget.currency,
+    );
+  }
+
   late String _basis = leaseWater(widget.surcharges)?['basis'] == 'room'
       ? 'room'
       : 'person';
@@ -640,7 +667,7 @@ class _WaterDialogState extends State<_WaterDialog> {
   Future<void> _save() async {
     if (_saving || !_form.currentState!.validate()) return;
     final text = _amount.text.trim();
-    final minor = text.isEmpty ? null : parseRoomRate(text, widget.currency);
+    final minor = text.isEmpty ? null : _money.parse(_amount, widget.currency);
     final old = leaseWater(widget.surcharges);
     setState(() {
       _saving = true;
@@ -701,17 +728,17 @@ class _WaterDialogState extends State<_WaterDialog> {
                   controller: _amount,
                   enabled: !_saving,
                   keyboardType: TextInputType.numberWithOptions(
-                    decimal: widget.currency == 'USD',
+                    decimal: _inputCurrency == 'USD',
                   ),
-                  inputFormatters: appMoneyInput(widget.currency),
+                  inputFormatters: appMoneyInput(_inputCurrency),
                   decoration: InputDecoration(
-                    labelText: '${lt('waterPrice')} (${widget.currency})',
+                    labelText: '${lt('waterPrice')} ($_inputCurrency)',
                     helperText: lt('waterClear'),
                   ),
                   validator: (v) {
                     final s = (v ?? '').trim();
                     if (s.isEmpty) return null;
-                    final m = parseRoomRate(s, widget.currency);
+                    final m = _money.parse(_amount, widget.currency);
                     return m == null || m <= 0 ? lt('invalid') : null;
                   },
                 ),

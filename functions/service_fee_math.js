@@ -54,7 +54,7 @@ const at=(rows,date)=>(rows??[]).filter(x=>x.effectiveDate<=date).at(-1)??null;
 function resolveFee(fee,overrides,date){
  const v=at(fee.versions,date);if(!v||!v.active)return null;
  const o=at(overrides,date);if(o?.mode==='off')return null;
- return {...v,rateMinor:o?.mode==='rate'?o.rateMinor:v.rateMinor,roomRate:o?.mode==='rate'};
+ return {...v,...(o?.mode==='rate'?((o.currency??fee.currency??v.currency)?{currency:o.currency??fee.currency??v.currency}:{}):{}),rateMinor:o?.mode==='rate'?o.rateMinor:v.rateMinor,roomRate:o?.mode==='rate'};
 }
 /** The terms for a whole period; a change inside it needs separate invoices. */
 function resolvePeriod(fee,overrides,startDate,endDate){

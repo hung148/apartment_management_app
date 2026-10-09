@@ -68,6 +68,16 @@ Widget gate(
   onSettings: settings ?? () {},
 );
 void main() {
+  test('invitation email verification does not block an existing owner after merging', () async {
+    final service = AccountEntryService(transport: (name, data) async {
+      if (name == 'claimMyInvitations') return {'results': [], 'needsVerifiedEmail': true};
+      return {'accountPolicy': {'mode': 'owner', 'entryState': 'ready', 'canCreate': false},
+        'records': [{'id': 'merged', 'name': 'Unified', 'accessVersion': 2}]};
+    });
+    final entry = await service.load();
+    expect(entry.needsVerifiedEmail, false);
+    expect(entry.workplaces.single.id, 'merged');
+  });
   setUpAll(() async {
     await (FontLoader(
       'Roboto',

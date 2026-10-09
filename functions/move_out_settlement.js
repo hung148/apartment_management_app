@@ -11,6 +11,7 @@
 //    tenant, or what is still unpaid stays owed on the invoices.
 // One settlement per lease; there is no undo.
 const {createHash}=require('node:crypto');
+const {readReferenceRates,convertMinor}=require('./reference_rates');
 const {allows}=require('./team_access');
 const {validDate}=require('./property_contract');
 const {validZone}=require('./booking_settings');
@@ -67,7 +68,7 @@ function createSettlementHandler({db,Timestamp,HttpsError}){
   if(!uid)fail('unauthenticated');
   const write=d.action==='settle',quote=d.action==='settlementQuote';
   const body=['effectiveDate','includeRent','serviceFeeIds','readings','lines','creditRent','creditFees','refundMethod','refundAccountId','dueDate','reason'];
-  const keys=['action','organizationId','buildingId','tenantId',...(d.action==='settlementPreview'?['effectiveDate']:[]),...(quote||write?body:[]),...(write?['operationId','revision','timeZone','quoteRevision']:[])];
+  const keys=[...(d.inputCurrency!==undefined?['inputCurrency']:[]),...(d.ratesId!==undefined?['ratesId']:[]),'action','organizationId','buildingId','tenantId',...(d.action==='settlementPreview'?['effectiveDate']:[]),...(quote||write?body:[]),...(write?['operationId','revision','timeZone','quoteRevision']:[])];
   if(!['settlementPreview','settlementQuote','settle'].includes(d.action)||!id(d.organizationId)||!id(d.buildingId)||!id(d.tenantId)||Object.keys(d).some(k=>!keys.includes(k)))fail('invalid-argument','settlement_invalid');
   if(d.action==='settlementPreview'&&d.effectiveDate!=null&&!validDate(d.effectiveDate))fail('invalid-argument','settlement_invalid');
   if(quote||write){const bad=invalidSettlementInput(d);if(bad)fail('invalid-argument',bad);}
@@ -92,8 +93,11 @@ function createSettlementHandler({db,Timestamp,HttpsError}){
    const fixedMoveOut=open?null:propertyDate(t.moveOutDate.toMillis(),zone);
    if(fixedMoveOut&&d.effectiveDate!=null&&d.effectiveDate!==fixedMoveOut)fail('invalid-argument','settlement_date_fixed');
    const moveOut=fixedMoveOut??d.effectiveDate??today;
-   const currency=t.currency??'VND',scale=scaleOf(currency);
+   const leaseCurrency=t.currency??'VND',currency=org.data().displayCurrency??leaseCurrency,scale=scaleOf(currency);
    if(!['VND','USD'].includes(currency))fail('failed-precondition','settlement_currency');
+   if((quote||write)&&(d.inputCurrency??leaseCurrency)!==currency)fail('failed-precondition','settlement_currency_changed');
+   const fx=d.ratesId!==undefined?await readReferenceRates(tx,db,d.ratesId):null;
+   const convert=(amount,from,to=currency)=>{if(from===to)return amount;if(!fx)fail('failed-precondition','settlement_rates_required');try{return convertMinor(amount,from,to,fx);}catch(e){fail('failed-precondition',e.message);}};
    const canBackdate=allows(m,'backdateRecords',{organizationId:d.organizationId,userId:uid});
    const linked=open?await tx.get(db.collection('tenants').where('mainTenantId','==',d.tenantId)):null;
    const roommates=linked?linked.docs.filter(v=>active(v.data())).map(v=>({id:v.id,fullName:v.data().fullName??''})):[];
@@ -116,14 +120,14 @@ function createSettlementHandler({db,Timestamp,HttpsError}){
 
    // Every income invoice of this lease, with its current revision.
    const invoiceDocs=(await tx.get(db.collection('payments').where('organizationId','==',d.organizationId).where('tenantId','==',d.tenantId))).docs
-    .filter(v=>{const x=v.data();return x.invoiceVersion===2&&x.status!=='cancelled'&&x.direction!=='expense'&&x.currency===currency;});
+    .filter(v=>{const x=v.data();return x.invoiceVersion===2&&x.status!=='cancelled'&&x.direction!=='expense';});
 
    // Rent not billed yet: from the end of the last rent invoice to the move-out day.
    let lastRent=null;
    for(const v of invoiceDocs){const x=v.data();if(rentBearing(x)&&(!lastRent||x.billingEndLocalDate>lastRent))lastRent=x.billingEndLocalDate;}
    const rentStart=lastRent&&lastRent>leaseStart?lastRent:leaseStart;
    let rentRemainder=null;
-   if(rentStart<moveOut){try{const r=proratedRent({tenant:t,startDate:rentStart,endDate:moveOut,intervals,timeZone:zone});rentRemainder={startDate:rentStart,endDate:moveOut,days:r.days,amountMinor:r.amountMinor};}catch{rentRemainder=null;}}
+   if(rentStart<moveOut){try{const r=proratedRent({tenant:t,startDate:rentStart,endDate:moveOut,intervals,timeZone:zone});rentRemainder={startDate:rentStart,endDate:moveOut,days:r.days,amountMinor:convert(r.amountMinor,leaseCurrency),sourceAmountMinor:r.amountMinor,sourceCurrency:leaseCurrency};}catch{rentRemainder=null;}}
 
    // Rent paid ahead beyond the move-out day (only offered; the owner decides).
    const credits=[];
@@ -134,10 +138,15 @@ function createSettlementHandler({db,Timestamp,HttpsError}){
     // like any rent), so a period that does not follow calendar months still
     // leaves the tenant paying exactly the normal price for those days. A
     // period wholly after the move-out day gives back all its rent.
-    const charged=rentAmount(x);let used=0;
+    const charged=rentAmount(x),sourceCurrency=x.currency??'VND';let used=0;
     if(x.billingStartLocalDate<moveOut){try{used=proratedRent({tenant:t,startDate:x.billingStartLocalDate,endDate:moveOut,intervals:[{roomId:room,startDate:x.billingStartLocalDate,endDate:null}],timeZone:zone}).amountMinor;}catch{continue;}}
-    const creditMinor=Math.max(0,charged-used);if(creditMinor<=0)continue;
-    credits.push({doc:v,invoiceId:v.id,startDate:from,endDate:to,creditMinor});
+    const originalRateId=x.calculation?.exchangeRateSnapshotId??(x.calculation?.lines??[]).find(l=>l.type==='rent')?.exchangeRateSnapshotId;
+    if(sourceCurrency!==leaseCurrency&&used>0){
+     if(!originalRateId)fail('failed-precondition','settlement_original_rates_required');
+     used=convertMinor(used,leaseCurrency,sourceCurrency,await readReferenceRates(tx,db,originalRateId));
+    }
+    const sourceCreditMinor=Math.max(0,charged-used),creditMinor=convert(sourceCreditMinor,sourceCurrency);if(creditMinor<=0)continue;
+    credits.push({doc:v,invoiceId:v.id,startDate:from,endDate:to,creditMinor,sourceCreditMinor,sourceCurrency});
    }
 
    // Service fees not billed yet for this room, from where billing stopped.
@@ -163,18 +172,22 @@ function createSettlementHandler({db,Timestamp,HttpsError}){
    for(const v of invoiceDocs){
     const x=v.data(),c=x.calculation??{};
     if(!(x.billingEndLocalDate>moveOut)||!x.billingStartLocalDate)continue;
-    const items=x.invoiceKind==='period'?(c.lines??[]).filter(l=>l.type==='service').map(l=>({feeId:l.feeId,feeName:l.feeName,amountMinor:l.amountMinor,terms:l.terms,roomId:(c.services??[]).find(s=>s.feeId===l.feeId)?.roomId??c.roomId}))
-     :x.invoiceKind==='service'&&c.basis!=='quantity'?[{feeId:c.feeId,feeName:c.feeName,amountMinor:c.amountMinor,terms:c.terms,roomId:c.roomId??x.roomId,basis:c.basis}]:[];
+    const items=x.invoiceKind==='period'?(c.lines??[]).filter(l=>l.type==='service').map(l=>({feeId:l.feeId,feeName:l.feeName,amountMinor:l.amountMinor,terms:l.terms,sourceCalculation:l.sourceCalculation,exchangeRateSnapshotId:l.exchangeRateSnapshotId,roomId:(c.services??[]).find(s=>s.feeId===l.feeId)?.roomId??c.roomId}))
+     :x.invoiceKind==='service'&&c.basis!=='quantity'?[{feeId:c.feeId,feeName:c.feeName,amountMinor:c.amountMinor,terms:c.terms,sourceCalculation:c.sourceCalculation,exchangeRateSnapshotId:c.exchangeRateSnapshotId,roomId:c.roomId??x.roomId,basis:c.basis}]:[];
     for(const it of items){
      const basis=it.basis??(defs?.fees??[]).find(f=>f.id===it.feeId)?.basis;
      if(!['room','person'].includes(basis)||!it.terms||!it.roomId||!Number.isSafeInteger(it.amountMinor)||it.amountMinor<=0)continue;
      if(!peopleOf[it.roomId])peopleOf[it.roomId]=(await roomPeople({tx,db,organizationId:d.organizationId,buildingId:d.buildingId,roomId:it.roomId,tenantId:d.tenantId,zone}))
       .map(p=>({...p,intervals:p.intervals.map(i=>({startDate:i.startDate,endDate:i.endDate==null||i.endDate>moveOut?moveOut:i.endDate})).filter(i=>i.startDate<i.endDate)}));
      let used=0;
-     try{used=serviceCharge({basis,terms:it.terms,startDate:x.billingStartLocalDate,endDate:x.billingEndLocalDate,people:peopleOf[it.roomId],currency}).amountMinor;}
+     try{used=serviceCharge({basis,terms:it.sourceCalculation?.terms??it.terms,startDate:x.billingStartLocalDate,endDate:x.billingEndLocalDate,people:peopleOf[it.roomId],currency:it.sourceCalculation?.currency??x.currency??'VND'}).amountMinor;}
      catch(e){if(!['service_no_billable_charge','service_tenant_not_in_room'].includes(e.message))continue;}
-     const creditMinor=Math.max(0,it.amountMinor-used);if(creditMinor<=0)continue;
-     feeCredits.push({invoiceId:v.id,feeId:it.feeId,feeName:it.feeName??'',startDate:x.billingStartLocalDate>moveOut?x.billingStartLocalDate:moveOut,endDate:x.billingEndLocalDate,creditMinor});
+     if(it.sourceCalculation?.currency && it.sourceCalculation.currency!==(x.currency??'VND')){
+      if(!it.exchangeRateSnapshotId)fail('failed-precondition','settlement_original_rates_required');
+      used=convertMinor(used,it.sourceCalculation.currency,x.currency??'VND',await readReferenceRates(tx,db,it.exchangeRateSnapshotId));
+     }
+     const sourceCurrency=x.currency??'VND',sourceCreditMinor=Math.max(0,it.amountMinor-used),creditMinor=convert(sourceCreditMinor,sourceCurrency);if(creditMinor<=0)continue;
+     feeCredits.push({invoiceId:v.id,feeId:it.feeId,feeName:it.feeName??'',startDate:x.billingStartLocalDate>moveOut?x.billingStartLocalDate:moveOut,endDate:x.billingEndLocalDate,creditMinor,sourceCreditMinor,sourceCurrency});
     }
    }
 
@@ -185,16 +198,17 @@ function createSettlementHandler({db,Timestamp,HttpsError}){
     for(const v of rows.docs){
      const r=v.data();if(r.organizationId!==d.organizationId||r.reversedAt)continue;
      if(roomId===room&&(!lastReading[kind]||r.date>lastReading[kind]))lastReading[kind]=r.date;
-     if(r.invoiceId||!r.calculation||!(r.calculation.amountMinor>0)||r.calculation.currency!==currency)continue;
+     if(r.invoiceId||!r.calculation||!(r.calculation.amountMinor>0))continue;
      if(!intervals.some(i=>i.roomId===roomId&&i.startDate<=r.startDate&&(!i.endDate||i.endDate>=r.date)))continue;
-     readings.push({roomId,kind,readingId:v.id,startDate:r.startDate,date:r.date,usageMilli:r.calculation.usageMilli,amountMinor:r.calculation.amountMinor});
+     readings.push({roomId,kind,readingId:v.id,startDate:r.startDate,date:r.date,usageMilli:r.calculation.usageMilli,amountMinor:convert(r.calculation.amountMinor,r.calculation.currency),sourceAmountMinor:r.calculation.amountMinor,sourceCurrency:r.calculation.currency});
     }
    }
    readings.sort((a,b)=>a.date.localeCompare(b.date)||a.kind.localeCompare(b.kind));
 
    const balanceOf=v=>{const x=v.data();return (x.totalMinor??0)-paidOf(x);};
-   const openInvoices=invoiceDocs.filter(v=>balanceOf(v)>0).map(v=>{const x=v.data();return {id:v.id,kind:x.invoiceKind,startDate:x.billingStartLocalDate??null,endDate:x.billingEndLocalDate??null,dueDate:x.dueLocalDate??null,totalMinor:x.totalMinor,paidMinor:paidOf(x),balanceMinor:balanceOf(v)};});
-   const depositMinor=Number.isSafeInteger(t.depositMinor)&&t.depositMinor>0?t.depositMinor:0;
+   const openInvoices=invoiceDocs.filter(v=>balanceOf(v)>0).map(v=>{const x=v.data();return {id:v.id,kind:x.invoiceKind,startDate:x.billingStartLocalDate??null,endDate:x.billingEndLocalDate??null,dueDate:x.dueLocalDate??null,totalMinor:convert(x.totalMinor,x.currency??'VND'),paidMinor:convert(paidOf(x),x.currency??'VND'),balanceMinor:convert(balanceOf(v),x.currency??'VND'),sourceCurrency:x.currency??'VND',sourceBalanceMinor:balanceOf(v)};});
+   const originalDepositMinor=Number.isSafeInteger(t.depositMinor)&&t.depositMinor>0?t.depositMinor:0;
+   const depositMinor=convert(originalDepositMinor,leaseCurrency);
    const accounts=(Array.isArray(org.data().paymentAccounts)?org.data().paymentAccounts:[]).filter(a=>a&&id(a.id)).map(a=>({id:a.id,label:a.label??''}));
 
    if(d.action==='settlementPreview'){
@@ -214,16 +228,16 @@ function createSettlementHandler({db,Timestamp,HttpsError}){
    const serviceSources=[];
    for(const feeId of d.serviceFeeIds){
     const f=fees.find(x=>x.id===feeId);let source;
-    try{source=await serviceInvoiceSource({tx,db,organizationId:d.organizationId,buildingId:d.buildingId,roomId:room,feeId,tenantId:d.tenantId,startDate:f.startDate,endDate:moveOut,quantityMilli:null,currency,zone});}catch(e){fail('failed-precondition',e.message);}
+    try{source=await serviceInvoiceSource({tx,db,organizationId:d.organizationId,buildingId:d.buildingId,roomId:room,feeId,tenantId:d.tenantId,startDate:f.startDate,endDate:moveOut,quantityMilli:null,currency,zone,ratesId:d.ratesId});}catch(e){fail('failed-precondition',e.message);}
     serviceSources.push(source);
-    lines.push({type:'service',feeId,feeName:source.fee.name,startDate:f.startDate,endDate:moveOut,amountMinor:source.calculation.amountMinor,people:source.calculation.lines});
+    lines.push({type:'service',feeId,feeName:source.fee.name,startDate:f.startDate,endDate:moveOut,amountMinor:source.calculation.amountMinor,people:source.calculation.lines,...(source.calculation.sourceCalculation?{sourceCalculation:source.calculation.sourceCalculation,exchangeRateSnapshotId:d.ratesId}:{})});
    }
    const utilitySources=[];
    for(const r of d.readings){
     const reading=readings.find(x=>x.roomId===r.roomId&&x.kind===r.kind&&x.readingId===r.readingId);let source;
-    try{source=await utilityInvoiceSource({tx,db,organizationId:d.organizationId,buildingId:d.buildingId,roomId:r.roomId,kind:r.kind,readingId:r.readingId,startDate:reading.startDate,endDate:reading.date,currency,intervals});}catch(e){fail('failed-precondition',e.message);}
+    try{source=await utilityInvoiceSource({tx,db,organizationId:d.organizationId,buildingId:d.buildingId,roomId:r.roomId,kind:r.kind,readingId:r.readingId,startDate:reading.startDate,endDate:reading.date,currency,intervals,ratesId:d.ratesId});}catch(e){fail('failed-precondition',e.message);}
     utilitySources.push(source);
-    lines.push({type:'utility',kind:r.kind,roomId:r.roomId,readingId:r.readingId,startDate:reading.startDate,endDate:reading.date,usageMilli:source.calculation.usageMilli,amountMinor:source.calculation.amountMinor});
+    lines.push({type:'utility',kind:r.kind,roomId:r.roomId,readingId:r.readingId,startDate:reading.startDate,endDate:reading.date,usageMilli:source.calculation.usageMilli,amountMinor:source.calculation.amountMinor,...(source.calculation.sourceCalculation?{sourceCalculation:source.calculation.sourceCalculation,exchangeRateSnapshotId:d.ratesId}:{})});
    }
    const rentLine=lines.find(l=>l.type==='rent');
    let kept=0;
@@ -243,9 +257,9 @@ function createSettlementHandler({db,Timestamp,HttpsError}){
    const creditPlan=[];
    const chosen=[...(d.creditRent?credits.map(c=>({kind:'rent',...c})):[]),...(d.creditFees?feeCredits.map(c=>({kind:'fee',...c})):[])];
    for(const c of chosen){
-    const s=state.get(c.invoiceId);s.total-=c.creditMinor;s.amountMinor-=c.creditMinor;s.credit+=c.creditMinor;
+    const s=state.get(c.invoiceId);const sourceCredit=c.sourceCreditMinor??c.creditMinor;s.total-=sourceCredit;s.amountMinor-=sourceCredit;s.credit+=sourceCredit;
     let returned=0;if(s.paid>s.total){returned=s.paid-s.total;s.paid=s.total;s.returned+=returned;}
-    creditPlan.push({kind:c.kind,invoiceId:c.invoiceId,...(c.kind==='fee'?{feeId:c.feeId,feeName:c.feeName}:{}),startDate:c.startDate,endDate:c.endDate,creditMinor:c.creditMinor,returnedMinor:returned});
+    creditPlan.push({kind:c.kind,invoiceId:c.invoiceId,...(c.kind==='fee'?{feeId:c.feeId,feeName:c.feeName}:{}),startDate:c.startDate,endDate:c.endDate,creditMinor:c.creditMinor,returnedMinor:convert(returned,s.x.currency??'VND'),sourceCurrency:s.x.currency??'VND',sourceCreditMinor:sourceCredit,sourceReturnedMinor:returned});
    }
    const returnedMinor=creditPlan.reduce((n,c)=>n+c.returnedMinor,0);
    if(returnedMinor>0&&!can('refundPayments'))fail('permission-denied','settlement_refund_needs_permission');
@@ -254,15 +268,28 @@ function createSettlementHandler({db,Timestamp,HttpsError}){
    let pool=depositMinor+returnedMinor;
    const order=[...state.values()].filter(s=>s.total-s.paid>0).sort((a,b)=>String(a.x.dueLocalDate??a.x.billingStartLocalDate??'').localeCompare(String(b.x.dueLocalDate??b.x.billingStartLocalDate??''))||a.doc.id.localeCompare(b.doc.id));
    const applications=[];
-   for(const s of order){if(pool<=0)break;const amount=Math.min(pool,s.total-s.paid);s.paid+=amount;s.applied=amount;pool-=amount;applications.push({invoiceId:s.doc.id,amountMinor:amount});}
+   for(const s of order){
+    if(pool<=0)break;
+    const sourceCurrency=s.x.currency??'VND',balance=s.total-s.paid,full=convert(balance,sourceCurrency);
+    let sourceAmount;
+    if(full<=pool)sourceAmount=balance;
+    else { // Find the largest original-unit payment whose converted cost fits.
+     let lo=0,hi=balance;
+     while(lo<hi){const mid=Math.floor((lo+hi+1)/2);if(convert(mid,sourceCurrency)<=pool)lo=mid;else hi=mid-1;}sourceAmount=lo;
+    }
+    const amount=convert(sourceAmount,sourceCurrency);
+    if(sourceAmount<=0||amount<=0)continue;
+    s.paid+=sourceAmount;s.applied=sourceAmount;pool-=amount;
+    applications.push({invoiceId:s.doc.id,amountMinor:amount,...(sourceCurrency!==currency?{sourceAmountMinor:sourceAmount,sourceCurrency}:{})});
+   }
    let finalPaid=0;
    if(finalMinor>0&&pool>0){finalPaid=Math.min(pool,finalMinor);pool-=finalPaid;applications.push({invoiceId:'final',amountMinor:finalPaid});}
    const refundMinor=pool;
-   const owedMinor=[...state.values()].reduce((n,s)=>n+Math.max(0,s.total-s.paid),0)+(finalMinor-finalPaid);
+   const owedMinor=[...state.values()].reduce((n,s)=>n+convert(Math.max(0,s.total-s.paid),s.x.currency??'VND'),0)+(finalMinor-finalPaid);
    const refundAccount=d.refundAccountId?accounts.find(a=>a.id===d.refundAccountId):null;
    if(d.refundAccountId&&!refundAccount)fail('invalid-argument','settlement_invalid');
 
-   const plan={moveOutDate:moveOut,currency,lines,finalMinor,depositMinor,keptMinor:kept,credits:creditPlan,returnedMinor,applications,refundMinor,owedMinor};
+   const plan={sourceDeposit:{currency:leaseCurrency,amountMinor:originalDepositMinor},...(d.ratesId?{exchangeRateSnapshotId:d.ratesId}:{}),moveOutDate:moveOut,currency,lines,finalMinor,depositMinor,keptMinor:kept,credits:creditPlan,returnedMinor,applications,refundMinor,owedMinor};
    const quoteRevision=hash([revision(doc),invoiceDocs.map(v=>[v.id,revision(v)]),plan,d.dueDate,d.refundMethod,d.refundAccountId]);
    if(quote)return {record:{...plan,tenantName:t.fullName??'',quoteRevision}};
    if(d.quoteRevision!==quoteRevision)fail('aborted','settlement_changed');
@@ -274,16 +301,16 @@ function createSettlementHandler({db,Timestamp,HttpsError}){
    const roomDoc=open?await tx.get(db.doc(`rooms/${room}`)):null;
    if(open&&(!roomDoc.exists||roomDoc.data().organizationId!==d.organizationId||roomDoc.data().buildingId!==d.buildingId))fail('failed-precondition','settlement_room');
    const settlementId='settlement_'+key,finalId=finalMinor>0?'invoice_'+key:null;
-   const label=s=>({invoiceId:s.doc.id,kind:s.x.invoiceKind,startDate:s.x.billingStartLocalDate??null,endDate:s.x.billingEndLocalDate??null});
+   const label=s=>({currency:s.x.currency??'VND',invoiceId:s.doc.id,kind:s.x.invoiceKind,startDate:s.x.billingStartLocalDate??null,endDate:s.x.billingEndLocalDate??null});
    // Prepaid / unpaid invoices: one update each with their final state and one history entry.
    for(const s of state.values()){
     if(!s.credit&&!s.applied)continue;
-    const patch={totalMinor:s.total,paidAmount:s.paid/scale,status:statusFor(s.paid,s.total),updatedAt:now,updatedBy:uid,settlementId};
-    if(s.credit){patch.amountMinor=s.amountMinor;patch.amount=s.amountMinor/scale;patch.moveOutCredit={creditMinor:s.credit,returnedMinor:s.returned,moveOutDate:moveOut};}
+    const patch={totalMinor:s.total,paidAmount:s.paid/scaleOf(s.x.currency),status:statusFor(s.paid,s.total),updatedAt:now,updatedBy:uid,settlementId};
+    if(s.credit){patch.amountMinor=s.amountMinor;patch.amount=s.amountMinor/scaleOf(s.x.currency);patch.moveOutCredit={creditMinor:s.credit,returnedMinor:s.returned,moveOutDate:moveOut};}
     if(s.applied){patch.paidAt=now;patch.paidBy=uid;patch.paymentMethod='deposit';}
     tx.update(s.doc.ref,patch);
     tx.create(s.doc.ref.collection('invoiceHistory').doc(key),{organizationId:d.organizationId,actorId:uid,createdAt:now,action:'moveOutSettlement',reason:d.reason.trim(),
-     before:{totalMinor:s.x.totalMinor,paidAmount:s.x.paidAmount,status:s.x.status},after:{totalMinor:s.total,paidAmount:s.paid/scale,status:patch.status},creditMinor:s.credit,returnedMinor:s.returned,depositMinor:s.applied});
+     before:{totalMinor:s.x.totalMinor,paidAmount:s.x.paidAmount,status:s.x.status},after:{totalMinor:s.total,paidAmount:s.paid/scaleOf(s.x.currency),status:patch.status},creditMinor:s.credit,returnedMinor:s.returned,depositMinor:s.applied});
    }
    if(finalId){
     const fref=db.doc(`payments/${finalId}`);

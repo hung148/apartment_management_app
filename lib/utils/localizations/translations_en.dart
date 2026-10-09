@@ -86,6 +86,7 @@ final Map<String, String> _enTranslations = {
   'organization_governance_retired': 'Co-ownership and organization sharing are no longer available.',
   'org_copy_retired': 'Organization copying is no longer available.',
   'org_entry_title': 'Your organization',
+  'team_verified_email_required': 'Verify your email address to accept an organization invitation. Check your inbox, then sign in again.',
   'org_entry_explanation': 'Create your organization as its owner, or accept a staff invitation. Each account belongs to one organization. Staff cannot create organizations.',
   'org_legacy_workspace': 'This organization uses the older workspace. Its records are preserved until the version-2 migration.',
   'org_close_action': 'Close organization',
@@ -494,6 +495,18 @@ final Map<String, String> _enTranslations = {
   'timezone_choose': 'Choose a time zone',
   'timezone_search': 'Search city or time zone',
   'timezone_no_results': 'No matching time zones. Close this list to enter one manually.',
+  'activity_action_organization_currency_updated': 'Organization currency updated',
+  'organization_currency': 'Organization currency',
+  'organization_currency_inherited': 'Set in Account. Used for this building and its new rooms and bookings.',
+  'organization_currency_help': 'Displays and money inputs use this currency. Existing records keep their original amounts and currencies; edited inputs are converted back when saved. New records use the selected currency. Reference exchange rates are dated estimates.',
+  'organization_currency_readonly': 'Changing this setting requires the Change organization currency permission.',
+  'organization_currency_error': 'Could not load or save. Check your access and try again.',
+  'organization_currency_conflict': 'This setting changed. Reload before saving again.',
+  'organization_currency_retry': 'The result is uncertain. Save again to retry the same change, or reload to check it.',
+  'organization_currency_saved': 'Currency saved.',
+  'organization_currency_save': 'Save currency',
+  'organization_currency_reload': 'Reload',
+  'team_permission_changeOrganizationCurrency': 'Change organization currency',
   'property_timezone': 'Property timezone',
   'property_timezone_hint':
       'Enter a timezone such as Asia/Ho_Chi_Minh, Asia/Singapore, Europe/London or America/New_York. Leave blank if not configured. Required before enabling room operating hours.',
@@ -671,6 +684,7 @@ final Map<String, String> _enTranslations = {
       'Confirmation was not received. The operation is saved on this device. Retry this same operation; do not record it again elsewhere.',
   'payment_action_storage':
       'Could not access the saved operation. No new request was sent. Retry on this device when storage is available.',
+  'payment_action_reopen': 'The payment was rejected. Go back and reopen this form to enter an amount using the current currency and rate.',
   'payment_action_rejected':
       'The server rejected this operation. Check the current invoice and your input before trying again.',
   'payment_action_success': 'The server confirmed this operation.',
@@ -1252,6 +1266,7 @@ final Map<String, String> _enTranslations = {
       'THU PHÍ CHỦ CĂN HỘ / APARTMENT OWNER FEE RECEIPT',
   'refresh': 'Refresh',
   'retry': 'Retry',
+  'organization_currency_rates_failed': 'Could not refresh currency settings or exchange rates. Amounts use the last available rate, or show their original currency when no rate is available.',
   'report_currency_separate':
       'Totals are converted to the display currency; original documents keep their source currency.',
   'report_currency_label': 'Display currency',

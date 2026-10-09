@@ -6,6 +6,8 @@ import 'package:uuid/uuid.dart';
 import '../../services/team_service.dart';
 import '../../utils/localizations/app_localizations.dart';
 import '../../utils/app_number.dart';
+import '../../utils/money_conversion.dart';
+import '../../services/organization_money.dart';
 import 'property_initial_rooms.dart';
 import '../../widgets/time_zone_picker.dart';
 
@@ -53,6 +55,8 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
   bool _created = false, _confirmDelete = false, _deleted = false;
   String _savedName = '';
   bool get _deleting => _pending?['action'] == 'delete';
+  MoneyForm _money = MoneyForm(null);
+  String get _inputCurrency => _money.currency(_currency);
   String _currency = 'VND';
   bool get _creating => widget.create && !_created;
   @override
@@ -117,9 +121,14 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
         _zone.text = row['timeZone'] as String? ?? '';
         _currency = row['currency'] as String? ?? 'VND';
         _canSetRoomPrices = row['canSetRoomPrices'] == true;
-        _cost.text = row['exploitationCostMinor'] == null
-            ? ''
-            : appMoneyInputText(row['exploitationCostMinor'] as num, _currency);
+        _money = MoneyForm(
+          OrganizationMoney.shared.forOrganization(widget.organizationId),
+        );
+        _money.set(
+          _cost,
+          (row['exploitationCostMinor'] as num?)?.toInt(),
+          _currency,
+        );
         _loading = false;
         _message = saved ? 'property_saved' : null;
       });
@@ -165,7 +174,7 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
       'timeZone': _zone.text.trim().isEmpty ? null : _zone.text.trim(),
       'exploitationCostMinor': _cost.text.trim().isEmpty
           ? null
-          : appParseMoney(_cost.text, _currency),
+          : _money.parse(_cost, _currency),
       if (_creating) 'rooms': _rooms.map((r) => r.toMap(_currency)).toList(),
     });
     final generation = _generation;
@@ -364,34 +373,18 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
                           ],
                         ),
                       if (_creating && _revision != null) ...[
-                        DropdownButtonFormField<String>(
-                          key: ValueKey('property-currency-$_currency'),
-                          initialValue: _currency,
-                          isExpanded: true,
-                          decoration: InputDecoration(
-                            labelText: t['property_currency'],
-                          ),
-                          items: ['VND', 'USD']
-                              .map(
-                                (value) => DropdownMenuItem(
-                                  value: value,
-                                  child: Text(value),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: locked
-                              ? null
-                              : (value) => setState(() => _currency = value!),
-                        ),
+                        Text('${t['organization_currency']}: $_currency'),
                         const SizedBox(height: 8),
-                        Text(t['property_create_currency_hint']),
+                        Text(t['organization_currency_inherited']),
                         const SizedBox(height: 16),
                       ],
-                      Text('${t['property_exploitation_cost']} ($_currency)'),
+                      Text(
+                        '${t['property_exploitation_cost']} ($_inputCurrency)',
+                      ),
                       const SizedBox(height: 8),
                       Semantics(
                         label:
-                            '${t['property_exploitation_cost']} ($_currency)',
+                            '${t['property_exploitation_cost']} ($_inputCurrency)',
                         child: TextFormField(
                           key: const ValueKey('property-exploitation-cost'),
                           controller: _cost,
@@ -400,11 +393,11 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
                           keyboardType: const TextInputType.numberWithOptions(
                             decimal: true,
                           ),
-                          inputFormatters: appMoneyInput(_currency),
+                          inputFormatters: appMoneyInput(_inputCurrency),
                           decoration: InputDecoration(errorMaxLines: 4),
                           validator: (v) => v == null || v.trim().isEmpty
                               ? null
-                              : appParseMoney(v, _currency) == null
+                              : _money.parse(_cost, _currency) == null
                               ? t['property_invalid_amount']
                               : null,
                         ),

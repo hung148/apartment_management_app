@@ -4,6 +4,17 @@ const {createRoomDetailsHandler}=require('../room_details');
 const {fakeDb,Ts,CodeError}=require('./fake_firestore');
 const room=n=>({roomNumber:n,roomType:'',area:null,ratesMinor:{roomPrice:120099,nightlyPrice:null,hourlyPrice:null}});
 const command=()=>({action:'createBulk',organizationId:'org',buildingId:'b',operationId:'op',rooms:[room('P001'),room('P002')]});
+test('changed organization currency rejects ambiguous old-client amounts and preserves committed retries',async()=>{
+ const {db,run}=fixture();
+ const old=command();const committed=await run(old);
+ db.store.get('organizations/org').displayCurrency='VND';
+ assert.deepEqual(await run(old),committed);
+ await assert.rejects(run({...old,operationId:'ambiguous',rooms:[room('P003')]}),e=>e.code==='aborted');
+ const result=await run({...old,operationId:'current',currency:'VND',rooms:[room('P003')]});
+ assert.equal(db.store.get('rooms/'+result.roomIds[0]).currency,'VND');
+ assert.equal(db.store.get('rooms/'+result.roomIds[0]).roomPrice,120099);
+ assert.equal(db.store.get('rooms/'+committed.roomIds[0]).currency,'USD');
+});
 function fixture(){const db=fakeDb({'organizations/org':{accessVersion:2},'memberships/u_org':{organizationId:'org',ownerId:'u',role:'manager',status:'active',accessVersion:2,buildingScope:'selected',buildingIds:['b']},'buildings/b':{organizationId:'org',currency:'USD'}});const api=createRoomDetailsHandler({db,Timestamp:Ts,HttpsError:CodeError});return {db,run:d=>api({auth:{uid:'u'},data:d})};}
 test('bulk rooms inherit currency, commit once and reject changed retry',async()=>{
  const {db,run}=fixture();const d=command();const first=await run(d);assert.equal(first.roomIds.length,2);assert.deepEqual(await run(d),first);

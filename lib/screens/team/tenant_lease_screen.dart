@@ -1,3 +1,5 @@
+import '../../utils/money_conversion.dart';
+import '../../services/organization_money.dart';
 import 'dart:convert' show base64Encode;
 
 import 'package:cloud_functions/cloud_functions.dart';
@@ -180,6 +182,10 @@ class TenantLeaseScreen extends StatefulWidget {
 }
 
 class _TenantLeaseScreenState extends State<TenantLeaseScreen> {
+  late final MoneyForm _conversion = MoneyForm(
+    OrganizationMoney.shared.forOrganization(widget.organizationId),
+  );
+  String get _inputCurrency => _conversion.currency(_currency);
   final _form = GlobalKey<FormState>();
   final _fields = {
     for (final k in [
@@ -377,9 +383,26 @@ class _TenantLeaseScreenState extends State<TenantLeaseScreen> {
           }
         }
         // The room's monthly price as a starting point for the rent.
-        final roomRent = _record!['monthlyRentMinor'];
+        int? roomRent = _record!['monthlyRentMinor'] as int?;
+        final source = _record!['roomRent'];
+        if (roomRent == null && source is Map && source['amountMinor'] is int &&
+            source['currency'] is String) {
+          final sourceCurrency = source['currency'] as String;
+          if (sourceCurrency == _currency) {
+            roomRent = source['amountMinor'] as int;
+          } else {
+            try {
+              roomRent = _conversion.conversion?.convertMinor(
+                source['amountMinor'] as int, sourceCurrency, _currency,
+              );
+            } on StateError {
+              // Without rates, leave the suggested rent empty. Never relabel
+              // a source price; the user can enter the new lease's currency.
+            }
+          }
+        }
         if (_fields['rent']!.text.isEmpty && roomRent is int) {
-          _fields['rent']!.text = _plain(roomRent);
+          _conversion.set(_fields['rent']!, roomRent, _currency);
         }
         if (_staffId != null && !_staff.any((s) => s['id'] == _staffId)) {
           _staffId = null;
@@ -410,9 +433,7 @@ class _TenantLeaseScreenState extends State<TenantLeaseScreen> {
   List<Map<String, dynamic>> get _staff => _list('staff');
   List<Map<String, dynamic>> get _accounts => _list('accounts');
   String get _currency => _record?['currency'] as String? ?? 'VND';
-  int get _scale => _currency == 'USD' ? 100 : 1;
   // Grouped for the input box: 5,000,000 (2026-10-05, Tom).
-  String _plain(int minor) => appMoneyInputText(minor, _currency);
   String _money(int minor) => appMoneyMinor(minor, _currency);
 
   Map<String, dynamic> _paper(String idNumber, bool registered, String date) =>
@@ -423,16 +444,16 @@ class _TenantLeaseScreenState extends State<TenantLeaseScreen> {
       };
 
   Map<String, dynamic> _details() {
-    final rent = parseRoomRate(_fields['rent']!.text, _currency);
-    final deposit = parseRoomRate(_fields['deposit']!.text, _currency);
+    final rent = _conversion.parse(_fields['rent']!, _currency);
+    final deposit = _conversion.parse(_fields['deposit']!, _currency);
     final period = _ownAmount
-        ? parseRoomRate(_fields['periodAmount']!.text, _currency)
+        ? _conversion.parse(_fields['periodAmount']!, _currency)
         : null;
     final due = _ownDueDay
         ? int.tryParse(_fields['dueDay']!.text.trim())
         : null;
-    final power = parseRoomRate(_fields['electricity']!.text, _currency);
-    final water = parseRoomRate(_fields['water']!.text, _currency);
+    final power = _conversion.parse(_fields['electricity']!, _currency);
+    final water = _conversion.parse(_fields['water']!, _currency);
     final charges = [
       for (final c in _surcharges) c.toJson(_currency),
       if (water != null && water > 0)
@@ -490,8 +511,8 @@ class _TenantLeaseScreenState extends State<TenantLeaseScreen> {
       // Required since 2026-10-04 (Tom).
       if (!_roommate) 'contractEndDate': _fields['end']!.text.trim(),
       if (!_roommate)
-        'rentMinor': parseRoomRate(
-          _fields['rent']!.text,
+        'rentMinor': _conversion.parse(
+          _fields['rent']!,
           _record!['currency'] as String,
         ),
       'backdateReason': _fields['reason']!.text.trim(),
@@ -697,7 +718,7 @@ class _TenantLeaseScreenState extends State<TenantLeaseScreen> {
               'electricity',
               'water',
             }.contains(key)
-            ? appMoneyInput(_currency)
+            ? appMoneyInput(_inputCurrency)
             : null,
         maxLines: null,
         onChanged: onChanged,
@@ -740,7 +761,7 @@ class _TenantLeaseScreenState extends State<TenantLeaseScreen> {
       ],
     );
 
-    final rentMinor = parseRoomRate(_fields['rent']!.text, _currency);
+    final rentMinor = _conversion.parse(_fields['rent']!, _currency);
     List<Widget> mainForm(Map<String, dynamic> r) => [
       if (!_roommate)
         WsSection(
@@ -920,12 +941,12 @@ class _TenantLeaseScreenState extends State<TenantLeaseScreen> {
             const SizedBox(height: WsSpace.md),
             input(
               'rent',
-              label: '${t['lease_form_rent']} ($_currency)',
+              label: '${t['lease_form_rent']} ($_inputCurrency)',
               max: 24,
               keyboard: TextInputType.numberWithOptions(
-                decimal: _currency == 'USD',
+                decimal: _inputCurrency == 'USD',
               ),
-              check: (v) => parseRoomRate(v, _currency) == null
+              check: (v) => parseRoomRate(v, _inputCurrency) == null
                   ? t['lease_form_invalid_rent']
                   : null,
             ),
@@ -996,8 +1017,10 @@ class _TenantLeaseScreenState extends State<TenantLeaseScreen> {
                       if (v &&
                           _fields['periodAmount']!.text.trim().isEmpty &&
                           rentMinor != null) {
-                        _fields['periodAmount']!.text = _plain(
+                        _conversion.set(
+                          _fields['periodAmount']!,
                           rentMinor * _periodMonths,
+                          _currency,
                         );
                       }
                     }),
@@ -1005,13 +1028,13 @@ class _TenantLeaseScreenState extends State<TenantLeaseScreen> {
             if (_ownAmount)
               input(
                 'periodAmount',
-                label: '${lt('periodAmount')} ($_currency)',
+                label: '${lt('periodAmount')} ($_inputCurrency)',
                 max: 24,
                 required: true,
                 keyboard: TextInputType.numberWithOptions(
-                  decimal: _currency == 'USD',
+                  decimal: _inputCurrency == 'USD',
                 ),
-                check: (v) => parseRoomRate(v, _currency) == null
+                check: (v) => parseRoomRate(v, _inputCurrency) == null
                     ? t['lease_form_invalid_rent']
                     : null,
               )
@@ -1051,10 +1074,10 @@ class _TenantLeaseScreenState extends State<TenantLeaseScreen> {
                   label: lt('deposit'),
                   max: 24,
                   keyboard: TextInputType.numberWithOptions(
-                    decimal: _currency == 'USD',
+                    decimal: _inputCurrency == 'USD',
                   ),
                   check: (v) =>
-                      v.isNotEmpty && parseRoomRate(v, _currency) == null
+                      v.isNotEmpty && parseRoomRate(v, _inputCurrency) == null
                       ? t['lease_form_invalid_rent']
                       : null,
                 ),
@@ -1111,6 +1134,7 @@ class _TenantLeaseScreenState extends State<TenantLeaseScreen> {
           icon: Icons.add_card_outlined,
           children: [
             LeaseSurchargeEditor(
+              conversion: _conversion.conversion,
               drafts: _surcharges,
               currency: _currency,
               enabled: !_locked,
@@ -1127,14 +1151,14 @@ class _TenantLeaseScreenState extends State<TenantLeaseScreen> {
             if (r['canPrice'] == true) ...[
               input(
                 'electricity',
-                label: '${lt('powerPrice')} ($_currency)',
+                label: '${lt('powerPrice')} ($_inputCurrency)',
                 max: 24,
                 helper: lt('powerHelp'),
                 keyboard: TextInputType.numberWithOptions(
-                  decimal: _currency == 'USD',
+                  decimal: _inputCurrency == 'USD',
                 ),
                 check: (v) =>
-                    v.isNotEmpty && (parseRoomRate(v, _currency) ?? 0) <= 0
+                    v.isNotEmpty && (parseRoomRate(v, _inputCurrency) ?? 0) <= 0
                     ? t['lease_form_invalid_rent']
                     : null,
               ),
@@ -1191,13 +1215,13 @@ class _TenantLeaseScreenState extends State<TenantLeaseScreen> {
             input(
               'water',
               label:
-                  '${leaseSurchargeText(context, 'waterPrice')} ($_currency)',
+                  '${leaseSurchargeText(context, 'waterPrice')} ($_inputCurrency)',
               max: 24,
               keyboard: TextInputType.numberWithOptions(
-                decimal: _currency == 'USD',
+                decimal: _inputCurrency == 'USD',
               ),
               check: (v) =>
-                  v.isNotEmpty && (parseRoomRate(v, _currency) ?? 0) <= 0
+                  v.isNotEmpty && (parseRoomRate(v, _inputCurrency) ?? 0) <= 0
                   ? t['lease_form_invalid_rent']
                   : null,
             ),

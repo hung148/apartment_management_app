@@ -86,6 +86,7 @@ final Map<String, String> _viTranslations = {
   'organization_governance_retired': 'Đồng sở hữu và chia sẻ giữa các tổ chức không còn được hỗ trợ.',
   'org_copy_retired': 'Không còn hỗ trợ sao chép tổ chức.',
   'org_entry_title': 'Tổ chức của bạn',
+  'team_verified_email_required': 'Hãy xác minh email để nhận lời mời vào tổ chức. Kiểm tra hộp thư rồi đăng nhập lại.',
   'org_entry_explanation': 'Tạo tổ chức với tư cách chủ sở hữu hoặc nhận lời mời nhân viên. Mỗi tài khoản thuộc một tổ chức. Nhân viên không được tạo tổ chức.',
   'org_legacy_workspace': 'Tổ chức này đang dùng giao diện cũ. Dữ liệu được giữ nguyên để chuyển sang phiên bản 2.',
   'org_close_action': 'Đóng tổ chức',
@@ -497,6 +498,18 @@ final Map<String, String> _viTranslations = {
   'timezone_choose': 'Chọn múi giờ',
   'timezone_search': 'Tìm thành phố hoặc múi giờ',
   'timezone_no_results': 'Không tìm thấy múi giờ. Đóng danh sách để nhập thủ công.',
+  'activity_action_organization_currency_updated': 'Cập nhật tiền tệ tổ chức',
+  'organization_currency': 'Tiền tệ tổ chức',
+  'organization_currency_inherited': 'Thiết lập tại Tài khoản. Áp dụng cho tòa nhà này và các phòng, đặt phòng mới của tòa nhà.',
+  'organization_currency_help': 'Số tiền hiển thị và ô nhập tiền dùng tiền tệ này. Dữ liệu đã lưu giữ nguyên số tiền và tiền tệ gốc; số tiền chỉnh sửa được quy đổi về tiền tệ gốc khi lưu. Dữ liệu mới dùng tiền tệ đang chọn. Tỷ giá tham khảo có ngày cập nhật và chỉ mang tính ước tính.',
+  'organization_currency_readonly': 'Cần quyền Thay đổi tiền tệ tổ chức để sửa thiết lập này.',
+  'organization_currency_error': 'Không tải hoặc lưu được. Kiểm tra quyền truy cập và thử lại.',
+  'organization_currency_conflict': 'Thiết lập đã thay đổi. Tải lại trước khi lưu tiếp.',
+  'organization_currency_retry': 'Chưa xác định kết quả. Lưu lại để thử đúng thay đổi này, hoặc tải lại để kiểm tra.',
+  'organization_currency_saved': 'Đã lưu tiền tệ.',
+  'organization_currency_save': 'Lưu tiền tệ',
+  'organization_currency_reload': 'Tải lại',
+  'team_permission_changeOrganizationCurrency': 'Thay đổi tiền tệ tổ chức',
   'property_timezone': 'Múi giờ tòa nhà',
   'property_timezone_hint':
       'Nhập múi giờ như Asia/Ho_Chi_Minh, Asia/Singapore, Europe/London hoặc America/New_York. Để trống nếu chưa cấu hình. Cần đặt múi giờ trước khi giới hạn giờ hoạt động của phòng.',
@@ -678,6 +691,7 @@ final Map<String, String> _viTranslations = {
       'Chưa nhận được xác nhận. Thao tác đã lưu trên thiết bị này. Hãy thử lại cùng thao tác; không ghi nhận lại ở nơi khác.',
   'payment_action_storage':
       'Không truy cập được thao tác đã lưu. Chưa gửi yêu cầu mới. Thử lại trên thiết bị này khi bộ nhớ hoạt động.',
+  'payment_action_reopen': 'Giao dịch bị từ chối. Hãy quay lại và mở lại biểu mẫu để nhập số tiền theo tiền tệ và tỷ giá hiện tại.',
   'payment_action_rejected':
       'Máy chủ từ chối thao tác. Kiểm tra hóa đơn hiện tại và dữ liệu trước khi thử lại.',
   'payment_action_success': 'Máy chủ đã xác nhận thao tác này.',
@@ -1257,6 +1271,7 @@ final Map<String, String> _viTranslations = {
       'THU PHÍ CHỦ CĂN HỘ / APARTMENT OWNER FEE RECEIPT',
   'refresh': 'Tải lại',
   'retry': 'Thử lại',
+  'organization_currency_rates_failed': 'Không thể cập nhật tiền tệ hoặc tỷ giá. Số tiền dùng tỷ giá gần nhất; nếu chưa có tỷ giá, sẽ hiển thị theo tiền tệ gốc.',
   'report_currency_separate':
       'Các tổng số được quy đổi sang tiền tệ hiển thị; chứng từ gốc vẫn giữ nguyên.',
   'report_currency_label': 'Tiền tệ hiển thị',

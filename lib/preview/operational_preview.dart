@@ -1,6 +1,20 @@
 part of 'team_preview_store.dart';
 
 extension OperationalPreview on TeamPreviewStore {
+  num? _bookingRoomRate(Map room, Object? amount, String currency) {
+    if (amount is! num) return null;
+    final source = room['currency'] as String? ?? 'VND';
+    if (source == currency) return amount;
+    final conversion = OrganizationMoney.shared.forOrganization('preview');
+    if (conversion == null) return null;
+    return conversion.convertMinor(
+          (amount * (source == 'USD' ? 100 : 1)).round(),
+          source,
+          currency,
+        ) /
+        (currency == 'USD' ? 100 : 1);
+  }
+
   Map<String, dynamic>? _operationalPreview(
     String name,
     Map<String, dynamic> d,
@@ -335,7 +349,8 @@ extension OperationalPreview on TeamPreviewStore {
             {
               ...r,
               // Room prices in minor units, like the server (B2 / 2026-10-03).
-              'nightlyPriceMinor': switch (r['nightlyPrice'] ?? r['dailyPrice']) {
+              'nightlyPriceMinor': switch (r['nightlyPrice'] ??
+                  r['dailyPrice']) {
                 final num v => (v * (r['currency'] == 'USD' ? 100 : 1)).round(),
                 _ => null,
               },
@@ -368,23 +383,35 @@ extension OperationalPreview on TeamPreviewStore {
           message: 'Dates',
         );
       }
-      final currency = room['currency'] ?? 'VND',
+      final currency = d['inputCurrency'] ?? room['currency'] ?? 'VND',
           scale = currency == 'USD' ? 100 : 1,
-          hourlyMinor = d['pricingType'] == 'hourly' ? (d['hourlyPriceMinor'] as int?) : null,
+          hourlyMinor = d['pricingType'] == 'hourly'
+              ? (d['hourlyPriceMinor'] as int?)
+              : null,
           rate = hourlyMinor != null
               ? hourlyMinor / scale
               : d['pricingType'] == 'nightly'
-              ? (room['nightlyPrice'] ?? room['dailyPrice']) as num?
-              : room['${d['pricingType']}Price'] as num?;
+              ? _bookingRoomRate(
+                  room,
+                  room['nightlyPrice'] ?? room['dailyPrice'],
+                  currency as String,
+                )
+              : _bookingRoomRate(
+                  room,
+                  room['${d['pricingType']}Price'],
+                  currency as String,
+                );
       if (rate == null) {
         throw FirebaseFunctionsException(
           code: 'failed-precondition',
           message: 'Rate',
         );
       }
-      final nights = DateTime.utc(end.year, end.month, end.day)
-          .difference(DateTime.utc(start.year, start.month, start.day))
-          .inDays;
+      final nights = DateTime.utc(
+        end.year,
+        end.month,
+        end.day,
+      ).difference(DateTime.utc(start.year, start.month, start.day)).inDays;
       final custom = (d['nightPricesMinor'] as List?)?.cast<int>();
       final calculatedAmount = custom != null
           ? custom.fold<int>(0, (a, b) => a + b)

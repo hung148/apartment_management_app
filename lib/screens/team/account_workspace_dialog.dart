@@ -9,6 +9,7 @@ import 'ownership_transfer_screen.dart';
 import 'payment_accounts_screen.dart';
 import 'sheet_import_screen.dart';
 import 'ws_ui.dart';
+import 'organization_currency_screen.dart';
 
 /// The former Settings destinations, now actions in the Account menu.
 class AccountWorkspaceOption {
@@ -37,6 +38,7 @@ final accountWorkspaceOptions = <AccountWorkspaceOption>[
     Icons.account_balance_outlined,
     (a) => a.allows(TeamPermission.manageOrganization),
   ),
+  AccountWorkspaceOption('currency', 'organization_currency', Icons.currency_exchange, (a) => true),
   AccountWorkspaceOption(
     'import',
     'nav_import',
@@ -199,6 +201,7 @@ class AccountWorkspaceDialog extends StatelessWidget {
         onChanged: onChanged,
         initialRead: ownershipRead,
       ),
+      'currency' => OrganizationCurrencyScreen(organizationId: organizationId, service: service, onChanged: onChanged),
       'drive' => GoogleDriveScreen(service: service, onChanged: onChanged),
       'accounts' => PaymentAccountsScreen(
         organizationId: organizationId,

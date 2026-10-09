@@ -7,8 +7,7 @@ import 'property_details_screen_test.dart' show page;
 import 'property_initial_rooms_test.dart' show add;
 import 'team_review_test.dart' show mountReview;
 import 'room_booking_settings_test.dart' show enter;
-import 'room_rates_test.dart' show press, reveal;
-import 'access_editor_test.dart' show choose;
+import 'room_rates_test.dart' show press;
 
 void main() {
   test('building copy and serialization preserve cost and currency', () {
@@ -60,34 +59,26 @@ void main() {
   });
 
   testWidgets(
-    'changing currency validates existing fractional cost and room prices',
+    'new building inherits selected app currency and stores exact original cents',
     (t) async {
-      final store = TeamPreviewStore();
+      final store = TeamPreviewStore()..organizationCurrency = 'USD';
       await mountReview(t, create(store.service));
       await fill(t);
-      await choose(t, 'property-currency-VND', 'USD');
+      expect(find.byKey(const ValueKey('property-currency-VND')), findsNothing);
       await enter(t, 'property-exploitation-cost', '123.45');
       await add(t, '101', 0);
       await enter(t, 'initial-room-roomPrice-0', '25.50');
-      await reveal(t, find.byKey(const ValueKey('property-currency-USD')));
-      await choose(t, 'property-currency-USD', 'VND');
       await press(t, 'Create property');
-      expect(store.buildings.where((b) => b['id'] == 'new-property'), isEmpty);
-      await enter(t, 'property-exploitation-cost', '123');
-      await enter(t, 'initial-room-roomPrice-0', '25');
-      await press(t, 'Create property');
-      expect(
-        store.buildings.singleWhere(
-          (b) => b['id'] == 'new-property',
-        )['exploitationCostMinor'],
-        123,
+      final building = store.buildings.singleWhere(
+        (b) => b['id'] == 'new-property',
       );
-      expect(
-        store.rooms.singleWhere(
-          (r) => r['buildingId'] == 'new-property',
-        )['roomPrice'],
-        25,
+      expect(building['exploitationCostMinor'], 12345);
+      expect(building['currency'], 'USD');
+      final room = store.rooms.singleWhere(
+        (r) => r['buildingId'] == 'new-property',
       );
+      expect(room['roomPrice'], 25.5);
+      expect(room['currency'], 'USD');
     },
   );
 }

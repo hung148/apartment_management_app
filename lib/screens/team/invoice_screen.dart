@@ -1,3 +1,5 @@
+import '../../utils/money_conversion.dart';
+import '../../services/organization_money.dart';
 import 'dart:convert';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
@@ -32,6 +34,8 @@ class InvoiceScreen extends StatefulWidget {
 }
 
 class _InvoiceScreenState extends State<InvoiceScreen> {
+  MoneyForm _conversion = MoneyForm(null);
+  String get _inputCurrency => _conversion.currency(_currency);
   static const fees = [
     'internetFee',
     'cableTVFee',
@@ -197,10 +201,15 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
       setState(() {
         _record = Map<String, dynamic>.from(r['record'] as Map);
         _currency = _record!['currency'] as String;
+        _conversion = MoneyForm(
+          OrganizationMoney.shared.forOrganization(widget.organizationId),
+        );
         _fields['due']!.text = _record!['dueDate'] as String? ?? '';
         for (final k in fees) {
-          _fields[k]!.text = _money(
+          _conversion.set(
+            _fields[k]!,
             (_record!['feesMinor'] as Map?)?[k] as int? ?? 0,
+            _currency,
           );
         }
         _fields['reason']!.clear();
@@ -260,7 +269,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
   }
 
   // Grouped: 5,000,000 (2026-10-05, Tom); the currency follows where shown.
-  String _money(int minor) => appMoneyInputText(minor, _currency);
+  String _money(int minor) => appMoneyMinor(minor, _currency);
 
   /// What the invoice is for, in words ("Thu · Hóa đơn kỳ").
   String _kindText(BuildContext context, Map row) {
@@ -323,6 +332,9 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
             .map((v) => Map<String, dynamic>.from(v as Map))
             .toList();
         _tenant = _tenants.firstOrNull?['id'] as String?;
+        _conversion = MoneyForm(
+          OrganizationMoney.shared.forOrganization(widget.organizationId),
+        );
         _propertyCurrency = r['currency'] as String? ?? 'VND';
         _currency = _kind == 'buildingRent'
             ? (r['currency'] as String? ?? 'VND')
@@ -352,7 +364,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
   Map<String, dynamic>? _fees() {
     final result = <String, dynamic>{};
     for (final k in fees) {
-      final value = operationalMoney(_fields[k]!.text, _currency);
+      final value = _conversion.parse(_fields[k]!, _currency);
       if (value == null) return null;
       result[k] = value;
     }
@@ -362,10 +374,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
   Map<String, dynamic> get _charge => _kind == 'charge'
       ? {
           'chargeType': _chargeType,
-          'unitPriceMinor': operationalMoney(
-            _fields['unitPrice']!.text,
-            _currency,
-          ),
+          'unitPriceMinor': _conversion.parse(_fields['unitPrice']!, _currency),
           'quantityMilli':
               RegExp(
                 r'^\d+(?:[.,]\d{1,3})?$',
@@ -390,6 +399,9 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
       final r = await widget.service.invoices({
         ..._identity,
         'action': 'quote',
+        'inputCurrency': _currency,
+        if (_conversion.conversion?.snapshotId != null)
+          'ratesId': _conversion.conversion!.snapshotId,
         'kind': _kind,
         'tenantId': _kind == 'buildingRent' ? null : _tenant,
         ..._charge,
@@ -430,7 +442,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
         setState(() => _message = 'required');
         return;
       }
-      final amount = operationalMoney(_fields['amount']!.text, _currency);
+      final amount = _conversion.parse(_fields['amount']!, _currency);
       if (['payExpense', 'reverseExpense'].contains(action) &&
           (amount == null || amount <= 0)) {
         setState(() => _message = 'required');
@@ -442,6 +454,9 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
         'operationId': const Uuid().v4(),
         'reason': _fields['reason']!.text.trim(),
         if (action == 'create') ...{
+          'inputCurrency': _currency,
+          if (_conversion.conversion?.snapshotId != null)
+            'ratesId': _conversion.conversion!.snapshotId,
           'kind': _kind,
           'tenantId': _kind == 'buildingRent' ? null : _tenant,
           ..._charge,
@@ -551,7 +566,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
       required: required,
       // Money boxes group the digits as you type (2026-10-05, Tom).
       formatters: k == 'unitPrice' || k == 'amount' || fees.contains(k)
-          ? appMoneyInput(_currency)
+          ? appMoneyInput(_inputCurrency)
           : null,
     );
     return BackStep(
@@ -716,21 +731,21 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
                 field('start'),
                 field('end'),
                 field('due'),
-                Text('${t('currency')}: $_currency'),
+                Text('${t('currency')}: $_inputCurrency'),
                 for (final k in fees) field(k),
                 field('reason'),
                 if (_quote == null)
                   button('review', _busy ? null : _review)
                 else ...[
                   Text(
-                    '${t('total')}: ${_money(_quote!['totalMinor'] as int)} $_currency',
+                    '${t('total')}: ${_money(_quote!['totalMinor'] as int)}',
                   ),
                   Text(
                     '${t(_quote!['direction'] as String)} / ${_quote!['days']} ${t('days')}',
                   ),
                   for (final line in _quote!['lines'] as List)
                     Text(
-                      '${line['startDate']} – ${line['endDate']}: ${_money(line['rateMinor'] as int)} $_currency / ${line['monthDays']}',
+                      '${line['startDate']} – ${line['endDate']}: ${_money(line['rateMinor'] as int)} / ${line['monthDays']}',
                     ),
                   button('confirm', _busy ? null : () => _mutate('create')),
                   button(
@@ -754,10 +769,10 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
                             if (row[side] != null) ...[
                               Text(t(side)),
                               Text(
-                                '${t('total')}: ${_money((row[side] as Map)['totalMinor'] as int)} $_currency',
+                                '${t('total')}: ${_money((row[side] as Map)['totalMinor'] as int)}',
                               ),
                               Text(
-                                '${t('paid')}: ${(row[side] as Map)['paidAmount']} $_currency',
+                                '${t('paid')}: ${appMoney((row[side] as Map)['paidAmount'] as num, _currency)}',
                               ),
                               Text(
                                 '${t('status')}: ${(row[side] as Map)['status']}',

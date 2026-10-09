@@ -10,7 +10,7 @@
 // 'viewer' was removed (2026-09-29); a stored 'viewer' parses as no role (waiting).
 library;
 
-enum TeamPermission { deleteBuildings, deleteRooms, deleteBookings, deleteTenants, deleteProblems, deleteStaffProfiles, manageOrganization, manageTeam, manageRoles, assignAdditionalWorkplace, manageProperty, manageLease, readBookings, createBookings, manageBookings, collectPayments, overridePrices, refundPayments, readFinancialReports, readOwnActivity, readAllActivity, exportData, importData, connectDrive, backdateRecords, readAssignedTasks, updateAssignedTasks, readGuestIds }
+enum TeamPermission { deleteBuildings, deleteRooms, deleteBookings, deleteTenants, deleteProblems, deleteStaffProfiles, manageOrganization, changeOrganizationCurrency, manageTeam, manageRoles, assignAdditionalWorkplace, manageProperty, manageLease, readBookings, createBookings, manageBookings, collectPayments, overridePrices, refundPayments, readFinancialReports, readOwnActivity, readAllActivity, exportData, importData, connectDrive, backdateRecords, readAssignedTasks, updateAssignedTasks, readGuestIds }
 
 /// How far a permission reaches.
 /// all: every property in the organization. managed: the member's own
@@ -36,6 +36,7 @@ class TeamPolicy {
     TeamPermission.deleteProblems: _record,
     TeamPermission.deleteStaffProfiles: _org,
     TeamPermission.manageOrganization: _org,
+    TeamPermission.changeOrganizationCurrency: _org,
     TeamPermission.manageTeam: _org,
     TeamPermission.manageRoles: _org,
     TeamPermission.assignAdditionalWorkplace: _org,
@@ -66,7 +67,7 @@ class TeamPolicy {
     'property': [TeamPermission.deleteBuildings, TeamPermission.deleteRooms, TeamPermission.deleteTenants, TeamPermission.manageProperty, TeamPermission.manageLease, TeamPermission.backdateRecords],
     'housekeeping': [TeamPermission.deleteProblems, TeamPermission.readAssignedTasks, TeamPermission.updateAssignedTasks],
     'team': [TeamPermission.deleteStaffProfiles, TeamPermission.manageTeam, TeamPermission.manageRoles, TeamPermission.readAllActivity, TeamPermission.readOwnActivity],
-    'organization': [TeamPermission.manageOrganization, TeamPermission.exportData, TeamPermission.importData, TeamPermission.connectDrive],
+    'organization': [TeamPermission.manageOrganization, TeamPermission.changeOrganizationCurrency, TeamPermission.exportData, TeamPermission.importData, TeamPermission.connectDrive],
   };
 
   static const overridable = {
@@ -80,7 +81,7 @@ class TeamPolicy {
       TeamPermission.deleteBuildings: _m, TeamPermission.deleteRooms: _m,
       TeamPermission.deleteBookings: _m, TeamPermission.deleteTenants: _m,
       TeamPermission.deleteProblems: _m, TeamPermission.deleteStaffProfiles: _a,
-      TeamPermission.manageOrganization: _a, TeamPermission.manageTeam: _a, TeamPermission.manageRoles: _a,
+      TeamPermission.manageOrganization: _a, TeamPermission.changeOrganizationCurrency: _a, TeamPermission.manageTeam: _a, TeamPermission.manageRoles: _a,
       TeamPermission.manageProperty: _m, TeamPermission.manageLease: _m, TeamPermission.readBookings: _m,
       TeamPermission.createBookings: _m, TeamPermission.manageBookings: _m, TeamPermission.collectPayments: _m,
       TeamPermission.overridePrices: _m, TeamPermission.refundPayments: _m, TeamPermission.readFinancialReports: _m,

@@ -32,6 +32,14 @@ function fixture(extra={}){
  return {db,call};
 }
 const merge={action:'merge',operationId:'merge1',name:'Unified',organizationIds:['a','b'],mergeIds:['a','b'],confirmDelete:false};
+test('preview and recovery list do not enumerate database collections',async()=>{
+ const {db,call}=fixture();
+ await call({...merge,mergeIds:['a'],confirmDelete:true});
+ db.listCollections=async()=>{throw Error('unnecessary database-wide collection discovery');};
+ assert.equal((await call({action:'recoveryList'})).organizations[0].id,'b');
+ const second=fixture();second.db.listCollections=db.listCollections;
+ assert.equal((await second.call({action:'preview'})).organizations.length,2);
+});
 
 test('recover excluded data into current organization without reviving deleted staff or a second organization',async()=>{
  const {db,call}=fixture();await call({...merge,mergeIds:['a'],confirmDelete:true});

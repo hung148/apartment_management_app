@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../../services/team_service.dart';
+import '../../services/organization_money.dart';
+import '../../utils/money_conversion.dart';
 import 'period_invoice_form.dart' show utilityName, signedMoney;
 import 'service_fee_text.dart';
 import 'ws_ui.dart';
@@ -42,6 +44,10 @@ class _LineDraft {
 }
 
 class _MoveOutSettlementFormState extends State<MoveOutSettlementForm> {
+  late final _money = MoneyForm(
+    OrganizationMoney.shared.forOrganization(widget.organizationId),
+  );
+  String get _inputCurrency => _money.currency(_currency);
   final _form = GlobalKey<FormState>();
   final _date = TextEditingController(), _reason = TextEditingController();
   final _lines = <_LineDraft>[];
@@ -91,6 +97,8 @@ class _MoveOutSettlementFormState extends State<MoveOutSettlementForm> {
     try {
       final data = await widget.service.leaseLifecycle({
         'action': 'settlementPreview',
+        if (_money.conversion?.snapshotId != null)
+          'ratesId': _money.conversion!.snapshotId,
         ..._scope,
         'effectiveDate': ?date,
       });
@@ -135,7 +143,10 @@ class _MoveOutSettlementFormState extends State<MoveOutSettlementForm> {
       } else {
         final text = l.amount.text.trim();
         final negative = l.kind == 'other' && text.startsWith('-');
-        final v = parseMinor(negative ? text.substring(1) : text, _currency);
+        final v = _money.parseText(
+          negative ? text.substring(1) : text,
+          _currency,
+        );
         if (v == null || v == 0)
           return x.tr(
             'Enter an amount above 0 for each line.',
@@ -147,6 +158,7 @@ class _MoveOutSettlementFormState extends State<MoveOutSettlementForm> {
   }
 
   Map<String, dynamic> _choice() => {
+    'inputCurrency': _currency,
     'effectiveDate': _date.text.trim(),
     'includeRent': _rent && _preview!['rent'] != null,
     'serviceFeeIds': [
@@ -177,7 +189,7 @@ class _MoveOutSettlementFormState extends State<MoveOutSettlementForm> {
             'amountMinor': () {
               final text = l.amount.text.trim();
               final negative = l.kind == 'other' && text.startsWith('-');
-              final v = parseMinor(
+              final v = _money.parseText(
                 negative ? text.substring(1) : text,
                 _currency,
               )!;
@@ -209,6 +221,8 @@ class _MoveOutSettlementFormState extends State<MoveOutSettlementForm> {
     try {
       final data = await widget.service.leaseLifecycle({
         'action': 'settlementQuote',
+        if (_money.conversion?.snapshotId != null)
+          'ratesId': _money.conversion!.snapshotId,
         ..._scope,
         ...payload,
       });
@@ -252,6 +266,8 @@ class _MoveOutSettlementFormState extends State<MoveOutSettlementForm> {
       try {
         final data = await widget.service.leaseLifecycle({
           'action': 'settlementQuote',
+          if (_money.conversion?.snapshotId != null)
+            'ratesId': _money.conversion!.snapshotId,
           ..._scope,
           ...payload,
         });
@@ -265,6 +281,8 @@ class _MoveOutSettlementFormState extends State<MoveOutSettlementForm> {
     }
     _pending ??= {
       'action': 'settle',
+      if (_money.conversion?.snapshotId != null)
+        'ratesId': _money.conversion!.snapshotId,
       ..._scope,
       ..._payload!,
       'operationId': const Uuid().v4(),
@@ -295,6 +313,10 @@ class _MoveOutSettlementFormState extends State<MoveOutSettlementForm> {
   }
 
   static const _keys = [
+    'settlement_currency_changed',
+    'settlement_rates_required',
+    'currency_rates_required',
+    'settlement_original_rates_required',
     'lease_handle_roommates_first',
     'lease_actual_date_required',
     'invoice_backdate_owner_required',
@@ -321,6 +343,19 @@ class _MoveOutSettlementFormState extends State<MoveOutSettlementForm> {
   /// What a server reason key means for the person, or null if unknown.
   String? _reasonText(FeeText x, String key) {
     switch (key) {
+      case 'settlement_currency_changed':
+        return x.tr('The currency changed. Reopen the settlement and review it again.', 'Tiền tệ đã thay đổi. Mở lại quyết toán và kiểm tra lại.');
+      case 'settlement_rates_required':
+      case 'currency_rates_required':
+        return x.tr(
+          'Exchange rates are needed to include invoices in other currencies. Refresh currency rates in Account, then reopen this settlement.',
+          'Cần tỷ giá để tính các hóa đơn khác tiền tệ. Làm mới tỷ giá trong Tài khoản rồi mở lại quyết toán.',
+        );
+      case 'settlement_original_rates_required':
+        return x.tr(
+          'A prepaid invoice is missing its original exchange rate. Review that invoice before settling; it has not been omitted.',
+          'Hóa đơn trả trước thiếu tỷ giá gốc. Kiểm tra hóa đơn đó trước khi quyết toán; hóa đơn không bị bỏ qua.',
+        );
       case 'lease_handle_roommates_first':
         return x.tr(
           'Move out the people living with this tenant first.',
@@ -834,7 +869,7 @@ class _MoveOutSettlementFormState extends State<MoveOutSettlementForm> {
                               signed: true,
                             ),
                             inputFormatters: appMoneyInput(
-                              _currency,
+                              _inputCurrency,
                               signed: true,
                             ),
                             decoration: InputDecoration(
@@ -846,8 +881,8 @@ class _MoveOutSettlementFormState extends State<MoveOutSettlementForm> {
                                       'Phần trăm tiền thuê',
                                     )
                                   : x.tr(
-                                      'Amount ($_currency)',
-                                      'Số tiền ($_currency)',
+                                      'Amount ($_inputCurrency)',
+                                      'Số tiền ($_inputCurrency)',
                                     ),
                               helperText: _lines[i].kind == 'other'
                                   ? x.tr(
@@ -865,7 +900,7 @@ class _MoveOutSettlementFormState extends State<MoveOutSettlementForm> {
                           children: [
                             ChoiceChip(
                               key: ValueKey('settlement-line-$i-vnd'),
-                              label: Text(_currency),
+                              label: Text(_inputCurrency),
                               selected: !_lines[i].percent,
                               onSelected: _locked || !_editing
                                   ? null

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../../services/team_service.dart';
+import '../../services/organization_money.dart';
+import '../../utils/money_conversion.dart';
 import 'back_steps.dart';
 import 'service_fee_text.dart';
 import 'workspace_page_scope.dart';
@@ -243,8 +245,8 @@ class _RoomServiceFeesScreenState extends State<RoomServiceFeesScreen> {
                         'Không thu từ ${o['effectiveDate']}',
                       ),
                       'rate' => x.tr(
-                        'Room price ${x.money(o['rateMinor'] as num, currency)} from ${o['effectiveDate']}',
-                        'Giá riêng ${x.money(o['rateMinor'] as num, currency)} từ ${o['effectiveDate']}',
+                        'Room price ${x.money(o['rateMinor'] as num, o['currency'] as String? ?? currency)} from ${o['effectiveDate']}',
+                        'Giá riêng ${x.money(o['rateMinor'] as num, o['currency'] as String? ?? currency)} từ ${o['effectiveDate']}',
                       ),
                       _ => x.tr(
                         'Property price from ${o['effectiveDate']}',
@@ -310,6 +312,10 @@ class _RoomRateDialog extends StatefulWidget {
 }
 
 class _RoomRateDialogState extends State<_RoomRateDialog> {
+  late final _money = MoneyForm(
+    OrganizationMoney.shared.forOrganization(widget.organizationId),
+  );
+  String get _inputCurrency => _money.currency(widget.currency);
   final _form = GlobalKey<FormState>();
   late final _date = TextEditingController(text: widget.today ?? '');
   final _rate = TextEditingController(), _reason = TextEditingController();
@@ -331,6 +337,7 @@ class _RoomRateDialogState extends State<_RoomRateDialog> {
     if (_busy || (_pending == null && !_form.currentState!.validate())) return;
     _pending ??= {
       'action': 'roomRate',
+      'inputCurrency': _inputCurrency,
       'organizationId': widget.organizationId,
       'buildingId': widget.buildingId,
       'roomId': widget.roomId,
@@ -341,8 +348,7 @@ class _RoomRateDialogState extends State<_RoomRateDialog> {
       'override': {
         'effectiveDate': _date.text.trim(),
         'mode': _mode,
-        if (_mode == 'rate')
-          'rateMinor': parseMinor(_rate.text, widget.currency),
+        if (_mode == 'rate') 'rateMinor': appParseMoney(_rate.text, _inputCurrency),
       },
     };
     setState(() {
@@ -440,14 +446,14 @@ class _RoomRateDialogState extends State<_RoomRateDialog> {
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
-                inputFormatters: appMoneyInput(widget.currency),
+                inputFormatters: appMoneyInput(_inputCurrency),
                 decoration: InputDecoration(
                   labelText: x.tr(
-                    'Price (${widget.currency})',
-                    'Giá (${widget.currency})',
+                    'Price ($_inputCurrency)',
+                    'Giá ($_inputCurrency)',
                   ),
                 ),
-                validator: (v) => parseMinor(v ?? '', widget.currency) == null
+                validator: (v) => _money.parse(_rate, widget.currency) == null
                     ? x.tr(
                         'Enter an amount of 0 or more.',
                         'Nhập số tiền từ 0 trở lên.',
@@ -513,6 +519,8 @@ class ServiceInvoiceForm extends StatefulWidget {
 }
 
 class _ServiceInvoiceFormState extends State<ServiceInvoiceForm> {
+  late final _conversion = OrganizationMoney.shared.forOrganization(widget.organizationId);
+  String get _invoiceCurrency => _conversion?.currency ?? widget.currency;
   final _form = GlobalKey<FormState>();
   final _start = TextEditingController(),
       _end = TextEditingController(),
@@ -581,6 +589,8 @@ class _ServiceInvoiceFormState extends State<ServiceInvoiceForm> {
     final start = _start.text.trim();
     final payload = {
       'kind': 'service',
+      'inputCurrency': _invoiceCurrency,
+      if (_conversion?.snapshotId != null) 'ratesId': _conversion!.snapshotId,
       'organizationId': widget.organizationId,
       'buildingId': widget.buildingId,
       'tenantId': _tenant,
@@ -828,7 +838,7 @@ class _ServiceInvoiceFormState extends State<ServiceInvoiceForm> {
                     if (quote['terms'] is Map) ...[
                       WsInfo(
                         x.tr('Price', 'Giá'),
-                        x.rate(fee, quote['terms'] as Map, widget.currency),
+                        x.rate(fee, quote['terms'] as Map, _invoiceCurrency),
                       ),
                       if (!_quantityBasis)
                         WsInfo(
@@ -845,12 +855,12 @@ class _ServiceInvoiceFormState extends State<ServiceInvoiceForm> {
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 2),
                         child: Text(
-                          x.line(line, widget.currency, unitLabel: unit),
+                          x.line(line, _invoiceCurrency, unitLabel: unit),
                         ),
                       ),
                     const Divider(),
                     Text(
-                      '${x.tr('Total', 'Tổng tiền')}: ${x.money(quote['totalMinor'] as num, widget.currency)}',
+                      '${x.tr('Total', 'Tổng tiền')}: ${x.money(quote['totalMinor'] as num, _invoiceCurrency)}',
                       key: const ValueKey('fee-invoice-total'),
                       style: Theme.of(context).textTheme.titleMedium,
                     ),

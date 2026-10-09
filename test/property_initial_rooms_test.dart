@@ -11,7 +11,6 @@ import 'property_creation_test.dart' show create, fill;
 import 'team_review_test.dart' show mountReview;
 import 'room_rates_test.dart' show reveal, press;
 import 'room_booking_settings_test.dart' show enter;
-import 'access_editor_test.dart' show choose;
 import 'package:phan_mem_quan_ly_can_ho/screens/team/role_workspace.dart';
 import 'support/calendar_nav.dart' show openNewBuilding, closeCalendarDialog;
 
@@ -95,7 +94,7 @@ void main() {
   testWidgets(
     'two rooms and building amount survive lost reply without duplicates',
     (t) async {
-      final store = TeamPreviewStore();
+      final store = TeamPreviewStore()..organizationCurrency = 'USD';
       final calls = <Map<String, dynamic>>[];
       final service = TeamService(
         transport: (name, d) async {
@@ -110,7 +109,7 @@ void main() {
       );
       await mountReview(t, create(service));
       await fill(t);
-      await choose(t, 'property-currency-VND', 'USD');
+      expect(find.byKey(const ValueKey('property-currency-VND')), findsNothing);
       await enter(t, 'property-exploitation-cost', '1234.56');
       await add(t, 'P101', 0);
       await enter(t, 'initial-room-roomPrice-0', '1250.99');

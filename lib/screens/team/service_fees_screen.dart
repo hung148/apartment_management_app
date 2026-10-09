@@ -1,3 +1,5 @@
+import '../../utils/money_conversion.dart';
+import '../../services/organization_money.dart';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../../services/team_service.dart';
@@ -228,6 +230,8 @@ class ServiceFeeEditor extends StatefulWidget {
 }
 
 class _ServiceFeeEditorState extends State<ServiceFeeEditor> {
+  late final MoneyForm _money = MoneyForm(OrganizationMoney.shared.forOrganization(widget.organizationId));
+  String get _inputCurrency => _money.currency(widget.currency);
   final _form = GlobalKey<FormState>();
   final _name = TextEditingController(),
       _unit = TextEditingController(),
@@ -247,7 +251,7 @@ class _ServiceFeeEditorState extends State<ServiceFeeEditor> {
 
   bool get _creating => widget.fee == null;
   bool get _locked => _busy || _pending != null;
-  List<int> get _roundings => widget.currency == 'USD'
+  List<int> get _roundings => _inputCurrency == 'USD'
       ? const [0, 5, 10, 50, 100]
       : const [0, 100, 500, 1000];
 
@@ -274,10 +278,15 @@ class _ServiceFeeEditorState extends State<ServiceFeeEditor> {
           );
       if (base['rateMinor'] != null) {
         final minor = base['rateMinor'] as int;
-        _rate.text = appMoneyInputText(minor, widget.currency);
+        _money.set(_rate, minor, base['currency'] as String? ?? widget.currency);
         _included.text = '${base['includedPeople'] ?? 0}';
-        _rounding = _roundings.contains(base['roundingMinor'])
-            ? base['roundingMinor'] as int
+        final originalRounding = base['roundingMinor'] as int? ?? 0;
+        final rounding = _money.conversion?.convertMinor(
+          originalRounding, base['currency'] as String? ?? widget.currency,
+          _inputCurrency,
+        ) ?? originalRounding;
+        _rounding = _roundings.contains(rounding)
+            ? rounding
             : 0;
         final rule = base['rule'] as Map?;
         if (rule != null) {
@@ -383,7 +392,7 @@ class _ServiceFeeEditorState extends State<ServiceFeeEditor> {
           : {
               'effectiveDate': _date.text.trim(),
               'active': true,
-              'rateMinor': parseMinor(_rate.text, widget.currency),
+              'rateMinor': appParseMoney(_rate.text, _inputCurrency),
               'rule': _rule(),
               'includedPeople': _basis == 'person'
                   ? int.parse(_included.text.trim())
@@ -392,6 +401,7 @@ class _ServiceFeeEditorState extends State<ServiceFeeEditor> {
             };
       _pending = {
         'action': 'define',
+        'inputCurrency': _inputCurrency,
         'organizationId': widget.organizationId,
         'buildingId': widget.buildingId,
         'operationId': const Uuid().v4(),
@@ -450,7 +460,7 @@ class _ServiceFeeEditorState extends State<ServiceFeeEditor> {
   /// "Example (30-day period): a person who moved in on day 21 pays …".
   String? _example(FeeText x) {
     if (!_active || _basis == 'quantity') return null;
-    final rate = parseMinor(_rate.text, widget.currency);
+    final rate = appParseMoney(_rate.text, _inputCurrency);
     if (rate == null || _stepsError(x) != null) return null;
     double share;
     if (_mode == 'days') {
@@ -474,8 +484,8 @@ class _ServiceFeeEditorState extends State<ServiceFeeEditor> {
         ? x.tr('a person who moved in on day 21', 'người vào ở từ ngày 21')
         : x.tr('a lease that started on day 21', 'hợp đồng bắt đầu từ ngày 21');
     return x.tr(
-      'Example (30-day period): $who pays ${x.money(minor, widget.currency)}.',
-      'Ví dụ (kỳ 30 ngày): $who trả ${x.money(minor, widget.currency)}.',
+      'Example (30-day period): $who pays ${x.money(minor, _inputCurrency)}.',
+      'Ví dụ (kỳ 30 ngày): $who trả ${x.money(minor, _inputCurrency)}.',
     );
   }
 
@@ -496,7 +506,7 @@ class _ServiceFeeEditorState extends State<ServiceFeeEditor> {
     keyboardType: number || money
         ? const TextInputType.numberWithOptions(decimal: true)
         : TextInputType.text,
-    inputFormatters: money ? appMoneyInput(widget.currency) : null,
+    inputFormatters: money ? appMoneyInput(_inputCurrency) : null,
     decoration: InputDecoration(labelText: label, hintText: hint),
     onChanged: (_) => setState(() {}),
     validator: (v) => check?.call((v ?? '').trim()),
@@ -657,21 +667,21 @@ class _ServiceFeeEditorState extends State<ServiceFeeEditor> {
                           _rate,
                           _basis == 'quantity'
                               ? x.tr(
-                                  'Price per unit (${widget.currency})',
-                                  'Giá mỗi đơn vị (${widget.currency})',
+                                  'Price per unit ($_inputCurrency)',
+                                  'Giá mỗi đơn vị ($_inputCurrency)',
                                 )
                               : _basis == 'person'
                               ? x.tr(
-                                  'Per person, full period (${widget.currency})',
-                                  'Mỗi người, đủ kỳ (${widget.currency})',
+                                  'Per person, full period ($_inputCurrency)',
+                                  'Mỗi người, đủ kỳ ($_inputCurrency)',
                                 )
                               : x.tr(
-                                  'Per room, full period (${widget.currency})',
-                                  'Mỗi phòng, đủ kỳ (${widget.currency})',
+                                  'Per room, full period ($_inputCurrency)',
+                                  'Mỗi phòng, đủ kỳ ($_inputCurrency)',
                                 ),
                           key: const ValueKey('fee-rate'),
                           money: true,
-                          check: (v) => parseMinor(v, widget.currency) == null
+                          check: (v) => _money.parse(_rate, widget.currency) == null
                               ? x.tr(
                                   'Enter an amount of 0 or more.',
                                   'Nhập số tiền từ 0 trở lên.',
@@ -695,7 +705,7 @@ class _ServiceFeeEditorState extends State<ServiceFeeEditor> {
                                   label: Text(
                                     r == 0
                                         ? x.tr('None', 'Không')
-                                        : x.money(r, widget.currency),
+                                        : x.money(r, _inputCurrency),
                                   ),
                                   selected: _rounding == r,
                                   onSelected: _locked

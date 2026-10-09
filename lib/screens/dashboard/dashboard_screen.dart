@@ -424,8 +424,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       appBar: AppBar(title: Text(t['org_entry_title']), actions: [
         IconButton(tooltip: t['account_menu'], onPressed: _showSettingsDialog, icon: const Icon(Icons.person_outline)),
       ]),
-      body: WsPage(maxWidth: 560, children: [
-        WsHeader(title: t['org_entry_title']),
+      body: WsPage(children: [
         WsNotice(t[entry.needsVerifiedEmail ? 'team_verified_email_required' : const {'closed','suspended','waiting','deleting','review'}.contains(entry.state) ? 'org_entry_${entry.state}' : 'org_entry_explanation'], tone: WsTone.neutral),
         if (entry.canCreate && !entry.needsVerifiedEmail)
           WsActions(children: [FilledButton.icon(
@@ -437,7 +436,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           InvitationEntryButton(service: getIt<TeamService>(), onReturn: () {
             if (mounted) setState(() { _entryKey = UniqueKey(); });
           }),
-        OutlinedButton(onPressed: () { setState(() { _entryKey = UniqueKey(); }); }, child: Text(t['team_refresh'])),
+        WsActions(children: [OutlinedButton(onPressed: () { setState(() { _entryKey = UniqueKey(); }); }, child: Text(t['team_refresh']))]),
       ]),
     );
   }
