@@ -302,6 +302,34 @@ Suggested first message for a new chat:
     → NEXT (Tom, 2026-10-05): this is the next feature. Needs a sample of the
     sheet (columns) before design.
 
+## Speed order (Tom, 2026-10-09, night) — do in this order
+Rule: "the phone shows, the server decides" (money and permissions stay on
+the server). Measure before and after each step on staging.
+1. [ ] Check on staging, then commit: instant "Đặt phòng" (kept options +
+   prefetch), booking preview while it loads, no calendar reload after a page
+   that changed nothing, Tháng -> Ngày without a server call.
+2. [ ] Server cold start: Firestore `preferRest: true` (index.js, the db
+   instance). Measure the first call after idle before/after.
+3. [ ] Background images as WebP (background_image_1920.jpg 85 KB,
+   background_image3_1920.jpg 334 KB); keep the originals on disk.
+4. [ ] The extra font download (Noto Sans Symbols fetched while the calendar
+   loads): find the character not in Roboto; replace it or bundle it.
+5. [ ] Startup waits before runApp: run the independent ones together (theme,
+   saved-data clean-up), keep auth/App Check order.
+6. [ ] W2 Smaller web download: deferred imports for Excel (excel,
+   syncfusion_xlsio), PDF/printing, charts (fl_chart), Markdown. Measure
+   main.dart.js before/after; stop if the saving is small.
+7. [ ] Smoothness: only where Tom feels stutter — measure with DevTools, then
+   fix that screen (less redraw, build long lists lazily).
+8. [ ] W3 WebAssembly build — experiment on staging (sign-in, reCAPTCHA,
+   packages); with or after W2.
+Later / only if needed: W4 local "Review calculation"; W1 caching service
+worker (not now). With the production move: the free keep-warm ping. With N1
+push notifications: firebase-messaging-sw.js.
+Sources: flutter.dev/blog/best-practices-for-optimizing-flutter-web-loading-speed,
+flutter.dev/blog/optimizing-performance-in-flutter-web-apps-with-tree-shaking-and-deferred-loading,
+makerkit.dev/blog/tutorials/improve-firebase-cold-starts.
+
 ## Order decided (Tom, 2026-10-05, evening)
 1. Sheet import: read anh Hưng's Google Sheet, create everything in the app,
    write a new sheet in our format.
@@ -654,6 +682,48 @@ built, local tests pending — see [CALENDAR.md](CALENDAR.md). B7b local check i
   technical problem. Per-user settings. iOS needs the APNs key from the Apple
   developer account; web shows browser notifications while the browser runs
   (iPhone web only when installed to the home screen).
+  Web needs a service worker for this: web/firebase-messaging-sw.js
+  (importScripts of the Firebase messaging scripts + onBackgroundMessage),
+  registered in web/index.html. It only receives notifications; it does not
+  cache or speed anything up. Android/iOS apps do not need it.
+- [ ] **W1 Web: service worker ideas (Tom, 2026-10-09)**. Two separate jobs:
+  1. Push notifications: needed for N1 on the web (above). Do it with N1.
+  2. Caching for speed / offline open: NOT now. The browser already keeps
+     CanvasKit (gstatic, versioned URL) and main.dart.js (revalidated with
+     no-cache: one small request, no download when unchanged), so a caching
+     worker saves only ~0.1-0.2 s per open; most start time is the phone
+     starting the code. Risk: users stuck on an old version (why Flutter
+     removed its own flutter_service_worker.js) while app and server must
+     match. If ever done: own worker, network check on every open, new
+     version used on the next open, a version number in the app that the
+     server can refuse when too old, tested update path. Chrome no longer
+     needs a worker for "Install app".
+  Better for staff who use the app all day: the Android app (installed, no
+  download at all).
+- [ ] **W2 Smaller web download**: load Excel (excel, syncfusion_xlsio),
+  PDF/printing, charts (fl_chart) and Markdown only when a screen needs them
+  (Dart deferred imports). Helps the first visit, every update and slow
+  phones. Planned after the 2026-10-09 speed work.
+- [ ] **W3 Web: WebAssembly build (experiment, Tom 2026-10-09)**. Web workers
+  do not make Flutter smoother (building/drawing the screen stays on the main
+  thread; compute()/isolates run on the main thread in the JavaScript build).
+  The real option: `flutter build web --wasm` (skwasm engine: faster app code;
+  drawing on its own thread when the site sends COOP/COEP headers). Risks to
+  test on staging first: those headers can break Google sign-in pop-ups and the
+  reCAPTCHA (App Check) frames; every package must support wasm (check
+  printing, file_selector, excel/xlsio, window_manager); browsers without
+  WasmGC fall back to the JavaScript build automatically. Try together with W2.
+  Plan: build without the COOP/COEP headers first (single-thread mode still
+  works); add them only if sign-in still works with them. (The old `html`
+  renderer some guides mention was removed in Flutter 3.29.)
+  First fix any janky screen directly (measure where it stutters).
+- [ ] **W4 Local "Review calculation" — ONLY IF NEEDED (Tom 2026-10-09)**.
+  The phone could compute the booking/invoice total for the review card
+  (saves one server trip, ~0.3-0.6 s); the save sends the total seen and the
+  server recalculates and refuses on a difference. The server stays the only
+  authority for money ("the phone shows, the server decides"). Needs one shared
+  list of example bookings both sides must pass. Decided: keep the rules in one
+  place (server) until staff find the review step slow.
 - [ ] **D1 Google Sheet/Drive backup**: owner connects their Google account;
   the app keeps a Sheet in their Drive updated (bookings, tenants, payments,
   expenses) one way. Also scheduled Firestore backups on our side.

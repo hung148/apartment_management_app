@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:cloud_functions/cloud_functions.dart';
 // B1/B2 (2026-10-01): the sectioned short-stay booking form.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -232,6 +234,101 @@ void main() {
         findsOneWidget,
       );
       expect(find.byKey(const ValueKey('booking-custom-nights')), findsNothing);
+    },
+  );
+
+  // Speed (2026-10-09): the form opens at once with the options shown last
+  // time; the server's answer replaces them; a refusal still closes it.
+  testWidgets('the booking form opens at once the second time', (tester) async {
+    final s = store()..previewToday = '2026-10-04';
+    s.rooms.last.addAll({'dailyPrice': 500000, 'currency': 'VND'});
+    Completer<void>? hold;
+    Object? refuse;
+    final service = TeamService(
+      transport: (name, data) async {
+        if (name == 'bookingWorkspace' && data['action'] == 'rooms') {
+          if (hold != null) await hold!.future;
+          if (refuse != null) throw refuse!;
+        }
+        return s.call(name, data);
+      },
+    );
+    await mountReview(
+      tester,
+      BookingWorkspaceScreen(
+        organizationId: 'preview',
+        buildingId: 'riverside',
+        accountId: 'owner',
+        service: service,
+        onBack: () {},
+      ),
+    );
+    await press(tester, 'New booking');
+    expect(find.byKey(const ValueKey('ops-guest')), findsOneWidget);
+    await press(tester, 'Cancel');
+    // The server is slow now: the form is there before its answer.
+    hold = Completer<void>();
+    await press(tester, 'New booking');
+    expect(find.byKey(const ValueKey('ops-guest')), findsOneWidget);
+    expect(text(tester, 'ops-unitPrice'), '500,000');
+    hold?.complete();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('ops-guest')), findsOneWidget);
+    await press(tester, 'Cancel');
+    // Access removed meanwhile: the fresh answer closes the form.
+    hold = null;
+    refuse = FirebaseFunctionsException(
+      code: 'permission-denied',
+      message: 'booking_permission-denied',
+    );
+    await press(tester, 'New booking');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('ops-guest')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  // Speed (2026-10-09): a stay opened from the calendar shows what the
+  // calendar knows at once, then the booking itself.
+  testWidgets(
+    'a booking from the calendar shows its guest and dates while it loads',
+    (tester) async {
+      final hold = Completer<void>();
+      final s = store();
+      final service = TeamService(
+        transport: (name, data) async {
+          await hold.future;
+          return s.call(name, data);
+        },
+      );
+      await mountReview(
+        tester,
+        BookingWorkspaceScreen(
+          organizationId: 'preview',
+          buildingId: 'riverside',
+          accountId: 'owner',
+          service: service,
+          initialRecordId: 'missing',
+          onClose: () {},
+          preview: const ['Anh', '10/10 14:00 – 12/10 12:00', 'Upcoming'],
+        ),
+        // Still loading: the progress bar never settles.
+        settle: false,
+      );
+      await tester.pump();
+      await tester.pump();
+      final preview = find.byKey(const ValueKey('booking-preview'));
+      expect(preview, findsOneWidget);
+      expect(
+        find.descendant(
+          of: preview,
+          matching: find.text('10/10 14:00 – 12/10 12:00'),
+        ),
+        findsOneWidget,
+      );
+      hold.complete();
+      await tester.pumpAndSettle();
+      expect(preview, findsNothing, reason: 'gone once the server answered');
+      expect(tester.takeException(), isNull);
     },
   );
 

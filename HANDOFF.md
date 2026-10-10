@@ -1623,3 +1623,19 @@ billing account has at most 3 Cloud Scheduler jobs; check the count first).
   này"), "Lưu giá" saves all new night prices. Without "Đổi giá" the switch
   shows when there are 2+ prices to pick; nights are picked, not typed
   (readOnly boxes); the server accepts only list/room prices.
+
+## Speed 2026-10-09 (late night): fewer waits inside the calendar
+- Closing a page over the calendar reloads it only when something may have
+  changed: ServerWrites (app_functions.dart) counts calls that are not known
+  reads (AppCall and test transports); _page compares the count.
+- Tháng -> Ngày: the same months are not asked for again (only the scroll).
+- Booking form options ('rooms'): kept in memory per account/org/building in
+  TeamService; the form opens at once from them and the server's answer
+  replaces them (an access refusal closes the form). The calendar prefetches
+  them for the shown building when it can create bookings. Saved-price changes
+  patch the kept copy (keepBookingPrices).
+- A stay opened from the calendar shows guest, dates and status (from the
+  calendar bar) while the booking itself loads (preview param).
+Ideas not done: load Excel/PDF/chart code only when used (smaller first
+download); own service worker; staff use the Android app (installed = no
+download).

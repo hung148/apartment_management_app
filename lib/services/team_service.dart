@@ -89,7 +89,13 @@ class TeamService {
   /// The app's own service uses the device copy; a service with a test
   /// transport does not, unless a test passes [cache].
   TeamService({TeamTransport? transport, ReadCache? cache})
-    : _transport = transport ?? _firebase,
+    : _transport = transport == null
+          ? _firebase
+          // A test transport: count its changes like the app's calls do.
+          : ((name, data) {
+              ServerWrites.note(name, data);
+              return transport(name, data);
+            }),
       _cache = cache ?? (transport == null ? ReadCache.shared : null);
 
   /// The saved copy first (when there is one), then the server's answer, which
@@ -385,6 +391,76 @@ class TeamService {
 
   Future<Map<String, dynamic>> bookingWorkspace(Map<String, dynamic> payload) =>
       _transport('bookingWorkspace', payload);
+
+  // The booking form's options (rooms, staff, receiving accounts, price list,
+  // what the person may do), 2026-10-09 speed: kept in memory for this
+  // account, so the form opens at once and asks the server again behind it.
+  // Only for showing: the server checks every save itself.
+  final _bookingOptions = <String, Map<String, dynamic>>{};
+  final _bookingOptionsLoading = <String, Future<Map<String, dynamic>>>{};
+  String _optionsKey(String organizationId, String buildingId) =>
+      '${_cache?.account ?? ''}|$organizationId|$buildingId';
+  static Map<String, dynamic> _copy(Map<String, dynamic> m) =>
+      jsonDecode(jsonEncode(m)) as Map<String, dynamic>;
+
+  /// The options shown last time in this session, or null.
+  Map<String, dynamic>? savedBookingOptions(
+    String organizationId,
+    String buildingId,
+  ) {
+    final v = _bookingOptions[_optionsKey(organizationId, buildingId)];
+    return v == null ? null : _copy(v);
+  }
+
+  /// Asks the server (one request at a time per building) and keeps the answer.
+  Future<Map<String, dynamic>> bookingOptions(
+    String organizationId,
+    String buildingId,
+  ) {
+    final key = _optionsKey(organizationId, buildingId);
+    final loading = _bookingOptionsLoading[key] ??= () async {
+      try {
+        final r = await bookingWorkspace({
+          'organizationId': organizationId,
+          'buildingId': buildingId,
+          'action': 'rooms',
+        });
+        _bookingOptions[key] = r;
+        return r;
+      } catch (e) {
+        if (ReadCache.isAccessError(e)) _bookingOptions.remove(key);
+        rethrow;
+      } finally {
+        _bookingOptionsLoading.remove(key);
+      }
+    }();
+    return loading.then(_copy);
+  }
+
+  /// Loads the options ahead (the calendar, when it shows a building), so
+  /// even the first "Đặt phòng" opens at once. Failures are ignored here.
+  void prefetchBookingOptions(String organizationId, String buildingId) {
+    if (_bookingOptions.containsKey(_optionsKey(organizationId, buildingId))) {
+      return;
+    }
+    bookingOptions(organizationId, buildingId).ignore();
+  }
+
+  /// The building's saved prices changed in the form: the kept options too.
+  void keepBookingPrices(
+    String organizationId,
+    String buildingId,
+    String? currency,
+    List<int> prices,
+  ) {
+    final kept = _bookingOptions[_optionsKey(organizationId, buildingId)];
+    for (final r in (kept?['records'] as List? ?? const [])) {
+      if (r is Map &&
+          (currency == null || (r['currency'] ?? 'VND') == currency)) {
+        r['savedNightPricesMinor'] = List<int>.of(prices);
+      }
+    }
+  }
 
   /// C1–C3 calendar: rooms of every visible property and the stays in
   /// {organizationId, from, to} (property-local dates, `to` exclusive).

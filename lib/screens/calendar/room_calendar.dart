@@ -7,6 +7,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart' show ValueListenable, mapEquals;
 import 'package:flutter/material.dart';
 
+import '../../services/app_functions.dart' show ServerWrites;
 import '../../services/team_service.dart';
 import '../../utils/localizations/app_localizations.dart';
 import '../../models/team_access.dart';
@@ -673,6 +674,15 @@ class _RoomCalendarState extends State<RoomCalendar> {
           _busy = r.saved;
           _loaded = true;
         });
+        // Speed (2026-10-09): the booking form's options load behind the
+        // calendar, so "Đặt phòng" opens at once (fresh answers only).
+        final shown = _current;
+        if (!r.saved && shown != null && shown.canCreateBookings) {
+          widget.service.prefetchBookingOptions(
+            widget.organizationId,
+            shown.id,
+          );
+        }
         _afterLayout();
       }
     } catch (e) {
@@ -2259,9 +2269,24 @@ class _RoomCalendarState extends State<RoomCalendar> {
           CalendarPageDialog(title: title, build: build, actions: actions),
     );
     _dialogs.add(route);
+    final writes = ServerWrites.count;
     await navigator.push(route);
     _dialogs.remove(route);
-    if (mounted) _load();
+    // Only when something may have changed (2026-10-09, Tom: closing a form
+    // without saving reloaded the calendar).
+    if (mounted && ServerWrites.count != writes) _load();
+  }
+
+  /// What a stay's page shows while it loads: guest, dates, status.
+  List<String> _barPreview(CalBar b) {
+    String at(DateTime d) =>
+        '${_two(d.day)}/${_two(d.month)} ${_two(d.hour)}:${_two(d.minute)}';
+    final end = b.end ?? b.plannedEnd;
+    return [
+      calBarName(context, b),
+      '${at(b.start)} – ${end == null ? '…' : at(end)}',
+      calText(context, calStayStatus(b)),
+    ];
   }
 
   /// Pages open over the calendar right now (closed when the calendar goes away).
@@ -2450,6 +2475,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
           service: widget.service,
           initialRecordId: b.recordId,
           onClose: close,
+          preview: _barPreview(b),
         ),
       );
     } else {

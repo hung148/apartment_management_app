@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/app_functions.dart';
 import 'package:phan_mem_quan_ly_can_ho/preview/team_preview_store.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/team_access.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/team/property_details_screen.dart';
@@ -844,7 +845,7 @@ void main() {
   });
 
   testWidgets(
-    'a lease opens the tenant page in a dialog; the close button closes it and reloads',
+    'a lease opens the tenant page in a dialog; closing it reloads only after a change',
     (tester) async {
       final calls = Calls();
       await mountCalendar(tester, calendarService(calls));
@@ -874,6 +875,13 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('calendar-dialog-close')));
       await tester.pumpAndSettle();
       expect(find.byType(CalendarPageDialog), findsNothing);
+      // 2026-10-09 (Tom): only read, nothing changed: no reload.
+      expect(calls.calendar.length, before);
+      // Something saved on the page: the calendar loads again.
+      await tapBar(tester, 'lease:tenant-anh');
+      ServerWrites.note('tenantContacts', {'action': 'update'});
+      await tester.tap(find.byKey(const ValueKey('calendar-dialog-close')));
+      await tester.pumpAndSettle();
       expect(calls.calendar.length, before + 1);
       expect(tester.takeException(), isNull);
     },

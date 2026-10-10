@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
+import '../../services/read_cache.dart';
 import '../../services/team_service.dart';
 import 'back_steps.dart';
 import 'operational_widgets.dart';
@@ -307,6 +308,10 @@ class BookingWorkspaceScreen extends StatefulWidget {
 
   /// New booking from the calendar: room and "YYYY-MM-DD HH:MM" times.
   final String? initialRoomId, initialStart, initialEnd;
+
+  /// What the calendar already knows about [initialRecordId] (guest, dates,
+  /// status), shown at once while the booking itself loads (2026-10-09).
+  final List<String>? preview;
   const BookingWorkspaceScreen({
     super.key,
     required this.organizationId,
@@ -322,6 +327,7 @@ class BookingWorkspaceScreen extends StatefulWidget {
     this.initialRoomId,
     this.initialStart,
     this.initialEnd,
+    this.preview,
   });
   @override
   State<BookingWorkspaceScreen> createState() => _BookingWorkspaceScreenState();
@@ -621,6 +627,12 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
           (r['savedNightPricesMinor'] as List? ?? const []).whereType<int>(),
         );
         final currency = r['currency'] as String?;
+        widget.service.keepBookingPrices(
+          widget.organizationId,
+          widget.buildingId,
+          currency,
+          list,
+        );
         for (final room in _rooms) {
           final c = room['currency'] as String? ?? 'VND';
           if (currency == null || c == currency) {
@@ -946,16 +958,52 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
   /// Rooms that take short stays, staff, receiving accounts and what the
   /// person may do with prices and ID numbers.
   Future<void> _loadOptions() async {
-    final r = await widget.service.bookingWorkspace({
-      ..._identity,
-      'action': 'rooms',
-    });
+    final org = widget.organizationId, building = widget.buildingId;
+    // Speed (2026-10-09): the options shown last time open the form at once;
+    // the server's answer replaces them a moment later. An access refusal
+    // then closes the form like before.
+    final saved = widget.service.savedBookingOptions(org, building);
+    if (saved != null) {
+      _applyOptions(saved);
+      final generation = _generation;
+      widget.service
+          .bookingOptions(org, building)
+          .then(
+            (fresh) {
+              if (mounted) setState(() => _applyOptions(fresh));
+            },
+            onError: (Object e) {
+              // Also when the refusal arrives before the form has finished
+              // opening: the newer generation stops that opening.
+              if (mounted &&
+                  generation == _generation &&
+                  ReadCache.isAccessError(e)) {
+                _generation++;
+                _deny();
+              }
+            },
+          );
+      return;
+    }
+    _applyOptions(await widget.service.bookingOptions(org, building));
+  }
+
+  void _applyOptions(Map<String, dynamic> r) {
     List<Map<String, dynamic>> list(Object? v) => v is List
         ? v.map((e) => Map<String, dynamic>.from(e as Map)).toList()
         : <Map<String, dynamic>>[];
+    // A newer answer must not drop what the form already shows as chosen
+    // (a staff member who left, a receiving account removed meanwhile).
+    List<Map<String, dynamic>> keeping(
+      List<Map<String, dynamic>> fresh,
+      List<Map<String, dynamic>> old,
+      String? chosen,
+    ) => chosen == null || fresh.any((v) => v['id'] == chosen)
+        ? fresh
+        : [...fresh, ...old.where((v) => v['id'] == chosen)];
     _rooms = list(r['records']);
-    _staff = list(r['staff']);
-    _accounts = list(r['accounts']);
+    _staff = keeping(list(r['staff']), _staff, _staffId);
+    _accounts = keeping(list(r['accounts']), _accounts, _account);
     _zone = r['timeZone'] as String? ?? _zone;
     _canPrice = r['canPrice'] == true;
     _canSavePrices = r['canSavePrices'] == true;
@@ -3126,6 +3174,22 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
                   ),
               ],
               if (_mode == 'edit' && _pending == null) ..._editForm(context),
+              // Opened from the calendar: what it already shows, until the
+              // booking itself is here (2026-10-09, speed).
+              if (r == null &&
+                  _busy &&
+                  _pending == null &&
+                  widget.initialRecordId != null &&
+                  (widget.preview?.isNotEmpty ?? false))
+                WsSection(
+                  key: const ValueKey('booking-preview'),
+                  title: widget.preview!.first,
+                  icon: Icons.nights_stay_outlined,
+                  children: [
+                    for (final line in widget.preview!.skip(1))
+                      Text(line, style: Theme.of(context).textTheme.bodyMedium),
+                  ],
+                ),
               if (_mode == 'detail' && r != null && _pending == null)
                 ..._detail(context, r),
             ],

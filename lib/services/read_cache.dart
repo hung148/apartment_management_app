@@ -52,6 +52,9 @@ class ReadCache {
 
   final SharedPreferences _prefs;
   final String? Function() _account;
+
+  /// The signed-in account this copy belongs to (null: signed out).
+  String? get account => _account();
   final DeviceSealer _sealer;
   final bool Function() _enabled;
   final DateTime Function() _now;
@@ -140,7 +143,10 @@ class ReadCache {
       final sealed = await _sealer.seal(json);
       // Signed out or switched account while encrypting: save nothing.
       if (_key(call, payload) != key || !_enabled()) return;
-      await _prefs.setString(key, '${_now().millisecondsSinceEpoch}|$org|$sealed');
+      await _prefs.setString(
+        key,
+        '${_now().millisecondsSinceEpoch}|$org|$sealed',
+      );
       await _trim();
     } catch (_) {
       // Full storage (web limit): drop the copy rather than fail the screen.
@@ -206,5 +212,9 @@ class ReadCache {
   /// Errors that mean this account may no longer see the organization.
   static bool isAccessError(Object e) =>
       e is FirebaseFunctionsException &&
-      const {'permission-denied', 'unauthenticated', 'not-found'}.contains(e.code);
+      const {
+        'permission-denied',
+        'unauthenticated',
+        'not-found',
+      }.contains(e.code);
 }

@@ -22,19 +22,61 @@ void main() {
 
   test('the server exports exactly these groups', () {
     final source = File('functions/index.js').readAsStringSync();
-    final groups = RegExp(r"exports\.(\w+)=callables\.group\('(\w+)'")
-        .allMatches(source)
-        .map((m) => m[2])
-        .toSet();
+    final groups = RegExp(
+      r"exports\.(\w+)=callables\.group\('(\w+)'",
+    ).allMatches(source).map((m) => m[2]).toSet();
     expect(groups, {'app', 'heavy'});
   });
 
   // Sign out everywhere (2026-10-06): only the server's session_revoked
   // refusal signs this device out; other sign-in errors do not.
   test('a refused sign-in is recognised; other errors are not', () {
-    expect(isSessionRevoked(FirebaseFunctionsException(code: 'unauthenticated', message: 'session_revoked')), isTrue);
-    expect(isSessionRevoked(FirebaseFunctionsException(code: 'unauthenticated', message: 'app_check_required')), isFalse);
-    expect(isSessionRevoked(FirebaseFunctionsException(code: 'permission-denied', message: 'session_revoked')), isFalse);
+    expect(
+      isSessionRevoked(
+        FirebaseFunctionsException(
+          code: 'unauthenticated',
+          message: 'session_revoked',
+        ),
+      ),
+      isTrue,
+    );
+    expect(
+      isSessionRevoked(
+        FirebaseFunctionsException(
+          code: 'unauthenticated',
+          message: 'app_check_required',
+        ),
+      ),
+      isFalse,
+    );
+    expect(
+      isSessionRevoked(
+        FirebaseFunctionsException(
+          code: 'permission-denied',
+          message: 'session_revoked',
+        ),
+      ),
+      isFalse,
+    );
     expect(isSessionRevoked(StateError('session_revoked')), isFalse);
+  });
+  // 2026-10-09 (Tom): only calls that may change data move the count.
+  test('reads do not count as changes; anything else does', () {
+    final start = ServerWrites.count;
+    for (final (name, data) in [
+      ('calendarView', <String, dynamic>{}),
+      ('readTeam', {'view': 'myAccess'}),
+      ('bookingWorkspace', {'action': 'rooms'}),
+      ('bookingWorkspace', {'action': 'quote'}),
+      ('tenantContacts', {'action': 'read'}),
+      ('organizationSettings', {'action': 'readCurrency'}),
+    ]) {
+      ServerWrites.note(name, data);
+    }
+    expect(ServerWrites.count, start);
+    ServerWrites.note('bookingWorkspace', {'action': 'save'});
+    ServerWrites.note('mutateTeam', {'action': 'setAccess'});
+    ServerWrites.note('somethingNew', null);
+    expect(ServerWrites.count, start + 3);
   });
 }
