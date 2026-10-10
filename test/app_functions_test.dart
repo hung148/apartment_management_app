@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/app_functions.dart';
 
@@ -26,5 +27,14 @@ void main() {
         .map((m) => m[2])
         .toSet();
     expect(groups, {'app', 'heavy'});
+  });
+
+  // Sign out everywhere (2026-10-06): only the server's session_revoked
+  // refusal signs this device out; other sign-in errors do not.
+  test('a refused sign-in is recognised; other errors are not', () {
+    expect(isSessionRevoked(FirebaseFunctionsException(code: 'unauthenticated', message: 'session_revoked')), isTrue);
+    expect(isSessionRevoked(FirebaseFunctionsException(code: 'unauthenticated', message: 'app_check_required')), isFalse);
+    expect(isSessionRevoked(FirebaseFunctionsException(code: 'permission-denied', message: 'session_revoked')), isFalse);
+    expect(isSessionRevoked(StateError('session_revoked')), isFalse);
   });
 }

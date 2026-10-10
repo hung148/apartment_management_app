@@ -121,8 +121,10 @@ flutter:
     - assets/fonts/Roboto-Bold.ttf
     - assets/fonts/NotoSans-Regular.ttf
     - assets/fonts/AndikaNewBasic-B.ttf
-    - assets/image/background_image.jpg
-    - assets/image/background_image3.jpg
+    # 1920 px copies (2026-10-09): the originals (7000 px, 14 MB and 2.6 MB)
+    # were downloaded on every web start. Originals stay in assets/image/.
+    - assets/image/background_image_1920.jpg
+    - assets/image/background_image3_1920.jpg
     - assets/icon/
   #   - images/a_dot_burr.jpeg
   #   - images/a_dot_ham.jpeg

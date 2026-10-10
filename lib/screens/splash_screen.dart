@@ -59,8 +59,16 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _checkAuthStatus() async {
-    // Continue as soon as the saved sign-in is restored (was a fixed 3 s
-    // wait on every load). A short minimum keeps the logo from flashing.
+    // Speed (2026-10-09): main() has already restored the sign-in, so a
+    // signed-in person goes straight on (the 0.7 s minimum and 0.9 s fade-out
+    // cost 1.6 s on every start). Signed out: the logo shows briefly.
+    if (FirebaseAuth.instance.currentUser != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        Navigator.pushReplacementNamed(context, AppRouter.dashboardScreen);
+      });
+      return;
+    }
     await Future.wait([
       Future<void>.delayed(const Duration(milliseconds: 700)),
       FirebaseAuth.instance
@@ -70,7 +78,8 @@ class _SplashScreenState extends State<SplashScreen>
     ]);
     if (!mounted) return;
 
-    // Fade out before navigating
+    // Fade out before navigating (short: it delays the sign-in screen).
+    _animController.reverseDuration = const Duration(milliseconds: 250);
     await _animController.reverse();
     if (!mounted) return;
 
@@ -89,7 +98,7 @@ class _SplashScreenState extends State<SplashScreen>
     return Scaffold(
       backgroundColor: Colors.black,
       body: Image(
-        image: const AssetImage('assets/image/background_image.jpg'),
+        image: const AssetImage('assets/image/background_image_1920.jpg'),
         fit: BoxFit.cover,
         width: double.infinity,
         height: double.infinity,

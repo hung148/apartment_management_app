@@ -118,6 +118,52 @@ void main() {
       );
     },
   );
+  // Speed (2026-10-09): claim and list run together; a claim that joined a
+  // new organization makes the list run again, so it is never missing.
+  test('claim and list run together; a joined invitation lists again', () async {
+    for (final joined in [false, true]) {
+      var lists = 0;
+      final claimDone = Completer<Map<String, dynamic>>();
+      final service = AccountEntryService(
+        transport: (name, data) async {
+          if (name == 'claimMyInvitations') return claimDone.future;
+          lists++;
+          final n = lists;
+          return {
+            'accountPolicy': {'mode': 'staff', 'canCreate': false},
+            'records': [
+              {'id': 'org$n', 'name': 'Work', 'accessVersion': 2},
+            ],
+          };
+        },
+      );
+      final entry = service.load();
+      await Future<void>.delayed(Duration.zero);
+      expect(lists, 1, reason: 'the list does not wait for the claim');
+      claimDone.complete({
+        'results': [
+          if (joined) {'organizationId': 'org2', 'status': 'joined'},
+        ],
+        'needsVerifiedEmail': true,
+      });
+      final e = await entry;
+      expect(lists, joined ? 2 : 1);
+      expect(e.workplaces.single.id, joined ? 'org2' : 'org1');
+      expect(e.needsVerifiedEmail, true);
+    }
+  });
+  test('a failed claim fails the entry even when the list worked', () async {
+    final service = AccountEntryService(
+      transport: (name, data) async {
+        if (name == 'claimMyInvitations') throw StateError('offline');
+        return {
+          'accountPolicy': {'mode': 'staff', 'canCreate': false},
+          'records': [],
+        };
+      },
+    );
+    await expectLater(service.load(), throwsStateError);
+  });
   test(
     'preview follows staff policy and supplies the same entry projection',
     () async {

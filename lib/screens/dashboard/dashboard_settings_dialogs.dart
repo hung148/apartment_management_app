@@ -122,6 +122,15 @@ extension _DashboardSettingsDialogs on _DashboardScreenState {
           },
         ),
         _buildSettingsTile(
+          icon: Icons.devices_other_rounded,
+          iconBg: const Color(0xFFFFEBEB),
+          iconColor: Colors.red,
+          label: AppTranslations.of(ctx).text('sign_out_everywhere'),
+          onTap: () {
+            openChild(ctx, _handleSignOutEverywhere);
+          },
+        ),
+        _buildSettingsTile(
           icon: Icons.delete_forever_rounded,
           iconBg: const Color(0xFFFFEBEB),
           iconColor: const Color(0xFFB91C1C),
@@ -865,6 +874,58 @@ extension _DashboardSettingsDialogs on _DashboardScreenState {
         }
       });
     }
+  }
+
+  /// Sign out everywhere (2026-10-06): ends this account's sign-in on every
+  /// phone and computer (e.g. one left signed in on a shared computer), then
+  /// here. Each of them returns to the sign-in screen and its saved copy is
+  /// wiped the next time the app talks to the server.
+  Future<void> _handleSignOutEverywhere() async {
+    final t = AppTranslations.of(context);
+    final confirm = await _showTrackedDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(t.text('sign_out_everywhere_title')),
+        content: Text(t.text('sign_out_everywhere_message')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(t.text('cancel')),
+          ),
+          FilledButton(
+            key: const ValueKey('sign-out-everywhere-confirm'),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(t.text('sign_out_everywhere_action')),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+    await _logoutLock.run(() async {
+      final messenger = ScaffoldMessenger.of(context);
+      try {
+        await _authService.signOutEverywhere();
+      } catch (e) {
+        // Nothing was ended if the server did not answer: stay signed in.
+        logger.e('Sign out everywhere failed', error: e);
+        messenger.showSnackBar(
+          SnackBar(content: Text(t.text('sign_out_everywhere_failed'))),
+        );
+        return;
+      }
+      if (mounted) {
+        _updateDashboardState(() {
+          _ownerFuture = null;
+          _orgsFuture = null;
+          _membershipFutures.clear();
+        });
+        Navigator.pushNamedAndRemoveUntil(context, AppRouter.loginScreen, (_) => false);
+      }
+      messenger.showSnackBar(
+        SnackBar(content: Text(t.text('sign_out_everywhere_done'))),
+      );
+    });
   }
 
   // ─────────────────────────────────────────────────────────

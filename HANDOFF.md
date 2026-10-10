@@ -1439,3 +1439,87 @@ hosting deploy, and stops at the first failure.
   name in the header, other pages (bookings, tenants, money...). Next: step 3,
   one call per screen elsewhere, and more screens on the device copy.
 - Tests: test/read_cache_test.dart.
+
+## Remember this computer + Sign out everywhere (2026-10-09, Tom's choice A)
+- The device copy is encrypted (already in: lib/services/device_sealer*.dart).
+- Sign-in screen (web only): "Ghi nhớ máy này / Remember this computer",
+  ticked by default. Unticked: Firebase sign-in persistence SESSION (ends when
+  the browser closes), the device copy is wiped and nothing is saved
+  (device_session_web.dart keeps the choice in sessionStorage). Applied when
+  the box changes and when the screen opens, never right before sign-in
+  (an await before the Google pop-up can get it blocked, Safari).
+  AuthService.applyRememberChoice.
+- Account menu: "Đăng xuất mọi nơi / Sign out everywhere" (confirm dialog).
+  Server call accountSessions {action:'signOutEverywhere'}
+  (functions/account_sessions.js): revokeRefreshTokens + accountSessions/{uid}
+  {validAfterSec} = Firebase's tokensValidAfterTime. The request guard refuses
+  sign-ins with auth_time before it ('unauthenticated' session_revoked); the
+  cut-off is read in parallel with the rate-limit charge, cached 30 s per server
+  copy, concurrent requests share one read, a failed read fails closed. The
+  app signs out on session_revoked (AppCall), which wipes the device copy.
+  Account deletion deletes accountSessions/{uid}. Clients cannot read/write it
+  (no Firestore rule matches the collection).
+- Tests: functions/test/account_sessions.test.js (4), test/app_functions_test.dart.
+
+## Speed 2026-10-09 (evening): startup measured in the pane, first fixes
+Measured (pane, California, staging, warm, reload on the calendar address):
+- Web start: main.dart.js arrives at 0.8 s, first server call at 2.9 s.
+  background_image.jpg was 14 MB (7000x4527) and downloaded on every start
+  (1.4 s here; 10 s+ on a slow phone connection; ~120 MB to decode).
+- Splash waited at least 0.7 s + a 0.9 s fade-out on every start.
+- Startup calls (names seen in the page): claimMyInvitations 0.44 s, THEN
+  listMyOrganizations 0.38 s, THEN readCurrency/readRates/calendarView/
+  readWorkspace(1.08 s)/readTeam myAccess (2.39 s!), THEN calendarView again
+  (the page was rebuilt when the fresh role arrived).
+- Moving between tabs once open: one call per screen, 0.56-0.95 s each from
+  California (tenantContacts, invoices, readTeam staff, calendarView).
+Fixed:
+- assets/image/background_image_1920.jpg (95 KB) and background_image3_1920.jpg
+  (334 KB) replace the originals in pubspec (originals kept on disk, not in the
+  app). Login, splash, dashboard and dashboard_settings_button_test use them.
+- Splash: signed in -> straight to the dashboard (no wait, no fade); signed out
+  -> logo 0.7 s, fade-out 0.25 s.
+- AccountEntryService.load: claim and list run together; a claim that joined a
+  new organization lists again (same result as before). A failed claim still
+  fails the entry. Tests in account_entry_test.dart.
+- RoleWorkspace: the fresh role no longer changes the page key after the saved
+  copy opened the page (_newPropertyId kept), so the calendar loads once.
+Kept as decided today: the workspace waits for the account check
+("Entry must resolve the account before showing a deep-linked workspace").
+Next: why readTeam myAccess takes 1-2.4 s (tool/request_phase_times.cjs).
+- Request guard (functions/request_security.js, 2026-10-09 evening):
+  * One account's calls take turns at the rate-limit transaction on each server
+    copy (createKeyedTurns, keys user:<uid> and organization:<org>, always in
+    sorted order so two calls never wait on each other). Reason: a screen
+    starts 4-5 calls at once, all reading then writing the same bucket
+    documents; Firestore aborted all but one and the library retried them after
+    a ~1 s back-off (seen as 1-2.4 s calls, e.g. readTeam myAccess). Limits,
+    amounts and where they are stored are unchanged.
+  * The account policy check runs as a read-only transaction (it only reads):
+    no locks, same consistent snapshot.
+  * Tests: functions/test/request_latency.test.js (+3).
+  * NOT yet measured live: after deploy, run node tool/request_phase_times.cjs 30
+    and compare guardMs with today's (slowest guard 1493 ms).
+- Deployed 2026-10-09 evening (948 app tests, 409 server tests, 4 functions
+  active). Measured in the pane, warm reload, VISIBLE pane, California:
+  first call 1.9 s (was 2.9), claim+list together done 2.4 s (was 3.95),
+  slowest startup call 1.0-1.1 s (readTeam myAccess, was 2.4), calendar loaded
+  once, all startup data in at 4.2 s (was 8.1), background 87 KB (was 14 MB).
+- MEASURING NOTE: the desktop browser pane is often "hidden" between tool
+  calls (document.visibilityState). A hidden page draws no frames, so screen
+  changes and new pages wait (looked like a 13 s hang). Only trust timings
+  taken while visible.
+- Not yet deployed: dashboard _loadAccountEntry no longer waits for the owner
+  profile (Firestore owners/{uid}, ~0.7 s gap before the workspace's calls);
+  _afterOwner fills the owner list later, a failure shows in that list.
+- tool/staging_all.ps1: a "*" test name (Command Prompt: "*> deploy.txt" is not
+  a redirect there) now means all tests; file list always an array. From cmd use
+  "> deploy.txt 2>&1".
+- Server phase times after the guard fix (request_phase_times, 30 min,
+  2026-10-09 ~23:55 UTC), median / max total, guard median / max:
+  calendarView 685/927 ms (guard 237/491), readTeam 590/690 (235/525),
+  readWorkspace 315/530 (166/210), organizationSettings 291/601 (237/389),
+  invoices 265 (182), listMyOrganizations 181/654 (57/447),
+  claimMyInvitations 124/1100 (101/1036, one fresh server copy).
+  Before today: slowest guard 1493 ms, readTeam up to 2.4 s in the browser.
+  Largest remaining server work: calendarView handler (~437 ms median).

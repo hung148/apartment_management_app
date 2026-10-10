@@ -31,12 +31,43 @@ class AccountEntryService {
   DateTime? _lastClaim;
   bool _needsVerifiedEmail = false;
   Future<AccountEntry> load() async {
-    if (_lastClaim == null ||
-        DateTime.now().difference(_lastClaim!).inSeconds >= 15) {
-      final claimed = await transport('claimMyInvitations', {});
+    final claimDue =
+        _lastClaim == null ||
+        DateTime.now().difference(_lastClaim!).inSeconds >= 15;
+    // Speed (2026-10-09): claiming invitations and listing organizations run
+    // at the same time (one server round trip instead of two). Only when the
+    // claim joined a new organization (rare) is the list asked for again, so
+    // the result is the same as claiming first. Both still fail closed.
+    final claim = claimDue ? transport('claimMyInvitations', {}) : null;
+    var listing = _list();
+    // The list may fail while the claim is still being waited for: watch it
+    // now so that failure is not reported as unhandled. It still reaches the
+    // caller through the await below.
+    listing.then((_) {}, onError: (_) {});
+    if (claim != null) {
+      final Map<String, dynamic> claimed;
+      try {
+        claimed = await claim;
+      } catch (_) {
+        listing.ignore();
+        rethrow;
+      }
       _needsVerifiedEmail = claimed['needsVerifiedEmail'] == true;
       _lastClaim = DateTime.now();
+      final joined = (claimed['results'] as List? ?? const []).any(
+        (r) => r is Map && r['status'] == 'joined',
+      );
+      if (joined) {
+        listing.ignore();
+        listing = _list();
+      }
     }
+    return (await listing)(_needsVerifiedEmail);
+  }
+
+  /// All pages of the organization list. The verified-email flag comes from
+  /// the claim, which may finish later, so it is filled in at the end.
+  Future<AccountEntry Function(bool needsVerifiedEmail)> _list() async {
     String? cursor;
     String? mode;
     String state = 'ready';
@@ -87,8 +118,9 @@ class AccountEntryService {
       if (cursor != null && !seen.add(cursor))
         throw StateError('Repeated directory page');
     } while (cursor != null);
-    return AccountEntry(
-      mode: mode,
+    final finalMode = mode;
+    return (needsVerifiedEmail) => AccountEntry(
+      mode: finalMode,
       state: state,
       canCreate: canCreate,
       canMerge: canMerge,
@@ -97,7 +129,7 @@ class AccountEntryService {
       staffConflict: staffConflict,
       // Claiming an invitation requires verified email. Existing ownership is
       // established independently by the server's account policy and membership.
-      needsVerifiedEmail: _needsVerifiedEmail && mode != 'owner',
+      needsVerifiedEmail: needsVerifiedEmail && finalMode != 'owner',
     );
   }
 }

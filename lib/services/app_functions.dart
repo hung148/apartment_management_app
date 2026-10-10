@@ -1,4 +1,5 @@
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 /// Where the server functions run (2026-10-06, speed): next to the Firestore
 /// database in Singapore. Must match functions/region.js.
@@ -22,7 +23,22 @@ class AppCall {
   const AppCall(this.name);
   final String name;
 
-  Future<HttpsCallableResult<T>> call<T>([dynamic data]) => appFunctions
-      .httpsCallable(functionGroup(name))
-      .call<T>({'fn': name, 'data': data});
+  Future<HttpsCallableResult<T>> call<T>([dynamic data]) async {
+    try {
+      return await appFunctions
+          .httpsCallable(functionGroup(name))
+          .call<T>({'fn': name, 'data': data});
+    } on FirebaseFunctionsException catch (e) {
+      // "Sign out everywhere" ended this sign-in (2026-10-06): sign out here
+      // too, which wipes the device copy and returns to the sign-in screen.
+      if (isSessionRevoked(e)) await FirebaseAuth.instance.signOut();
+      rethrow;
+    }
+  }
 }
+
+/// The server refused this sign-in because the account signed out everywhere.
+bool isSessionRevoked(Object e) =>
+    e is FirebaseFunctionsException &&
+    e.code == 'unauthenticated' &&
+    '${e.message} ${e.details}'.contains('session_revoked');

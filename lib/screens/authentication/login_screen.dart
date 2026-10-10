@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:phan_mem_quan_ly_can_ho/main.dart';
+import 'package:phan_mem_quan_ly_can_ho/services/device_session.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/auth_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/localizations/app_localizations.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_router.dart';
@@ -29,7 +30,7 @@ class LoginScreen extends StatelessWidget {
           final double iconSize = (screenWidth * 0.12).clamp(36.0, 56.0);
 
           return Image(
-            image: const AssetImage('assets/image/background_image.jpg'),
+            image: const AssetImage('assets/image/background_image_1920.jpg'),
             fit: BoxFit.cover,
             width: double.infinity,
             height: double.infinity,
@@ -220,6 +221,79 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
   String? login_error;
 
   String? register_error;
+
+  /// "Remember this computer" (web, 2026-10-06). Applied as soon as it changes
+  /// (and when the screen opens), never during sign-in: waiting before the
+  /// Google window opens can make the browser block it.
+  bool _remember = rememberThisDevice;
+
+  @override
+  void initState() {
+    super.initState();
+    _authService.applyRememberChoice(_remember);
+  }
+
+  void _setRemember(bool value) {
+    setState(() => _remember = value);
+    _authService.applyRememberChoice(value);
+  }
+
+  Widget _rememberBox(AppTranslations t) {
+    if (!offerRememberThisDevice) return const SizedBox.shrink();
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 400),
+      child: Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: Row(
+          key: const ValueKey('auth-remember-device'),
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Checkbox(
+              value: _remember,
+              onChanged: loading ? null : (v) => _setRemember(v ?? true),
+              side: const BorderSide(color: Colors.white, width: 1.5),
+              checkColor: Colors.black,
+              fillColor: WidgetStateProperty.resolveWith(
+                (states) => states.contains(WidgetState.selected)
+                    ? Colors.white
+                    : Colors.transparent,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Expanded(
+              child: GestureDetector(
+                onTap: loading ? null : () => _setRemember(!_remember),
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        t['auth_remember_device'],
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: widget.textSize,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        t['auth_remember_device_hint'],
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.75),
+                          fontSize: widget.textSize - 2,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Choices _displayedChoice = Choices.login;
   double _opacity = 1.0;
@@ -545,6 +619,7 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
             ),
           ),
         ),
+        _rememberBox(t),
         if (login_error != null)
           Padding(
             padding: const EdgeInsets.all(8),
@@ -689,6 +764,7 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
             ],
           ),
         ),
+        _rememberBox(t),
         if (register_error != null)
           Padding(
             padding: const EdgeInsets.all(8),

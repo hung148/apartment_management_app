@@ -245,7 +245,24 @@ class _DashboardScreenState extends State<DashboardScreen>
       _openedEarly = null;
       Navigator.of(context).popUntil((route) => route.isFirst);
     }
-    final owner = await _ownerFuture;
+    // Speed (2026-10-09): the owner profile (read from the database, ~0.7 s on
+    // a fresh start) only feeds the owner's organization list below; the
+    // account check no longer waits for it before the workspace can open.
+    unawaited(_afterOwner(entry));
+    return entry;
+  }
+
+  Future<void> _afterOwner(AccountEntry entry) async {
+    final Owner? owner;
+    try {
+      owner = await _ownerFuture;
+    } catch (e) {
+      // The owner's organization list shows the failure (with its retry)
+      // instead of waiting forever; the workspace itself is unaffected.
+      final failed = Future<List<Organization>>.error(e)..ignore();
+      if (mounted) setState(() => _orgsFuture = failed);
+      return;
+    }
     if (owner != null && mounted) {
       // Speed (2026-10-06): the account check already listed the
       // organizations; asking the server again cost one more trip. Older
@@ -261,7 +278,6 @@ class _DashboardScreenState extends State<DashboardScreen>
         _refreshOrgs(owner.id);
       }
     }
-    return entry;
   }
 
   Future<void> _openStaffWorkplace(Organization org) async {
@@ -576,7 +592,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       decoration: BoxDecoration(
         borderRadius: BorderRadius.zero,
         image: const DecorationImage(
-          image: AssetImage('assets/image/background_image3.jpg'),
+          image: AssetImage('assets/image/background_image3_1920.jpg'),
           fit: BoxFit.cover,
           alignment: Alignment.center,
         ),

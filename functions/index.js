@@ -102,6 +102,10 @@ secureCallable('deleteMyAccount',request=>accountDeletionHandler(request));
 const {createMyProfileHandler}=require('./my_profile');
 const myProfileHandler=createMyProfileHandler({db,Timestamp:Timestamp,HttpsError:functions.https.HttpsError});
 // Personal information in Settings: name/phone, and copying a confirmed new sign-in email.
+// Sign out everywhere (2026-10-06): ends every sign-in of the account.
+const {createSessionsHandler}=require('./account_sessions');
+const sessionsHandler=createSessionsHandler({db,getAuth:()=>require('firebase-admin/auth').getAuth(),HttpsError:functions.https.HttpsError});
+secureCallable('accountSessions',request=>sessionsHandler(request));
 secureCallable('myProfile',request=>myProfileHandler(request));
 const {createOrganizationPurge}=require('./organization_purge');
 const purgeClosedOrganizations=createOrganizationPurge({db,Timestamp:Timestamp,logger:functions.logger});

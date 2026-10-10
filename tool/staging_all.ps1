@@ -64,10 +64,13 @@ if ($MarkDeployed) {
 }
 
 # "-Tests a,b" reaches the script as one string through -File; split it.
-$Tests = @($Tests | ForEach-Object { $_ -split '[,\s]+' } | Where-Object { $_ })
+# A lone "*" means all tests: from Command Prompt (cmd), "*> deploy.txt" is not
+# a redirect and passes "*" here (2026-10-09). Wildcards are never test names.
+$Tests = @($Tests | ForEach-Object { $_ -split '[,\s]+' } | Where-Object { $_ -and $_ -notmatch '[*?\[\]]' })
 $testCmd = if ($Tests.Count -gt 0) {
-  $files = $Tests | ForEach-Object { "test/$($_ -replace '_test(\.dart)?$','')_test.dart" }
-  foreach ($f in $files) { if (-not (Test-Path $f)) { Write-Host "No such test file: $f" -ForegroundColor Red; exit 1 } }
+  # Always a list: one file name must not be split into letters by @files.
+  $files = @($Tests | ForEach-Object { "test/$($_ -replace '_test(\.dart)?$','')_test.dart" })
+  foreach ($f in $files) { if (-not (Test-Path -LiteralPath $f)) { Write-Host "No such test file: $f" -ForegroundColor Red; exit 1 } }
   { flutter test --concurrency=1 @files }.GetNewClosure()
 } else {
   { flutter test --concurrency=1 }

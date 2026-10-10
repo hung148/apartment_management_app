@@ -3,7 +3,7 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {accountPolicy}=require('../account_policy');
 const {fakeDb}=require('./fake_firestore');
-const {createRequestGuard}=require('../request_security');
+const {createRequestGuard,createKeyedTurns}=require('../request_security');
 
 test('rate limiter starts membership and bucket reads together without charging an outsider organization',async()=>{
  const db=fakeDb(),events=[];
@@ -56,4 +56,46 @@ test('policy reuses an organization snapshot across membership binding and invit
  assert.deepEqual(next.organizationIds,[]);
  assert.equal(next.hasStaff,false);
  assert.equal(reads,2);
+});
+
+// Speed (2026-10-09): one account's simultaneous calls take turns at the
+// rate-limit transaction instead of colliding (abort + ~1 s retry back-off).
+test('one account\'s simultaneous calls never overlap at the limiter; other accounts do',async()=>{
+ const db=fakeDb({'memberships/user_org':{ownerId:'user',organizationId:'org',accessVersion:2,status:'active',role:'owner'}});
+ const transaction=db.runTransaction.bind(db);
+ let open=0,most=0;
+ db.runTransaction=(fn,options)=>{
+  if(options?.readOnly)return transaction(fn,options);
+  return transaction(async tx=>{open++;most=Math.max(most,open);try{await new Promise(r=>setTimeout(r,5));return await fn(tx);}finally{open--;}},options);
+ };
+ const guard=createRequestGuard({db,Timestamp:{fromMillis:v=>v},HttpsError:Error});
+ const call=(uid,name)=>guard(name,{auth:{uid},app:{appId:'app'},data:{}});
+ await Promise.all(['readTeam','readWorkspace','calendarView','organizationSettings'].map(n=>call('user',n)));
+ assert.equal(most,1,'the same account must take turns');
+ most=0;
+ await Promise.all(['a','b','c'].map(uid=>call(uid,'readTeam')));
+ assert.equal(most,3,'different accounts are not held up');
+ const bucket=[...db.store.entries()].find(([k,v])=>k.startsWith('requestLimits/')&&v.tokens<120);
+ assert(bucket,'charges are still written');
+});
+
+test('turns: opposite key orders cannot deadlock and a failure frees the turn',async()=>{
+ const turns=createKeyedTurns(),order=[];
+ const slow=(tag,ms)=>async()=>{order.push(tag+'+');await new Promise(r=>setTimeout(r,ms));order.push(tag+'-');};
+ await Promise.all([turns(['a','b'],slow('x',5)),turns(['b','a'],slow('y',1))]);
+ assert.deepEqual(order,['x+','x-','y+','y-']);
+ await assert.rejects(turns(['a'],async()=>{throw Error('boom');}));
+ assert.equal(await turns(['a'],async()=>'free'),'free');
+});
+
+test('the account policy check runs as a read-only transaction',async()=>{
+ const db=fakeDb({
+  'organizations/org':{accessVersion:2,createdBy:'user'},
+  'memberships/user_org':{ownerId:'user',organizationId:'org',accessVersion:2,status:'active',role:'owner'},
+ });
+ const transaction=db.runTransaction.bind(db),options=[];
+ db.runTransaction=(fn,o)=>{options.push(o?.readOnly===true);return transaction(fn,o);};
+ const guard=createRequestGuard({db,Timestamp:{fromMillis:v=>v},HttpsError:Error});
+ await guard('readTeam',{auth:{uid:'user'},app:{appId:'app'},data:{organizationId:'org'}});
+ assert.deepEqual(options,[false,true],'the limiter writes; the policy check only reads');
 });

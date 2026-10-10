@@ -176,6 +176,7 @@ function createAccountDeletionHandler({db,Timestamp,HttpsError}){
   counts.staffUnlinked=staff.length;
   for(const c of ['aiUsage','aiRequests','aiDrafts'])counts[c]=await deleteWhere(c,'ownerId',uid);
   await db.collection('aiEntitlements').doc(uid).delete();
+  await db.collection('accountSessions').doc(uid).delete(); // sign-out-everywhere cut-off
   await db.collection('owners').doc(uid).delete();
   const result={status:'dataDeleted',organizations:rows.length,counts};
   await db.runTransaction(async tx=>{

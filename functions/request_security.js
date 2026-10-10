@@ -1,5 +1,6 @@
 'use strict';
 const {createHash}=require('node:crypto');
+const {sessionCheck}=require('./account_sessions');
 const {hasRole}=require('./team_access');
 const {accountPolicy,checkEmployer}=require('./account_policy');
 
@@ -19,13 +20,37 @@ function category(name,data){
 // required there. Both conditions are needed: the Functions emulator sets
 // FUNCTIONS_EMULATOR, and local runs use a demo- project that has no cloud resources.
 const localEmulator=()=>process.env.FUNCTIONS_EMULATOR==='true'&&/^demo-/.test(process.env.GCLOUD_PROJECT??'');
+// Speed (2026-10-09): one account's calls take turns at the rate-limit write on
+// this server copy. A screen starts 4-5 calls at once; their transactions all
+// read then write the same account (and organization) bucket documents, so
+// Firestore aborted all but one and the client library retried them after a
+// back-off of about a second (seen as 1-2.4 s calls). Taking turns here costs
+// one short transaction each instead. The limits are unchanged and still kept
+// in Firestore; other server copies are not affected by this.
+function createKeyedTurns(){
+ const tails=new Map();
+ return async(keys,run)=>{
+  const releases=[];
+  // Always in the same (sorted) order, so two calls never wait on each other.
+  for(const key of [...new Set(keys)].sort()){
+   const previous=tails.get(key)??Promise.resolve();
+   let release;const done=new Promise(resolve=>release=resolve);
+   const tail=previous.then(()=>done);
+   tails.set(key,tail);
+   releases.push(()=>{release();if(tails.get(key)===tail)tails.delete(key);});
+   await previous;
+  }
+  try{return await run();}finally{for(const release of releases.reverse())release();}
+ };
+}
 function createRequestGuard({db,Timestamp,HttpsError,now=Date.now}){
+ const turns=createKeyedTurns();
  const fail=(code,message)=>{throw new HttpsError(code,message);};
  const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
  // One transaction per request (2026-10-01; was two): the user's buckets plus,
  // for an identity-matched active member, the organization's shared bucket.
  // All-or-nothing inside; the caller charges a refused attempt separately.
- const consume=async(uid,userGroups,orgId=null,orgGroup='general')=>db.runTransaction(async tx=>{
+ const consume=(uid,userGroups,orgId=null,orgGroup='general')=>turns(['user:'+uid,...(orgId?['organization:'+orgId]:[])],()=>db.runTransaction(async tx=>{
   const time=now();
   const buckets=userGroups.map(g=>({key:['user',uid,g],capacity:policies[g].capacity,rate:policies[g].perMinute}));
   // Read candidate buckets alongside membership in the same transaction.
@@ -49,7 +74,7 @@ function createRequestGuard({db,Timestamp,HttpsError,now=Date.now}){
    return {tokens:tokens-1,updatedAtMs:Math.max(time,old?.updatedAtMs??0),expiresAt:Timestamp.fromMillis(time+86400000)};
   });
   buckets.forEach((b,i)=>tx.set(records[i].ref,updates[i]));
- });
+ }));
  return async(name,request)=>{
   const uid=request.auth?.uid;
   if(typeof uid!=='string'||!uid||uid.length>128||uid.includes('/'))fail('unauthenticated','sign_in_required');
@@ -71,13 +96,18 @@ function createRequestGuard({db,Timestamp,HttpsError,now=Date.now}){
   }
   const orgId=typeof org==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(org)?org:null;
   const group=category(name,request.data);
+  // "Sign out everywhere" (2026-10-06): a sign-in made before the account's
+  // cut-off is refused. Read alongside the charge below (no added wait).
+  const revokedCheck=sessionCheck.revoked(db,uid,Number(request.auth.token?.auth_time),now());
   // Charge before policy scans so forbidden/conflicted attempts are limited too.
   try{
    await consume(uid,group==='general'?['general']:['general',group],orgId,group);
   }catch(error){
+   revokedCheck.catch(()=>{});
    if(error?.code==='resource-exhausted'&&(group!=='general'||orgId))await consume(uid,['general']).catch(()=>{});
    throw error;
   }
+  if(await revokedCheck)fail('unauthenticated','session_revoked');
   // Binding is identity, membership remains authorization. Recovery actions
   // can resolve historical conflicts; operational reads/writes fail closed.
   if(orgId){
@@ -91,7 +121,8 @@ function createRequestGuard({db,Timestamp,HttpsError,now=Date.now}){
    if(m?.ownerId===uid&&m.organizationId===orgId){
     const recovery=name==='organizationSettings'&&['read','close','leave','closedList'].includes(request.data?.action)||name==='mutateTeam'&&request.data?.action==='setAccess'&&request.data?.status==='revoked';
     const [policy,coOwners]=await Promise.all([
-     db.runTransaction(tx=>accountPolicy(db,tx,uid)),
+     // Read-only: takes no locks (it only reads), same consistent snapshot.
+     db.runTransaction(tx=>accountPolicy(db,tx,uid),{readOnly:true}),
      db.collection('memberships').where('organizationId','==',orgId).get(),
     ]);
     if(policy.deleting)fail('failed-precondition','account_deletion_in_progress');
@@ -156,4 +187,4 @@ function createCallableGroups({onCall,observe,...dependencies}){
  const names=groupName=>[...handlers].filter(([,e])=>e.group===groupName).map(([n])=>n);
  return {register,group,names};
 }
-module.exports={createRequestGuard,createSecureCallable,createCallableGroups,policies,localEmulator};
+module.exports={createKeyedTurns,createRequestGuard,createSecureCallable,createCallableGroups,policies,localEmulator};

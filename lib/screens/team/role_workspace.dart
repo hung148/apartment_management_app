@@ -385,8 +385,10 @@ class _RoleWorkspaceState extends State<RoleWorkspace> {
       if (!mounted || generation != _generation) return;
       setState(() {
         _show(raw, access, properties);
+        // The saved copy already opened this page: keep its key, or the page
+        // is rebuilt and loads a second time (2026-10-09: the calendar did).
+        if (!_fromSaved) _newPropertyId = const Uuid().v4();
         _fromSaved = false;
-        _newPropertyId = const Uuid().v4();
         _busy = false;
         _settle();
       });

@@ -1,3 +1,6 @@
+import 'app_functions.dart';
+import 'device_session.dart';
+import 'read_cache.dart';
 import 'organization_money.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/owner_model.dart';
 import 'package:phan_mem_quan_ly_can_ho/widgets/app_logger.dart';
@@ -99,6 +102,24 @@ class AuthService {
       createdAt: DateTime.now(),
       invitedBy: null,
     ).toMap());
+  }
+
+  /// "Remember this computer" (web, 2026-10-06). Runs just before signing in.
+  /// Unticked (a shared computer): the sign-in ends when the browser closes
+  /// and nothing is saved on the computer (the saved copy is wiped now).
+  Future<void> applyRememberChoice(bool remember) async {
+    if (!offerRememberThisDevice) return;
+    setRememberThisDevice(remember);
+    await _auth.setPersistence(
+      remember ? Persistence.LOCAL : Persistence.SESSION,
+    );
+    if (!remember) await ReadCache.shared?.clear();
+  }
+
+  /// Ends every sign-in of this account on every device, then this one.
+  Future<void> signOutEverywhere() async {
+    await appCallable('accountSessions').call({'action': 'signOutEverywhere'});
+    await signOut();
   }
 
   // Logout
