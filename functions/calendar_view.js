@@ -80,8 +80,7 @@ function createCalendarViewHandler({db,Timestamp,HttpsError}){
   // Cleaning is assigned to an account; show the member's name (as the task list does).
   const assigneeNames=new Map();
 
-  const properties=[];
-  for(const building of buildings){
+  const loadBuilding=async building=>{
    const b=building.data(),zone=b.timeZone,scope={organizationId:d.organizationId,userId:uid,buildingId:building.id},can=p=>allows(m,p,scope);
    const readBookings=allows(m,'readBookings',{...scope,anyRecord:true}),canLease=can('manageLease');
    const canCreateBookings=can('createBookings'),canManageProperty=can('manageProperty');
@@ -89,8 +88,8 @@ function createCalendarViewHandler({db,Timestamp,HttpsError}){
    // own cleaning bars and which rooms need cleaning (no guests, no money).
    const readTasks=can('readAssignedTasks');
    const cleaningOnly=!readBookings&&!canLease&&!canCreateBookings&&!canManageProperty;
-   if(cleaningOnly&&!readTasks)continue;
-   if(!validZone(zone)){properties.push({id:building.id,name:b.name??'',timeZone:null,today:null,needsTimeZone:true,rooms:[],bars:[]});continue;}
+   if(cleaningOnly&&!readTasks)return null;
+   if(!validZone(zone))return {id:building.id,name:b.name??'',timeZone:null,today:null,needsTimeZone:true,rooms:[],bars:[]};
    const today=propertyDate(Timestamp.now().toMillis(),zone),from=propertyDayStart(d.from,zone),to=propertyDayStart(d.to,zone);
    if(from===null||to===null)fail('invalid-argument');
    const canReport=canManageProperty||canCreateBookings||can('manageBookings')||canLease||can('updateAssignedTasks');
@@ -225,8 +224,15 @@ function createCalendarViewHandler({db,Timestamp,HttpsError}){
     bars.push(leaseBar(x.tenantId,t,x.roomId,start,end,'out',null));
    }
    bars.sort((a,c)=>a.roomId.localeCompare(c.roomId)||String(a.start).localeCompare(String(c.start)));
-   properties.push({id:building.id,name:String(b.name??''),timeZone:zone,today,now:localStamp(Timestamp.now().toMillis(),zone),canCreateBookings,canLease,canReadProblems,canReportProblems:canReport,
-    cleaningOnly,canAssignCleaning:canManageProperty,canReadCleaning:canManageProperty||readTasks,rooms:roomRows,bars});
+   return {id:building.id,name:String(b.name??''),timeZone:zone,today,now:localStamp(Timestamp.now().toMillis(),zone),canCreateBookings,canLease,canReadProblems,canReportProblems:canReport,
+    cleaningOnly,canAssignCleaning:canManageProperty,canReadCleaning:canManageProperty||readTasks,rooms:roomRows,bars};
+  };
+  // Independent properties need not wait for each other's database round trips.
+  // Bound fan-out (six initial queries per property) and preserve sorted order.
+  const properties=[];
+  for(let i=0;i<buildings.length;i+=4){
+   const batch=await Promise.all(buildings.slice(i,i+4).map(loadBuilding));
+   properties.push(...batch.filter(Boolean));
   }
   return {from:d.from,to:d.to,properties};
  };

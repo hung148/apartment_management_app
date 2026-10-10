@@ -36,6 +36,7 @@ enum TeamAction {
 class TeamPage {
   final List<Map<String, dynamic>> records;
   final String? nextCursor;
+  final Map<String, dynamic>? actor;
   TeamPage(Map<String, dynamic> data)
     : records = List.unmodifiable(
         (data['records'] as List).map(
@@ -44,7 +45,12 @@ class TeamPage {
           ),
         ),
       ),
-      nextCursor = data['nextCursor'] as String?;
+      nextCursor = data['nextCursor'] as String?,
+      actor = data['actor'] is Map
+          ? Map<String, dynamic>.unmodifiable(
+              Map<String, dynamic>.from(data['actor'] as Map),
+            )
+          : null;
 }
 
 /// The server's reason key (e.g. 'role_changed') from a callable error, or ''.

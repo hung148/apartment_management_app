@@ -73,6 +73,29 @@ Future<void> mount(
 }
 
 void main() {
+  testWidgets(
+    'staff directory uses one fresh response for access and records',
+    (tester) async {
+      final views = <String>[];
+      final service = TeamService(
+        transport: (_, data) async {
+          views.add(data['view'] as String);
+          if (data['view'] != 'staff')
+            throw StateError('unnecessary access round trip');
+          return {
+            'records': [staff()],
+            'nextCursor': null,
+            'actor': access()['record'],
+          };
+        },
+      );
+      await mount(tester, service);
+      await tester.pumpAndSettle();
+      expect(find.text(staffName), findsOneWidget);
+      expect(views, ['staff']);
+      expect(tester.takeException(), isNull);
+    },
+  );
   test(
     'organization migration version survives copies but cannot enter client writes',
     () {
@@ -198,7 +221,9 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Refresh').hitTestable(), findsOneWidget);
-      if (mode == 'suspended') expect(staffCalls, 0);
+      // The staff endpoint now performs the access check itself; this legacy
+      // fixture still exercises the fallback access response and clears data.
+      if (mode == 'suspended') expect(staffCalls, 1);
       expect(tester.takeException(), isNull);
     }
   });

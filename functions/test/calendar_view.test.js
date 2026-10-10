@@ -42,6 +42,28 @@ const call=(store,data={},uid='owner')=>createCalendarViewHandler({db:store,Time
 const code=async(p,c)=>assert.equal((await p.then(()=>null,e=>e)).code,c);
 const bar=(r,i)=>r.properties.flatMap(p=>p.bars).find(b=>b.id.startsWith(i));
 
+test('multiple buildings load concurrently with a bounded batch and stable order',async()=>{
+ const data=seed();
+ for(let i=3;i<=9;i++)data[`buildings/b${i}`]={organizationId:'org',name:`Toa ${i}`,timeZone:'Asia/Ho_Chi_Minh'};
+ const db=fakeDb(data),collection=db.collection;
+ let active=0,peak=0,firstBatch=0;
+ const wrap=q=>({
+  where:(...args)=>wrap(q.where(...args)),
+  get:async()=>{
+   active++;peak=Math.max(peak,active);
+   // Hold each room read until the next event-loop turn. This detects serial
+   // building loading without relying on wall-clock performance thresholds.
+   await new Promise(resolve=>setImmediate(()=>{if(!firstBatch)firstBatch=active;resolve();}));
+   try{return await q.get();}finally{active--;}
+  },
+ });
+ db.collection=name=>name==='rooms'?wrap(collection(name)):collection(name);
+ const result=await call(db);
+ assert.equal(firstBatch,4,'four buildings must start before the first room read completes');
+ assert.equal(peak,4,'do not fan out all buildings at once');
+ assert.deepEqual(result,await call(fakeDb(data)),'parallel completion must preserve the complete calendar projection and order');
+});
+
 test('owner sees every property, rooms in number order, and the month\'s bars',async()=>{
  Ts.clock=Date.parse('2026-10-02T03:00:00Z');
  const r=await call(fakeDb(seed()));

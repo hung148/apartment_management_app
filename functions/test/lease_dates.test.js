@@ -2,6 +2,12 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {propertyDate,leaseDatePolicy,propertyDayStart}=require('../lease_dates');
+test('day-boundary search reuses its formatter instead of rebuilding it at each step',t=>{
+ const Original=Intl.DateTimeFormat;let constructions=0;
+ t.mock.method(Intl,'DateTimeFormat',function(...args){constructions++;return new Original(...args);});
+ assert.equal(propertyDayStart('2026-09-27','Asia/Ho_Chi_Minh'),Date.parse('2026-09-26T17:00:00Z'));
+ assert.ok(constructions<=2,`expected validation plus one formatter, got ${constructions}`);
+});
 test('date-only entry converts to the first real property-local instant, including skipped midnight and skipped days',()=>{
  assert.equal(propertyDayStart('2026-09-27','Asia/Ho_Chi_Minh'),Date.parse('2026-09-26T17:00:00Z'));
  assert.equal(propertyDayStart('2026-03-08','America/Los_Angeles'),Date.parse('2026-03-08T08:00:00Z'));

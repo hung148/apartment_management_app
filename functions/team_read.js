@@ -47,14 +47,14 @@ function createTeamReadHandler({db,HttpsError}) {
         for(const r of stored.docs)if(r.id===`${input.organizationId}_${r.data().roleId}`&&typeof r.data().name==='string'&&r.data().name)roleNames.set(r.data().roleId,{name:r.data().name,deleted:!!r.data().deletedAt});
       };
       const named=record=>{const n=roleNames.get(record.role);if(n)record.roleName=n.name;return record;};
+      const actor=()=>({...named(project('access',mine)),grants:effectiveGrants(member)??{},level:memberLevel(member),allProperties:reachesAllProperties(member)});
       if(input.view==='myAccess'){
         // A revoked user needs their own state to render an access-revoked screen.
         if(!validIdentity)return {record:null};
         await loadRoleNames();
         // grants = what this member may do right now (role + overrides), so the app
         // does not need to know organization roles. The server rechecks every call.
-        return {record:{...named(project('access',mine)),grants:effectiveGrants(member)??{},level:memberLevel(member),
-          allProperties:reachesAllProperties(member)}};
+        return {record:actor()};
       }
       const admin=allows(member,'manageTeam',context)&&member.buildingScope==='all';
       let kind=input.view, query;
@@ -128,7 +128,7 @@ function createTeamReadHandler({db,HttpsError}) {
         }
         return record;
       }));
-      return {records,nextCursor:snapshot.docs.length>limit?docs.at(-1).id:null};
+      return {records,nextCursor:snapshot.docs.length>limit?docs.at(-1).id:null,...(kind==='staff'?{actor:actor()}: {})};
     });
   };
 }

@@ -4,6 +4,20 @@ const assert=require('node:assert/strict');
 const {createTeamReadHandler}=require('../team_read');
 class CodeError extends Error {constructor(code,message){super(message);this.code=code;}}
 const reader=createTeamReadHandler({db:{runTransaction:()=>{throw Error('Unexpected database access');}},HttpsError:CodeError});
+
+test('staff page includes fresh caller access and still denies suspended callers',async()=>{
+ const {fakeDb}=require('./fake_firestore');
+ const db=fakeDb({'organizations/org':{accessVersion:2},'memberships/u_org':{organizationId:'org',ownerId:'u',accessVersion:2,role:'owner',status:'active',buildingScope:'all'},'staffProfiles/s':{organizationId:'org',displayName:'Staff'}});
+ const read=createTeamReadHandler({db,HttpsError:CodeError});
+ const request={auth:{uid:'u'},data:{organizationId:'org',view:'staff'}};
+ const result=await read(request);
+ assert.equal(result.actor?.role,'owner');
+ assert.equal(result.actor?.allProperties,true);
+ assert.deepEqual(result.actor,(await read({...request,data:{organizationId:'org',view:'myAccess'}})).record);
+ assert.equal(result.records.length,1);
+ db.store.get('memberships/u_org').status='suspended';
+ await assert.rejects(read(request),e=>e.code==='permission-denied');
+});
 test('read API validates authentication, pagination and filters before touching data',async()=>{
   await assert.rejects(reader({data:{}}),e=>e.code==='unauthenticated');
   for(const data of [

@@ -1,14 +1,18 @@
 'use strict';
 const {validZone}=require('./booking_settings');
+const dateFormatter=timeZone=>new Intl.DateTimeFormat('en',{timeZone,year:'numeric',month:'2-digit',day:'2-digit',era:'short'});
+function formattedDate(instant,formatter){
+ const p=Object.fromEntries(formatter.formatToParts(instant).map(v=>[v.type,v.value]));
+ if(p.era!=='AD'||Number(p.year)>9999)return null;
+ return `${p.year.padStart(4,'0')}-${p.month}-${p.day}`;
+}
 
 // Calendar dates are derived on the server in the property's timezone. Neither
 // a client-supplied "today" nor the server host's local timezone participates.
 function propertyDate(instant,timeZone){
  if(!Number.isFinite(instant)||!validZone(timeZone))return null;
  try{
-  const p=Object.fromEntries(new Intl.DateTimeFormat('en',{timeZone,year:'numeric',month:'2-digit',day:'2-digit',era:'short'}).formatToParts(instant).map(v=>[v.type,v.value]));
-  if(p.era!=='AD'||Number(p.year)>9999)return null;
-  return `${p.year.padStart(4,'0')}-${p.month}-${p.day}`;
+  return formattedDate(instant,dateFormatter(timeZone));
  }catch{return null;}
 }
 
@@ -29,9 +33,10 @@ function leaseDatePolicy({moveInMillis,nowMillis,timeZone,role,canBackdate,reaso
 function propertyDayStart(date,timeZone){
  const {validDate}=require('./property_contract');
  if(!validDate(date)||!validZone(timeZone))return null;
+ const formatter=dateFormatter(timeZone);
  const nominal=Date.parse(date+'T00:00:00Z');
  let lo=nominal-48*3600000,hi=nominal+48*3600000;
- while(lo<hi){const mid=Math.floor((lo+hi)/2);if(propertyDate(mid,timeZone)<date)lo=mid+1;else hi=mid;}
- return propertyDate(lo,timeZone)===date?lo:null;
+ while(lo<hi){const mid=Math.floor((lo+hi)/2);if(formattedDate(mid,formatter)<date)lo=mid+1;else hi=mid;}
+ return formattedDate(lo,formatter)===date?lo:null;
 }
 module.exports={propertyDate,leaseDatePolicy,propertyDayStart};

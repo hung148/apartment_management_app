@@ -86,7 +86,15 @@ class _TeamScreenState extends State<TeamScreen> {
       }
     });
     try {
-      final record = await service.myAccess(organization);
+      // The server authorizes the staff page and returns the caller's current
+      // access in the same transaction. Older deployments use the fallback.
+      final page = await service.page(
+        organization,
+        TeamView.staff,
+        cursor: cursor,
+      );
+      if (!mounted || generation != _generation) return;
+      final record = page.actor ?? await service.myAccess(organization);
       if (!mounted || generation != _generation) return;
       final access = TeamAccess.fromMap(record ?? {});
       final admin =
@@ -102,12 +110,6 @@ class _TeamScreenState extends State<TeamScreen> {
         }
         return;
       }
-      final page = await service.page(
-        organization,
-        TeamView.staff,
-        cursor: cursor,
-      );
-      if (!mounted || generation != _generation) return;
       setState(() {
         _admin = admin;
         _actor = access;
