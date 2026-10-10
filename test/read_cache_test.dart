@@ -11,6 +11,7 @@ import 'room_calendar_test.dart' show bar, calendarFixture, mountCalendar;
 import 'tenant_contacts_test.dart' as tenants;
 import 'package:phan_mem_quan_ly_can_ho/screens/team/ws_ui.dart';
 import 'team_review_test.dart' show mountReview;
+import 'team_screen_test.dart' as team;
 
 // The copy of server answers kept on the device (2026-10-06, speed step 1).
 void main() {
@@ -54,6 +55,51 @@ void main() {
     expect(tester.takeException(),isNull);
   });
   }
+
+  // 2026-10-09: the staff list and the invoice list use the saved copy too.
+  for (final denied in [false, true]) {
+    testWidgets('staff list shows the saved page locked, then fresh access: denied=$denied', (tester) async {
+      final c = cache(), pending = Completer<Map<String, dynamic>>();
+      final payload = {'organizationId': 'a', 'view': 'staff', 'limit': 25};
+      await c.write('readTeam', payload, {
+        'records': [{...team.staff('old'), 'displayName': 'Saved staff'}],
+        'actor': team.access()['record'],
+      }, organizationId: 'a');
+      await team.mount(tester, TeamService(cache: c, transport: (_, __) => pending.future));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Saved staff'), findsOneWidget);
+      expect(tester.widget<WsRecord>(find.byType(WsRecord)).onTap, isNull,
+          reason: 'nothing can be opened from the saved copy');
+      if (denied) {
+        pending.completeError(FirebaseFunctionsException(code: 'permission-denied', message: 'x'));
+      } else {
+        pending.complete({
+          'records': [{...team.staff('new'), 'displayName': 'Fresh staff'}],
+          'actor': team.access()['record'],
+        });
+      }
+      await tester.pumpAndSettle();
+      expect(find.text('Saved staff'), findsNothing);
+      expect(find.text('Fresh staff'), denied ? findsNothing : findsOneWidget);
+      if (denied) expect(await c.read('readTeam', payload), isNull);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  test('invoice list: saved first page then fresh; nothing else may use it', () async {
+    final c = cache();
+    var answer = <String, dynamic>{'records': [{'id': 'i1'}], 'canCreate': true};
+    final service = TeamService(cache: c, transport: (_, __) async => answer);
+    final payload = {'organizationId': 'o1', 'buildingId': 'b1', 'action': 'list'};
+    expect((await service.invoiceListLive(payload).toList()).map((s) => s.saved), [false]);
+    answer = {'records': [{'id': 'i2'}], 'canCreate': true};
+    final second = await service.invoiceListLive(payload).toList();
+    expect(second.map((s) => ((s.data['records'] as List).single as Map)['id']), ['i1', 'i2']);
+    expect(second.map((s) => s.saved), [true, false]);
+    expect(() => service.invoiceListLive({...payload, 'action': 'read'}), throwsArgumentError);
+    expect(() => service.invoiceListLive({...payload, 'cursor': 'c2'}), throwsArgumentError);
+  });
 
   test('the same request reads back, whatever the key order', () async {
     final c = cache();

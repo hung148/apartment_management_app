@@ -237,6 +237,15 @@ class TeamService {
     );
   }
 
+  /// Display-only saved first page of the staff list (with the caller's access
+  /// as it was), followed by the server's fresh page (2026-10-09, device copy).
+  Stream<Saved<TeamPage>> staffPageLive(String organizationId) =>
+      _live('readTeam', {
+        'organizationId': organizationId,
+        'view': TeamView.staff.name,
+        'limit': 25,
+      }).map((s) => Saved(TeamPage(s.data), saved: s.saved, at: s.at));
+
   TeamOperation prepare(
     String organizationId,
     TeamAction action,
@@ -328,6 +337,18 @@ class TeamService {
   /// Sheet import (2026-10-05): preview, apply, saveSheet. Owner only.
   Future<Map<String, dynamic>> importSheet(Map<String, dynamic> payload) =>
       _transport('importSheet', payload);
+
+  /// Display-only saved invoice list, followed by the server's fresh list
+  /// (2026-10-09, device copy). Only the first page of the list: never a
+  /// single invoice, a quote or a change.
+  Stream<Saved<Map<String, dynamic>>> invoiceListLive(
+    Map<String, dynamic> payload,
+  ) {
+    if (payload['action'] != 'list' || payload['cursor'] != null) {
+      throw ArgumentError('Only the first invoice list page may use this stream');
+    }
+    return _live('invoices', payload);
+  }
 
   Future<Map<String, dynamic>> invoices(Map<String, dynamic> payload) =>
       _transport('invoices', payload);

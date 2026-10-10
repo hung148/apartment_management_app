@@ -64,6 +64,26 @@ test('multiple buildings load concurrently with a bounded batch and stable order
  assert.deepEqual(result,await call(fakeDb(data)),'parallel completion must preserve the complete calendar projection and order');
 });
 
+// Speed (2026-10-09): rent invoice pages and former tenants (room moves) are
+// read at the same time, not one after another; the result is unchanged.
+test('invoice pages and former tenants are read together with an identical result',async()=>{
+ const data=seed();
+ for(let i=0;i<31;i++)data[`tenants/l${i}`]={organizationId:'org',buildingId:'b1',roomId:'r10',fullName:`T${i}`,status:'active',isMainTenant:true,
+  moveInDate:at('2026-09-04T17:00:00Z'),moveOutDate:null,paymentPeriodMonths:1,currency:'VND'};
+ data['tenants/lease2']={organizationId:'org',buildingId:'b2',roomId:'r201',fullName:'Moved Person',status:'active',isMainTenant:true,moveInDate:at('2026-08-31T17:00:00Z'),occupancyStartDate:at('2026-10-09T17:00:00Z')};
+ data['leaseOccupancy/h1']={organizationId:'org',tenantId:'lease2',buildingId:'b1',roomId:'r101',start:at('2026-08-31T17:00:00Z'),end:at('2026-10-09T17:00:00Z'),isMainTenant:true};
+ const db=fakeDb(data),collection=db.collection,doc=db.doc;
+ let active=0,peak=0;
+ const held=async read=>{active++;peak=Math.max(peak,active);await new Promise(r=>setImmediate(r));try{return await read();}finally{active--;}};
+ const wrap=q=>({where:(...a)=>wrap(q.where(...a)),get:()=>held(()=>q.get())});
+ db.collection=name=>name==='payments'?wrap(collection(name)):collection(name);
+ db.doc=path=>path.startsWith('tenants/')?{...doc(path),get:()=>held(()=>doc(path).get())}:doc(path);
+ const result=await call(db);
+ assert(peak>=3,`two invoice pages and the former tenant must be in flight together (peak ${peak})`);
+ assert.deepEqual(result,await call(fakeDb(data)));
+ assert.equal(bar(result,'lease:lease2:r101').name,'Moved Person');
+});
+
 test('owner sees every property, rooms in number order, and the month\'s bars',async()=>{
  Ts.clock=Date.parse('2026-10-02T03:00:00Z');
  const r=await call(fakeDb(seed()));

@@ -5,6 +5,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
+import '../../services/read_cache.dart';
 import '../../services/team_service.dart';
 import 'back_steps.dart';
 import 'operational_widgets.dart';
@@ -153,24 +154,34 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
       }
     });
     try {
-      final r = await widget.service.invoices({
-        ..._identity,
-        'action': 'list',
-        if (more) 'cursor': _cursor,
-      });
-      if (!mounted || generation != _generation) return;
-      setState(() {
-        final ids = _rows.map((v) => v['id']).toSet();
-        _rows.addAll(
-          (r['records'] as List)
-              .map((v) => Map<String, dynamic>.from(v as Map))
-              .where((v) => ids.add(v['id'])),
-        );
-        _cursor = r['nextCursor'] as String?;
-        _canCreate = r['canCreate'] == true;
-        _canPrice = r['canPrice'] == true;
-        _busy = false;
-      });
+      final existing = List<Map<String, dynamic>>.of(_rows);
+      // Speed (2026-10-09): the first page shows the copy saved on this device
+      // at once; buttons and rows stay locked (_busy) until the server's fresh
+      // answer has checked access and replaced it. Later pages: server only.
+      final answers = more
+          ? Stream.fromFuture(
+              widget.service
+                  .invoices({..._identity, 'action': 'list', 'cursor': _cursor})
+                  .then((r) => Saved(r, saved: false, at: DateTime.now())),
+            )
+          : widget.service.invoiceListLive({..._identity, 'action': 'list'});
+      await for (final answer in answers) {
+        if (!mounted || generation != _generation) return;
+        final r = answer.data;
+        setState(() {
+          final ids = existing.map((v) => v['id']).toSet();
+          _rows = [
+            ...existing,
+            ...(r['records'] as List)
+                .map((v) => Map<String, dynamic>.from(v as Map))
+                .where((v) => ids.add(v['id'])),
+          ];
+          _cursor = r['nextCursor'] as String?;
+          _canCreate = !answer.saved && r['canCreate'] == true;
+          _canPrice = !answer.saved && r['canPrice'] == true;
+          _busy = answer.saved;
+        });
+      }
     } catch (_) {
       if (mounted && generation == _generation) {
         setState(() {

@@ -1523,3 +1523,21 @@ Next: why readTeam myAccess takes 1-2.4 s (tool/request_phase_times.cjs).
   claimMyInvitations 124/1100 (101/1036, one fresh server copy).
   Before today: slowest guard 1493 ms, readTeam up to 2.4 s in the browser.
   Largest remaining server work: calendarView handler (~437 ms median).
+
+## Speed 2026-10-09 (late): calendar server work, more saved copies, old region
+- calendarView (functions/calendar_view.js): after the access check, the
+  building list and staff names are read together; per building, cleaners'
+  names, ALL rent-invoice pages and former tenants (room moves) are read at the
+  same time (were: invoice pages one after another, former tenants one by one).
+  Reads still happen only after the access check (no reads for outsiders).
+  Same result: test "invoice pages and former tenants are read together with
+  an identical result" (fails on the old code: peak 2 < 3).
+- Saved copy (device, encrypted) now also on: the invoice list first page
+  (TeamService.invoiceListLive; never a single invoice, quote or change) and
+  the staff list first page (staffPageLive). Like the tenant list: rows show at
+  once but stay locked (busy/loading) and create/price/manager buttons stay off
+  until the server's fresh answer; a refusal clears the screen and the copy.
+  Bookings live on the calendar (already on the saved copy).
+  Tests: test/read_cache_test.dart (staff denied/allowed, invoice list guard).
+- Old us-central1 staging functions: Tom removes them with
+  node tool/staging_release.cjs remove-old-region (list) then --delete.

@@ -2,6 +2,7 @@ import 'workspace_page_scope.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import '../../models/team_access.dart';
+import '../../services/read_cache.dart';
 import '../../services/team_service.dart';
 import '../../utils/localizations/app_localizations.dart';
 import 'staff_editor.dart';
@@ -88,35 +89,47 @@ class _TeamScreenState extends State<TeamScreen> {
     try {
       // The server authorizes the staff page and returns the caller's current
       // access in the same transaction. Older deployments use the fallback.
-      final page = await service.page(
-        organization,
-        TeamView.staff,
-        cursor: cursor,
-      );
-      if (!mounted || generation != _generation) return;
-      final record = page.actor ?? await service.myAccess(organization);
-      if (!mounted || generation != _generation) return;
-      final access = TeamAccess.fromMap(record ?? {});
-      final admin =
-          access.allows(TeamPermission.manageTeam) && access.allBuildings;
-      if (!admin && !access.allows(TeamPermission.readOwnActivity)) {
-        if (mounted && generation == _generation) {
-          setState(() {
-            _records = [];
-            _cursor = null;
-            _loading = false;
-            _error = 'team_denied';
-          });
+      // Speed (2026-10-09): the first page shows the copy saved on this device
+      // at once, still "loading" (rows and manager buttons locked) until the
+      // server's fresh page has checked access and replaced it.
+      final pages = more
+          ? Stream.fromFuture(
+              service
+                  .page(organization, TeamView.staff, cursor: cursor)
+                  .then((p) => Saved(p, saved: false, at: DateTime.now())),
+            )
+          : service.staffPageLive(organization);
+      final before = more ? _records : const <Map<String, dynamic>>[];
+      await for (final answer in pages) {
+        if (!mounted || generation != _generation) return;
+        final page = answer.data;
+        // A saved copy without the access record is not shown.
+        if (answer.saved && page.actor == null) continue;
+        final record = page.actor ?? await service.myAccess(organization);
+        if (!mounted || generation != _generation) return;
+        final access = TeamAccess.fromMap(record ?? {});
+        final admin =
+            access.allows(TeamPermission.manageTeam) && access.allBuildings;
+        if (!admin && !access.allows(TeamPermission.readOwnActivity)) {
+          if (answer.saved) continue; // the fresh answer decides
+          if (mounted && generation == _generation) {
+            setState(() {
+              _records = [];
+              _cursor = null;
+              _loading = false;
+              _error = 'team_denied';
+            });
+          }
+          return;
         }
-        return;
+        setState(() {
+          _admin = admin;
+          _actor = access;
+          _records = [...before, ...page.records];
+          _cursor = page.nextCursor;
+          _loading = answer.saved;
+        });
       }
-      setState(() {
-        _admin = admin;
-        _actor = access;
-        _records = more ? [..._records, ...page.records] : page.records;
-        _cursor = page.nextCursor;
-        _loading = false;
-      });
     } catch (error) {
       if (!mounted || generation != _generation) return;
       setState(() {

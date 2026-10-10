@@ -66,6 +66,10 @@ function createCalendarViewHandler({db,Timestamp,HttpsError}){
   if(!org.exists||org.data().accessVersion!==2||org.data().closedAt||!m||m.organizationId!==d.organizationId||m.ownerId!==uid||m.accessVersion!==2||m.status!=='active'||!hasRole(m)||!['all','selected'].includes(m.buildingScope))fail('permission-denied');
 
   // Properties the member reaches (same rule as the workspace property list).
+  // Speed (2026-10-09): read together with the staff names (both only after
+  // the access check above, so an outsider never makes the server read them).
+  const staffRead=db.collection('staffProfiles').where('organizationId','==',d.organizationId).get();
+  staffRead.catch(()=>{});
   let buildings;
   if(reachesAllProperties(m)){
    buildings=(await db.collection('buildings').where('organizationId','==',d.organizationId).get()).docs;
@@ -75,7 +79,7 @@ function createCalendarViewHandler({db,Timestamp,HttpsError}){
   }
   buildings=buildings.filter(b=>!b.data().deletedAt).sort((a,b)=>String(a.data().name??'').localeCompare(String(b.data().name??''),undefined,{numeric:true})||a.id.localeCompare(b.id));
   if(buildings.length>MAX_PROPERTIES)buildings=buildings.slice(0,MAX_PROPERTIES);
-  const staffDocs=(await db.collection('staffProfiles').where('organizationId','==',d.organizationId).get()).docs;
+  const staffDocs=(await staffRead).docs;
   const staffNames=new Map(staffDocs.map(v=>[v.id,String(v.data().displayName??'')]));
   // Cleaning is assigned to an account; show the member's name (as the task list does).
   const assigneeNames=new Map();
@@ -103,7 +107,10 @@ function createCalendarViewHandler({db,Timestamp,HttpsError}){
    ]);
    const roomIds=new Set(rooms.docs.map(v=>v.id));
    const newAssignees=[...new Set(tasks.docs.map(v=>v.data().assigneeId).filter(v=>typeof v==='string'&&v&&!assigneeNames.has(v)&&!staffNames.get(v)))];
-   await Promise.all(newAssignees.map(async u=>{const x=(await db.doc(`memberships/${u}_${d.organizationId}`).get()).data();assigneeNames.set(u,typeof x?.displayName==='string'&&x.displayName.trim()?x.displayName.trim():(typeof x?.email==='string'?x.email:''));}));
+   // Speed (2026-10-09): the cleaners' names, the rent invoices and former
+   // tenants are read at the same time (each was a separate wait before).
+   const namesRead=Promise.all(newAssignees.map(async u=>{const x=(await db.doc(`memberships/${u}_${d.organizationId}`).get()).data();assigneeNames.set(u,typeof x?.displayName==='string'&&x.displayName.trim()?x.displayName.trim():(typeof x?.email==='string'?x.email:''));}));
+   namesRead.catch(()=>{});
    const open=new Map();
    for(const p of problems?.docs??[]){const x=p.data();if(!open.has(x.roomId))open.set(x.roomId,[]);open.get(x.roomId).push({id:p.id,title:String(x.title??''),blocksRoom:x.blocksRoom===true});}
    // Needs cleaning (2026-10-05, Tom): a guest left (check-out, lease move-out)
@@ -118,6 +125,23 @@ function createCalendarViewHandler({db,Timestamp,HttpsError}){
     .sort((a,c)=>a.roomNumber.localeCompare(c.roomNumber,undefined,{numeric:true})||a.id.localeCompare(c.id));
    const overlaps=(start,end)=>start!==null&&start<to&&(end===null||end>from);
    const bars=[];
+
+   // Invoices (leases) and former tenants (room moves) are found from data
+   // already read; start those reads now, alongside the names.
+   const tenantDocsEarly=tenants.docs.filter(v=>v.data().organizationId===d.organizationId);
+   const mainsEarly=tenantDocsEarly.filter(v=>v.data().isMainTenant!==false);
+   const leaseIdsEarly=new Set(mainsEarly.map(v=>v.id));
+   for(const h of history.docs){const x=h.data();if(x.organizationId===d.organizationId&&x.isMainTenant!==false&&id(x.tenantId))leaseIdsEarly.add(x.tenantId);}
+   const invoicePages=[];
+   if(canLease){
+    const list=[...leaseIdsEarly];
+    for(let i=0;i<list.length;i+=30)invoicePages.push(db.collection('payments').where('organizationId','==',d.organizationId).where('tenantId','in',list.slice(i,i+30)).get());
+   }
+   const formerIds=cleaningOnly?[]:[...new Set(history.docs.map(h=>h.data()).filter(x=>x.organizationId===d.organizationId&&x.isMainTenant!==false&&roomIds.has(x.roomId)&&id(x.tenantId)&&!mainsEarly.some(v=>v.id===x.tenantId)).map(x=>x.tenantId))];
+   const formerRead=Promise.all(formerIds.map(t=>db.doc(`tenants/${t}`).get()));
+   const pagesRead=Promise.all(invoicePages);
+   pagesRead.catch(()=>{});formerRead.catch(()=>{});
+   await namesRead;
 
    // Cleaning bars: the planned window and the real work time (Bắt đầu → Xong).
    // Managers and reception see all; a cleaner only their own.
@@ -184,12 +208,8 @@ function createCalendarViewHandler({db,Timestamp,HttpsError}){
    for(const h of history.docs){const x=h.data();if(x.organizationId===d.organizationId&&x.isMainTenant!==false&&id(x.tenantId))leaseIds.add(x.tenantId);}
    // Rent invoices of these leases (by tenant, so a lease billed in another property still counts).
    const invoices=new Map();
-   if(canLease){
-    const list=[...leaseIds];
-    for(let i=0;i<list.length;i+=30){
-     const page=await db.collection('payments').where('organizationId','==',d.organizationId).where('tenantId','in',list.slice(i,i+30)).get();
-     for(const v of page.docs){const x=v.data();if(!invoices.has(x.tenantId))invoices.set(x.tenantId,[]);invoices.get(x.tenantId).push(x);}
-    }
+   for(const page of await pagesRead){
+    for(const v of page.docs){const x=v.data();if(!invoices.has(x.tenantId))invoices.set(x.tenantId,[]);invoices.get(x.tenantId).push(x);}
    }
    const roommates=new Map();
    for(const v of tenantDocs){const x=v.data();if(x.isMainTenant===false&&['active','suspended'].includes(x.status)&&x.moveOutDate==null)roommates.set(x.mainTenantId,(roommates.get(x.mainTenantId)??0)+1);}
@@ -213,6 +233,8 @@ function createCalendarViewHandler({db,Timestamp,HttpsError}){
    }
    // Rooms a lease lived in before a room move.
    const extra=new Map();
+   const former=await formerRead;
+   formerIds.forEach((t,i)=>extra.set(t,former[i].exists&&former[i].data().organizationId===d.organizationId?former[i].data():{}));
    for(const h of history.docs){
     if(cleaningOnly)break;
     const x=h.data();
