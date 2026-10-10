@@ -353,6 +353,12 @@ the server). Measure before and after each step on staging.
    Each call's own work still reads the caller's membership, so removing a
    staff member works at once; only merged/owner-conflict/deletion/other-
    employer checks can lag up to 15 s. Measure with request_phase_times.cjs.
+10. [ ] After the production move (Tom 2026-10-10): run single_organization_audit.js
+   on production. If it finds no two-owner organizations, no co-owner
+   records and no staff linked to two businesses, and the merge tool is no
+   longer needed: remove the guard's merged / owner-conflict / other-employer
+   checks together with the old merge and co-owner code (saves the member-list
+   read and the employer check on every call). Keep the account-deletion check.
 Later / only if needed: W4 local "Review calculation"; W1 caching service
 worker (not now). With the production move: the free keep-warm ping. With N1
 push notifications: firebase-messaging-sw.js.
