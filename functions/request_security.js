@@ -166,7 +166,29 @@ function createCallableGroups({onCall,observe,...dependencies}){
  const register=(name,options,handler)=>{
   if(typeof options==='function'){handler=options;options={};}
   if(!NAME.test(name)||handlers.has(name))throw Error('Bad or repeated call name: '+name);
-  handlers.set(name,{group:options.group??'app',handler});
+  const readOnly=options.readOnly??false;
+  if(readOnly!==false&&readOnly!==true&&typeof readOnly!=='function')throw Error('Bad readOnly for '+name);
+  handlers.set(name,{group:options.group??'app',handler,readOnly});
+ };
+ // Speed (2026-10-09): a call that only READS starts its work alongside the
+ // guard, and its answer is held until the guard has passed: the guard's
+ // refusal (rate limit, session cut-off, account policy) is still what the app
+ // gets, and nothing is returned before it passes. Writes still wait for the
+ // guard. An account this server copy refused for the rate limit in the last
+ // minute waits for the guard again, so refused calls do not keep reading.
+ const refused=new Map(),REFUSED_MS=60_000;
+ const startsEarly=(entry,inner)=>{
+  const uid=inner.auth?.uid;
+  if(!uid||!entry)return false;
+  const until=refused.get(uid);
+  if(until!==undefined){if(until>Date.now())return false;refused.delete(uid);}
+  try{return entry.readOnly===true||(typeof entry.readOnly==='function'&&entry.readOnly(inner.data)===true);}catch{return false;}
+ };
+ const noteRefusal=(uid,error)=>{
+  if(uid&&error?.code==='resource-exhausted'){
+   if(refused.size>10_000)refused.clear();
+   refused.set(uid,Date.now()+REFUSED_MS);
+  }
  };
  const group=(groupName,options={})=>onCall({region:REGION,...options,enforceAppCheck:!localEmulator()},async request=>{
   const outer=request.data,fn=outer&&typeof outer==='object'?outer.fn:undefined;
@@ -178,10 +200,21 @@ function createCallableGroups({onCall,observe,...dependencies}){
    if(!known)throw new dependencies.HttpsError('not-found','unknown_call');
    return entry.handler(inner);
   };
+  const early=known&&startsEarly(entry,inner);
+  const guarded=async()=>{
+   try{await guard(known?fn:'unknownCall',inner);}
+   catch(error){noteRefusal(inner.auth?.uid,error);throw error;}
+  };
   if(observe)return require('./request_timing').timeRequest({
-   name:known?fn:'unknownCall',guard:()=>guard(known?fn:'unknownCall',inner),handler:run,observe,
+   name:known?fn:'unknownCall',guard:guarded,handler:run,observe,early,
   });
-  await guard(known?fn:'unknownCall',inner);
+  if(early){
+   const pending=run();
+   pending.catch(()=>{});
+   await guarded();
+   return pending;
+  }
+  await guarded();
   return run();
  });
  const names=groupName=>[...handlers].filter(([,e])=>e.group===groupName).map(([n])=>n);

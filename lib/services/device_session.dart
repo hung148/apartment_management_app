@@ -14,3 +14,7 @@ void setRememberThisDevice(bool remember) =>
 
 /// Whether the sign-in screen offers the choice (web only).
 const offerRememberThisDevice = platform.offerRememberThisDevice;
+
+/// Removes the page's own loading screen (web/index.html) once the app has
+/// drawn its first frame (2026-10-09, speed). Nothing elsewhere.
+void hideStartScreen() => platform.hideStartScreen();

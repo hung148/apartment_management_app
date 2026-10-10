@@ -4,3 +4,5 @@ bool get rememberThisDevice => true;
 void setRememberThisDevice(bool remember) {}
 
 const offerRememberThisDevice = false;
+
+void hideStartScreen() {}

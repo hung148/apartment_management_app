@@ -13,11 +13,10 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen>
     with TickerProviderStateMixin {
-
   late AnimationController _animController;
   late Animation<double> _fadeAnim;
   late Animation<Offset> _slideAnim;
-  late AnimationController _progressController; 
+  late AnimationController _progressController;
 
   @override
   void initState() {
@@ -34,18 +33,12 @@ class _SplashScreenState extends State<SplashScreen>
     );
     _progressController.forward();
 
-    _fadeAnim = CurvedAnimation(
-      parent: _animController,
-      curve: Curves.easeIn,
-    );
+    _fadeAnim = CurvedAnimation(parent: _animController, curve: Curves.easeIn);
 
     _slideAnim = Tween<Offset>(
       begin: const Offset(0, 0.12),
       end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _animController,
-      curve: Curves.easeOut,
-    ));
+    ).animate(CurvedAnimation(parent: _animController, curve: Curves.easeOut));
 
     _animController.forward();
     _checkAuthStatus();
@@ -71,10 +64,10 @@ class _SplashScreenState extends State<SplashScreen>
     }
     await Future.wait([
       Future<void>.delayed(const Duration(milliseconds: 700)),
-      FirebaseAuth.instance
-          .authStateChanges()
-          .first
-          .timeout(const Duration(seconds: 5), onTimeout: () => null),
+      FirebaseAuth.instance.authStateChanges().first.timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => null,
+      ),
     ]);
     if (!mounted) return;
 
@@ -113,9 +106,7 @@ class _SplashScreenState extends State<SplashScreen>
             children: [
               child,
               // Dark overlay for better text readability
-              Container(
-                color: Colors.black.withValues(alpha: 0.35),
-              ),
+              Container(color: Colors.black.withValues(alpha: 0.35)),
               SafeArea(
                 child: FadeTransition(
                   opacity: _fadeAnim,
@@ -136,7 +127,9 @@ class _SplashScreenState extends State<SplashScreen>
                                   borderRadius: BorderRadius.circular(24),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: AppThemePalette.primary.withValues(alpha: 0.5),
+                                      color: AppThemePalette.primary.withValues(
+                                        alpha: 0.5,
+                                      ),
                                       blurRadius: 32,
                                       spreadRadius: 4,
                                       offset: const Offset(0, 8),
@@ -146,7 +139,7 @@ class _SplashScreenState extends State<SplashScreen>
                                 child: ClipRRect(
                                   borderRadius: BorderRadius.circular(24),
                                   child: Image.asset(
-                                    'assets/icon/apartment_management_app_icon.png',
+                                    'assets/icon/app_icon_384.jpg',
                                     fit: BoxFit.cover,
                                   ),
                                 ),
@@ -207,13 +200,18 @@ class _SplashScreenState extends State<SplashScreen>
                               AnimatedBuilder(
                                 animation: _progressController,
                                 builder: (context, _) => Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 80),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 80,
+                                  ),
                                   child: LinearProgressIndicator(
                                     value: _progressController.value,
-                                    backgroundColor: Colors.white.withValues(alpha: 0.15),
-                                    valueColor: const AlwaysStoppedAnimation<Color>(
-                                      Colors.white,
+                                    backgroundColor: Colors.white.withValues(
+                                      alpha: 0.15,
                                     ),
+                                    valueColor:
+                                        const AlwaysStoppedAnimation<Color>(
+                                          Colors.white,
+                                        ),
                                     minHeight: 3,
                                     borderRadius: BorderRadius.circular(8),
                                   ),
@@ -234,4 +232,3 @@ class _SplashScreenState extends State<SplashScreen>
     );
   }
 }
-

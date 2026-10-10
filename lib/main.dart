@@ -34,6 +34,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'utils/app_window.dart';
 
 final navigatorKey = GlobalKey<NavigatorState>();
+
 class LocaleNotifier extends ChangeNotifier {
   Locale _locale = const Locale('vi', 'VN');
 
@@ -111,8 +112,6 @@ void main() async {
 
   await FirebaseAuth.instance.authStateChanges().first;
 
-
-
   setup();
 
   final prefs = await SharedPreferences.getInstance();
@@ -138,6 +137,8 @@ void main() async {
   getIt<LocaleNotifier>().setLocale(Locale(savedLang, savedCountry));
 
   runApp(const MyApp());
+  // The page's own loading screen stays until the app has drawn (web).
+  WidgetsBinding.instance.addPostFrameCallback((_) => hideStartScreen());
   watchAuthChanges(navigatorKey);
 }
 
@@ -179,7 +180,9 @@ class MyApp extends StatelessWidget {
                 AppRouter.pendingAddress = initialRoute;
               }
               return [
-                AppRouter.generateRoute(const RouteSettings(name: AppRouter.splashScreen)),
+                AppRouter.generateRoute(
+                  const RouteSettings(name: AppRouter.splashScreen),
+                ),
               ];
             },
             onGenerateRoute: AppRouter.generateRoute,
@@ -189,4 +192,3 @@ class MyApp extends StatelessWidget {
     );
   }
 }
-

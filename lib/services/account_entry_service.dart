@@ -21,6 +21,55 @@ class AccountEntry {
     this.needsVerifiedEmail = false,
   });
   bool get staffOnly => mode == 'staff';
+
+  /// One workplace, ready, nothing to settle first: the account check opens
+  /// that workspace directly.
+  bool get opensOneWorkplace =>
+      mode != 'conflict' &&
+      state == 'ready' &&
+      !needsVerifiedEmail &&
+      workplaces.length == 1 &&
+      !waitingIds.contains(workplaces.single.id);
+
+  /// What is kept on the device to open the workspace at once next time
+  /// (2026-10-09, speed): only a check that opened one workplace.
+  Map<String, dynamic>? toSaved() {
+    if (!opensOneWorkplace) return null;
+    final o = workplaces.single;
+    return {
+      'mode': mode,
+      'id': o.id,
+      'name': o.name,
+      'createdBy': o.createdBy,
+      'createdAt': o.createdAt.toIso8601String(),
+      'accessVersion': o.accessVersion,
+    };
+  }
+
+  /// The saved check, shown (locked) until the fresh one arrives. Null when
+  /// there is none or it is not usable.
+  static AccountEntry? fromSaved(Map<String, dynamic>? saved) {
+    if (saved == null) return null;
+    final id = saved['id'], mode = saved['mode'];
+    if (id is! String || id.isEmpty || mode is! String) return null;
+    if (!const {'normal', 'owner', 'staff'}.contains(mode)) return null;
+    return AccountEntry(
+      mode: mode,
+      canCreate: false,
+      workplaces: [
+        Organization(
+          id: id,
+          name: saved['name'] as String? ?? '',
+          createdBy: saved['createdBy'] as String? ?? '',
+          createdAt:
+              DateTime.tryParse(saved['createdAt'] as String? ?? '') ??
+              DateTime(2000),
+          inviteCode: '',
+          accessVersion: saved['accessVersion'] as int? ?? 2,
+        ),
+      ],
+    );
+  }
 }
 
 /// No cached grants: entry and every refresh recheck the server after claiming
@@ -34,40 +83,46 @@ class AccountEntryService {
     final claimDue =
         _lastClaim == null ||
         DateTime.now().difference(_lastClaim!).inSeconds >= 15;
-    // Speed (2026-10-09): claiming invitations and listing organizations run
-    // at the same time (one server round trip instead of two). Only when the
-    // claim joined a new organization (rare) is the list asked for again, so
-    // the result is the same as claiming first. Both still fail closed.
-    final claim = claimDue ? transport('claimMyInvitations', {}) : null;
-    var listing = _list();
-    // The list may fail while the claim is still being waited for: watch it
-    // now so that failure is not reported as unhandled. It still reaches the
-    // caller through the await below.
-    listing.then((_) {}, onError: (_) {});
-    if (claim != null) {
-      final Map<String, dynamic> claimed;
-      try {
-        claimed = await claim;
-      } catch (_) {
-        listing.ignore();
-        rethrow;
+    bool joined(Map<String, dynamic> claimed) =>
+        (claimed['results'] as List? ?? const []).any(
+          (r) => r is Map && r['status'] == 'joined',
+        );
+    final listed = await _list();
+    final info = listed.invitations;
+    if (info != null) {
+      // Speed (2026-10-09): the list says whether invitations wait to be
+      // claimed; only then is the claim asked for (usually one call, not two).
+      // A claim that joined a new organization lists again. A failed claim
+      // still fails the entry.
+      _needsVerifiedEmail = info['needsVerifiedEmail'] == true;
+      if (info['pending'] == true && claimDue) {
+        final claimed = await transport('claimMyInvitations', {});
+        _lastClaim = DateTime.now();
+        _needsVerifiedEmail = claimed['needsVerifiedEmail'] == true;
+        if (joined(claimed)) return (await _list()).entry(_needsVerifiedEmail);
       }
-      _needsVerifiedEmail = claimed['needsVerifiedEmail'] == true;
-      _lastClaim = DateTime.now();
-      final joined = (claimed['results'] as List? ?? const []).any(
-        (r) => r is Map && r['status'] == 'joined',
-      );
-      if (joined) {
-        listing.ignore();
-        listing = _list();
-      }
+      return listed.entry(_needsVerifiedEmail);
     }
-    return (await listing)(_needsVerifiedEmail);
+    // A server that does not say: claim every time, as before.
+    if (!claimDue) return listed.entry(_needsVerifiedEmail);
+    final claimed = await transport('claimMyInvitations', {});
+    _needsVerifiedEmail = claimed['needsVerifiedEmail'] == true;
+    _lastClaim = DateTime.now();
+    if (joined(claimed)) return (await _list()).entry(_needsVerifiedEmail);
+    return listed.entry(_needsVerifiedEmail);
   }
 
   /// All pages of the organization list. The verified-email flag comes from
   /// the claim, which may finish later, so it is filled in at the end.
-  Future<AccountEntry Function(bool needsVerifiedEmail)> _list() async {
+  /// [invitations]: what the first page says about invitations waiting to
+  /// be claimed (null from a server that does not say).
+  Future<
+    ({
+      AccountEntry Function(bool needsVerifiedEmail) entry,
+      Map<String, dynamic>? invitations,
+    })
+  >
+  _list() async {
     String? cursor;
     String? mode;
     String state = 'ready';
@@ -77,8 +132,12 @@ class AccountEntryService {
     final workplaces = <Organization>[];
     final waiting = <String>{};
     final seen = <String>{};
+    Map<String, dynamic>? invitations;
     do {
       final page = await transport('listMyOrganizations', {'cursor': ?cursor});
+      if (cursor == null && page['invitations'] is Map) {
+        invitations = Map<String, dynamic>.from(page['invitations'] as Map);
+      }
       final policy = page['accountPolicy'];
       if (policy is! Map ||
           !const {
@@ -119,17 +178,20 @@ class AccountEntryService {
         throw StateError('Repeated directory page');
     } while (cursor != null);
     final finalMode = mode;
-    return (needsVerifiedEmail) => AccountEntry(
-      mode: finalMode,
-      state: state,
-      canCreate: canCreate,
-      canMerge: canMerge,
-      workplaces: workplaces,
-      waitingIds: waiting,
-      staffConflict: staffConflict,
-      // Claiming an invitation requires verified email. Existing ownership is
-      // established independently by the server's account policy and membership.
-      needsVerifiedEmail: needsVerifiedEmail && finalMode != 'owner',
+    return (
+      invitations: invitations,
+      entry: (bool needsVerifiedEmail) => AccountEntry(
+        mode: finalMode,
+        state: state,
+        canCreate: canCreate,
+        canMerge: canMerge,
+        workplaces: workplaces,
+        waitingIds: waiting,
+        staffConflict: staffConflict,
+        // Claiming an invitation requires verified email. Existing ownership is
+        // established independently by the server's account policy and membership.
+        needsVerifiedEmail: needsVerifiedEmail && finalMode != 'owner',
+      ),
     );
   }
 }

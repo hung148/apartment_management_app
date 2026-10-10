@@ -1570,3 +1570,38 @@ Next: why readTeam myAccess takes 1-2.4 s (tool/request_phase_times.cjs).
   Tests: test/read_cache_test.dart (staff denied/allowed, invoice list guard).
 - Old us-central1 staging functions: Tom removes them with
   node tool/staging_release.cjs remove-old-region (list) then --delete.
+
+## Speed 2026-10-09 (night): first open (Tom: "under 1 s if possible")
+Measured cold-ish reload: main.dart.js in at 0.86 s, Dart main starts ~2.0 s,
+App Check/auth ~2.8-3.0 s, runApp ~3.2 s; then the account check, then the
+workspace. Under 1 s for everything is not reachable on the web (engine start
+alone ~2 s); these make the page show at once and cut server round trips:
+- web/index.html: own loading screen (logo, CanHo360, moving bar) from the
+  first moment; the app removes it after its first frame (hideStartScreen in
+  device_session_*.dart). Preconnect to Google hosts; preload main.dart.js,
+  FontManifest and the three fonts (exact URLs seen in the network list).
+- Splash logo: assets/icon/app_icon_384.jpg (13 KB) instead of the 1.3 MB PNG.
+- Server reads start alongside the guard (request_security.js, readOnly on
+  register): calendarView, readTeam, readWorkspace, listMyOrganizations,
+  organizationSettings read/readCurrency, tenantContacts list/read, invoices
+  list/read/history, bookingWorkspace list/read/rooms/quote. The answer is held
+  until the guard passes; a refusal still wins. An account refused by the rate
+  limit waits for the guard again for 60 s on that server copy. Timing logs
+  mark these early:true; handlerMs is then the wait after the guard.
+  Tests: functions/test/early_reads.test.js.
+- Account check: listMyOrganizations' first page now says
+  invitations {pending, needsVerifiedEmail}; the app claims only when pending
+  (before: claim + list on every start, and the two took turns on the same
+  account's rate-limit lock, which is why the check took ~0.5-1.1 s). A server
+  without the field: claim every time as before. Tests:
+  functions/test/directory_invitations.test.js, test/account_entry_test.dart.
+- Saved account check (Tom 2026-10-09: yes): a check that opens one workplace
+  is kept (ReadCache 'accountEntry', tied to that organization). Next start the
+  gate shows that workspace at once inside AbsorbPointer (locked); the fresh
+  check unlocks it (same OrgShell, not rebuilt) or replaces it (other answer /
+  error). A fresh answer that does not open it wipes the kept check and that
+  organization's copies. Replaces the earlier "workspace waits for the check".
+- Booking form: space between the "Giá thỏa thuận" switch and its boxes.
+Decided (Tom 2026-10-09): nothing kept warm on staging (no ping, HOT stays {}).
+Production only, as part of the move: one ~10-minute ping job (free while the
+billing account has at most 3 Cloud Scheduler jobs; check the count first).

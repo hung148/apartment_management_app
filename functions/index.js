@@ -10,6 +10,8 @@ const {createCallableGroups}=require('./request_security');
 const callables=createCallableGroups({onCall:functions.https.onCall,db,Timestamp:Timestamp,HttpsError:functions.https.HttpsError,
  observe:timing=>console.info(JSON.stringify(timing))});
 const secureCallable=callables.register;
+// readOnly (2026-10-09, speed): calls that only read start alongside the request
+// guard; their answer is held until the guard passes (request_security.js).
 const {createDeletedRecordsHandler}=require('./deleted_records');
 const deletedRecords=createDeletedRecordsHandler({db,Timestamp,HttpsError:functions.https.HttpsError});
 secureCallable('deletedRecords',request=>deletedRecords(request));
@@ -22,7 +24,7 @@ const propertyLayoutHandler=createPropertyLayoutHandler({db,Timestamp:Timestamp,
 secureCallable('propertyLayout',request=>propertyLayoutHandler(request));
 const {createInvoiceHandler}=require('./invoices');
 const invoiceHandler=createInvoiceHandler({db,Timestamp:Timestamp,HttpsError:functions.https.HttpsError});
-secureCallable('invoices',request=>invoiceHandler(request));
+secureCallable('invoices',{readOnly:d=>['list','read','history'].includes(d?.action)},request=>invoiceHandler(request));
 const {createUtilityReadingsHandler}=require('./utility_readings');
 // Meter photos (2026-10-04) use the Drive set up below; looked up when a request comes in.
 const utilityReadingsHandler=createUtilityReadingsHandler({db,Timestamp,HttpsError:functions.https.HttpsError,getDrive:()=>drive});
@@ -44,7 +46,7 @@ const tenantLeasesHandler=createTenantLeasesHandler({db,Timestamp:Timestamp,Http
 secureCallable('tenantLeases',request=>tenantLeasesHandler(request));
 const {createTenantContactsHandler}=require('./tenant_contacts');
 const tenantContactsHandler=createTenantContactsHandler({db,Timestamp:Timestamp,HttpsError:functions.https.HttpsError});
-secureCallable('tenantContacts',request=>tenantContactsHandler(request));
+secureCallable('tenantContacts',{readOnly:d=>['list','read'].includes(d?.action)},request=>tenantContactsHandler(request));
 const {createPropertyContractHandler}=require('./property_contract');
 const propertyContractHandler=createPropertyContractHandler({db,Timestamp:Timestamp,HttpsError:functions.https.HttpsError});
 secureCallable('propertyContract',request=>propertyContractHandler(request));
@@ -78,7 +80,7 @@ const sheetImportHandler=createSheetImportHandler({db,Timestamp:Timestamp,HttpsE
 secureCallable('importSheet',{group:'heavy'},request=>sheetImportHandler(request));
 const {createOrganizationDirectory}=require('./organization_directory');
 const organizationDirectory=createOrganizationDirectory({db,HttpsError:functions.https.HttpsError});
-secureCallable('listMyOrganizations',request=>organizationDirectory(request));
+secureCallable('listMyOrganizations',{readOnly:true},request=>organizationDirectory(request));
 const {createOrganizationMergeHandler}=require('./organization_merge');
 const organizationMerge=createOrganizationMergeHandler({db,Timestamp,HttpsError:functions.https.HttpsError});
 secureCallable('mergeMyOrganizations',request=>organizationMerge(request));
@@ -91,7 +93,7 @@ const {createOrganizationSettingsHandler}=require('./organization_settings');
 const V2_ORG_CREATION=process.env.GCLOUD_PROJECT==='apartment-management-staging'||require('./request_security').localEmulator();
 const organizationSettingsHandler=createOrganizationSettingsHandler({db,Timestamp:Timestamp,HttpsError:functions.https.HttpsError,allowCreate:V2_ORG_CREATION});
 // Copy can walk a whole organization, so it gets the long timeout.
-secureCallable('organizationSettings',request=>organizationSettingsHandler(request));
+secureCallable('organizationSettings',{readOnly:d=>['read','readCurrency'].includes(d?.action)},request=>organizationSettingsHandler(request));
 const {createGovernanceHandler}=require('./governance');
 const governanceHandler=createGovernanceHandler({db,Timestamp,HttpsError:functions.https.HttpsError,organizationSettings:organizationSettingsHandler});
 secureCallable('ownershipAgreements',request=>governanceHandler(request));
@@ -117,10 +119,10 @@ secureCallable('mutateStandalonePayment',request=>paymentHandler(request));
 // C1–C3 calendar screen: one read for every visible property (CALENDAR.md).
 const {createCalendarViewHandler}=require('./calendar_view');
 const calendarViewHandler=createCalendarViewHandler({db,Timestamp,HttpsError:functions.https.HttpsError});
-secureCallable('calendarView',request=>calendarViewHandler(request));
+secureCallable('calendarView',{readOnly:true},request=>calendarViewHandler(request));
 const {createWorkspaceHandler}=require('./workspace');
 const workspaceHandler=createWorkspaceHandler({db,HttpsError:functions.https.HttpsError});
-secureCallable('readWorkspace',request=>workspaceHandler(request));
+secureCallable('readWorkspace',{readOnly:true},request=>workspaceHandler(request));
 const {createTeamHandler} = require('./team');
 const teamHandler = createTeamHandler({db, Timestamp: Timestamp,
   HttpsError: functions.https.HttpsError});
@@ -135,7 +137,7 @@ const rolesHandler = createRolesHandler({db, Timestamp: Timestamp, HttpsError: f
 secureCallable('orgRoles', request => rolesHandler(request));
 const {createTeamReadHandler,createInvitationLookupHandler} = require('./team_read');
 const teamReadHandler = createTeamReadHandler({db,HttpsError:functions.https.HttpsError});
-secureCallable('readTeam', request => teamReadHandler(request));
+secureCallable('readTeam',{readOnly:true}, request => teamReadHandler(request));
 const invitationLookup = createInvitationLookupHandler({db,HttpsError:functions.https.HttpsError});
 secureCallable('lookupTeamInvitation', request => invitationLookup(request));
 
@@ -202,7 +204,7 @@ const calendarTenantHandler = createTenantHandler({
 
 const {createBookingWorkspaceHandler}=require('./booking_workspace');
 const bookingWorkspaceHandler=createBookingWorkspaceHandler({db,Timestamp:Timestamp,HttpsError:functions.https.HttpsError,calendar:calendarBookingHandler});
-secureCallable('bookingWorkspace',request=>bookingWorkspaceHandler(request));
+secureCallable('bookingWorkspace',{readOnly:d=>['list','read','rooms','quote'].includes(d?.action)},request=>bookingWorkspaceHandler(request));
 
 // Second-generation callable handlers receive data and auth in one request.
 secureCallable('mutateCalendarBooking',request => calendarBookingHandler(request.data, {auth: request.auth}));

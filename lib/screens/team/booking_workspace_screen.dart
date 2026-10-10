@@ -2373,6 +2373,8 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
               })
             : null,
       ),
+      // Room between the switch and the boxes (2026-10-09, Tom).
+      if (_agreed) const SizedBox(height: WsSpace.md),
       if (_agreed)
         WsFieldRow(
           children: [

@@ -23,3 +23,11 @@ void setRememberThisDevice(bool remember) {
 }
 
 const offerRememberThisDevice = true;
+
+/// The loading screen in web/index.html, shown from the first moment the page
+/// opens until the app draws (2026-10-09, speed).
+void hideStartScreen() {
+  try {
+    web.document.getElementById('start-screen')?.remove();
+  } catch (_) {}
+}

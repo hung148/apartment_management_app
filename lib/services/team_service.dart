@@ -60,7 +60,10 @@ String serverReason(Object error, Iterable<String> known) {
   if (error is! FirebaseFunctionsException) return '';
   final text = '${error.message ?? ''} ${error.details ?? ''}';
   for (final key in known) {
-    if (RegExp('(^|[^A-Za-z0-9_-])${RegExp.escape(key)}(\$|[^A-Za-z0-9_-])').hasMatch(text)) return key;
+    if (RegExp(
+      '(^|[^A-Za-z0-9_-])${RegExp.escape(key)}(\$|[^A-Za-z0-9_-])',
+    ).hasMatch(text))
+      return key;
   }
   return '';
 }
@@ -124,12 +127,32 @@ class TeamService {
   Future<Map<String, dynamic>?> saved(
     String what,
     String organizationId,
-  ) async => (await _cache?.read(what, {'organizationId': organizationId}))?.data;
+  ) async =>
+      (await _cache?.read(what, {'organizationId': organizationId}))?.data;
 
   /// Saves such a read after the server answered it.
   void save(String what, String organizationId, Map<String, dynamic> data) =>
-      _cache?.write(what, {'organizationId': organizationId}, data,
-          organizationId: organizationId);
+      _cache?.write(
+        what,
+        {'organizationId': organizationId},
+        data,
+        organizationId: organizationId,
+      );
+
+  /// The last account check that opened one workplace (2026-10-09, speed):
+  /// the workspace opens from it at once, locked until the fresh check.
+  Future<Map<String, dynamic>?> savedAccountEntry() async =>
+      (await _cache?.read('accountEntry', const {}))?.data;
+
+  /// Keeps the fresh check; it belongs to that workplace, so wiping the
+  /// organization's copy wipes it too.
+  void saveAccountEntry(String organizationId, Map<String, dynamic> data) =>
+      _cache?.write(
+        'accountEntry',
+        const {},
+        data,
+        organizationId: organizationId,
+      );
 
   /// Wipes the organization's copy (e.g. the server refused access).
   Future<void> forgetSaved(String organizationId) async =>
@@ -139,8 +162,7 @@ class TeamService {
     String callable,
     Map<String, dynamic> data,
   ) async {
-    final response = await appCallable(callable)
-        .call(data);
+    final response = await appCallable(callable).call(data);
     return Map<String, dynamic>.from(response.data as Map);
   }
 
@@ -270,8 +292,10 @@ class TeamService {
 
   /// Organization roles (R1): templates + organization roles with member counts
   /// and what this account may do with each (canEdit / canDelete / canAssign).
-  Future<Map<String, dynamic>> roles(String organizationId) =>
-      _transport('orgRoles', {'organizationId': organizationId, 'action': 'list'});
+  Future<Map<String, dynamic>> roles(String organizationId) => _transport(
+    'orgRoles',
+    {'organizationId': organizationId, 'action': 'list'},
+  );
 
   /// action: 'save' (roleId absent = create) or 'delete'. Keep the operation
   /// for retries; editing the form means preparing a new one.
@@ -327,8 +351,9 @@ class TeamService {
 
   /// B7 technical problems (list, report, update, fix, reopen; B7b photos:
   /// addPhoto, photo, removePhoto).
-  Future<Map<String, dynamic>> technicalProblems(Map<String, dynamic> payload) =>
-      _transport('technicalProblems', payload);
+  Future<Map<String, dynamic>> technicalProblems(
+    Map<String, dynamic> payload,
+  ) => _transport('technicalProblems', payload);
 
   /// B7b Google Drive connection (status, connect, disconnect).
   Future<Map<String, dynamic>> googleDrive(Map<String, dynamic> payload) =>
@@ -345,7 +370,9 @@ class TeamService {
     Map<String, dynamic> payload,
   ) {
     if (payload['action'] != 'list' || payload['cursor'] != null) {
-      throw ArgumentError('Only the first invoice list page may use this stream');
+      throw ArgumentError(
+        'Only the first invoice list page may use this stream',
+      );
     }
     return _live('invoices', payload);
   }
@@ -375,8 +402,9 @@ class TeamService {
   Future<Map<String, dynamic>> propertyContract(Map<String, dynamic> payload) =>
       _transport('propertyContract', payload);
 
-  Future<Map<String, dynamic>> organizationCurrency(Map<String, dynamic> payload) =>
-      _transport('organizationSettings', payload);
+  Future<Map<String, dynamic>> organizationCurrency(
+    Map<String, dynamic> payload,
+  ) => _transport('organizationSettings', payload);
 
   Future<Map<String, dynamic>> propertyDetails(Map<String, dynamic> payload) =>
       _transport('propertyDetails', payload);
@@ -397,5 +425,7 @@ class TeamService {
     Map<String, dynamic> payload,
   ) => _transport('roomBookingSettings', payload);
 
-  Future<Map<String, dynamic>> transferOrganization(Map<String, dynamic> payload) => _transport('transferOrganization', payload);
+  Future<Map<String, dynamic>> transferOrganization(
+    Map<String, dynamic> payload,
+  ) => _transport('transferOrganization', payload);
 }

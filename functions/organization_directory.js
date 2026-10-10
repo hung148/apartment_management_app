@@ -10,7 +10,15 @@ function createOrganizationDirectory({db,HttpsError}) {
     if(!uid)throw new HttpsError('unauthenticated','team_sign_in_required');
     const cursor=request.data?.cursor;
     if(cursor!==undefined&&(typeof cursor!=='string'||!/^[A-Za-z0-9_-]{1,256}$/.test(cursor)))throw new HttpsError('invalid-argument','team_invalid_page');
-    return db.runTransaction(async tx=>{
+    // Speed (2026-10-09): the first page also says whether invitations wait to
+    // be claimed for this account's verified email, so the app asks to claim
+    // only then (one call at start instead of two). Read beside the list.
+    const token=request.auth.token??{},email=typeof token.email==='string'?token.email.trim().toLowerCase():'';
+    const invitations=cursor!==undefined?null:!email?{pending:false,needsVerifiedEmail:false}:token.email_verified!==true?Promise.resolve({pending:false,needsVerifiedEmail:true}):
+      db.collection('teamInvitations').where('email','==',email).where('status','==','pending').limit(20).get().then(q=>({needsVerifiedEmail:false,
+        pending:q.docs.some(d=>{const v=d.data();return !(v.expiresAt!=null&&!(v.expiresAt.toMillis?.()>Date.now()))&&typeof v.organizationId==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(v.organizationId);})}));
+    invitations?.catch?.(()=>{});
+    const listed=await db.runTransaction(async tx=>{
       const policy=await accountPolicy(db,tx,uid,request.auth.token?.email_verified===true?request.auth.token.email:'');
       let query=db.collection('memberships').where('ownerId','==',uid).orderBy('__name__');
       if(cursor)query=query.startAfter(cursor);
@@ -44,6 +52,7 @@ function createOrganizationDirectory({db,HttpsError}) {
       }
       return {accountPolicy:{...policy,canMerge:policy.organizationIds.length>1&&policy.hasOwned&&!policy.hasStaff&&!policy.deleting},records,nextCursor:page.docs.length>50?page.docs[49].id:null};
     });
+    return invitations===null?listed:{...listed,invitations:await invitations};
   };
 }
 module.exports={createOrganizationDirectory};
