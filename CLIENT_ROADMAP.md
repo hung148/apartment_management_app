@@ -345,6 +345,14 @@ the server). Measure before and after each step on staging.
    browsers), Safari, Firefox get the JavaScript build. Server answers: whole
    numbers turned back into ints (wholeNumbersAsInt in app_functions.dart).
    Dry run finding: only a lint in package image (PDF images).
+9. [ ] Server security check faster (Tom 2026-10-10, request_security.js):
+   (1) organization/account check reads start alongside the rate-limit
+   charge; (2) an account's calls that arrive together share one charge
+   transaction (fewer Firestore writes too: 20k/day free); (3) those checks
+   remembered 15 s per server copy, forgotten after a write on that copy.
+   Each call's own work still reads the caller's membership, so removing a
+   staff member works at once; only merged/owner-conflict/deletion/other-
+   employer checks can lag up to 15 s. Measure with request_phase_times.cjs.
 Later / only if needed: W4 local "Review calculation"; W1 caching service
 worker (not now). With the production move: the free keep-warm ping. With N1
 push notifications: firebase-messaging-sw.js.

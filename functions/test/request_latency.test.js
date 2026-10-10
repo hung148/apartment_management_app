@@ -97,5 +97,75 @@ test('the account policy check runs as a read-only transaction',async()=>{
  db.runTransaction=(fn,o)=>{options.push(o?.readOnly===true);return transaction(fn,o);};
  const guard=createRequestGuard({db,Timestamp:{fromMillis:v=>v},HttpsError:Error});
  await guard('readTeam',{auth:{uid:'user'},app:{appId:'app'},data:{organizationId:'org'}});
- assert.deepEqual(options,[false,true],'the limiter writes; the policy check only reads');
+ // They start together now (2026-10-10), so in either order.
+ assert.deepEqual([...options].sort(),[false,true],'the limiter writes; the policy check only reads');
+});
+
+// 2026-10-10 (speed): calls that arrive together share one charge.
+test('an account\'s simultaneous calls share one charge transaction with the same limits',async()=>{
+ const db=fakeDb({'memberships/user_org':{ownerId:'user',organizationId:'org',accessVersion:2,status:'active',role:'owner'}});
+ const transaction=db.runTransaction.bind(db);
+ let charges=0;
+ db.runTransaction=(fn,o)=>{if(!o?.readOnly)charges++;return transaction(async tx=>{await new Promise(r=>setTimeout(r,5));return fn(tx);},o);};
+ const guard=createRequestGuard({db,Timestamp:{fromMillis:v=>v},HttpsError:Error,now:()=>1000000});
+ const call=name=>guard(name,{auth:{uid:'user'},app:{appId:'app'},data:{}});
+ await Promise.all(['readTeam','readWorkspace','calendarView','organizationSettings','listMyOrganizations'].map(call));
+ assert.ok(charges<=2,`5 calls, ${charges} charge transactions`);
+ const general=[...db.store.values()].find(v=>v.tokens!==undefined);
+ assert.equal(general.tokens,115,'each call still takes one token');
+});
+
+test('in a shared charge each call is all-or-nothing and refused calls take nothing',async()=>{
+ const db=fakeDb();
+ const transaction=db.runTransaction.bind(db);
+ db.runTransaction=(fn,o)=>transaction(async tx=>{await new Promise(r=>setTimeout(r,5));return fn(tx);},o);
+ const guard=createRequestGuard({db,Timestamp:{fromMillis:v=>v},HttpsError:class extends Error{constructor(c,m){super(m);this.code=c;}},now:()=>1000000});
+ // The costly bucket holds 4: of 6 calls at once, 4 pass and 2 are refused.
+ const results=await Promise.allSettled([0,1,2,3,4,5].map(()=>guard('aiChat',{auth:{uid:'user'},app:{appId:'app'},data:{}})));
+ assert.equal(results.filter(r=>r.status==='fulfilled').length,4);
+ assert.ok(results.filter(r=>r.status==='rejected').every(r=>r.reason.code==='resource-exhausted'));
+ const tokens=[...db.store.values()].map(v=>v.tokens).sort((a,b)=>a-b);
+ // costly: 4 - 4 = 0; general: 120 - 4 (passed) - 2 (refused attempts charged) = 114.
+ assert.deepEqual(tokens,[0,114]);
+});
+
+// 2026-10-10 (Tom): organization/account checks remembered for 15 s.
+test('organization checks are remembered for 15 s, shared, and forgotten after a write',async()=>{
+ const db=fakeDb({
+  'organizations/org':{accessVersion:2,createdBy:'user'},
+  'memberships/user_org':{ownerId:'user',organizationId:'org',accessVersion:2,status:'active',role:'owner'},
+ });
+ let reads=0,time=1000000;
+ const doc=db.doc.bind(db);
+ db.doc=path=>{const ref=doc(path);if(path==='organizations/org'){const get=ref.get.bind(ref);ref.get=()=>{reads++;return get();};}return ref;};
+ const HttpsError=class extends Error{constructor(c,m){super(m);this.code=c;}};
+ const guard=createRequestGuard({db,Timestamp:{fromMillis:v=>v},HttpsError,now:()=>time});
+ const call=()=>guard('readTeam',{auth:{uid:'user'},app:{appId:'app'},data:{organizationId:'org'}});
+ await Promise.all([call(),call(),call()]);
+ assert.equal(reads,1,'calls at the same time share one read');
+ time+=14000;await call();
+ assert.equal(reads,1,'still remembered after 14 s');
+ // A merge seen within 15 s at most.
+ db.store.set('organizations/org',{accessVersion:2,createdBy:'user',mergedInto:'other'});
+ time+=1000;
+ await assert.rejects(call(),e=>e.message==='org_organization_merged');
+ assert.equal(reads,2);
+ // A write on this server copy forgets the organization at once.
+ db.store.set('organizations/org',{accessVersion:2,createdBy:'user'});
+ guard.forget('user','org');
+ await call();
+ assert.equal(reads,3);
+});
+
+test('a failed check is never remembered',async()=>{
+ const db=fakeDb({'memberships/user_org':{ownerId:'user',organizationId:'org',accessVersion:2,status:'active',role:'owner'}});
+ let fail=true;
+ const doc=db.doc.bind(db);
+ db.doc=path=>{const ref=doc(path);if(path==='organizations/org'){const get=ref.get.bind(ref);ref.get=()=>fail?Promise.reject(new Error('unavailable')):get();}return ref;};
+ const guard=createRequestGuard({db,Timestamp:{fromMillis:v=>v},HttpsError:Error,now:()=>1000000});
+ const call=()=>guard('readTeam',{auth:{uid:'user'},app:{appId:'app'},data:{organizationId:'org'}});
+ await assert.rejects(call(),/unavailable/);
+ fail=false;
+ db.store.set('organizations/org',{accessVersion:2,createdBy:'user'});
+ await call();
 });
