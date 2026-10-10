@@ -323,13 +323,28 @@ the server). Measure before and after each step on staging.
    background and block nothing. Only look again if data use matters.
 5. [x] Startup waits before runApp: run the independent ones together (theme,
    saved-data clean-up), keep auth/App Check order.
-6. [ ] W2 Smaller web download: deferred imports for Excel (excel,
-   syncfusion_xlsio), PDF/printing, charts (fl_chart), Markdown. Measure
-   main.dart.js before/after; stop if the saving is small.
+6. [-] W2 Smaller web download — measured 2026-10-10, not worth it now.
+   main.dart.js 7.6 MB = 2,111 KB compressed. From a source-map build: Flutter
+   1.2 MB, Dart SDK 0.9 MB, our screens 0.8 MB, translations 0.4 MB (en ~33 KB
+   compressed). Excel+PDF together (xlsio, pdf, printing, image, archive,
+   xml, petitparser, bidi): 134 KB compressed measured, ~200 KB at most (6-10%,
+   ~0.1 s on 4G, first visit or update only). Below the 300 KB bar; not done.
+   Unused packages removed: excel, fl_chart, flutter_markdown,
+   google_mlkit_text_recognition (no web change; smaller phone apps).
 7. [ ] Smoothness: only where Tom feels stutter — measure with DevTools, then
    fix that screen (less redraw, build long lists lazily).
-8. [ ] W3 WebAssembly build — experiment on staging (sign-in, reCAPTCHA,
-   packages); with or after W2.
+8. [x] W3 WebAssembly build — the normal build since 2026-10-10 (Tom).
+   Measured on staging (Chrome): Thang->Ngay main-thread blocking 1,043 ms
+   (JS) -> 478 ms (Wasm); first server call ~2.7 s -> ~1.8 s; sign-in,
+   reCAPTCHA, calendar, lease, booking form, prices and money amounts OK.
+   main.dart.wasm 2.4 MB compressed (JS 2.1 MB). staging_all.ps1 builds it by
+   default; -NoWasm for JavaScript only. index.html preloads only the file the
+   browser will run (same test as Flutter's loader). No COOP/COEP
+   headers yet (multi-thread mode would need them; risk: Google sign-in pop-up).
+   Production build must also use --wasm and this index.html. Only Chrome/Edge (Android, computers) use it; iPhone (all
+   browsers), Safari, Firefox get the JavaScript build. Server answers: whole
+   numbers turned back into ints (wholeNumbersAsInt in app_functions.dart).
+   Dry run finding: only a lint in package image (PDF images).
 Later / only if needed: W4 local "Review calculation"; W1 caching service
 worker (not now). With the production move: the free keep-warm ping. With N1
 push notifications: firebase-messaging-sw.js.

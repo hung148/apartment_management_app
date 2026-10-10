@@ -1,5 +1,6 @@
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show kIsWasm;
 
 /// Where the server functions run (2026-10-06, speed): next to the Firestore
 /// database in Singapore. Must match functions/region.js.
@@ -23,13 +24,15 @@ class AppCall {
   const AppCall(this.name);
   final String name;
 
-  Future<HttpsCallableResult<T>> call<T>([dynamic data]) async {
+  Future<AppResult<T>> call<T>([dynamic data]) async {
     ServerWrites.note(name, data);
     try {
-      return await appFunctions.httpsCallable(functionGroup(name)).call<T>({
-        'fn': name,
-        'data': data,
-      });
+      final result = await appFunctions
+          .httpsCallable(functionGroup(name))
+          .call<dynamic>({'fn': name, 'data': data});
+      return AppResult<T>(
+        (kIsWasm ? wholeNumbersAsInt(result.data) : result.data) as T,
+      );
     } on FirebaseFunctionsException catch (e) {
       // "Sign out everywhere" ended this sign-in (2026-10-06): sign out here
       // too, which wipes the device copy and returns to the sign-in screen.
@@ -37,6 +40,34 @@ class AppCall {
       rethrow;
     }
   }
+}
+
+/// A server call's answer.
+class AppResult<T> {
+  const AppResult(this.data);
+  final T data;
+}
+
+/// WebAssembly build (2026-10-10, W3): numbers from the server can arrive as
+/// doubles there even when whole (300000.0), while the JavaScript build and
+/// the phone apps give ints. The app reads them with `as int`, so whole
+/// numbers are turned back into ints; maps get String keys as before.
+Object? wholeNumbersAsInt(Object? value) {
+  if (value is double) {
+    return value.isFinite &&
+            value == value.truncateToDouble() &&
+            value.abs() <= 9007199254740991
+        ? value.toInt()
+        : value;
+  }
+  if (value is Map) {
+    return <String, dynamic>{
+      for (final e in value.entries) '${e.key}': wholeNumbersAsInt(e.value),
+    };
+  }
+  if (value is List)
+    return <dynamic>[for (final v in value) wholeNumbersAsInt(v)];
+  return value;
 }
 
 /// The server refused this sign-in because the account signed out everywhere.

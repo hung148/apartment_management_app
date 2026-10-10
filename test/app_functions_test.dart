@@ -79,4 +79,28 @@ void main() {
     ServerWrites.note('somethingNew', null);
     expect(ServerWrites.count, start + 3);
   });
+
+  // W3 (2026-10-10): in the WebAssembly build whole numbers from the server
+  // can arrive as doubles; the app reads them as ints.
+  test('whole numbers from the server become ints, others stay', () {
+    final out =
+        wholeNumbersAsInt({
+              'totalMinor': 300000.0,
+              'rate': 1.5,
+              'big': 1e20,
+              'nights': [1.0, 2.0],
+              'nested': {7: 3.0},
+              'name': 'Lan',
+              'none': null,
+            })
+            as Map<String, dynamic>;
+    expect(out['totalMinor'], isA<int>());
+    expect(out['totalMinor'], 300000);
+    expect(out['rate'], 1.5);
+    expect(out['big'], 1e20);
+    expect(out['nights'], [1, 2]);
+    expect((out['nested'] as Map<String, dynamic>)['7'], 3);
+    expect(out['name'], 'Lan');
+    expect(out['none'], isNull);
+  });
 }

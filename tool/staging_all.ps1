@@ -16,10 +16,15 @@
 #   -Force         deploy functions and web even if nothing changed.
 #   -MarkDeployed  only record the current functions as deployed (after a
 #                  functions deploy made another way); runs nothing else.
+#   -NoWasm        build JavaScript only. Normally the web app is built as
+#                  WebAssembly too (W3, Tom 2026-10-10): Chrome/Edge run it
+#                  (about twice as fast); iPhone, Safari and Firefox get the
+#                  JavaScript build automatically.
 param(
   [string[]]$Tests = @(),
   [switch]$Force,
-  [switch]$MarkDeployed
+  [switch]$MarkDeployed,
+  [switch]$NoWasm
 )
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path $PSScriptRoot -Parent)
@@ -56,6 +61,9 @@ function Save-Done([string]$name, [string]$hash) {
 $functionsHash = Get-Fingerprint (Get-ChildItem functions -File | Where-Object { $_.Extension -in '.js', '.json' } | ForEach-Object { $_.FullName }) @()
 $rulesHash = Get-Fingerprint @('firestore.rules') @()
 $webHash = Get-Fingerprint @('lib', 'web', 'assets', 'pubspec.yaml', 'pubspec.lock', 'config/app_check.staging.json') @()
+# Switching -NoWasm on or off is a change too: the build differs.
+$webBuildArgs = @()
+if (-not $NoWasm) { $webBuildArgs += '--wasm'; $webHash += '-wasm' }
 
 if ($MarkDeployed) {
   Save-Done 'functions' $functionsHash
@@ -86,7 +94,7 @@ $steps = @(
      cmd = { node functions/node_modules/firebase-tools/lib/bin/firebase.js deploy --only firestore:rules --config firebase.staging.json --project apartment-management-staging };
      done = { Save-Done 'rules' $rulesHash } },
   @{ name = 'Web build'; skip = -not (Test-Changed 'web' $webHash);
-     cmd = { flutter build web --release --output=build/staging-web --dart-define-from-file=config/app_check.staging.json } },
+     cmd = { flutter build web --release @webBuildArgs --output=build/staging-web --dart-define-from-file=config/app_check.staging.json } },
   @{ name = 'Hosting deploy'; skip = -not (Test-Changed 'web' $webHash);
      cmd = { node functions/node_modules/firebase-tools/lib/bin/firebase.js deploy --only hosting --config firebase.staging.json --project apartment-management-staging };
      done = { Save-Done 'web' $webHash } }

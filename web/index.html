@@ -39,7 +39,36 @@
   <link rel="preconnect" href="https://identitytoolkit.googleapis.com">
   <link rel="preconnect" href="https://securetoken.googleapis.com">
   <link rel="preconnect" href="https://firestore.googleapis.com">
-  <link rel="preload" href="main.dart.js" as="script">
+  <script>
+    // Preload the one app file this browser will run (2026-10-10, W3): the
+    // WebAssembly build on Chrome/Edge (same test as Flutter's loader in
+    // flutter_bootstrap.js: Chromium engine, WasmGC, WebGL), the JavaScript
+    // build everywhere else (iPhone, Safari, Firefox). Preloading both made
+    // Chrome download 2 MB it never used.
+    (function () {
+      var blink = navigator.vendor === 'Google Inc.' || navigator.userAgent.indexOf('Edg/') >= 0;
+      var gc = false, gl = false;
+      try {
+        gc = WebAssembly.validate(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 95, 1, 120, 0]));
+        var c = document.createElement('canvas');
+        gl = !!(c.getContext('webgl2') || c.getContext('webgl'));
+      } catch (e) {}
+      function preload(href, as) {
+        var l = document.createElement('link');
+        l.rel = as === 'module' ? 'modulepreload' : 'preload';
+        l.href = href;
+        if (as !== 'module') l.as = as;
+        if (as === 'fetch') l.crossOrigin = 'anonymous';
+        document.head.appendChild(l);
+      }
+      if (blink && gc && gl) {
+        preload('main.dart.mjs', 'module');
+        preload('main.dart.wasm', 'fetch');
+      } else {
+        preload('main.dart.js', 'script');
+      }
+    })();
+  </script>
   <link rel="preload" href="assets/FontManifest.json" as="fetch" crossorigin="anonymous">
   <link rel="preload" href="assets/assets/fonts/Roboto-Regular.ttf" as="fetch" crossorigin="anonymous">
   <link rel="preload" href="assets/assets/fonts/Roboto-Bold.ttf" as="fetch" crossorigin="anonymous">
