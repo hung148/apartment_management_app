@@ -5,6 +5,7 @@ const {accountPolicy}=require('../account_policy');
 const {fakeDb}=require('./fake_firestore');
 const {createRequestGuard,createKeyedTurns}=require('../request_security');
 
+// A strict limit (invitation lookup) is still charged in a Firestore transaction.
 test('rate limiter starts membership and bucket reads together without charging an outsider organization',async()=>{
  const db=fakeDb(),events=[];
  const transaction=db.runTransaction.bind(db);
@@ -13,9 +14,9 @@ test('rate limiter starts membership and bucket reads together without charging 
   const result=await tx.get(ref);events.push(['finish',ref.path]);return result;
  }}));
  const guard=createRequestGuard({db,Timestamp:{fromMillis:v=>v},HttpsError:Error});
- await guard('readWorkspace',{auth:{uid:'user'},app:{appId:'app'},data:{organizationId:'other'}});
+ await guard('lookupTeamInvitation',{auth:{uid:'user'},app:{appId:'app'},data:{organizationId:'other'}});
  assert.deepEqual(events.slice(0,3).map(e=>e[0]),['start','start','start']);
- assert.equal([...db.store.keys()].filter(k=>k.startsWith('requestLimits/')).length,1);
+ assert.equal([...db.store.keys()].filter(k=>k.startsWith('requestLimits/')).length,2,'the user\'s general and lookup buckets, no organization bucket');
 });
 
 test('account policy starts independent reads together while retaining deletion denial',async()=>{
@@ -70,10 +71,10 @@ test('one account\'s simultaneous calls never overlap at the limiter; other acco
  };
  const guard=createRequestGuard({db,Timestamp:{fromMillis:v=>v},HttpsError:Error});
  const call=(uid,name)=>guard(name,{auth:{uid},app:{appId:'app'},data:{}});
- await Promise.all(['readTeam','readWorkspace','calendarView','organizationSettings'].map(n=>call('user',n)));
+ await Promise.all([0,1,2,3].map(()=>call('user','lookupTeamInvitation')));
  assert.equal(most,1,'the same account must take turns');
  most=0;
- await Promise.all(['a','b','c'].map(uid=>call(uid,'readTeam')));
+ await Promise.all(['a','b','c'].map(uid=>call(uid,'lookupTeamInvitation')));
  assert.equal(most,3,'different accounts are not held up');
  const bucket=[...db.store.entries()].find(([k,v])=>k.startsWith('requestLimits/')&&v.tokens<120);
  assert(bucket,'charges are still written');
@@ -98,7 +99,8 @@ test('the account policy check runs as a read-only transaction',async()=>{
  const guard=createRequestGuard({db,Timestamp:{fromMillis:v=>v},HttpsError:Error});
  await guard('readTeam',{auth:{uid:'user'},app:{appId:'app'},data:{organizationId:'org'}});
  // They start together now (2026-10-10), so in either order.
- assert.deepEqual([...options].sort(),[false,true],'the limiter writes; the policy check only reads');
+ // The general limit is counted in memory now (2026-10-10): no write transaction.
+ assert.deepEqual(options,[true],'only the read-only policy check');
 });
 
 // 2026-10-10 (speed): calls that arrive together share one charge.
@@ -109,10 +111,9 @@ test('an account\'s simultaneous calls share one charge transaction with the sam
  db.runTransaction=(fn,o)=>{if(!o?.readOnly)charges++;return transaction(async tx=>{await new Promise(r=>setTimeout(r,5));return fn(tx);},o);};
  const guard=createRequestGuard({db,Timestamp:{fromMillis:v=>v},HttpsError:Error,now:()=>1000000});
  const call=name=>guard(name,{auth:{uid:'user'},app:{appId:'app'},data:{}});
- await Promise.all(['readTeam','readWorkspace','calendarView','organizationSettings','listMyOrganizations'].map(call));
+ await Promise.all([0,1,2,3,4].map(()=>call('lookupTeamInvitation')));
  assert.ok(charges<=2,`5 calls, ${charges} charge transactions`);
- const general=[...db.store.values()].find(v=>v.tokens!==undefined);
- assert.equal(general.tokens,115,'each call still takes one token');
+ assert.ok([...db.store.values()].some(v=>v.tokens===7),'the lookup bucket (12) took one token per call');
 });
 
 test('in a shared charge each call is all-or-nothing and refused calls take nothing',async()=>{
@@ -121,12 +122,13 @@ test('in a shared charge each call is all-or-nothing and refused calls take noth
  db.runTransaction=(fn,o)=>transaction(async tx=>{await new Promise(r=>setTimeout(r,5));return fn(tx);},o);
  const guard=createRequestGuard({db,Timestamp:{fromMillis:v=>v},HttpsError:class extends Error{constructor(c,m){super(m);this.code=c;}},now:()=>1000000});
  // The costly bucket holds 4: of 6 calls at once, 4 pass and 2 are refused.
- const results=await Promise.allSettled([0,1,2,3,4,5].map(()=>guard('aiChat',{auth:{uid:'user'},app:{appId:'app'},data:{}})));
+ const results=await Promise.allSettled([0,1,2,3,4,5].map(()=>guard('importSheet',{auth:{uid:'user'},app:{appId:'app'},data:{}})));
  assert.equal(results.filter(r=>r.status==='fulfilled').length,4);
  assert.ok(results.filter(r=>r.status==='rejected').every(r=>r.reason.code==='resource-exhausted'));
  const tokens=[...db.store.values()].map(v=>v.tokens).sort((a,b)=>a-b);
- // costly: 4 - 4 = 0; general: 120 - 4 (passed) - 2 (refused attempts charged) = 114.
- assert.deepEqual(tokens,[0,114]);
+ // costly: 4 - 4 = 0; general in Firestore: 120 - 4 = 116 (the 2 refused
+ // attempts are counted in memory and saved within 10 s).
+ assert.deepEqual(tokens,[0,116]);
 });
 
 // 2026-10-10 (Tom): organization/account checks remembered for 15 s.
@@ -168,4 +170,37 @@ test('a failed check is never remembered',async()=>{
  fail=false;
  db.store.set('organizations/org',{accessVersion:2,createdBy:'user'});
  await call();
+});
+
+// 2026-10-10 (Tom): the general limit counted in memory, saved every 10 s.
+test('the general limit is counted in memory and saved at most every 10 s',async()=>{
+ const db=fakeDb();
+ let writes=0,time=1000000;
+ const doc=db.doc.bind(db);
+ db.doc=path=>{const ref=doc(path);if(path.startsWith('requestLimits/')){const set=ref.set.bind(ref);ref.set=(...a)=>{writes++;return set(...a);};}return ref;};
+ const HttpsError=class extends Error{constructor(c,m){super(m);this.code=c;}};
+ const guard=createRequestGuard({db,Timestamp:{fromMillis:v=>v},HttpsError,now:()=>time});
+ const call=()=>guard('readTeam',{auth:{uid:'user'},app:{appId:'app'},data:{}});
+ for(let i=0;i<120;i++)await call();
+ await assert.rejects(call(),e=>e.code==='resource-exhausted','the 121st call in the same minute is refused');
+ assert.equal(writes,1,'120 calls, one write (the bucket created)');
+ time+=10000;await call();
+ assert.equal(writes,2,'saved again after 10 s');
+ const saved=[...db.store.values()].find(v=>v.tokens!==undefined);
+ // Empty after 120 calls, 10 s refill 20 (120 a minute), minus this call.
+ assert.equal(saved.tokens,19,'the saved count matches what was used');
+});
+
+test('a bucket is read again after 60 s, so other server copies count too',async()=>{
+ const db=fakeDb();
+ let time=1000000;
+ const HttpsError=class extends Error{constructor(c,m){super(m);this.code=c;}};
+ const guard=createRequestGuard({db,Timestamp:{fromMillis:v=>v},HttpsError,now:()=>time});
+ const call=()=>guard('readTeam',{auth:{uid:'user'},app:{appId:'app'},data:{}});
+ await call();
+ const [key]=[...db.store.keys()].filter(k=>k.startsWith('requestLimits/'));
+ // Another server copy used up the bucket and saved it.
+ time+=61000;
+ db.store.set(key,{tokens:0,updatedAtMs:time,expiresAt:time});
+ await assert.rejects(call(),e=>e.code==='resource-exhausted');
 });

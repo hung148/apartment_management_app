@@ -353,6 +353,11 @@ the server). Measure before and after each step on staging.
    Each call's own work still reads the caller's membership, so removing a
    staff member works at once; only merged/owner-conflict/deletion/other-
    employer checks can lag up to 15 s. Measure with request_phase_times.cjs.
+   (4) 2026-10-10 (Tom): the general limit (120/min account, 1200/min org) is
+   counted in memory, saved at most every 10 s per bucket, re-read every 60 s
+   (writes per call ~2 -> ~0). Strict limits (invitation lookups 12; costly:
+   sheet import, merge, create organization) still counted in Firestore per
+   call. Leftover AI call names removed from the limits.
 10. [ ] After the production move (Tom 2026-10-10): run single_organization_audit.js
    on production. If it finds no two-owner organizations, no co-owner
    records and no staff linked to two businesses, and the merge tool is no

@@ -13,8 +13,11 @@ const policies=Object.freeze({
 });
 // Organization/account checks remembered per server copy (2026-10-10, Tom).
 const POLICY_CACHE_MS=15_000,POLICY_CACHE_MAX=5000;
+// The general limit counted in memory (2026-10-10, Tom: fewer writes). Saved
+// to Firestore at most every 10 s per bucket, re-read every 60 s.
+const LOCAL_SAVE_MS=10_000,LOCAL_RELOAD_MS=60_000,LOCAL_MAX=20000;
 function category(name,data){
- if(['aiChat','aiImportPreview','aiImportCommit','aiSyncSubscription','importSheet','mergeMyOrganizations'].includes(name)||(name==='organizationSettings'&&['create','createLegacy'].includes(data?.action)))return 'costly';
+ if(['importSheet','mergeMyOrganizations'].includes(name)||(name==='organizationSettings'&&['create','createLegacy'].includes(data?.action)))return 'costly';
  if(name==='lookupTeamInvitation'||name==='claimMyInvitations'||(name==='mutateTeam'&&['invite','requestAccess','acceptInvitation'].includes(data?.action)))return 'lookup';
  return 'general';
 }
@@ -120,6 +123,57 @@ function createRequestGuard({db,Timestamp,HttpsError,now=Date.now,policyCacheMs=
   queue.push({userGroups,orgId,orgGroup,resolve,reject});
   if(start)drain(uid,queue);
  });
+ // The general limit (120 a minute per account, 1200 per organization) is an
+ // anti-spam limit, counted in memory on this server copy (2026-10-10, Tom):
+ // each call used to write 1-2 Firestore documents (free plan: 20,000 writes
+ // a day) and wait for them. Now a bucket is read when first used (again after
+ // 60 s), counted here, and saved at most every 10 s, so other server copies
+ // and restarts still see it. With several copies running, one account can
+ // briefly get a little more than the limit; the strict limits (invitation
+ // lookups, costly actions) are still counted in Firestore on every call.
+ const local=new Map();
+ const loadLocal=b=>{
+  const id=hash(b.key),t=now(),seen=local.get(id);
+  if(seen&&(seen.loading||seen.dirty||t-seen.loadedAt<LOCAL_RELOAD_MS))return seen.loading??Promise.resolve(seen);
+  const entry={b,ref:db.doc(`requestLimits/${id}`),tokens:b.capacity,updatedAtMs:t,loadedAt:t,savedAt:t,dirty:false,exists:false,loading:null};
+  entry.loading=entry.ref.get().then(d=>{
+   const old=d.data();
+   if(old&&Number.isFinite(old.tokens)&&Number.isFinite(old.updatedAtMs)){entry.tokens=old.tokens;entry.updatedAtMs=old.updatedAtMs;entry.exists=true;}
+   entry.loading=null;
+   return entry;
+  },e=>{if(local.get(id)===entry)local.delete(id);throw e;});
+  if(local.size>=LOCAL_MAX)local.clear();
+  local.set(id,entry);
+  return entry.loading;
+ };
+ const consumeLocal=async(uid,orgId,member)=>{
+  const buckets=[{key:['user',uid,'general'],capacity:policies.general.capacity,rate:policies.general.perMinute}];
+  if(orgId){
+   const m=(await member)?.data();
+   // An outsider cannot exhaust another organization's shared budget by naming it.
+   if(m?.ownerId===uid&&m.organizationId===orgId&&m.status==='active'&&m.accessVersion===2&&hasRole(m))
+    buckets.push({key:['organization',orgId,'general'],capacity:policies.general.orgCapacity,rate:policies.general.orgPerMinute});
+  }
+  const states=await Promise.all(buckets.map(loadLocal));
+  // From here to the end nothing waits, so two calls cannot take the same token.
+  const t=now();
+  for(const s of states){
+   s.tokens=Math.min(s.b.capacity,s.tokens+Math.max(0,t-s.updatedAtMs)*s.b.rate/60000);
+   s.updatedAtMs=Math.max(t,s.updatedAtMs);
+  }
+  if(states.some(s=>s.tokens<1))fail('resource-exhausted','request_rate_limited');
+  const saves=[];
+  for(const s of states){
+   s.tokens-=1;s.dirty=true;
+   if(!s.exists||t-s.savedAt>=LOCAL_SAVE_MS){
+    s.savedAt=t;s.dirty=false;s.exists=true;
+    saves.push(s.ref.set({tokens:s.tokens,updatedAtMs:s.updatedAtMs,expiresAt:Timestamp.fromMillis(t+86400000)}).catch(()=>{s.dirty=true;}));
+   }
+  }
+  // A save happens at most every 10 s per bucket; waiting for it keeps it from
+  // being cut off when the server copy pauses between calls.
+  await Promise.all(saves);
+ };
  // Organization, membership and account checks remembered for 15 s on this
  // server copy (2026-10-10, Tom). Concurrent calls share one read. Only the
  // checks below use them; every call's own work still reads the caller's
@@ -144,12 +198,11 @@ function createRequestGuard({db,Timestamp,HttpsError,now=Date.now,policyCacheMs=
   if(!request.app?.appId&&!localEmulator())fail('unauthenticated','app_check_required');
   // Charge every authenticated attempt, including invalid/forbidden input.
   let encoded;
-  try{encoded=JSON.stringify(request.data??null);}catch{await consume(uid,['general']);fail('invalid-argument','invalid_request');}
-  // Existing import validation permits a 5 MiB file encoded as base64.
+  try{encoded=JSON.stringify(request.data??null);}catch{await consumeLocal(uid,null);fail('invalid-argument','invalid_request');}
   // B7b problem photos: one photo of at most 2 MiB, base64 encoded.
   // Sheet import (2026-10-05): the old app's rows (a few MB at most), or the new .xlsx for Drive.
-  const limit=name==='aiImportPreview'||name==='importSheet'?8*1024*1024:name==='technicalProblems'&&request.data?.action==='addPhoto'?3*1024*1024:128*1024;
-  if(Buffer.byteLength(encoded,'utf8')>limit){await consume(uid,['general']);fail('invalid-argument','request_too_large');}
+  const limit=name==='importSheet'?8*1024*1024:name==='technicalProblems'&&request.data?.action==='addPhoto'?3*1024*1024:128*1024;
+  if(Buffer.byteLength(encoded,'utf8')>limit){await consumeLocal(uid,null);fail('invalid-argument','request_too_large');}
   let org=request.data?.organizationId??request.data?.orgId;
   if(['mutateCalendarBooking','mutateCalendarTenant'].includes(name)){
    const booking=name==='mutateCalendarBooking',key=booking?request.data?.bookingId:request.data?.tenantId;
@@ -165,9 +218,11 @@ function createRequestGuard({db,Timestamp,HttpsError,now=Date.now,policyCacheMs=
   // Speed (2026-10-10): the organization checks' reads also start alongside
   // the charge; they are only looked at after the charge and the cut-off
   // passed, in the same order as before, so the answers are the same.
+  const member=orgId?remembered(`member|${uid}|${orgId}`,()=>db.doc(`memberships/${uid}_${orgId}`).get()):null;
+  member?.catch(()=>{});
   const checks=orgId?Promise.all([
    remembered(`org|${orgId}`,()=>db.doc(`organizations/${orgId}`).get()),
-   remembered(`member|${uid}|${orgId}`,()=>db.doc(`memberships/${uid}_${orgId}`).get()),
+   member,
    // Read-only: takes no locks (it only reads), same consistent snapshot.
    remembered(`policy|${uid}`,()=>db.runTransaction(tx=>accountPolicy(db,tx,uid),{readOnly:true})),
    remembered(`members|${orgId}`,()=>db.collection('memberships').where('organizationId','==',orgId).get()),
@@ -175,10 +230,13 @@ function createRequestGuard({db,Timestamp,HttpsError,now=Date.now,policyCacheMs=
   checks?.catch(()=>{});
   // Charge before policy checks so forbidden/conflicted attempts are limited too.
   try{
-   await consume(uid,group==='general'?['general']:['general',group],orgId,group);
+   // The general limit in memory; a strict limit (and its general charge)
+   // in one Firestore transaction, as before.
+   if(group==='general')await consumeLocal(uid,orgId,member);
+   else await consume(uid,['general',group],orgId,group);
   }catch(error){
    revokedCheck.catch(()=>{});
-   if(error?.code==='resource-exhausted'&&(group!=='general'||orgId))await consume(uid,['general']).catch(()=>{});
+   if(error?.code==='resource-exhausted'&&group!=='general')await consumeLocal(uid,null).catch(()=>{});
    throw error;
   }
   if(await revokedCheck)fail('unauthenticated','session_revoked');

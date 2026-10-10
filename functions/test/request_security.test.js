@@ -43,8 +43,9 @@ test('lookup limits ignore forged clock, operation IDs and org IDs; server time 
 });
 test('costly attempts share a budget across endpoints; malformed and denied attempts count',async()=>{
  const f=fixture();
- for(const name of ['aiChat','aiImportPreview','aiImportCommit','aiSyncSubscription'])await f.guard(name,request());
- await assert.rejects(f.guard('aiChat',request()),e=>e.code==='resource-exhausted');
+ // AI calls were removed (2026-10-10 clean-up); sheet import, merging and creating share the budget.
+ for(const [name,data] of [['importSheet',{}],['mergeMyOrganizations',{}],['organizationSettings',{action:'create'}],['importSheet',{}]])await f.guard(name,request(data));
+ await assert.rejects(f.guard('mergeMyOrganizations',request()),e=>e.code==='resource-exhausted');
  for(let i=0;i<115;i++)await assert.rejects(f.guard('invoices',request({text:'x'.repeat(131073)})),e=>e.code==='invalid-argument');
  await assert.rejects(f.guard('readWorkspace',request()),e=>e.code==='resource-exhausted');
 });
@@ -53,6 +54,8 @@ test('organization budgets only include identity-matched active known members',a
  f.records.set('memberships/user_org',{ownerId:'other',organizationId:'org',accessVersion:2,status:'active',role:'owner'});
  await f.guard('readWorkspace',request({organizationId:'org'}));assert.equal(f.records.size,2);
  f.records.set('memberships/user_org',{ownerId:'user',organizationId:'org',accessVersion:2,status:'active',role:'owner'});
+ // The membership is remembered 15 s; the write that changed it forgets it.
+ f.guard.forget('user','org');
  await f.guard('readWorkspace',request({organizationId:'org'}));assert.equal(f.records.size,3);
 });
 
