@@ -478,6 +478,7 @@ class _OrganizationScreenState extends State<_LegacyOrganizationScreen>
           final tabWidth = tabs.fold<double>(0, (width, tab) {
             final painter = TextPainter(
               text: TextSpan(text: tab.$2, style: const TextStyle(
+                fontFamily: 'Roboto',
                 fontSize: 13, fontWeight: FontWeight.w600,
               )),
               textDirection: Directionality.of(context),

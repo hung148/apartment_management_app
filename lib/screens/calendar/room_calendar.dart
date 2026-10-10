@@ -3104,6 +3104,7 @@ class CalBarTile extends StatelessWidget {
   static const _textLeft = 8.0;
 
   static const _footStyle = TextStyle(
+    fontFamily: 'Roboto',
     fontSize: 10,
     height: 1.15,
     fontWeight: FontWeight.w600,
@@ -3139,6 +3140,7 @@ class CalBarTile extends StatelessWidget {
   String? get endLabel => _endsHere ? _foot : null;
 
   static const _nameStyle = TextStyle(
+    fontFamily: 'Roboto',
     fontSize: 11.5,
     height: 1.15,
     fontWeight: FontWeight.w700,
@@ -3174,6 +3176,7 @@ class CalBarTile extends StatelessWidget {
       text: TextSpan(
         text: t,
         style: const TextStyle(
+          fontFamily: 'Roboto',
           fontSize: 10,
           height: 1.15,
           fontWeight: FontWeight.w600,
@@ -3489,6 +3492,7 @@ class CalEdgeBubble extends StatelessWidget {
   });
 
   static const _endStyle = TextStyle(
+    fontFamily: 'Roboto',
     fontSize: 10,
     height: 1.15,
     fontWeight: FontWeight.w600,
@@ -3509,6 +3513,9 @@ class CalEdgeBubble extends StatelessWidget {
   }
 
   static const _style = TextStyle(
+    // A font named in every style measured with a TextPainter (2026-10-10):
+    // without one, the web app fetches Noto fonts for accented letters.
+    fontFamily: 'Roboto',
     fontSize: 11,
     height: 1.15,
     fontWeight: FontWeight.w700,

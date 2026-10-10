@@ -44,7 +44,7 @@ class CalMonthView extends StatefulWidget {
 class _Piece {
   final CalBar bar;
   final CalRoom room;
-  final double from, to; // days from the week's Monday (fractional)
+  double from, to; // days from the week's Monday (fractional)
   final bool startsHere, endsHere;
   int lane = 0;
   // A pill too narrow for its name: the name goes in a tag beside it
@@ -78,6 +78,11 @@ class _CalMonthViewState extends State<CalMonthView> {
   bool _jumping = false;
 
   static const _headH = 52.0, _numberH = 30.0, _laneH = 24.0;
+
+  // A short task (a 30-minute cleaning is about 2 px of a day box) still gets
+  // a bar this wide, next to its name tag (2026-10-10, Tom: "I don't see the
+  // bar"). It starts at its real start; at the end of the week it ends there.
+  static const _minPill = 10.0;
 
   @override
   void initState() {
@@ -121,6 +126,10 @@ class _CalMonthViewState extends State<CalMonthView> {
       DateTime.utc(d.year, d.month, d.day + n);
 
   static const _labelStyle = TextStyle(
+    // Named, not inherited: it is also measured with a TextPainter, and on
+    // the web a style without a font makes Flutter fetch Noto fonts for every
+    // accented letter (2026-10-10).
+    fontFamily: 'Roboto',
     fontSize: 11,
     height: 1.1,
     fontWeight: FontWeight.w700,
@@ -146,6 +155,7 @@ class _CalMonthViewState extends State<CalMonthView> {
       final from = monday.isBefore(first) ? first : monday;
       final to = sunday.isAfter(next) ? next : sunday;
       final pieces = <_Piece>[];
+      double day(DateTime t) => t.difference(monday).inMinutes / 1440;
       for (final b in widget.property.bars) {
         final room = rooms[b.roomId];
         if (room == null) continue;
@@ -153,7 +163,6 @@ class _CalMonthViewState extends State<CalMonthView> {
         if (!b.start.isBefore(to) || !end.isAfter(from)) continue;
         final s = b.start.isBefore(from) ? from : b.start;
         final e = end.isAfter(to) ? to : end;
-        double day(DateTime t) => t.difference(monday).inMinutes / 1440;
         pieces.add(
           _Piece(
             b,
@@ -164,6 +173,14 @@ class _CalMonthViewState extends State<CalMonthView> {
             !end.isAfter(to),
           ),
         );
+      }
+      final minDays = _minPill / cellW,
+          weekEnd = day(to),
+          weekStart = day(from);
+      for (final p in pieces) {
+        if (p.to - p.from >= minDays) continue;
+        p.to = math.min(p.from + minDays, weekEnd);
+        p.from = math.max(p.to - minDays, weekStart);
       }
       pieces.sort(
         (a, b) => a.from.compareTo(b.from) != 0

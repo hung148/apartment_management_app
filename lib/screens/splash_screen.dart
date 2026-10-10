@@ -91,7 +91,7 @@ class _SplashScreenState extends State<SplashScreen>
     return Scaffold(
       backgroundColor: Colors.black,
       body: Image(
-        image: const AssetImage('assets/image/background_image_1920.jpg'),
+        image: const AssetImage('assets/image/background_image_1920.webp'),
         fit: BoxFit.cover,
         width: double.infinity,
         height: double.infinity,

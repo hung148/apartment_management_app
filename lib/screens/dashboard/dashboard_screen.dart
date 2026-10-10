@@ -748,7 +748,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       decoration: BoxDecoration(
         borderRadius: BorderRadius.zero,
         image: const DecorationImage(
-          image: AssetImage('assets/image/background_image3_1920.jpg'),
+          image: AssetImage('assets/image/background_image3_1920.webp'),
           fit: BoxFit.cover,
           alignment: Alignment.center,
         ),

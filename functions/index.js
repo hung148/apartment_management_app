@@ -4,6 +4,12 @@ const {getFirestore,Timestamp,FieldValue}=require('firebase-admin/firestore');
 initializeApp();
 
 const db = getFirestore();
+// preferRest (2026-10-10, speed): talk to Firestore over plain HTTPS instead of
+// gRPC. A cold start then skips loading the gRPC libraries (a few hundred ms).
+// Only snapshot listeners (onSnapshot) need gRPC, and the server uses none; if
+// one is ever added, the library switches to gRPC by itself. Settings can only
+// be set once, before the first read; if that ever fails, gRPC stays in use.
+try{db.settings({preferRest:true});}catch(e){console.warn('preferRest not applied');}
 const {createCallableGroups}=require('./request_security');
 // Calls are registered by name and served by a few grouped functions (see
 // createCallableGroups and the exports at the end of this file).

@@ -123,8 +123,10 @@ flutter:
     - assets/fonts/AndikaNewBasic-B.ttf
     # 1920 px copies (2026-10-09): the originals (7000 px, 14 MB and 2.6 MB)
     # were downloaded on every web start. Originals stay in assets/image/.
-    - assets/image/background_image_1920.jpg
-    - assets/image/background_image3_1920.jpg
+    # WebP (2026-10-10): 95 KB -> 25 KB and 334 KB -> 227 KB, same look; the
+    # 1920 px .jpg copies stay on disk too.
+    - assets/image/background_image_1920.webp
+    - assets/image/background_image3_1920.webp
     - assets/icon/
   #   - images/a_dot_burr.jpeg
   #   - images/a_dot_ham.jpeg

@@ -84,7 +84,16 @@ void main() async {
 
   WidgetsFlutterBinding.ensureInitialized();
 
-  await initializeAppWindow();
+  // Startup waits (2026-10-10, speed): the window, the saved settings and the
+  // theme do not need Firebase, so they start now and run alongside its
+  // start-up. Firebase -> App Check -> sign-in keep their order. The services
+  // are registered lazily, so registering them early creates nothing yet.
+  setup();
+  final early = Future.wait([
+    initializeAppWindow(),
+    SharedPreferences.getInstance(),
+    getIt<AppThemeNotifier>().load(),
+  ]);
 
   // Local test mode (tool\local.ps1) uses the emulators on this computer and
   // has no App Check; every other build is unchanged.
@@ -111,8 +120,7 @@ void main() async {
   }
 
   await FirebaseAuth.instance.authStateChanges().first;
-
-  setup();
+  await early;
 
   final prefs = await SharedPreferences.getInstance();
   // The copy of server answers kept on this device (2026-10-06, speed): it
@@ -131,7 +139,6 @@ void main() async {
   FirebaseAuth.instance.authStateChanges().listen(
     (user) => ReadCache.shared?.keepOnlyAccount(user?.uid),
   );
-  await getIt<AppThemeNotifier>().load();
   final savedLang = prefs.getString('language_code') ?? 'vi';
   final savedCountry = savedLang == 'vi' ? 'VN' : 'US';
   getIt<LocaleNotifier>().setLocale(Locale(savedLang, savedCountry));

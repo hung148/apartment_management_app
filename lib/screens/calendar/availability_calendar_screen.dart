@@ -689,7 +689,11 @@ class _AvailabilityCalendarScreenState
         final painter = TextPainter(
           text: TextSpan(
             text: _selectedBuilding?.name ?? '',
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+            style: const TextStyle(
+              fontFamily: 'Roboto',
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
           ),
           textDirection: Directionality.of(context),
           textScaler: MediaQuery.textScalerOf(context),

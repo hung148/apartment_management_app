@@ -263,7 +263,9 @@ class _RoleWorkspaceState extends State<RoleWorkspace> {
   @override
   void initState() {
     super.initState();
-    _accountLink = widget.initial?.section == 'settings' ? widget.initial?.page : null;
+    _accountLink = widget.initial?.section == 'settings'
+        ? widget.initial?.page
+        : null;
     _section = widget.initial?.section;
     _page = widget.initial?.page;
     _building = widget.initial?.propertyId;
@@ -442,12 +444,23 @@ class _RoleWorkspaceState extends State<RoleWorkspace> {
     if (!_busy && _accountLink != null) {
       final linked = _accountLink;
       _accountLink = null;
-      final option = accountWorkspaceOptions.where((o) => o.id == linked).firstOrNull;
-      if (access.status == 'active' && option != null && option.allowed(access)) {
+      final option = accountWorkspaceOptions
+          .where((o) => o.id == linked)
+          .firstOrNull;
+      if (access.status == 'active' &&
+          option != null &&
+          option.allowed(access)) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) showAccountWorkspaceDialog(context, option: option,
-            organizationId: widget.organizationId, service: widget.service,
-            onChanged: () { if (mounted) _load(); });
+          if (mounted)
+            showAccountWorkspaceDialog(
+              context,
+              option: option,
+              organizationId: widget.organizationId,
+              service: widget.service,
+              onChanged: () {
+                if (mounted) _load();
+              },
+            );
         });
       }
     }
@@ -641,7 +654,10 @@ class _RoleWorkspaceState extends State<RoleWorkspace> {
                 selected: _section,
                 onBack: widget.onBack,
                 onAccountSettings: widget.onAccountSettings,
-                onOrganizationSettings: access?.allows(TeamPermission.manageOrganization) == true ? widget.onOrganizationSettings : null,
+                onOrganizationSettings:
+                    access?.allows(TeamPermission.manageOrganization) == true
+                    ? widget.onOrganizationSettings
+                    : null,
                 onSelect: (s) => _go(section: s),
               ),
               Expanded(
@@ -689,6 +705,7 @@ class _HeaderBar extends StatelessWidget {
   });
 
   static const _labelStyle = TextStyle(
+    fontFamily: 'Roboto',
     fontSize: 13,
     fontWeight: FontWeight.w600,
   );
@@ -777,9 +794,13 @@ class _HeaderBar extends StatelessWidget {
                   ],
                 ),
               ),
-              if(onAccountSettings != null)
-                IconButton(tooltip: AppTranslations.of(context)['account_menu'], color: Colors.white,
-                  icon: const Icon(Icons.person_outline), onPressed: onAccountSettings),
+              if (onAccountSettings != null)
+                IconButton(
+                  tooltip: AppTranslations.of(context)['account_menu'],
+                  color: Colors.white,
+                  icon: const Icon(Icons.person_outline),
+                  onPressed: onAccountSettings,
+                ),
               if (sections.isNotEmpty)
                 Row(
                   key: const ValueKey('workspace-nav'),

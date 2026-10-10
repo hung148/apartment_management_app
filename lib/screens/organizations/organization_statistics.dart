@@ -1335,6 +1335,7 @@ class _DonutPainter extends CustomPainter {
       text: TextSpan(
         text: centerText,
         style: const TextStyle(
+          fontFamily: 'Roboto',
           fontSize: 14,
           fontWeight: FontWeight.w600,
           color: Colors.black87,

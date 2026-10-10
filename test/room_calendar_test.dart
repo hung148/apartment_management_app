@@ -1934,6 +1934,73 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // 2026-10-10 (Tom): a 30-minute cleaning had only its name tag in the
+  // month view; its bar (about 2 px) was dropped. It now has a small bar.
+  testWidgets('a short cleaning still has a bar in the month view', (
+    tester,
+  ) async {
+    final service = TeamService(
+      transport: (name, data) async {
+        if (name != 'calendarView') return <String, dynamic>{};
+        final m = calendarFixture(
+          data['from'] as String,
+          to: data['to'] as String?,
+        );
+        final p = Map<String, dynamic>.from(
+          (m['properties'] as List).first as Map,
+        );
+        p['bars'] = [
+          ...(p['bars'] as List),
+          {
+            'id': 'cleaning:t9',
+            'type': 'cleaning',
+            'kind': 'cleaning',
+            'roomId': 'r102',
+            'start': '2026-10-07 09:00',
+            'end': '2026-10-07 09:30',
+            'status': 'planned',
+            'taskStatus': 'planned',
+            'recordId': 't9',
+            'canOpen': true,
+            'name': 'tom',
+            'title': 'Don phong',
+            'plannedStart': '2026-10-07 09:00',
+            'plannedEnd': '2026-10-07 09:30',
+          },
+        ];
+        return {
+          ...m,
+          'properties': [p, ...(m['properties'] as List).skip(1)],
+        };
+      },
+    );
+    await mountCalendar(tester, service);
+    final modes = find.byKey(const ValueKey('calendar-mode'));
+    await tester.tap(find.descendant(of: modes, matching: find.text('Month')));
+    await tester.pumpAndSettle();
+    final tag = find.byKey(
+      const ValueKey('calendar-month-tag-cleaning:t9-2026-10-05'),
+    );
+    await tester.ensureVisible(tag);
+    await tester.pumpAndSettle();
+    final bar = find.byKey(
+      const ValueKey('calendar-month-bar-cleaning:t9-2026-10-05'),
+    );
+    expect(bar, findsOneWidget);
+    final pill = tester.getRect(bar), label = tester.getRect(tag);
+    expect(pill.width, greaterThanOrEqualTo(9.5));
+    // The bar starts at 09:00 of Wednesday (day 2 of the week, 0.375 in).
+    final day = tester.getRect(
+      find.byKey(const ValueKey('calendar-month-day-2026-10-07')),
+    );
+    expect(pill.left, inInclusiveRange(day.left, day.left + day.width * 0.5));
+    // The name is in its tag right after the bar, on the same line.
+    expect(label.left, greaterThanOrEqualTo(pill.right));
+    expect(label.left - pill.right, lessThan(8));
+    expect(label.center.dy, closeTo(pill.center.dy, 1));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets("month view: every room's stays in a month grid", (tester) async {
     await mountCalendar(tester, calendarService(Calls()));
     // The toolbar's label (the month view also has a heading per month).

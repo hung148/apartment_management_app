@@ -305,16 +305,23 @@ Suggested first message for a new chat:
 ## Speed order (Tom, 2026-10-09, night) — do in this order
 Rule: "the phone shows, the server decides" (money and permissions stay on
 the server). Measure before and after each step on staging.
-1. [ ] Check on staging, then commit: instant "Đặt phòng" (kept options +
+1. [x] Check on staging, then commit: instant "Đặt phòng" (kept options +
    prefetch), booking preview while it loads, no calendar reload after a page
    that changed nothing, Tháng -> Ngày without a server call.
-2. [ ] Server cold start: Firestore `preferRest: true` (index.js, the db
+2. [x] Server cold start: Firestore `preferRest: true` (index.js, the db
    instance). Measure the first call after idle before/after.
-3. [ ] Background images as WebP (background_image_1920.jpg 85 KB,
+3. [x] (2026-10-10: 25 KB and 227 KB) Background images as WebP (background_image_1920.jpg 85 KB,
    background_image3_1920.jpg 334 KB); keep the originals on disk.
-4. [ ] The extra font download (Noto Sans Symbols fetched while the calendar
+4. [~] (2026-10-10) The extra font download (Noto Sans Symbols fetched while the calendar
    loads): find the character not in Roboto; replace it or bundle it.
-5. [ ] Startup waits before runApp: run the independent ones together (theme,
+   Found (2026-10-10): Flutter checks each text only against the fonts its
+   own style names. TextPainter styles with no font made accented letters
+   count as missing; fixed (fontFamily Roboto + test text_painter_font_test),
+   which also makes measured widths match the drawn font. Noto Sans Symbols
+   (69 KB, at start) and Noto Sans (200 KB, first booking form) are still
+   fetched for a reason not found from outside the engine. They load in the
+   background and block nothing. Only look again if data use matters.
+5. [x] Startup waits before runApp: run the independent ones together (theme,
    saved-data clean-up), keep auth/App Check order.
 6. [ ] W2 Smaller web download: deferred imports for Excel (excel,
    syncfusion_xlsio), PDF/printing, charts (fl_chart), Markdown. Measure

@@ -57,7 +57,7 @@ void main() {
                               fit: StackFit.expand,
                               children: [
                                 Image.asset(
-                                  'assets/image/background_image3_1920.jpg',
+                                  'assets/image/background_image3_1920.webp',
                                   fit: BoxFit.cover,
                                 ),
                                 DecoratedBox(
@@ -111,7 +111,7 @@ void main() {
                 );
                 await tester.runAsync(() async {
                   await precacheImage(
-                    const AssetImage('assets/image/background_image3_1920.jpg'),
+                    const AssetImage('assets/image/background_image3_1920.webp'),
                     tester.element(find.byType(DashboardSettingsButton)),
                   );
                 });
