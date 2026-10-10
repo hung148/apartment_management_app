@@ -1605,3 +1605,21 @@ alone ~2 s); these make the page show at once and cut server round trips:
 Decided (Tom 2026-10-09): nothing kept warm on staging (no ping, HOT stays {}).
 Production only, as part of the move: one ~10-minute ping job (free while the
 billing account has at most 3 Cloud Scheduler jobs; check the count first).
+
+## Saved nightly prices v2 (2026-10-09 night, Tom: choice A)
+- One list per BUILDING (buildingPriceLists/{buildingId}, building currency),
+  shared by all its rooms; up to 12. Until first changed it is the defaults
+  (VND: 300,000 · 400,000 · 500,000 · 700,000 · 1,000,000, from the market
+  check: AirROI HCMC median ~1.2M, anh Hưng's rooms 500-750k) plus the old
+  per-room lists (roomPriceLists, first version). The first change stores the
+  list, so removed defaults stay removed. Reading never writes (rooms stays a
+  read-only call); rooms/staff/list are read together (speed).
+- bookingWorkspace prices: {priceMinor[, remove]} or {pricesMinor:[...]} (the
+  nights typed one by one); roomId optional (older app). rooms returns
+  priceListCurrency and each room's savedNightPricesMinor (empty for a room in
+  another currency).
+- App: the room's own nightly price is always a chip (no ×). "Giá khác nhau
+  mỗi đêm": chips fill every night, each night has a ▾ (saved prices, "Lưu giá
+  này"), "Lưu giá" saves all new night prices. Without "Đổi giá" the switch
+  shows when there are 2+ prices to pick; nights are picked, not typed
+  (readOnly boxes); the server accepts only list/room prices.

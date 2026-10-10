@@ -474,14 +474,22 @@ class _RoomCalendarState extends State<RoomCalendar> {
     final m = _monthShown ?? _monthFocus;
     final today = _today;
     final window = DateTime.utc(m.year, m.month - 1);
+    final sameWindow = window == _month;
     setState(() {
       _monthMode = false;
       _scrollToToday =
           today != null && today.year == m.year && today.month == m.month;
       _jumpTo = m;
-      if (window != _month) _month = window;
+      if (!sameWindow) _month = window;
     });
-    _load();
+    // Speed (2026-10-09, Tom: Tháng → Ngày was slow): the same months are
+    // already loaded (the month view shows them), so they are not asked for
+    // again; only the scroll position is set. Other months load as before.
+    if (sameWindow && _loaded) {
+      _afterLayout();
+    } else {
+      _load();
+    }
   }
 
   /// The month view reached its top or bottom: one more month that way.

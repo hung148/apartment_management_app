@@ -339,28 +339,34 @@ extension OperationalPreview on TeamPreviewStore {
     // manager may add and remove them, like the server's template.
     if (d['action'] == 'prices') {
       if (!manager) reject();
-      final price = d['priceMinor'];
-      if (price is! int || price <= 0) {
+      final many = d['pricesMinor'];
+      final prices = many is List ? many.cast<Object?>() : [d['priceMinor']];
+      if (prices.isEmpty || prices.any((p) => p is! int || p <= 0)) {
         throw FirebaseFunctionsException(
           code: 'invalid-argument',
           message: 'booking_invalid-argument',
         );
       }
-      final room = record(rooms, d['roomId']);
-      final list = roomPriceLists.putIfAbsent(room['id'] as String, () => []);
+      final id = b['id'] as String;
+      final list = buildingPriceLists[id] = nightPricesOf(id);
       if (d['remove'] == true) {
-        list.remove(price);
-      } else if (!list.contains(price)) {
-        if (list.length >= 8) {
+        list.remove(prices.single);
+      } else {
+        final add = prices.cast<int>().toSet().where((p) => !list.contains(p));
+        if (list.length + add.length > 12) {
           throw FirebaseFunctionsException(
             code: 'failed-precondition',
             message: 'booking_saved_prices_full',
           );
         }
-        list.add(price);
+        list.addAll(add);
       }
       list.sort();
-      return {'roomId': room['id'], 'savedNightPricesMinor': List.of(list)};
+      return {
+        'buildingId': id,
+        'currency': 'VND',
+        'savedNightPricesMinor': List.of(list),
+      };
     }
     if (d['action'] == 'rooms') {
       return {
@@ -386,9 +392,9 @@ extension OperationalPreview on TeamPreviewStore {
                 final num v => (v * (r['currency'] == 'USD' ? 100 : 1)).round(),
                 _ => null,
               },
-              'savedNightPricesMinor': List.of(
-                roomPriceLists[r['id']] ?? const <int>[],
-              ),
+              'savedNightPricesMinor': (r['currency'] ?? 'VND') == 'VND'
+                  ? nightPricesOf(b['id'] as String)
+                  : <int>[],
             },
         ],
         'timeZone': zone,
@@ -450,7 +456,7 @@ extension OperationalPreview on TeamPreviewStore {
         final own = room['nightlyPrice'] ?? room['dailyPrice'];
         final ok = {
           if (currency == (room['currency'] ?? 'VND')) ...[
-            ...?roomPriceLists[room['id']],
+            ...nightPricesOf(b['id'] as String),
             if (own is num) (own * scale).round(),
           ],
         };

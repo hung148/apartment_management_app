@@ -1904,6 +1904,28 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // 2026-10-09 (Tom): Tháng → Ngày was slow; the same months are not asked
+  // for again, only another month is.
+  testWidgets('back to the day view does not load the same months again', (
+    tester,
+  ) async {
+    final calls = Calls();
+    await mountCalendar(tester, calendarService(calls));
+    final modes = find.byKey(const ValueKey('calendar-mode'));
+    final before = calls.calendar.length;
+    await tester.tap(find.descendant(of: modes, matching: find.text('Month')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(of: modes, matching: find.text('Day')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('calendar-grid')), findsOneWidget);
+    expect(calls.calendar.length, before, reason: 'no new server call');
+    expect(
+      tester.widget<Text>(find.byKey(const ValueKey('calendar-month'))).data,
+      'October 2026',
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets("month view: every room's stays in a month grid", (tester) async {
     await mountCalendar(tester, calendarService(Calls()));
     // The toolbar's label (the month view also has a heading per month).

@@ -87,10 +87,12 @@ String bookingText(BuildContext context, String key) {
     'calculatedPrice': ['Calculated price', 'Giá tính ra'],
     'agreedBy': ['Changed by', 'Người đổi giá'],
     'savePrice': ['Save price', 'Lưu giá'],
+    'saveThisPrice': ['Save this price', 'Lưu giá này'],
+    'pickPrice': ['Saved prices', 'Chọn giá đã lưu'],
     'removePrice': ['Remove this price', 'Xóa giá này'],
     'savedPricesFull': [
-      'This room already has 8 saved prices. Remove one first.',
-      'Phòng này đã có 8 giá đã lưu. Hãy xóa bớt một giá.',
+      'This building already has 12 saved prices. Remove one first.',
+      'Tòa nhà này đã có 12 giá đã lưu. Hãy xóa bớt một giá.',
     ],
     'savePriceFailed': [
       'The price was not saved. Try again.',
@@ -561,9 +563,9 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
 
   int? get _roomNightMinor => _roomRate('nightlyPriceMinor');
 
-  /// The room's saved nightly prices (2026-10-09, Tom). Only when the booking
-  /// is in the room's own currency and shown in it: a saved price is never
-  /// converted.
+  /// The building's saved nightly prices (2026-10-09, Tom: one list for all
+  /// its rooms). Only when the booking is in the room's own currency and shown
+  /// in it: a saved price is never converted.
   bool get _savedPricesApply {
     final room = _rooms.where((v) => v['id'] == _room).firstOrNull;
     if (room == null) return false;
@@ -578,6 +580,15 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
     return list is List ? list.whereType<int>().toList() : const [];
   }
 
+  /// What can be picked: the saved prices and the room's own price (always
+  /// there, never removed: it comes from the room's settings). Sorted.
+  List<int> get _priceOptions {
+    final saved = _savedNights;
+    if (!_savedPricesApply) return const [];
+    final own = _roomNightMinor;
+    return {...saved, ?own}.toList()..sort();
+  }
+
   /// Fills the price box with a saved price.
   void _pickSaved(int minor) => setState(() {
     _conversion.set(_fields['unitPrice']!, minor, _currency);
@@ -585,10 +596,13 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
     _message = null;
   });
 
-  /// Adds the price in the box to the room's saved prices, or removes one.
-  Future<void> _savePrice(int minor, {bool remove = false}) async {
-    final roomId = _room;
-    if (roomId == null || _savingPrice) return;
+  /// Adds prices to the building's saved prices, or removes one. Every room
+  /// of the building shares the list (2026-10-09, Tom).
+  Future<void> _savePrice(int minor, {bool remove = false}) =>
+      _savePrices([minor], remove: remove);
+
+  Future<void> _savePrices(List<int> minors, {bool remove = false}) async {
+    if (minors.isEmpty || _savingPrice) return;
     setState(() {
       _savingPrice = true;
       _message = null;
@@ -597,17 +611,21 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
       final r = await widget.service.bookingWorkspace({
         ..._identity,
         'action': 'prices',
-        'roomId': roomId,
-        'priceMinor': minor,
+        if (minors.length == 1) 'priceMinor': minors.single,
+        if (minors.length > 1) 'pricesMinor': minors,
         if (remove) 'remove': true,
       });
       if (!mounted) return;
       setState(() {
-        final room = _rooms.where((v) => v['id'] == roomId).firstOrNull;
-        if (room != null) {
-          room['savedNightPricesMinor'] = List<int>.from(
-            (r['savedNightPricesMinor'] as List? ?? const []).whereType<int>(),
-          );
+        final list = List<int>.from(
+          (r['savedNightPricesMinor'] as List? ?? const []).whereType<int>(),
+        );
+        final currency = r['currency'] as String?;
+        for (final room in _rooms) {
+          final c = room['currency'] as String? ?? 'VND';
+          if (currency == null || c == currency) {
+            room['savedNightPricesMinor'] = List<int>.of(list);
+          }
         }
         _savingPrice = false;
       });
@@ -623,6 +641,24 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
             : 'savePriceFailed';
       });
     }
+  }
+
+  /// "Giá khác nhau mỗi đêm": a saved price for every night at once.
+  void _pickSavedForAll(int minor) => setState(() {
+    for (final c in _nightPrices) {
+      _conversion.set(c, minor, _currency);
+    }
+    _message = null;
+  });
+
+  /// The nights' prices that are not saved yet (valid ones only).
+  List<int> get _newNightPrices {
+    final options = _priceOptions.toSet();
+    return {
+      for (final c in _nightPrices)
+        if (_conversion.parse(c, _currency) case final v?)
+          if (v > 0 && v <= 1000000000000 && !options.contains(v)) v,
+    }.toList();
   }
 
   int? get _roomHourMinor => _roomRate('hourlyPriceMinor');
@@ -1070,11 +1106,15 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
           _charges.add(row);
         }
         final nights = (r?['nightPrices'] as List?)?.cast<num>();
+        // Without "Đổi giá" too, when every night is a price that can be
+        // picked (2026-10-09, Tom).
+        final pickable = _priceOptions.toSet();
         _customNights =
-            _canPrice &&
             nights != null &&
             nights.isNotEmpty &&
-            nights.toSet().length > 1;
+            nights.toSet().length > 1 &&
+            (_canPrice ||
+                nights.every((v) => pickable.contains((v * _scale).round())));
         if (_customNights) {
           _nightPrices.addAll(
             nights!.map((v) {
@@ -1160,7 +1200,7 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
       final saved =
           unit != null &&
           unit != _roomNightMinor &&
-          _savedNights.contains(unit);
+          _priceOptions.contains(unit);
       if ((_canPrice || saved) && n != null) {
         if (unit == null || unit <= 0) return null;
         out['nightPricesMinor'] = List<int>.filled(n, unit);
@@ -1643,6 +1683,7 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
     String? Function(String)? check,
     TextEditingController? controller,
     bool enabled = true,
+    bool readOnly = false,
     ValueChanged<String>? onChanged,
   }) => Semantics(
     label: label,
@@ -1650,6 +1691,7 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
       key: ValueKey('ops-$key'),
       controller: controller ?? _fields[key],
       enabled: _formEnabled && enabled,
+      readOnly: readOnly,
       onChanged: onChanged,
       keyboardType: keyboard,
       inputFormatters: formatters,
@@ -1990,10 +2032,12 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
           ),
           if (_pricing == 'nightly' &&
               !_customNights &&
-              (_savedNights.isNotEmpty || _canSavePrices && _savedPricesApply))
+              (_priceOptions.isNotEmpty || _canSavePrices && _savedPricesApply))
             _savedPriceChips(context),
           if (_pricing == 'nightly') ...[
-            if (_canPrice)
+            // Without "Đổi giá" the nights are picked from the saved prices
+            // (2026-10-09, Tom), so the switch is there when there are some.
+            if (_canPrice || _priceOptions.length > 1)
               SwitchListTile(
                 key: const ValueKey('booking-custom-nights'),
                 contentPadding: EdgeInsets.zero,
@@ -2040,26 +2084,37 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
                 padding: const EdgeInsets.only(top: WsSpace.sm),
                 child: Text(bt('nightPricesKept'), style: muted),
               ),
+            if (_customNights &&
+                _nightPrices.isNotEmpty &&
+                (_priceOptions.isNotEmpty ||
+                    _canSavePrices && _savedPricesApply))
+              _savedPriceChips(context, allNights: true),
             if (_customNights && _nightPrices.isNotEmpty)
-              Wrap(
-                spacing: WsSpace.sm,
-                runSpacing: WsSpace.md,
-                children: [
-                  for (final (i, c) in _nightPrices.indexed)
-                    SizedBox(
-                      width: 150,
-                      child: _input(
-                        'night-$i',
-                        bt('night').replaceAll('{n}', '${i + 1}'),
-                        controller: c,
-                        keyboard: money,
-                        formatters: appMoneyInput(_inputCurrency),
-                        required: true,
-                        check: moneyCheck,
-                        onChanged: (_) => setState(() {}),
+              Padding(
+                padding: const EdgeInsets.only(top: WsSpace.md),
+                child: Wrap(
+                  spacing: WsSpace.sm,
+                  runSpacing: WsSpace.md,
+                  children: [
+                    for (final (i, c) in _nightPrices.indexed)
+                      SizedBox(
+                        width: 170,
+                        child: _input(
+                          'night-$i',
+                          bt('night').replaceAll('{n}', '${i + 1}'),
+                          controller: c,
+                          keyboard: money,
+                          formatters: appMoneyInput(_inputCurrency),
+                          required: true,
+                          check: moneyCheck,
+                          // Without "Đổi giá": picked from the list, not typed.
+                          readOnly: !_canPrice,
+                          suffix: _nightMenu(i, c),
+                          onChanged: (_) => setState(() {}),
+                        ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
           ],
           if (_estimate() case final estimate?)
@@ -2404,53 +2459,127 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
     ];
   }
 
-  /// The room's saved nightly prices as chips (2026-10-09, Tom): a tap fills
-  /// the price box. With "Lưu giá phòng" the price in the box can be saved
-  /// and a saved one removed (its ×).
-  Widget _savedPriceChips(BuildContext context) {
-    final saved = _savedNights;
-    final unit = _conversion.parse(_fields['unitPrice']!, _currency);
+  /// The building's saved nightly prices as chips (2026-10-09, Tom), with
+  /// the room's own price. A tap fills the price box, or with "Giá khác nhau
+  /// mỗi đêm" every night. With "Lưu giá phòng" the price in the box (or
+  /// every night's new price) can be saved and a saved one removed (its ×).
+  Widget _savedPriceChips(BuildContext context, {bool allNights = false}) {
+    final saved = _savedNights.toSet();
+    final options = _priceOptions;
     final enabled = _formEnabled && !_savingPrice;
-    final canAdd =
-        enabled &&
-        unit != null &&
-        unit > 0 &&
-        unit <= 1000000000000 &&
-        !saved.contains(unit);
+    final unit = _conversion.parse(_fields['unitPrice']!, _currency);
+    final nights = [
+      for (final c in _nightPrices) _conversion.parse(c, _currency),
+    ];
+    bool chosen(int v) => allNights
+        ? nights.isNotEmpty && nights.every((n) => n == v)
+        : unit == v;
+    final toSave = allNights
+        ? _newNightPrices
+        : [
+            if (unit != null &&
+                unit > 0 &&
+                unit <= 1000000000000 &&
+                !options.contains(unit))
+              unit,
+          ];
     return Padding(
       padding: const EdgeInsets.only(top: WsSpace.md),
       child: Wrap(
-        key: const ValueKey('booking-saved-prices'),
+        key: ValueKey(
+          allNights ? 'booking-saved-prices-nights' : 'booking-saved-prices',
+        ),
         spacing: WsSpace.sm,
         runSpacing: WsSpace.sm,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          if (saved.isNotEmpty)
+          if (options.isNotEmpty)
             Text(
               '${bt('savedPrices')}:',
               style: Theme.of(context).textTheme.bodySmall,
             ),
-          for (final v in saved)
+          for (final v in options)
             InputChip(
-              key: ValueKey('booking-saved-price-$v'),
+              key: ValueKey(
+                '${allNights ? 'booking-all-nights-price' : 'booking-saved-price'}-$v',
+              ),
               label: Text(appMoneyMinor(v, _currency), maxLines: 1),
-              selected: unit == v,
+              selected: chosen(v),
               showCheckmark: false,
-              onPressed: enabled ? () => _pickSaved(v) : null,
-              onDeleted: _canSavePrices && enabled
+              onPressed: enabled
+                  ? () => allNights ? _pickSavedForAll(v) : _pickSaved(v)
+                  : null,
+              // The room's own price is not in the list: nothing to remove.
+              onDeleted: _canSavePrices && enabled && saved.contains(v)
                   ? () => _savePrice(v, remove: true)
                   : null,
               deleteButtonTooltipMessage: bt('removePrice'),
             ),
-          if (_canSavePrices)
+          if (_canSavePrices && _savedPricesApply)
             ActionChip(
-              key: const ValueKey('booking-save-price'),
+              key: ValueKey(
+                allNights ? 'booking-save-night-prices' : 'booking-save-price',
+              ),
               avatar: const Icon(Icons.bookmark_add_outlined, size: 18),
               label: Text(bt('savePrice'), maxLines: 1),
-              onPressed: canAdd ? () => _savePrice(unit) : null,
+              onPressed: enabled && toSave.isNotEmpty
+                  ? () => _savePrices(toSave)
+                  : null,
             ),
         ],
       ),
+    );
+  }
+
+  /// A night's ▾: the saved prices for that night, and "Lưu giá này" for a
+  /// typed price that is not saved yet (2026-10-09, Tom).
+  Widget? _nightMenu(int i, TextEditingController c) {
+    final options = _priceOptions;
+    final value = _conversion.parse(c, _currency);
+    final canSave =
+        _canSavePrices &&
+        _savedPricesApply &&
+        value != null &&
+        value > 0 &&
+        value <= 1000000000000 &&
+        !options.contains(value);
+    if (options.isEmpty && !canSave) return null;
+    return PopupMenuButton<int>(
+      key: ValueKey('booking-night-menu-$i'),
+      tooltip: bt('pickPrice'),
+      enabled: _formEnabled && !_savingPrice,
+      icon: const Icon(Icons.arrow_drop_down),
+      onSelected: (v) {
+        if (v < 0) {
+          if (value != null) _savePrice(value);
+          return;
+        }
+        setState(() {
+          _conversion.set(c, v, _currency);
+          _message = null;
+        });
+      },
+      itemBuilder: (_) => [
+        for (final v in options)
+          PopupMenuItem<int>(
+            key: ValueKey('booking-night-$i-price-$v'),
+            value: v,
+            child: Text(appMoneyMinor(v, _currency)),
+          ),
+        if (canSave)
+          PopupMenuItem<int>(
+            key: ValueKey('booking-night-$i-save'),
+            value: -1,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.bookmark_add_outlined, size: 18),
+                const SizedBox(width: WsSpace.sm),
+                Text(bt('saveThisPrice')),
+              ],
+            ),
+          ),
+      ],
     );
   }
 

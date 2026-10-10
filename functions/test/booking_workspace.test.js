@@ -55,62 +55,81 @@ test('the rooms list carries the hourly price; a read carries the booking\'s own
   assert.equal(read.record.hourlyPrice,90000);
 });
 
-// Saved nightly prices per room (2026-10-09, Tom): chips instead of typing. "Lưu giá phòng" adds and removes
-// them; anyone who may book can pick one without "Đổi giá"; the room itself (its revision) is not touched.
-test('saved nightly prices: added and removed with "Lưu giá phòng", picked without "Đổi giá"',async()=>{
+// Saved nightly prices (2026-10-09, Tom): one list per building, shared by its rooms, with defaults; "Lưu giá phòng"
+// adds and removes; anyone who may book picks one without "Đổi giá"; no room or building revision is touched.
+const D=[300000,400000,500000,700000,1000000];
+test('saved nightly prices: one list per building, defaults, picked without "Đổi giá"',async()=>{
   const s=seed();s['rooms/r1'].nightlyPrice=600000;
+  s['rooms/r2']={organizationId:'org',buildingId:'b1',roomNumber:'P603',nightlyPrice:800000};
   s['memberships/rec_org']={ownerId:'rec',organizationId:'org',accessVersion:2,role:'custom',roleGrants:{readBookings:'managed',createBookings:'managed',manageBookings:'managed'},status:'active',buildingScope:'all',buildingIds:[]};
-  s['rooms/other']={organizationId:'org2',buildingId:'b9',roomNumber:'X',nightlyPrice:1};
-  const db=fakeDb(s),roomBefore={...db.store.get('rooms/r1')};
+  const db=fakeDb(s),before={r1:{...db.store.get('rooms/r1')},b1:{...db.store.get('buildings/b1')}};
   const as=(uid,data)=>createBookingWorkspaceHandler({db,Timestamp:Ts,HttpsError:CodeError})({auth:{uid},data:{organizationId:'org',buildingId:'b1',...data}});
-  const price=(uid,priceMinor,extra={})=>as(uid,{action:'prices',roomId:'r1',priceMinor,...extra});
-  assert.deepEqual((await price('owner',700000)).savedNightPricesMinor,[700000]);
-  assert.deepEqual((await price('owner',650000)).savedNightPricesMinor,[650000,700000]);
-  // The same price twice is kept once.
-  assert.deepEqual((await price('owner',650000)).savedNightPricesMinor,[650000,700000]);
-  const stored=db.store.get('roomPriceLists/r1');
-  assert.deepEqual([stored.organizationId,stored.buildingId,stored.currency,stored.prices,stored.updatedBy],['org','b1','VND',[650000,700000],'owner']);
-  assert.deepEqual(db.store.get('rooms/r1'),roomBefore,'the room and its revision stay as they were');
-  const rooms=await as('owner',{action:'rooms'});
-  assert.equal(rooms.canSavePrices,true);
-  assert.deepEqual(rooms.records.find(r=>r.id==='r1').savedNightPricesMinor,[650000,700000]);
-  // Without the permission: the list is shown, nothing can be added or removed.
-  const recRooms=await as('rec',{action:'rooms'});
-  assert.equal(recRooms.canSavePrices,false);
-  assert.deepEqual(recRooms.records.find(r=>r.id==='r1').savedNightPricesMinor,[650000,700000]);
-  await assert.rejects(price('rec',800000),e=>e.code==='permission-denied');
-  await assert.rejects(price('rec',650000,{remove:true}),e=>e.code==='permission-denied');
-  // Picking saved prices (or the room's own) needs no "Đổi giá"; any other price does.
-  const quote=(uid,nightPricesMinor)=>as(uid,{action:'quote',roomId:'r1',startLocal:'2026-10-10 14:00',endLocal:'2026-10-12 12:00',occurrence:'first',pricingType:'nightly',nightPricesMinor});
-  assert.equal((await quote('rec',[650000,650000])).record.totalMinor,1300000);
-  assert.equal((await quote('rec',[600000,700000])).record.totalMinor,1300000);
-  await assert.rejects(quote('rec',[650000,640000]),e=>e.code==='permission-denied');
-  await assert.rejects(quote('rec',[]),e=>e.code==='permission-denied');
-  assert.equal((await quote('owner',[640000,640000])).record.totalMinor,1280000);
-  // Removed: no longer free to pick.
-  assert.deepEqual((await price('owner',650000,{remove:true})).savedNightPricesMinor,[700000]);
-  await assert.rejects(quote('rec',[650000,650000]),e=>e.code==='permission-denied');
-  // Removing a price that is not there changes nothing.
-  assert.deepEqual((await price('owner',123,{remove:true})).savedNightPricesMinor,[700000]);
+  const listOf=async(uid,room)=>(await as(uid,{action:'rooms'})).records.find(r=>r.id===room).savedNightPricesMinor;
+  // Nothing saved yet: the defaults, on every room of the building.
+  assert.deepEqual(await listOf('owner','r1'),D);
+  assert.deepEqual(await listOf('owner','r2'),D);
+  assert.equal(db.store.get('buildingPriceLists/b1'),undefined,'reading writes nothing');
+  // Saved once (no room needed), shown on every room.
+  assert.deepEqual((await as('owner',{action:'prices',priceMinor:650000})).savedNightPricesMinor,[...D.slice(0,3),650000,...D.slice(3)]);
+  assert.deepEqual(await listOf('rec','r2'),[300000,400000,500000,650000,700000,1000000]);
+  // A removed default stays removed.
+  await as('owner',{action:'prices',priceMinor:300000,remove:true});
+  assert.deepEqual(await listOf('owner','r1'),[400000,500000,650000,700000,1000000]);
+  // Several at once (the nights typed one by one): only the new ones are added, once.
+  assert.deepEqual((await as('owner',{action:'prices',pricesMinor:[450000,650000,450000,550000]})).savedNightPricesMinor,
+    [400000,450000,500000,550000,650000,700000,1000000]);
+  const stored=db.store.get('buildingPriceLists/b1');
+  assert.deepEqual([stored.organizationId,stored.buildingId,stored.currency,stored.updatedBy],['org','b1','VND','owner']);
+  assert.deepEqual(db.store.get('rooms/r1'),before.r1);assert.deepEqual(db.store.get('buildings/b1'),before.b1);
+  // Without "Lưu giá phòng": shown, not changed.
+  const rec=await as('rec',{action:'rooms'});assert.equal(rec.canSavePrices,false);
+  await assert.rejects(as('rec',{action:'prices',priceMinor:800000}),e=>e.code==='permission-denied');
+  await assert.rejects(as('rec',{action:'prices',pricesMinor:[800000]}),e=>e.code==='permission-denied');
+  // Picking: saved prices or the room's own, per night too; any other price needs "Đổi giá".
+  const quote=(uid,room,nightPricesMinor)=>as(uid,{action:'quote',roomId:room,startLocal:'2026-10-10 14:00',endLocal:'2026-10-12 12:00',occurrence:'first',pricingType:'nightly',nightPricesMinor});
+  s['rooms/r1'].nightlyPrice=600000;
+  assert.equal((await quote('rec','r1',[450000,1000000])).record.totalMinor,1450000);
+  assert.equal((await quote('rec','r1',[600000,650000])).record.totalMinor,1250000,'the room\'s own price');
+  assert.equal((await quote('rec','r2',[800000,450000])).record.totalMinor,1250000,'another room, the same list');
+  await assert.rejects(quote('rec','r1',[300000,450000]),e=>e.code==='permission-denied','a removed default');
+  await assert.rejects(quote('rec','r1',[640000,450000]),e=>e.code==='permission-denied');
+  await assert.rejects(quote('rec','r1',[]),e=>e.code==='permission-denied');
+  assert.equal((await quote('owner','r1',[640000,640000])).record.totalMinor,1280000);
 });
 
-test('saved nightly prices: bad input, another organization\'s room, a full list and an old currency',async()=>{
-  const s=seed();s['rooms/r1'].nightlyPrice=600000;
-  s['rooms/other']={organizationId:'org2',buildingId:'b1',roomNumber:'X',nightlyPrice:1};
-  s['rooms/gone']={organizationId:'org',buildingId:'b1',roomNumber:'G',deletedAt:new Ts(1)};
+test('saved nightly prices: earlier per-room lists join the building list; other currencies stay apart',async()=>{
+  const s=seed();
+  s['roomPriceLists/r1']={organizationId:'org',buildingId:'b1',roomId:'r1',currency:'VND',prices:[650000,500000]};
+  s['roomPriceLists/x']={organizationId:'other',buildingId:'b1',roomId:'x',currency:'VND',prices:[999000]};
+  s['rooms/usd']={organizationId:'org',buildingId:'b1',roomNumber:'U1',currency:'USD',nightlyPrice:40};
   const db=fakeDb(s);
-  const price=(data)=>call(db,{action:'prices',organizationId:'org',buildingId:'b1',roomId:'r1',...data});
-  for(const bad of [0,-5,1.5,'700000',null,1e13])await assert.rejects(price({priceMinor:bad}),e=>e.code==='invalid-argument',String(bad));
-  await assert.rejects(price({priceMinor:700000,remove:'yes'}),e=>e.code==='invalid-argument');
-  await assert.rejects(price({priceMinor:700000,extra:1}),e=>e.code==='invalid-argument');
-  await assert.rejects(price({roomId:'other',priceMinor:700000}),e=>e.code==='not-found');
-  await assert.rejects(price({roomId:'gone',priceMinor:700000}),e=>e.code==='not-found');
-  await assert.rejects(price({roomId:'../x',priceMinor:700000}),e=>e.code==='invalid-argument');
-  for(let i=1;i<=8;i++)await price({priceMinor:i*100000});
-  await assert.rejects(price({priceMinor:900000}),e=>e.code==='failed-precondition'&&e.message==='booking_saved_prices_full');
-  assert.equal(db.store.get('roomPriceLists/r1').prices.length,8);
-  // A list kept in another currency (the room's currency changed since) is not offered or accepted.
-  db.store.get('roomPriceLists/r1').currency='USD';
-  const rooms=await call(db,{action:'rooms',organizationId:'org',buildingId:'b1'});
-  assert.deepEqual(rooms.records.find(r=>r.id==='r1').savedNightPricesMinor,[]);
+  const call=data=>createBookingWorkspaceHandler({db,Timestamp:Ts,HttpsError:CodeError})({auth:{uid:'owner'},data:{organizationId:'org',buildingId:'b1',...data}});
+  const rooms=await call({action:'rooms'});
+  assert.deepEqual(rooms.records.find(r=>r.id==='r1').savedNightPricesMinor,[300000,400000,500000,650000,700000,1000000]);
+  assert.deepEqual(rooms.records.find(r=>r.id==='usd').savedNightPricesMinor,[],'a USD room does not show VND prices');
+  assert.equal(rooms.priceListCurrency,'VND');
+  // A building in USD has no defaults.
+  db.store.get('buildings/b1').currency='USD';
+  const usd=await call({action:'rooms'});
+  assert.deepEqual(usd.records.find(r=>r.id==='usd').savedNightPricesMinor,[]);
+  assert.deepEqual((await call({action:'prices',priceMinor:4500})).savedNightPricesMinor,[4500]);
+  assert.deepEqual(db.store.get('buildingPriceLists/b1').prices,[45]);
+});
+
+test('saved nightly prices: bad input and a full list',async()=>{
+  const db=fakeDb(seed());
+  const price=data=>call(db,{action:'prices',organizationId:'org',buildingId:'b1',...data});
+  for(const bad of [{priceMinor:0},{priceMinor:-5},{priceMinor:1.5},{priceMinor:'700000'},{priceMinor:null},{priceMinor:1e13},{priceMinor:700000,remove:'yes'},
+    {pricesMinor:[]},{pricesMinor:[1,'2']},{pricesMinor:700000},{pricesMinor:Array.from({length:13},(_,i)=>i+1)},{pricesMinor:[1],priceMinor:2},{pricesMinor:[1],remove:true},
+    {priceMinor:700000,roomId:'../x'},{priceMinor:700000,extra:1}])
+    await assert.rejects(price(bad),e=>e.code==='invalid-argument',JSON.stringify(bad));
+  await assert.rejects(call(db,{action:'prices',organizationId:'org',buildingId:'gone',priceMinor:1}),e=>e.code==='not-found');
+  // 5 defaults + 7 = 12; one more is refused, adding several that do not fit adds none.
+  await price({pricesMinor:[1,2,3,4,5,6,7]});
+  await assert.rejects(price({priceMinor:8}),e=>e.code==='failed-precondition'&&e.message==='booking_saved_prices_full');
+  await price({priceMinor:1,remove:true});
+  await assert.rejects(price({pricesMinor:[8,9]}),e=>e.message==='booking_saved_prices_full');
+  assert.equal(db.store.get('buildingPriceLists/b1').prices.length,11);
+  // A price already saved is not counted again.
+  assert.equal((await price({pricesMinor:[2,8]})).savedNightPricesMinor.length,12);
 });

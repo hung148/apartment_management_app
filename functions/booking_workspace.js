@@ -7,11 +7,29 @@ const id=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(v),revision=d=>`$
 // which validates them. A detail left out of a save keeps its stored value (older app versions).
 const PRICE_EXTRA=['nightPricesMinor','surcharges','hourlyPriceMinor'],DETAILS=['guestIdNumber','guests','numberOfGuests','staffInChargeId','platform','contactChannel','depositNote'];
 const plain=v=>!!v&&typeof v==='object'&&!Array.isArray(v);
-// Saved nightly prices per room (2026-10-09, Tom): chips to tap instead of typing. Kept in roomPriceLists/{roomId}
-// (not on the room, whose revision guards booking saves), in the room's currency. Adding or removing needs
-// "Lưu giá phòng" (saveRoomPrices); picking one needs no "Đổi giá".
-const MAX_SAVED_PRICES=8;
-const savedMinor=(list,currency)=>list&&list.currency===currency&&Array.isArray(list.prices)?list.prices.filter(v=>typeof v==='number'&&v>0).map(v=>Math.round(v*(currency==='USD'?100:1))):[];
+// Saved nightly prices (2026-10-09, Tom): chips to tap instead of typing. One list per BUILDING, shared by its rooms
+// (Tom: choice A), kept in buildingPriceLists/{buildingId} in the building's currency (not on the building or a room:
+// their revisions guard saves). Until the list is first changed it is: the defaults (VND only) plus the prices saved on
+// single rooms before (roomPriceLists/{roomId}, the first version). The first change stores that list, so a removed
+// default stays removed. Adding or removing needs "Lưu giá phòng" (saveRoomPrices); picking one needs no "Đổi giá".
+const MAX_SAVED_PRICES=12;
+const DEFAULT_NIGHT_PRICES_VND=[300000,400000,500000,700000,1000000];
+const scaleOf=currency=>currency==='USD'?100:1;
+const savedMinor=(list,currency)=>list&&list.currency===currency&&Array.isArray(list.prices)?list.prices.filter(v=>typeof v==='number'&&v>0).map(v=>Math.round(v*scaleOf(currency))):[];
+// The building's list in minor units, sorted. stored: the list document; rooms: earlier per-room lists.
+const buildingList=(stored,roomLists,currency)=>{
+ if(stored)return [...new Set(savedMinor(stored,currency))].sort((a,b)=>a-b);
+ const all=new Set(currency==='VND'?DEFAULT_NIGHT_PRICES_VND:[]);
+ for(const l of roomLists)for(const v of savedMinor(l,currency))all.add(v);
+ return [...all].sort((a,b)=>a-b);
+};
+// Reads both together: one document, plus the earlier per-room lists only while there is no document yet.
+async function readBuildingList(tx,db,organizationId,buildingId,currency){
+ const [stored,rooms]=await Promise.all([tx.get(db.doc(`buildingPriceLists/${buildingId}`)),
+  tx.get(db.collection('roomPriceLists').where('organizationId','==',organizationId).where('buildingId','==',buildingId))]);
+ const doc=stored.exists&&stored.data().organizationId===organizationId?stored.data():null;
+ return {ref:stored.ref??db.doc(`buildingPriceLists/${buildingId}`),list:buildingList(doc,rooms.docs.map(v=>v.data()),currency)};
+}
 // Deposit taken when the booking is made (2026-10-04): part of the total, paid in cash, by bank transfer or by card on a day.
 const DEPOSIT_METHODS=['cash','bankTransfer','creditCard'];
 const localDay=(instant,zone)=>{const p=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date(instant)).map(x=>[x.type,x.value]));return `${p.year}-${p.month}-${p.day}`;};
@@ -20,7 +38,7 @@ const masked=v=>v.length>4?`•••• ${v.slice(-4)}`:'••••';
 function createBookingWorkspaceHandler({db,Timestamp,HttpsError,calendar}){const fail=(code,key='booking_'+code)=>{throw new HttpsError(code,key);};return async request=>{
  const d=request.data||{},uid=request.auth?.uid;if(!uid)fail('unauthenticated');
  const identity=['action','organizationId','buildingId'];let extra=[];
- if(d.action==='list')extra=['cursor'];else if(d.action==='read')extra=['bookingId'];else if(d.action==='quote')extra=['roomId','startLocal','endLocal','occurrence','pricingType','overrideMinor','overrideReason','numberOfGuests',...PRICE_EXTRA];else if(d.action==='save')extra=['bookingId','operationId','revision','roomId','roomRevision','startLocal','endLocal','occurrence','pricingType','guestName','guestPhone','notes','depositMinor','deposit','overrideMinor','overrideReason',...PRICE_EXTRA,...DETAILS];else if(d.action==='command')extra=['bookingId','operationId','revision','command','amountMinor','paymentMethod','status','reason','accountId'];else if(d.action==='prices')extra=['roomId','priceMinor','remove'];else if(d.action!=='rooms')fail('invalid-argument');
+ if(d.action==='list')extra=['cursor'];else if(d.action==='read')extra=['bookingId'];else if(d.action==='quote')extra=['roomId','startLocal','endLocal','occurrence','pricingType','overrideMinor','overrideReason','numberOfGuests',...PRICE_EXTRA];else if(d.action==='save')extra=['bookingId','operationId','revision','roomId','roomRevision','startLocal','endLocal','occurrence','pricingType','guestName','guestPhone','notes','depositMinor','deposit','overrideMinor','overrideReason',...PRICE_EXTRA,...DETAILS];else if(d.action==='command')extra=['bookingId','operationId','revision','command','amountMinor','paymentMethod','status','reason','accountId'];else if(d.action==='prices')extra=['roomId','priceMinor','pricesMinor','remove'];else if(d.action!=='rooms')fail('invalid-argument');
  if(['quote','save'].includes(d.action))extra.push('inputCurrency','ratesId',...(d.action==='quote'?['bookingId']:[]));
  if(d.action==='command')extra.push('inputCurrency','inputAmountMinor','ratesId');
  if(d.inputCurrency!==undefined&&!['VND','USD'].includes(d.inputCurrency))fail('invalid-argument');
@@ -30,18 +48,28 @@ function createBookingWorkspaceHandler({db,Timestamp,HttpsError,calendar}){const
  const org=await tx.get(db.doc(`organizations/${d.organizationId}`)),member=await tx.get(db.doc(`memberships/${uid}_${d.organizationId}`)),m=member.data(),scope={organizationId:d.organizationId,userId:uid,buildingId:d.buildingId};if(!org.exists||org.data().accessVersion!==2||!allows(m,'readBookings',{...scope,anyRecord:true}))fail('permission-denied');
  const own=x=>({...scope,record:x});// "own records only" grants are checked per booking
  const building=await tx.get(db.doc(`buildings/${d.buildingId}`)),b=building.data();if(!b||b.organizationId!==d.organizationId)fail('not-found');const zone=b.timeZone;if(!validZone(zone))fail('failed-precondition','lease_property_timezone_required');
- if(d.action==='rooms'){const rows=await tx.get(db.collection('rooms').where('organizationId','==',d.organizationId).where('buildingId','==',d.buildingId));const staffDocs=await tx.get(db.collection('staffProfiles').where('organizationId','==',d.organizationId));const staff=staffDocs.docs.filter(v=>v.data().employmentStatus!=='inactive').map(v=>({id:v.id,displayName:String(v.data().displayName??'')})).sort((a,b)=>a.displayName.localeCompare(b.displayName));const accounts=(Array.isArray(org.data().paymentAccounts)?org.data().paymentAccounts:[]).filter(plain).map(a=>({id:a.id,label:a.label}));const lists=await tx.get(db.collection('roomPriceLists').where('organizationId','==',d.organizationId).where('buildingId','==',d.buildingId));const saved=new Map(lists.docs.map(v=>[v.id,v.data()]));return {canPrice:allows(m,'overridePrices',scope),canSavePrices:allows(m,'saveRoomPrices',scope),canCollect:allows(m,'collectPayments',scope),canReadGuestIds:allows(m,'readGuestIds',scope),staff,accounts,// 2026-10-04: every room takes short stays and leases.
- records:rows.docs.filter(v=>!v.data().deletedAt).map(v=>{const x=v.data(),nightly=x.nightlyPrice??x.dailyPrice;return {id:v.id,roomNumber:x.roomNumber??v.id,currency:x.currency??'VND',nightlyPriceMinor:typeof nightly==='number'&&nightly>0?Math.round(nightly*((x.currency??'VND')==='USD'?100:1)):null,hourlyPriceMinor:typeof x.hourlyPrice==='number'&&x.hourlyPrice>0?Math.round(x.hourlyPrice*((x.currency??'VND')==='USD'?100:1)):null,savedNightPricesMinor:savedMinor(saved.get(v.id),x.currency??'VND')};}),timeZone:zone,today:localDay(Date.now(),zone)};}
+ if(d.action==='rooms'){const listCurrency=b.currency??'VND';
+ // Speed (2026-10-09): the rooms, staff and price list are read together.
+ const [rows,staffDocs,prices]=await Promise.all([tx.get(db.collection('rooms').where('organizationId','==',d.organizationId).where('buildingId','==',d.buildingId)),tx.get(db.collection('staffProfiles').where('organizationId','==',d.organizationId)),readBuildingList(tx,db,d.organizationId,d.buildingId,listCurrency)]);const staff=staffDocs.docs.filter(v=>v.data().employmentStatus!=='inactive').map(v=>({id:v.id,displayName:String(v.data().displayName??'')})).sort((a,b)=>a.displayName.localeCompare(b.displayName));const accounts=(Array.isArray(org.data().paymentAccounts)?org.data().paymentAccounts:[]).filter(plain).map(a=>({id:a.id,label:a.label}));return {priceListCurrency:listCurrency,canPrice:allows(m,'overridePrices',scope),canSavePrices:allows(m,'saveRoomPrices',scope),canCollect:allows(m,'collectPayments',scope),canReadGuestIds:allows(m,'readGuestIds',scope),staff,accounts,// 2026-10-04: every room takes short stays and leases.
+ records:rows.docs.filter(v=>!v.data().deletedAt).map(v=>{const x=v.data(),nightly=x.nightlyPrice??x.dailyPrice;return {id:v.id,roomNumber:x.roomNumber??v.id,currency:x.currency??'VND',nightlyPriceMinor:typeof nightly==='number'&&nightly>0?Math.round(nightly*((x.currency??'VND')==='USD'?100:1)):null,hourlyPriceMinor:typeof x.hourlyPrice==='number'&&x.hourlyPrice>0?Math.round(x.hourlyPrice*((x.currency??'VND')==='USD'?100:1)):null,savedNightPricesMinor:(x.currency??'VND')===listCurrency?prices.list:[]};}),timeZone:zone,today:localDay(Date.now(),zone)};}
  if(d.action==='prices'){
   if(!allows(m,'saveRoomPrices',scope))fail('permission-denied');
-  if(!id(d.roomId)||!Number.isSafeInteger(d.priceMinor)||d.priceMinor<=0||d.priceMinor>1e12||d.remove!==undefined&&typeof d.remove!=='boolean')fail('invalid-argument');
-  const room=await tx.get(db.doc(`rooms/${d.roomId}`)),x=room.data();if(!x||x.organizationId!==d.organizationId||x.buildingId!==d.buildingId||x.deletedAt)fail('not-found');
-  const currency=x.currency??'VND',scale=currency==='USD'?100:1,ref=db.doc(`roomPriceLists/${d.roomId}`);
-  let list=savedMinor((await tx.get(ref)).data(),currency);
-  if(d.remove)list=list.filter(v=>v!==d.priceMinor);else if(!list.includes(d.priceMinor)){if(list.length>=MAX_SAVED_PRICES)fail('failed-precondition','booking_saved_prices_full');list.push(d.priceMinor);}
+  // One price (priceMinor, or remove it) or several to add at once (pricesMinor: the nights typed one by one).
+  const okPrice=v=>Number.isSafeInteger(v)&&v>0&&v<=1e12;
+  const many=d.pricesMinor!==undefined;
+  if((d.roomId!==undefined&&!id(d.roomId))||(many?(!Array.isArray(d.pricesMinor)||!d.pricesMinor.length||d.pricesMinor.length>MAX_SAVED_PRICES||!d.pricesMinor.every(okPrice)||d.priceMinor!==undefined||d.remove!==undefined):!okPrice(d.priceMinor))||d.remove!==undefined&&typeof d.remove!=='boolean')fail('invalid-argument');
+  const currency=b.currency??'VND',scale=scaleOf(currency);
+  const {ref,list:current}=await readBuildingList(tx,db,d.organizationId,d.buildingId,currency);
+  let list=[...current];
+  if(d.remove)list=list.filter(v=>v!==d.priceMinor);
+  else{
+   const add=[...new Set(many?d.pricesMinor:[d.priceMinor])].filter(v=>!list.includes(v));
+   if(list.length+add.length>MAX_SAVED_PRICES)fail('failed-precondition','booking_saved_prices_full');
+   list.push(...add);
+  }
   list.sort((a,b)=>a-b);
-  tx.set(ref,{organizationId:d.organizationId,buildingId:d.buildingId,roomId:d.roomId,currency,prices:list.map(v=>v/scale),updatedAt:Timestamp.now(),updatedBy:uid});
-  return {roomId:d.roomId,savedNightPricesMinor:list};
+  tx.set(ref,{organizationId:d.organizationId,buildingId:d.buildingId,currency,prices:list.map(v=>v/scale),updatedAt:Timestamp.now(),updatedBy:uid});
+  return {buildingId:d.buildingId,currency,savedNightPricesMinor:list};
  }
  const seeIds=allows(m,'readGuestIds',scope),idText=v=>typeof v==='string'&&v?(seeIds?v:masked(v)):'';
  const projection=(doc,numbers=new Map(),staffNames=new Map())=>{const x=doc.data(),iso=v=>v?.toDate?.().toISOString()??null;const local=v=>{if(!v?.toDate)return '';const p=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(v.toDate()).map(p=>[p.type,p.value]));return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`;};return {id:doc.id,revision:revision(doc),roomId:x.roomId,roomNumber:numbers.get(x.roomId)??'',guestName:x.guestName??'',guestPhone:x.guestPhone??'',notes:x.notes??'',status:x.status,startTime:iso(x.startTime),endTime:iso(x.endTime),startLocal:local(x.startTime),endLocal:local(x.endTime),currency:x.currency,totalPrice:x.totalPrice,paidAmount:x.paidAmount,depositAmount:x.depositAmount??0,depositPaidAmount:x.depositPaidAmount??0,depositRefundedAmount:x.depositRefundedAmount??0,pricingType:x.pricingType,timeZone:zone,guestIdNumber:idText(x.guestIdNumber),guests:(Array.isArray(x.guests)?x.guests:[]).filter(plain).map(g=>({id:g.id,name:g.name??'',idNumber:idText(g.idNumber)})),numberOfGuests:x.numberOfGuests??null,staffInChargeId:x.staffInChargeId??null,staffName:staffNames.get(x.staffInChargeId)??'',platform:x.platform??null,contactChannel:x.contactChannel??null,depositNote:x.depositNote??'',depositPayment:plain(x.depositPayment)?{amount:x.depositPayment.amount,paymentMethod:x.depositPayment.paymentMethod,paidOn:x.depositPayment.paidOn??''}:null,priceOverride:plain(x.priceOverride)&&typeof x.priceOverride.total==='number'?{total:x.priceOverride.total,calculatedTotal:x.priceOverride.calculatedTotal??null,reason:String(x.priceOverride.reason??''),byName:String(x.priceOverride.byName??''),at:iso(x.priceOverride.at)}:null,surcharges:(Array.isArray(x.surcharges)?x.surcharges:[]).filter(plain).map(s=>({label:s.label,amount:s.amount,...(s.basis==='person'?{basis:'person',unitAmount:s.unitAmount,count:s.count}:{})})),nightPrices:Array.isArray(x.nightPrices)?x.nightPrices:null,hourlyPrice:typeof x.hourlyPrice==='number'?x.hourlyPrice:null,canReadGuestIds:seeIds,canManage:allows(m,'manageBookings',own(x)),canCollect:allows(m,'collectPayments',scope),canRefund:allows(m,'refundPayments',scope)};};
@@ -91,7 +119,7 @@ function createBookingWorkspaceHandler({db,Timestamp,HttpsError,calendar}){const
  const scale=(r.currency??'VND')==='USD'?100:1;
  // Custom night prices need "Đổi giá". Left out on an edit, prices already on the booking are kept while the night count still fits.
  // Without "Đổi giá" the nights may still use the room's price and its saved prices (2026-10-09, Tom), in the room's own currency.
- const onlySaved=async()=>{if(sourceRates||!Array.isArray(d.nightPricesMinor)||!d.nightPricesMinor.length)return false;const ok=new Set(savedMinor((await tx.get(db.doc(`roomPriceLists/${d.roomId}`))).data(),sourceCurrency)),own=r.nightlyPrice??r.dailyPrice;if(typeof own==='number'&&own>0)ok.add(Math.round(own*scale));return d.nightPricesMinor.every(v=>ok.has(v));};
+ const onlySaved=async()=>{if(sourceRates||!Array.isArray(d.nightPricesMinor)||!d.nightPricesMinor.length)return false;const ok=new Set((await readBuildingList(tx,db,d.organizationId,d.buildingId,b.currency??'VND')).list.filter(()=>(r.currency??'VND')===(b.currency??'VND'))),own=r.nightlyPrice??r.dailyPrice;if(typeof own==='number'&&own>0)ok.add(Math.round(own*scale));return d.nightPricesMinor.every(v=>ok.has(v));};
  if(d.nightPricesMinor!=null&&(d.pricingType!=='nightly'||!allows(m,'overridePrices',scope)&&!(await onlySaved())))fail('permission-denied');
  const keptNights=d.nightPricesMinor===undefined&&d.pricingType==='nightly'&&current?.pricingType==='nightly'&&Array.isArray(current.nightPrices)?current.nightPrices.map(v=>Math.round(v*scale)):null;
  // Price per hour (2026-10-03): another price than the room's needs "Đổi giá". Left out on an edit, the booking's own hourly price is kept.

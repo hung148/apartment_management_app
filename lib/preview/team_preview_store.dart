@@ -66,8 +66,13 @@ class TeamPreviewStore {
   final operationalInvoices = <Map<String, dynamic>>[];
   final operationalBookings = <Map<String, dynamic>>[];
 
-  /// Saved nightly prices per room, in minor units (2026-10-09, Tom).
-  final roomPriceLists = <String, List<int>>{};
+  /// Saved nightly prices per building, in minor units (2026-10-09, Tom: one
+  /// list for all rooms of a building). A building without a list shows
+  /// [defaultNightPrices] until the list is first changed, like the server.
+  final buildingPriceLists = <String, List<int>>{};
+  List<int> defaultNightPrices = const [];
+  List<int> nightPricesOf(String buildingId) =>
+      buildingPriceLists[buildingId] ?? List.of(defaultNightPrices);
   final tasks = <Map<String, dynamic>>[
     {
       'id': 'clean-101',

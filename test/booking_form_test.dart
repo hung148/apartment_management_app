@@ -117,7 +117,7 @@ void main() {
       'currency': 'VND',
     });
     if (saved != null) {
-      s.roomPriceLists[s.rooms.last['id'] as String] = List.of(saved);
+      s.buildingPriceLists['riverside'] = List.of(saved);
     }
     await mountReview(
       tester,
@@ -235,23 +235,22 @@ void main() {
     },
   );
 
-  // 2026-10-09 (Tom): saved nightly prices per room, as chips to tap.
+  // 2026-10-09 (Tom): saved nightly prices, one list per building, as chips.
   testWidgets(
-    'saved prices: the price in the box is saved, tapped and removed',
+    'saved prices: saved, tapped, removed; the room price is always a chip',
     (tester) async {
       final s = await openNew(tester);
-      final roomId = s.rooms.last['id'] as String;
       final save = find.byKey(const ValueKey('booking-save-price'));
-      // The room's own price is not saved yet: it can be.
-      expect(tester.widget<ActionChip>(save).onPressed, isNotNull);
+      // The room's own price is a chip (no ×) and is already in the box.
+      final own = find.byKey(const ValueKey('booking-saved-price-500000'));
+      expect(tester.widget<InputChip>(own).onDeleted, isNull);
+      expect(tester.widget<ActionChip>(save).onPressed, isNull);
       await enter(tester, 'ops-unitPrice', '650000');
       await tester.pumpAndSettle();
       await tapKey(tester, 'booking-save-price');
-      expect(s.roomPriceLists[roomId], [650000]);
+      expect(s.buildingPriceLists['riverside'], [650000]);
       final chip = find.byKey(const ValueKey('booking-saved-price-650000'));
       expect(chip, findsOneWidget);
-      expect(find.text('650,000 VND'), findsOneWidget);
-      // Saved already: nothing to save again.
       expect(tester.widget<ActionChip>(save).onPressed, isNull);
       // Another price typed, then the saved one tapped.
       await enter(tester, 'ops-unitPrice', '480000');
@@ -271,29 +270,135 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(s.roomPriceLists[roomId], isEmpty);
+      expect(s.buildingPriceLists['riverside'], isEmpty);
       expect(chip, findsNothing);
       expect(tester.takeException(), isNull);
     },
   );
 
+  // Tom (2026-10-09): a saved price is still there for the next booking and
+  // for every room of the building.
+  testWidgets('saved prices stay for the next booking and every room', (
+    tester,
+  ) async {
+    final s = await openNew(tester);
+    await enter(tester, 'ops-unitPrice', '650000');
+    await tester.pumpAndSettle();
+    await tapKey(tester, 'booking-save-price');
+    await press(tester, 'Cancel');
+    await press(tester, 'New booking');
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('booking-saved-price-650000')),
+      findsOneWidget,
+    );
+    // The other room of the building (no price of its own) shows it too.
+    await tapKey(tester, 'booking-room-room-101');
+    expect(
+      find.byKey(const ValueKey('booking-saved-price-650000')),
+      findsOneWidget,
+    );
+    expect(s.buildingPriceLists.keys, ['riverside']);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
-    'saved prices: without "Đổi giá" a saved price is picked, not typed; nothing is saved',
+    'saved prices: a building starts with its defaults; removed ones stay removed',
+    (tester) async {
+      final s = store()..defaultNightPrices = [300000, 400000];
+      final rooms = await s.call('bookingWorkspace', {
+        'action': 'rooms',
+        'organizationId': 'preview',
+        'buildingId': 'riverside',
+      });
+      for (final r in rooms['records'] as List) {
+        expect((r as Map)['savedNightPricesMinor'], [300000, 400000]);
+      }
+      await s.call('bookingWorkspace', {
+        'action': 'prices',
+        'organizationId': 'preview',
+        'buildingId': 'riverside',
+        'priceMinor': 300000,
+        'remove': true,
+      });
+      expect(s.nightPricesOf('riverside'), [400000]);
+    },
+  );
+
+  testWidgets(
+    'different price each night: a chip fills every night, the ▾ one night, new ones are saved',
+    (tester) async {
+      final s = await openNew(tester, saved: [450000, 650000]);
+      await enter(tester, 'ops-endLocal', '2026-10-13 12:00');
+      await tester.pumpAndSettle();
+      await tapKey(tester, 'booking-custom-nights');
+      // Every night at once.
+      await tapKey(tester, 'booking-all-nights-price-450000');
+      for (var i = 0; i < 3; i++) {
+        expect(text(tester, 'ops-night-$i'), '450,000');
+      }
+      // One night from its ▾.
+      await tapKey(tester, 'booking-night-menu-1');
+      await tester.tap(
+        find.byKey(const ValueKey('booking-night-1-price-650000')),
+      );
+      await tester.pumpAndSettle();
+      expect(text(tester, 'ops-night-1'), '650,000');
+      // A typed price is saved from its ▾ …
+      await enter(tester, 'ops-night-2', '520000');
+      await tester.pumpAndSettle();
+      await tapKey(tester, 'booking-night-menu-2');
+      await tester.tap(find.byKey(const ValueKey('booking-night-2-save')));
+      await tester.pumpAndSettle();
+      expect(s.buildingPriceLists['riverside'], [450000, 520000, 650000]);
+      // … or all new nights at once.
+      await enter(tester, 'ops-night-0', '530000');
+      await enter(tester, 'ops-night-2', '540000');
+      await tester.pumpAndSettle();
+      await tapKey(tester, 'booking-save-night-prices');
+      expect(s.buildingPriceLists['riverside'], [
+        450000,
+        520000,
+        530000,
+        540000,
+        650000,
+      ]);
+      await press(tester, 'Review calculation');
+      await press(tester, 'Confirm and save');
+      expect(
+        s.operationalBookings.single['totalPrice'],
+        530000 + 650000 + 540000,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'saved prices: without "Đổi giá" prices are picked, not typed; nothing is saved',
     (tester) async {
       final s = await openNew(tester, role: 'receptionist', saved: [450000]);
       expect(find.byKey(const ValueKey('booking-save-price')), findsNothing);
       final chip = find.byKey(const ValueKey('booking-saved-price-450000'));
       expect(tester.widget<InputChip>(chip).onDeleted, isNull);
-      final box = tester.widget<TextFormField>(
-        find.byKey(const ValueKey('ops-unitPrice')),
+      expect(
+        tester
+            .widget<TextFormField>(find.byKey(const ValueKey('ops-unitPrice')))
+            .enabled,
+        isFalse,
       );
-      expect(box.enabled, isFalse);
       await tapKey(tester, 'booking-saved-price-450000');
       expect(text(tester, 'ops-unitPrice'), '450,000');
+      // Each night too, from the list only.
+      await tapKey(tester, 'booking-custom-nights');
+      await tapKey(tester, 'booking-night-menu-1');
+      await tester.tap(
+        find.byKey(const ValueKey('booking-night-1-price-500000')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('booking-night-1-save')), findsNothing);
       await press(tester, 'Review calculation');
-      expect(find.text('900,000 VND'), findsWidgets);
       await press(tester, 'Confirm and save');
-      expect(s.operationalBookings.single['totalPrice'], 900000);
+      expect(s.operationalBookings.single['totalPrice'], 450000 + 500000);
       expect(tester.takeException(), isNull);
     },
   );
@@ -303,16 +408,16 @@ void main() {
   ) async {
     final s = await openNew(
       tester,
-      saved: [for (var i = 1; i <= 8; i++) i * 100000],
+      saved: [for (var i = 1; i <= 12; i++) i * 100000],
     );
     await enter(tester, 'ops-unitPrice', '950000');
     await tester.pumpAndSettle();
     await tapKey(tester, 'booking-save-price');
     expect(
-      find.text('This room already has 8 saved prices. Remove one first.'),
+      find.text('This building already has 12 saved prices. Remove one first.'),
       findsOneWidget,
     );
-    expect(s.roomPriceLists.values.single, hasLength(8));
+    expect(s.buildingPriceLists['riverside'], hasLength(12));
     expect(text(tester, 'ops-unitPrice'), '950,000');
   });
 
