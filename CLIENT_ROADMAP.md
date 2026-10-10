@@ -308,7 +308,7 @@ the server). Measure before and after each step on staging.
 1. [x] Check on staging, then commit: instant "Đặt phòng" (kept options +
    prefetch), booking preview while it loads, no calendar reload after a page
    that changed nothing, Tháng -> Ngày without a server call.
-2. [x] Server cold start: Firestore `preferRest: true` (index.js, the db
+2. [x] (2026-10-10: measured, turned back OFF — warm calls ~2x faster on gRPC, e.g. calendarView 746 -> 340 ms; flag FIRESTORE_OVER_REST in index.js) Server cold start: Firestore `preferRest: true` (index.js, the db
    instance). Measure the first call after idle before/after.
 3. [x] (2026-10-10: 25 KB and 227 KB) Background images as WebP (background_image_1920.jpg 85 KB,
    background_image3_1920.jpg 334 KB); keep the originals on disk.
