@@ -161,7 +161,9 @@ class _TenantContactsScreenState extends State<TenantContactsScreen> {
       }
     });
     try {
-      final existing = more ? List<Map<String, dynamic>>.of(_rows) : <Map<String, dynamic>>[];
+      final existing = more
+          ? List<Map<String, dynamic>>.of(_rows)
+          : <Map<String, dynamic>>[];
       await for (final answer in widget.service.tenantListLive({
         'action': 'list',
         ..._identity,
@@ -637,6 +639,7 @@ class _TenantContactsScreenState extends State<TenantContactsScreen> {
                 currency: r['currency'] as String? ?? 'VND',
                 monthlyRentMinor: r['monthlyRentMinor'],
                 periodRentMinor: r['periodRentMinor'],
+                periodRentOverride: r['periodRentOverride'] as Map?,
                 periodMonths: (r['paymentPeriodMonths'] as int?) ?? 1,
                 canPrice: r['canReadRentHistory'] == true,
                 canEdit: r['canEditRent'] == true && !locked,
@@ -900,7 +903,13 @@ class _TenantContactsScreenState extends State<TenantContactsScreen> {
               child: LinearProgressIndicator(),
             ),
           if (_showingSaved && _selected == null)
-            WsNotice(w('Showing saved data while refreshing.', 'Đang hiển thị dữ liệu đã lưu trong khi cập nhật.'), tone: WsTone.info),
+            WsNotice(
+              w(
+                'Showing saved data while refreshing.',
+                'Đang hiển thị dữ liệu đã lưu trong khi cập nhật.',
+              ),
+              tone: WsTone.info,
+            ),
           if (_message != null)
             Semantics(
               liveRegion: true,

@@ -70,6 +70,17 @@ String _leaseText(BuildContext context, String key) {
       'Mỗi kỳ: {amount} (tiền thuê × {n}).',
     ],
     'periodAmount': ['Amount per period', 'Số tiền mỗi kỳ'],
+    // Fix 5 (2026-10-09, Tom): another amount than rent × months needs
+    // "Đổi giá" and a reason; the lease keeps the calculated amount and who.
+    'periodReason': ['Reason for the change', 'Lý do đổi giá'],
+    'periodCalculated': [
+      'Calculated: {amount} (rent × {n}).',
+      'Tính ra: {amount} (tiền thuê × {n}).',
+    ],
+    'periodReasonRequired': [
+      'Enter why the amount differs.',
+      'Nhập lý do số tiền khác.',
+    ],
     'deposit': ['Deposit amount (optional)', 'Tiền cọc (không bắt buộc)'],
     'cash': ['Cash', 'Tiền mặt'],
     'transfer': ['Bank transfer', 'Chuyển khoản'],
@@ -199,6 +210,7 @@ class _TenantLeaseScreenState extends State<TenantLeaseScreen> {
       'residenceDate',
       'dueDay',
       'periodAmount',
+      'periodReason',
       'deposit',
       'depositNote',
       'electricity',
@@ -292,6 +304,7 @@ class _TenantLeaseScreenState extends State<TenantLeaseScreen> {
     _periodMonths = 1;
     _ownDueDay = false;
     _ownAmount = false;
+    _fields['periodReason']!.clear();
     _startPhoto = null;
     _warning = null;
     _waterBasis = 'person';
@@ -385,7 +398,9 @@ class _TenantLeaseScreenState extends State<TenantLeaseScreen> {
         // The room's monthly price as a starting point for the rent.
         int? roomRent = _record!['monthlyRentMinor'] as int?;
         final source = _record!['roomRent'];
-        if (roomRent == null && source is Map && source['amountMinor'] is int &&
+        if (roomRent == null &&
+            source is Map &&
+            source['amountMinor'] is int &&
             source['currency'] is String) {
           final sourceCurrency = source['currency'] as String;
           if (sourceCurrency == _currency) {
@@ -393,7 +408,9 @@ class _TenantLeaseScreenState extends State<TenantLeaseScreen> {
           } else {
             try {
               roomRent = _conversion.conversion?.convertMinor(
-                source['amountMinor'] as int, sourceCurrency, _currency,
+                source['amountMinor'] as int,
+                sourceCurrency,
+                _currency,
               );
             } on StateError {
               // Without rates, leave the suggested rent empty. Never relabel
@@ -480,8 +497,10 @@ class _TenantLeaseScreenState extends State<TenantLeaseScreen> {
       if (_staffId != null) 'staffInChargeId': _staffId,
       'periodMonths': _periodMonths,
       'dueDay': ?due,
-      if (period != null && rent != null && period != rent * _periodMonths)
+      if (period != null && rent != null && period != rent * _periodMonths) ...{
         'periodAmountMinor': period,
+        'periodAmountReason': _fields['periodReason']!.text.trim(),
+      },
       if (deposit != null && deposit > 0) ...{
         'depositMinor': deposit,
         'depositMethod': _depositMethod,
@@ -1004,27 +1023,29 @@ class _TenantLeaseScreenState extends State<TenantLeaseScreen> {
                 style: muted,
               ),
             const SizedBox(height: WsSpace.sm),
-            SwitchListTile(
-              key: const ValueKey('lease-own-amount'),
-              contentPadding: EdgeInsets.zero,
-              title: Text(lt('ownAmount')),
-              value: _ownAmount,
-              onChanged: _locked
-                  ? null
-                  : (v) => setState(() {
-                      _ownAmount = v;
-                      // Start from the usual amount.
-                      if (v &&
-                          _fields['periodAmount']!.text.trim().isEmpty &&
-                          rentMinor != null) {
-                        _conversion.set(
-                          _fields['periodAmount']!,
-                          rentMinor * _periodMonths,
-                          _currency,
-                        );
-                      }
-                    }),
-            ),
+            // Another amount per period is a price change: "Đổi giá" only.
+            if (r['canPrice'] == true || _ownAmount)
+              SwitchListTile(
+                key: const ValueKey('lease-own-amount'),
+                contentPadding: EdgeInsets.zero,
+                title: Text(lt('ownAmount')),
+                value: _ownAmount,
+                onChanged: _locked
+                    ? null
+                    : (v) => setState(() {
+                        _ownAmount = v;
+                        // Start from the usual amount.
+                        if (v &&
+                            _fields['periodAmount']!.text.trim().isEmpty &&
+                            rentMinor != null) {
+                          _conversion.set(
+                            _fields['periodAmount']!,
+                            rentMinor * _periodMonths,
+                            _currency,
+                          );
+                        }
+                      }),
+              ),
             if (_ownAmount)
               input(
                 'periodAmount',
@@ -1034,9 +1055,37 @@ class _TenantLeaseScreenState extends State<TenantLeaseScreen> {
                 keyboard: TextInputType.numberWithOptions(
                   decimal: _inputCurrency == 'USD',
                 ),
+                helper: rentMinor == null
+                    ? null
+                    : lt('periodCalculated')
+                          .replaceAll(
+                            '{amount}',
+                            _money(rentMinor * _periodMonths),
+                          )
+                          .replaceAll('{n}', '$_periodMonths'),
+                onChanged: (_) => setState(() {}),
                 check: (v) => parseRoomRate(v, _inputCurrency) == null
                     ? t['lease_form_invalid_rent']
                     : null,
+              ),
+            if (_ownAmount)
+              input(
+                'periodReason',
+                label: lt('periodReason'),
+                max: 1000,
+                check: (v) {
+                  final period = _conversion.parse(
+                    _fields['periodAmount']!,
+                    _currency,
+                  );
+                  final differs =
+                      period != null &&
+                      rentMinor != null &&
+                      period != rentMinor * _periodMonths;
+                  return differs && v.isEmpty
+                      ? lt('periodReasonRequired')
+                      : null;
+                },
               )
             else if (rentMinor != null)
               Text(

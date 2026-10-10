@@ -9,7 +9,8 @@ part 'operational_preview.dart';
 class TeamPreviewStore {
   String organizationCurrency = 'VND';
   int currencyRevision = 0;
-  Map<String,dynamic>? ownershipTransfer;
+  Map<String, dynamic>? ownershipTransfer;
+
   /// "Today" at the preview property (YYYY-MM-DD); tests may set it.
   String previewToday = () {
     final n = DateTime.now();
@@ -64,6 +65,9 @@ class TeamPreviewStore {
   final invoiceHistories = <String, List<Map<String, dynamic>>>{};
   final operationalInvoices = <Map<String, dynamic>>[];
   final operationalBookings = <Map<String, dynamic>>[];
+
+  /// Saved nightly prices per room, in minor units (2026-10-09, Tom).
+  final roomPriceLists = <String, List<int>>{};
   final tasks = <Map<String, dynamic>>[
     {
       'id': 'clean-101',
@@ -489,18 +493,53 @@ class TeamPreviewStore {
   }
 
   Map<String, dynamic> _handle(String name, Map<String, dynamic> d) {
-    if(name=='transferOrganization') {
-      if(d['action']=='read')return {'owner':workspaceRole=='owner',
-        'candidates':workspaceRole=='owner'?[{'id':'preview-manager','name':'Nguyễn Thị Minh Anh — Quản lý Riverside'}]:[],
-        'proposal':ownershipTransfer==null?null:{...ownershipTransfer!, 'canAccept':workspaceRole=='manager'}};
-      if(d['action']=='propose'&&workspaceRole=='owner') {
-        ownershipTransfer={'id':d['proposalId'],'recipientName':'Nguyễn Thị Minh Anh — Quản lý Riverside'};return {'status':'pending'};
+    if (name == 'transferOrganization') {
+      if (d['action'] == 'read')
+        return {
+          'owner': workspaceRole == 'owner',
+          'candidates': workspaceRole == 'owner'
+              ? [
+                  {
+                    'id': 'preview-manager',
+                    'name': 'Nguyễn Thị Minh Anh — Quản lý Riverside',
+                  },
+                ]
+              : [],
+          'proposal': ownershipTransfer == null
+              ? null
+              : {
+                  ...ownershipTransfer!,
+                  'canAccept': workspaceRole == 'manager',
+                },
+        };
+      if (d['action'] == 'propose' && workspaceRole == 'owner') {
+        ownershipTransfer = {
+          'id': d['proposalId'],
+          'recipientName': 'Nguyễn Thị Minh Anh — Quản lý Riverside',
+        };
+        return {'status': 'pending'};
       }
-      if(d['action']=='cancel'&&workspaceRole=='owner') {ownershipTransfer=null;return {'status':'cancelled'};}
-      if(d['action']=='accept'&&workspaceRole=='manager'&&ownershipTransfer!=null) {workspaceRole='owner';ownershipTransfer=null;return {'status':'complete'};}
-      throw FirebaseFunctionsException(code:'failed-precondition',message:'org_transfer_changed');
+      if (d['action'] == 'cancel' && workspaceRole == 'owner') {
+        ownershipTransfer = null;
+        return {'status': 'cancelled'};
+      }
+      if (d['action'] == 'accept' &&
+          workspaceRole == 'manager' &&
+          ownershipTransfer != null) {
+        workspaceRole = 'owner';
+        ownershipTransfer = null;
+        return {'status': 'complete'};
+      }
+      throw FirebaseFunctionsException(
+        code: 'failed-precondition',
+        message: 'org_transfer_changed',
+      );
     }
-    if(name == 'ownershipAgreements') throw FirebaseFunctionsException(code: 'failed-precondition', message: 'organization_governance_retired');
+    if (name == 'ownershipAgreements')
+      throw FirebaseFunctionsException(
+        code: 'failed-precondition',
+        message: 'organization_governance_retired',
+      );
     if (name == 'claimMyInvitations')
       return {'results': <Map<String, dynamic>>[]};
     if (name == 'listMyOrganizations')
@@ -513,18 +552,32 @@ class TeamPreviewStore {
         'records': accountWorkplaces,
         'nextCursor': null,
       };
-    if (name == 'organizationSettings' && ['readCurrency','updateCurrency'].contains(d['action'])) {
+    if (name == 'organizationSettings' &&
+        ['readCurrency', 'updateCurrency'].contains(d['action'])) {
       final allowed = workspaceRole == 'owner';
-      if(d['action']=='updateCurrency') {
-        if(!allowed) throw FirebaseFunctionsException(code:'permission-denied',message:'Denied');
-        final key='currency-${d['operationId']}';
-        if(completed.containsKey(key)) return completed[key]!;
-        if(d['revision']!=currencyRevision) throw FirebaseFunctionsException(code:'aborted',message:'Changed');
-        organizationCurrency=d['currency'] as String;
+      if (d['action'] == 'updateCurrency') {
+        if (!allowed)
+          throw FirebaseFunctionsException(
+            code: 'permission-denied',
+            message: 'Denied',
+          );
+        final key = 'currency-${d['operationId']}';
+        if (completed.containsKey(key)) return completed[key]!;
+        if (d['revision'] != currencyRevision)
+          throw FirebaseFunctionsException(code: 'aborted', message: 'Changed');
+        organizationCurrency = d['currency'] as String;
         currencyRevision++;
-        return completed[key]={'currency':organizationCurrency,'revision':currencyRevision,'canChange':allowed};
+        return completed[key] = {
+          'currency': organizationCurrency,
+          'revision': currencyRevision,
+          'canChange': allowed,
+        };
       }
-      return {'currency':organizationCurrency,'revision':currencyRevision,'canChange':allowed};
+      return {
+        'currency': organizationCurrency,
+        'revision': currencyRevision,
+        'canChange': allowed,
+      };
     }
     if (name == 'organizationSettings' &&
         const ['create', 'createLegacy', 'restore'].contains(d['action']) &&
@@ -959,7 +1012,31 @@ class TeamPreviewStore {
           message: 'occupied',
         );
       }
+      // Fix 5 (2026-10-09), like the server: another amount than rent ×
+      // months needs "Đổi giá" and a reason, and is kept with them.
+      final calculatedPeriod =
+          (d['rentMinor'] as int) * ((d['periodMonths'] as int?) ?? 1);
+      final ownPeriod =
+          d['periodAmountMinor'] != null &&
+          d['periodAmountMinor'] != calculatedPeriod;
+      final periodReason = '${d['periodAmountReason'] ?? ''}'.trim();
+      if (ownPeriod &&
+          (!(workspaceRole != 'manager' || priceOverride) ||
+              periodReason.isEmpty)) {
+        throw FirebaseFunctionsException(
+          code: 'permission-denied',
+          message: 'lease_price_authority',
+        );
+      }
       tenants.add({
+        if (ownPeriod)
+          'periodRentOverride': {
+            'totalMinor': d['periodAmountMinor'],
+            'calculatedTotalMinor': calculatedPeriod,
+            'reason': periodReason,
+            'byName': 'Preview $workspaceRole',
+            'at': '2026-09-27T00:00:00.000Z',
+          },
         'id': key,
         'buildingId': d['buildingId'],
         'roomId': d['roomId'],
@@ -1400,21 +1477,50 @@ class TeamPreviewStore {
         );
       }
       final building = record(buildings, d['buildingId']);
-      if (d['action'] == 'prepareBulk') return {'record': {'currency': building['currency'] ?? 'VND', 'canSetRoomPrices': true}};
+      if (d['action'] == 'prepareBulk')
+        return {
+          'record': {
+            'currency': building['currency'] ?? 'VND',
+            'canSetRoomPrices': true,
+          },
+        };
       if (d['action'] == 'createBulk') {
-        final key='bulk-rooms-$workspaceRole-${d['operationId']}';
-        if(completed.containsKey(key)) return completed[key]!;
-        final drafts=(d['rooms'] as List).cast<Map>();
-        final names=rooms.where((r)=>r['buildingId']==d['buildingId']).map((r)=>(r['roomNumber'] as String).trim().toLowerCase()).toSet();
-        for(final r in drafts) {
-          if(!names.add((r['roomNumber'] as String).trim().toLowerCase())) throw FirebaseFunctionsException(code:'already-exists',message:'Duplicate');
+        final key = 'bulk-rooms-$workspaceRole-${d['operationId']}';
+        if (completed.containsKey(key)) return completed[key]!;
+        final drafts = (d['rooms'] as List).cast<Map>();
+        final names = rooms
+            .where((r) => r['buildingId'] == d['buildingId'])
+            .map((r) => (r['roomNumber'] as String).trim().toLowerCase())
+            .toSet();
+        for (final r in drafts) {
+          if (!names.add((r['roomNumber'] as String).trim().toLowerCase()))
+            throw FirebaseFunctionsException(
+              code: 'already-exists',
+              message: 'Duplicate',
+            );
         }
-        final ids=<String>[];
-        for(final (i,r) in drafts.indexed) {
-          final id='$key-$i';ids.add(id);final currency=building['currency']??'VND';
-          rooms.add({'id':id,'organizationId':'preview','buildingId':d['buildingId'],'roomNumber':r['roomNumber'],'roomType':r['roomType'],'area':r['area']??0,'revision':'1:0','currency':currency,'rentalMode':'both',for(final k in ['roomPrice','nightlyPrice','hourlyPrice']) k:r['ratesMinor'][k]==null?null:(r['ratesMinor'][k] as num)/(currency=='USD'?100:1)});
+        final ids = <String>[];
+        for (final (i, r) in drafts.indexed) {
+          final id = '$key-$i';
+          ids.add(id);
+          final currency = building['currency'] ?? 'VND';
+          rooms.add({
+            'id': id,
+            'organizationId': 'preview',
+            'buildingId': d['buildingId'],
+            'roomNumber': r['roomNumber'],
+            'roomType': r['roomType'],
+            'area': r['area'] ?? 0,
+            'revision': '1:0',
+            'currency': currency,
+            'rentalMode': 'both',
+            for (final k in ['roomPrice', 'nightlyPrice', 'hourlyPrice'])
+              k: r['ratesMinor'][k] == null
+                  ? null
+                  : (r['ratesMinor'][k] as num) / (currency == 'USD' ? 100 : 1),
+          });
         }
-        return completed[key]={'roomIds':ids};
+        return completed[key] = {'roomIds': ids};
       }
       if (d['action'] == 'prepareCreate') {
         return {
@@ -1571,13 +1677,23 @@ class TeamPreviewStore {
           'exploitationCostMinor': d['exploitationCostMinor'],
           'revision': '1:0',
         });
-        for(final (index,room) in ((d['rooms'] as List?)??[]).indexed) {
-          final r=Map<String,dynamic>.from(room as Map);
-          rooms.add({'id':'${d['buildingId']}-initial-$index','buildingId':d['buildingId'],
-            'organizationId':'preview','roomNumber':r['roomNumber'],'roomType':r['roomType'],
-            'area':r['area']??0,'currency':d['currency'],'rentalMode':'both',
-            for(final k in ['roomPrice','nightlyPrice','hourlyPrice']) k:
-              r['ratesMinor'][k]==null?null:(r['ratesMinor'][k] as num)/(d['currency']=='USD'?100:1)});
+        for (final (index, room) in ((d['rooms'] as List?) ?? []).indexed) {
+          final r = Map<String, dynamic>.from(room as Map);
+          rooms.add({
+            'id': '${d['buildingId']}-initial-$index',
+            'buildingId': d['buildingId'],
+            'organizationId': 'preview',
+            'roomNumber': r['roomNumber'],
+            'roomType': r['roomType'],
+            'area': r['area'] ?? 0,
+            'currency': d['currency'],
+            'rentalMode': 'both',
+            for (final k in ['roomPrice', 'nightlyPrice', 'hourlyPrice'])
+              k: r['ratesMinor'][k] == null
+                  ? null
+                  : (r['ratesMinor'][k] as num) /
+                        (d['currency'] == 'USD' ? 100 : 1),
+          });
         }
         activity.insert(0, {
           'id': key,
@@ -1631,7 +1747,8 @@ class TeamPreviewStore {
         }
         row['timeZone'] = d['timeZone'];
       }
-      if(d.containsKey('exploitationCostMinor')) row['exploitationCostMinor']=d['exploitationCostMinor'];
+      if (d.containsKey('exploitationCostMinor'))
+        row['exploitationCostMinor'] = d['exploitationCostMinor'];
       row['name'] = d['name'];
       row['address'] = d['address'];
       row['revision'] =

@@ -10,7 +10,7 @@
 // 'viewer' was removed (2026-09-29); a stored 'viewer' parses as no role (waiting).
 library;
 
-enum TeamPermission { deleteBuildings, deleteRooms, deleteBookings, deleteTenants, deleteProblems, deleteStaffProfiles, manageOrganization, changeOrganizationCurrency, manageTeam, manageRoles, assignAdditionalWorkplace, manageProperty, manageLease, readBookings, createBookings, manageBookings, collectPayments, overridePrices, refundPayments, readFinancialReports, readOwnActivity, readAllActivity, exportData, importData, connectDrive, backdateRecords, readAssignedTasks, updateAssignedTasks, readGuestIds }
+enum TeamPermission { deleteBuildings, deleteRooms, deleteBookings, deleteTenants, deleteProblems, deleteStaffProfiles, manageOrganization, changeOrganizationCurrency, manageTeam, manageRoles, assignAdditionalWorkplace, manageProperty, manageLease, readBookings, createBookings, manageBookings, collectPayments, overridePrices, refundPayments, readFinancialReports, readOwnActivity, readAllActivity, exportData, importData, connectDrive, backdateRecords, readAssignedTasks, updateAssignedTasks, readGuestIds, saveRoomPrices }
 
 /// How far a permission reaches.
 /// all: every property in the organization. managed: the member's own
@@ -58,12 +58,13 @@ class TeamPolicy {
     TeamPermission.readAssignedTasks: _property,
     TeamPermission.updateAssignedTasks: _property,
     TeamPermission.readGuestIds: _property,
+    TeamPermission.saveRoomPrices: _property,
   };
 
   /// Permission groups for the roles grid, in display order.
   static const groups = <String, List<TeamPermission>>{
     'bookings': [TeamPermission.deleteBookings, TeamPermission.readBookings, TeamPermission.createBookings, TeamPermission.manageBookings, TeamPermission.readGuestIds],
-    'money': [TeamPermission.collectPayments, TeamPermission.overridePrices, TeamPermission.refundPayments, TeamPermission.readFinancialReports],
+    'money': [TeamPermission.collectPayments, TeamPermission.overridePrices, TeamPermission.saveRoomPrices, TeamPermission.refundPayments, TeamPermission.readFinancialReports],
     'property': [TeamPermission.deleteBuildings, TeamPermission.deleteRooms, TeamPermission.deleteTenants, TeamPermission.manageProperty, TeamPermission.manageLease, TeamPermission.backdateRecords],
     'housekeeping': [TeamPermission.deleteProblems, TeamPermission.readAssignedTasks, TeamPermission.updateAssignedTasks],
     'team': [TeamPermission.deleteStaffProfiles, TeamPermission.manageTeam, TeamPermission.manageRoles, TeamPermission.readAllActivity, TeamPermission.readOwnActivity],
@@ -88,7 +89,7 @@ class TeamPolicy {
       TeamPermission.readOwnActivity: _a, TeamPermission.readAllActivity: _a, TeamPermission.exportData: _a,
       TeamPermission.importData: _a, TeamPermission.connectDrive: _a, TeamPermission.backdateRecords: _a,
       TeamPermission.readAssignedTasks: _m, TeamPermission.updateAssignedTasks: _m,
-      TeamPermission.readGuestIds: _m,
+      TeamPermission.readGuestIds: _m, TeamPermission.saveRoomPrices: _m,
     },
     'administrator': {
       TeamPermission.manageOrganization: _a, TeamPermission.manageTeam: _a,
@@ -98,12 +99,13 @@ class TeamPolicy {
       TeamPermission.readOwnActivity: _a, TeamPermission.readAllActivity: _a, TeamPermission.exportData: _a,
       TeamPermission.importData: _a, TeamPermission.connectDrive: _a, TeamPermission.backdateRecords: _a,
       TeamPermission.readAssignedTasks: _m, TeamPermission.updateAssignedTasks: _m,
-      TeamPermission.readGuestIds: _m,
+      TeamPermission.readGuestIds: _m, TeamPermission.saveRoomPrices: _m,
     },
     'manager': {
       TeamPermission.manageProperty: _m, TeamPermission.manageLease: _m, TeamPermission.readBookings: _m,
       TeamPermission.createBookings: _m, TeamPermission.manageBookings: _m, TeamPermission.collectPayments: _m,
       TeamPermission.overridePrices: _m, TeamPermission.readFinancialReports: _m, TeamPermission.readOwnActivity: _a,
+      TeamPermission.saveRoomPrices: _m,
     },
     'receptionist': {
       TeamPermission.readBookings: _m, TeamPermission.createBookings: _m, TeamPermission.manageBookings: _m,

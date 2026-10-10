@@ -335,9 +335,37 @@ extension OperationalPreview on TeamPreviewStore {
         'timeZone': zone,
       };
     }
+    // Saved nightly prices (2026-10-09, Tom): owner, administrator and
+    // manager may add and remove them, like the server's template.
+    if (d['action'] == 'prices') {
+      if (!manager) reject();
+      final price = d['priceMinor'];
+      if (price is! int || price <= 0) {
+        throw FirebaseFunctionsException(
+          code: 'invalid-argument',
+          message: 'booking_invalid-argument',
+        );
+      }
+      final room = record(rooms, d['roomId']);
+      final list = roomPriceLists.putIfAbsent(room['id'] as String, () => []);
+      if (d['remove'] == true) {
+        list.remove(price);
+      } else if (!list.contains(price)) {
+        if (list.length >= 8) {
+          throw FirebaseFunctionsException(
+            code: 'failed-precondition',
+            message: 'booking_saved_prices_full',
+          );
+        }
+        list.add(price);
+      }
+      list.sort();
+      return {'roomId': room['id'], 'savedNightPricesMinor': List.of(list)};
+    }
     if (d['action'] == 'rooms') {
       return {
         'canPrice': manager && priceOverride,
+        'canSavePrices': manager,
         'canCollect': book,
         'today': previewToday,
         'records': [
@@ -358,6 +386,9 @@ extension OperationalPreview on TeamPreviewStore {
                 final num v => (v * (r['currency'] == 'USD' ? 100 : 1)).round(),
                 _ => null,
               },
+              'savedNightPricesMinor': List.of(
+                roomPriceLists[r['id']] ?? const <int>[],
+              ),
             },
         ],
         'timeZone': zone,
@@ -413,6 +444,18 @@ extension OperationalPreview on TeamPreviewStore {
         end.day,
       ).difference(DateTime.utc(start.year, start.month, start.day)).inDays;
       final custom = (d['nightPricesMinor'] as List?)?.cast<int>();
+      // Like the server: without "Đổi giá" only the room's price and its
+      // saved prices, in the room's own currency.
+      if (custom != null && !(manager && priceOverride)) {
+        final own = room['nightlyPrice'] ?? room['dailyPrice'];
+        final ok = {
+          if (currency == (room['currency'] ?? 'VND')) ...[
+            ...?roomPriceLists[room['id']],
+            if (own is num) (own * scale).round(),
+          ],
+        };
+        if (custom.isEmpty || !custom.every(ok.contains)) reject();
+      }
       final calculatedAmount = custom != null
           ? custom.fold<int>(0, (a, b) => a + b)
           : (rate *
@@ -432,12 +475,41 @@ extension OperationalPreview on TeamPreviewStore {
       int line(Map s) =>
           (s['amountMinor'] as int) * (s['basis'] == 'person' ? guests : 1);
       final surchargesMinor = surcharges.fold<int>(0, (a, s) => a + line(s));
-      final base = d['overrideMinor'] as int? ?? calculatedAmount;
+      // An agreed room price (Fix 5, 2026-10-09), like the server: needs
+      // "Đổi giá" and a reason; left out of an edit it is kept; null removes it.
+      final current = d['bookingId'] == null
+          ? null
+          : operationalBookings
+                .where((v) => v['id'] == d['bookingId'])
+                .firstOrNull;
+      final had = current?['priceOverride'] as Map?;
+      final canPriceHere = manager && priceOverride;
+      final why = '${d['overrideReason'] ?? ''}'.trim();
+      if (d['overrideMinor'] != null && (!canPriceHere || why.isEmpty)) {
+        reject();
+      }
+      if (d.containsKey('overrideMinor') &&
+          d['overrideMinor'] == null &&
+          had != null &&
+          !canPriceHere) {
+        reject();
+      }
+      final agreedMinor =
+          d['overrideMinor'] as int? ??
+          (!d.containsKey('overrideMinor') && had != null
+              ? ((had['total'] as num) * scale).round()
+              : null);
+      final base = agreedMinor ?? calculatedAmount;
       final amount = base + surchargesMinor;
       final quote = {
         'totalMinor': amount,
         'baseMinor': base,
         'surchargesMinor': surchargesMinor,
+        if (agreedMinor != null) ...{
+          'calculatedMinor': calculatedAmount,
+          'agreedMinor': agreedMinor,
+          'agreedReason': d['overrideMinor'] != null ? why : had?['reason'],
+        },
         'guests': guests,
         'surchargeLines': [
           for (final s in surcharges)
@@ -524,6 +596,17 @@ extension OperationalPreview on TeamPreviewStore {
         'hourlyPrice': hourlyMinor == null ? null : hourlyMinor / scale,
         'nightPrices': custom?.map((v) => v / scale).toList(),
       });
+      if (d['overrideMinor'] != null) {
+        row['priceOverride'] = {
+          'total': (d['overrideMinor'] as int) / scale,
+          'calculatedTotal': calculatedAmount / scale,
+          'reason': why,
+          'byName': 'Preview $workspaceRole',
+          'at': '${previewToday}T00:00:00.000Z',
+        };
+      } else if (d.containsKey('overrideMinor') && had != null) {
+        row['priceOverride'] = null;
+      }
       // A deposit taken with the booking (2026-10-04) is a payment toward the total.
       final deposit = d['deposit'] as Map?;
       if (deposit != null) {

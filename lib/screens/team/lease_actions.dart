@@ -51,6 +51,11 @@ String leaseActionText(BuildContext context, String key) {
     'fromDay': ['From {date}', 'Từ {date}'],
     'perPeriod': ['Amount per period', 'Số tiền mỗi kỳ'],
     'perPeriodShort': ['{amount} per period', '{amount} mỗi kỳ'],
+    // Fix 5 (2026-10-09, Tom): an amount agreed with the lease.
+    'periodAgreed': [
+      'Calculated {amount} · {reason} · changed by {name}',
+      'Tính ra {amount} · {reason} · {name} đổi',
+    ],
     'until': ['until {date}', 'đến {date}'],
     'planned': ['planned', 'đã lên lịch'],
     'applied': ['in effect', 'đang áp dụng'],
@@ -575,6 +580,10 @@ class LeaseRentRows extends StatefulWidget {
   final String organizationId, buildingId, tenantId, currency;
   final Object? monthlyRentMinor, periodRentMinor;
 
+  /// The amount per period agreed with the lease: the calculated amount,
+  /// the reason and who changed it (Fix 5).
+  final Map? periodRentOverride;
+
   /// Months per payment period (1 = monthly).
   final int periodMonths;
 
@@ -589,6 +598,7 @@ class LeaseRentRows extends StatefulWidget {
     required this.currency,
     required this.monthlyRentMinor,
     this.periodRentMinor,
+    this.periodRentOverride,
     this.periodMonths = 1,
     required this.canPrice,
     required this.canEdit,
@@ -693,6 +703,8 @@ class _LeaseRentRowsState extends State<LeaseRentRows> {
         : rentNow is int
         ? rentNow * months
         : null;
+    // The amount agreed with the lease, while it counts (Fix 5).
+    final agreedPeriod = special ? widget.periodRentOverride : null;
     return Column(
       key: const ValueKey('lease-rent-rows'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -768,6 +780,21 @@ class _LeaseRentRowsState extends State<LeaseRentRows> {
               key: const ValueKey('lease-per-period'),
             ),
           ),
+        if (agreedPeriod case final o?)
+          Padding(
+            padding: const EdgeInsetsDirectional.only(start: 136, bottom: 2),
+            child: Text(
+              lt('periodAgreed')
+                  .replaceAll(
+                    '{amount}',
+                    _money(context, o['calculatedTotalMinor'], currency),
+                  )
+                  .replaceAll('{reason}', '${o['reason'] ?? ''}')
+                  .replaceAll('{name}', '${o['byName'] ?? ''}'),
+              key: const ValueKey('lease-period-agreed'),
+              style: muted,
+            ),
+          ),
       ],
     );
   }
@@ -790,7 +817,11 @@ class _RentDialog extends StatefulWidget {
 }
 
 class _RentDialogState extends State<_RentDialog> {
-  late final _conversion = MoneyForm(OrganizationMoney.shared.forOrganization(widget.identity['organizationId'] as String));
+  late final _conversion = MoneyForm(
+    OrganizationMoney.shared.forOrganization(
+      widget.identity['organizationId'] as String,
+    ),
+  );
   final _form = GlobalKey<FormState>();
   final _date = TextEditingController(),
       _amount = TextEditingController(),

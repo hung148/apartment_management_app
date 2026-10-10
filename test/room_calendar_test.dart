@@ -392,17 +392,81 @@ Future<void> tapBar(WidgetTester tester, String id) async {
 
 void main() {
   setUpAll(() async {
-    await (FontLoader('Roboto')..addFont(rootBundle.load('assets/fonts/Roboto-Regular.ttf'))).load();
-    await (FontLoader('Ahem')..addFont(rootBundle.load('assets/fonts/Roboto-Regular.ttf'))).load();
-    await (FontLoader('MaterialIcons')..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'))).load();
+    await (FontLoader(
+      'Roboto',
+    )..addFont(rootBundle.load('assets/fonts/Roboto-Regular.ttf'))).load();
+    await (FontLoader(
+      'Ahem',
+    )..addFont(rootBundle.load('assets/fonts/Roboto-Regular.ttf'))).load();
+    await (FontLoader(
+      'MaterialIcons',
+    )..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'))).load();
   });
-  testWidgets('narrow property selector stays entirely inside the viewport', (tester) async {
-    await mountCalendar(tester, calendarService(Calls()), size: const Size(320,740),
-      access: TeamAccess.fromMap(TeamPreviewStore.grant('owner')));
+  testWidgets('narrow property selector stays entirely inside the viewport', (
+    tester,
+  ) async {
+    await mountCalendar(
+      tester,
+      calendarService(Calls()),
+      size: const Size(320, 740),
+      access: TeamAccess.fromMap(TeamPreviewStore.grant('owner')),
+    );
     await tester.pumpAndSettle();
-    final rect=tester.getRect(find.byKey(const ValueKey('calendar-building-riverside')));
+    final rect = tester.getRect(
+      find.byKey(const ValueKey('calendar-building-riverside')),
+    );
     expect(rect.right, lessThanOrEqualTo(320));
-    expect(find.byKey(const ValueKey('calendar-building-pages-riverside')).hitTestable(), findsOneWidget);
+    expect(
+      find
+          .byKey(const ValueKey('calendar-building-pages-riverside'))
+          .hitTestable(),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+  // Fix 2 (2026-10-09, Tom): one building shows its name in the same outlined
+  // box as the several-buildings picker, not as a small plain label.
+  testWidgets('one building: name box is as tall as the picker', (
+    tester,
+  ) async {
+    await mountCalendar(
+      tester,
+      calendarService(Calls()),
+      access: TeamAccess.fromMap(TeamPreviewStore.grant('owner')),
+    );
+    await tester.pumpAndSettle();
+    final picker = tester.getSize(
+      find.byKey(const ValueKey('calendar-building-riverside')),
+    );
+    final one = TeamService(
+      transport: (name, data) async {
+        final m = calendarFixture(
+          data['from'] as String,
+          to: data['to'] as String?,
+        );
+        return {
+          ...m,
+          'properties': [(m['properties'] as List).first],
+        };
+      },
+    );
+    await mountCalendar(
+      tester,
+      one,
+      access: TeamAccess.fromMap(TeamPreviewStore.grant('owner')),
+    );
+    await tester.pumpAndSettle();
+    final box = tester.getSize(
+      find.byKey(const ValueKey('calendar-building-box')),
+    );
+    expect(box.height, closeTo(picker.height, 1));
+    expect(find.text('Riverside — Khu căn hộ phía Đông'), findsOneWidget);
+    expect(
+      find
+          .byKey(const ValueKey('calendar-building-pages-riverside'))
+          .hitTestable(),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
   testWidgets('small toolbar exposes authorized actions through three dots', (
@@ -1593,6 +1657,125 @@ void main() {
       expect(stays.map(calStatusColor), isNot(contains(calStatusColor(s))));
     }
     expect(calStatusDecoration('cleanTodo').color, Colors.white);
+    expect(tester.takeException(), isNull);
+  });
+
+  // 2026-10-09 (Tom): a cleaning's bubble goes below its bar, also below the
+  // last row, where it is not cut off; a name it covers moves right, the bar
+  // stays where it is.
+  TeamService cleaningService({required String room, bool guest = false}) =>
+      TeamService(
+        transport: (name, data) async {
+          if (name != 'calendarView') return <String, dynamic>{};
+          final m = calendarFixture(
+            data['from'] as String,
+            to: data['to'] as String?,
+          );
+          final p = Map<String, dynamic>.from(
+            (m['properties'] as List).first as Map,
+          );
+          p['rooms'] = [
+            for (final r in p['rooms'] as List)
+              {
+                ...Map<String, dynamic>.from(r as Map),
+                'blocked': false,
+                'problems': const [],
+              },
+          ];
+          p['bars'] = [
+            for (final b in p['bars'] as List)
+              if ((b as Map)['roomId'] != 'r104' && b['roomId'] != room) b,
+            {
+              'id': 'cleaning:t1',
+              'type': 'cleaning',
+              'kind': 'cleaning',
+              'roomId': room,
+              'start': '2026-10-02 13:00',
+              'end': '2026-10-02 15:00',
+              'status': 'inProgress',
+              'taskStatus': 'inProgress',
+              'recordId': 't1',
+              'canOpen': true,
+              'name': 'Chi Lan',
+              'title': 'Don phong',
+              'plannedStart': '2026-10-02 13:00',
+              'plannedEnd': '2026-10-02 15:00',
+              'pay': 'due',
+            },
+            if (guest)
+              {
+                'id': 'booking:guest',
+                'type': 'booking',
+                'roomId': 'r104',
+                'kind': 'short',
+                'start': '2026-10-02 12:00',
+                'end': '2026-10-05 11:00',
+                'status': 'upcoming',
+                'canOpen': true,
+                'recordId': 'guest',
+                'name': 'Long Name Guest',
+                'pay': 'paid',
+                'paidFraction': 1,
+              },
+          ];
+          return {
+            ...m,
+            'properties': [p, ...(m['properties'] as List).skip(1)],
+          };
+        },
+      );
+
+  testWidgets('a cleaning bubble sits below its bar, even on the last row', (
+    tester,
+  ) async {
+    await mountCalendar(tester, cleaningService(room: 'r104'));
+    final clean = bar('cleaning:t1');
+    await showX(tester, tester.getCenter(clean).dx);
+    final bubble = find.byKey(const ValueKey('calendar-bubble-cleaning:t1'));
+    expect(bubble, findsOneWidget);
+    final b = tester.getRect(bubble), c = tester.getRect(clean);
+    expect(b.top, greaterThanOrEqualTo(c.bottom), reason: 'below the bar');
+    // Not cut off: the whole bubble is inside the calendar's scroll view and
+    // a tap on it reaches it.
+    final view = tester.getRect(find.byType(RoomCalendar));
+    expect(b.bottom, lessThanOrEqualTo(view.bottom + 0.5));
+    final hits = tester
+        .hitTestOnBinding(b.center)
+        .path
+        .map((e) => e.target)
+        .toList();
+    expect(hits, contains(tester.renderObject(bubble)));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a cleaning bubble moves only the name it covers, not the bar', (
+    tester,
+  ) async {
+    await mountCalendar(tester, cleaningService(room: 'r103', guest: true));
+    final clean = bar('cleaning:t1'), guest = bar('booking:guest');
+    await showX(tester, tester.getCenter(clean).dx);
+    final bubble = find.byKey(const ValueKey('calendar-bubble-cleaning:t1'));
+    expect(bubble, findsOneWidget);
+    final b = tester.getRect(bubble);
+    expect(b.top, greaterThanOrEqualTo(tester.getRect(clean).bottom));
+    final g = tester.getRect(guest);
+    // The bubble reaches into the guest's bar, over where its name begins.
+    expect(b.overlaps(g), isTrue);
+    expect(b.left, lessThan(g.left + 60));
+    // The bar keeps its place: it starts at 12:00, an hour (18 px) before
+    // the cleaning.
+    expect(
+      g.left,
+      moreOrLessEquals(tester.getRect(clean).left - 18, epsilon: 2),
+    );
+    final name = find.descendant(
+      of: guest,
+      matching: find.text('Long Name Guest'),
+    );
+    expect(name, findsOneWidget);
+    final n = tester.getRect(name);
+    expect(n.left, greaterThanOrEqualTo(b.right), reason: 'name moved past it');
+    expect(n.right, lessThanOrEqualTo(g.right));
     expect(tester.takeException(), isNull);
   });
 

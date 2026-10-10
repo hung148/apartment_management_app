@@ -1280,7 +1280,36 @@ hosting deploy, and stops at the first failure.
 - Tests: functions/test/drive.test.js (owner's own Drive),
   test/problem_photos_test.dart (home-screen connect sends no organization).
 
-## Next fixes (Tom, 2026-10-06) — not started
+## Next fixes (Tom, 2026-10-06) — status 2026-10-09
+Done 2026-10-09 (waiting for Tom's flutter test + deploy, then a pane check):
+- 1 checked in the pane; 2 the one-building name box is as tall as the picker
+  (`calendar-building-box`).
+- 7 cleaning bubble: always BELOW its bar; the grid gets room at the bottom so
+  a bubble under the last row is not cut off (scroll content, not an overlay);
+  a booking name it covers moves right past the bubble (`_nudges`, set after
+  the frame), the bar keeps its place. No room past the bubble: the name stays.
+- 4 saved nightly prices: `roomPriceLists/{roomId}` (not on the room: its
+  revision guards booking saves), up to 8, room currency. New permission
+  `saveRoomPrices` "Lưu giá phòng" (money group) on for owner, administrator,
+  manager. bookingWorkspace action `prices` {roomId, priceMinor, remove?};
+  `rooms` returns `canSavePrices` and `savedNightPricesMinor` per room. Picking
+  a saved price (or the room's own) needs no "Đổi giá"; only when the booking
+  is in the room's currency. Existing stored manager roles (roleGrants copies)
+  do NOT get the new permission automatically: tick it in Vai trò.
+- 5 agreed price: short stays — "Giá thỏa thuận" switch (Đổi giá only):
+  agreed room price + required reason; surcharges still added on top. Booking
+  keeps `priceOverride {total, calculatedTotal, reason, byId, byName, at}`; an
+  edit that leaves it out keeps it (anyone who may edit); `overrideMinor: null`
+  goes back to the calculated price (Đổi giá). Leases — "Số tiền mỗi kỳ khác"
+  shown only with Đổi giá; another amount than rent × months needs a reason;
+  tenant keeps `periodRentOverride {totalMinor, calculatedTotalMinor, reason,
+  byId, byName, at}`, shown under "Số tiền mỗi kỳ". The monthly rent box itself
+  is unchanged (rent changes after creation already go through "Đổi" with a
+  reason). Tests: functions/test/booking_price_override.test.js,
+  lease_price_override.test.js, booking_workspace.test.js (saved prices).
+Open: 3 (Thu chi under Thống kê) is still only an idea.
+
+Original list:
 1. Calendar building picker (several buildings): too much space between the
    name ("Nhà Mẫu A") and the dropdown arrow — make the box fit the name.
 2. Calendar with one building: the "Toa A" label and its settings (gear)

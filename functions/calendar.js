@@ -8,7 +8,7 @@ const {roomBlocked}=require('./technical_problems');
 const STATUSES = new Set([...ACTIVE, 'checkedOut', 'cancelled', 'noShow']);
 const METHODS = new Set(['cash', 'bankTransfer', 'momo', 'zalopay', 'creditCard', 'other']);
 const EDITABLE = ['guestName', 'guestPhone', 'guestIdNumber', 'numberOfGuests', 'startTime', 'endTime', 'totalPrice', 'depositAmount', 'notes', 'pricingType', 'source',
-  'guests', 'staffInChargeId', 'platform', 'contactChannel', 'depositNote', 'surcharges', 'nightPrices', 'hourlyPrice'];
+  'guests', 'staffInChargeId', 'platform', 'contactChannel', 'depositNote', 'surcharges', 'nightPrices', 'hourlyPrice', 'priceOverride'];
 const PRICING = ['hourly', 'daily', 'overnight', 'nightly'];
 // B2 booking details. Older bookings simply lack these fields.
 const PLATFORMS = new Set(['direct', 'airbnb', 'booking', 'agoda', 'traveloka', 'other']);
@@ -36,6 +36,12 @@ function validExtras(b, validMoney) {
           Math.round(s.unitAmount * 100) * s.count !== Math.round(s.amount * 100)))))) return false;
   if (b.nightPrices != null && (!Array.isArray(b.nightPrices) || b.nightPrices.length > 366 || b.nightPrices.some(v => !validMoney(v) || v <= 0))) return false;
   if (b.hourlyPrice != null && (!validMoney(b.hourlyPrice) || b.hourlyPrice <= 0)) return false;
+  // An agreed price (Fix 5, 2026-10-09): the price, the calculated one, why and who.
+  const o = b.priceOverride;
+  if (o != null && (!plainObject(o) || Object.keys(o).some(k => !['total','calculatedTotal','reason','byId','byName','at'].includes(k)) ||
+      !validMoney(o.total) || o.total <= 0 || !validMoney(o.calculatedTotal) || o.calculatedTotal < 0 ||
+      !shortText(o.reason, 1000) || !o.reason.trim() || !(typeof o.byId === 'string' && o.byId) || !shortText(o.byName, 160) ||
+      !(o.at && typeof o.at.toMillis === 'function'))) return false;
   return true;
 }
 const cents = value => Math.round(Number(value || 0) * 100);
@@ -73,7 +79,7 @@ function createCalendarHandler({db, Timestamp, FieldValue, HttpsError}) {
     const serverQuote = context.serverQuote ?? null;
     const serverPriced = input.serverPricing === true || serverQuote !== null;
     // Surcharge lines and night prices must match the total, so only a server quote may write them.
-    if (!serverQuote && ('surcharges' in proposed || 'nightPrices' in proposed || 'hourlyPrice' in proposed)) fail('invalid-argument', 'booking_invalid_request');
+    if (!serverQuote && ('surcharges' in proposed || 'nightPrices' in proposed || 'hourlyPrice' in proposed || 'priceOverride' in proposed)) fail('invalid-argument', 'booking_invalid_request');
     // A deposit paid when the booking is made (2026-10-04) comes only from the bookings workspace, which checked it.
     const depositPayment = input.depositPayment == null ? null : decode(input.depositPayment);
     if (depositPayment && (!serverQuote || !['create','edit'].includes(action))) fail('invalid-argument', 'booking_invalid_request');

@@ -29,7 +29,8 @@
     "backdateRecords": ["all"],
     "readAssignedTasks": ["all", "managed"],
     "updateAssignedTasks": ["all", "managed"],
-    "readGuestIds": ["all", "managed"]
+    "readGuestIds": ["all", "managed"],
+    "saveRoomPrices": ["all", "managed"]
   },
   "overridable": ["overridePrices", "refundPayments", "exportData", "importData"],
   "templates": {
@@ -40,7 +41,8 @@
       "overridePrices": "managed", "refundPayments": "managed", "readFinancialReports": "managed",
       "readOwnActivity": "all", "readAllActivity": "all", "exportData": "all", "importData": "all",
       "connectDrive": "all", "backdateRecords": "all", "readAssignedTasks": "managed",
-      "updateAssignedTasks": "managed", "readGuestIds": "managed"}},
+      "updateAssignedTasks": "managed", "readGuestIds": "managed",
+      "saveRoomPrices": "managed"}},
     "administrator": {"color": "#3949AB", "grants": {
       "manageOrganization": "all", "manageTeam": "all",
       "manageProperty": "managed", "manageLease": "managed", "readBookings": "managed",
@@ -48,11 +50,13 @@
       "overridePrices": "managed", "refundPayments": "managed", "readFinancialReports": "managed",
       "readOwnActivity": "all", "readAllActivity": "all", "exportData": "all", "importData": "all",
       "connectDrive": "all", "backdateRecords": "all", "readAssignedTasks": "managed",
-      "updateAssignedTasks": "managed", "readGuestIds": "managed"}},
+      "updateAssignedTasks": "managed", "readGuestIds": "managed",
+      "saveRoomPrices": "managed"}},
     "manager": {"color": "#00897B", "grants": {
       "manageProperty": "managed", "manageLease": "managed", "readBookings": "managed",
       "createBookings": "managed", "manageBookings": "managed", "collectPayments": "managed",
-      "overridePrices": "managed", "readFinancialReports": "managed", "readOwnActivity": "all"}},
+      "overridePrices": "managed", "readFinancialReports": "managed", "readOwnActivity": "all",
+      "saveRoomPrices": "managed"}},
     "receptionist": {"color": "#1E88E5", "grants": {
       "readBookings": "managed", "createBookings": "managed", "manageBookings": "managed",
       "collectPayments": "managed", "readOwnActivity": "all"}},

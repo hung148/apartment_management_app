@@ -65,6 +65,37 @@ String bookingText(BuildContext context, String key) {
       'Giá phòng: {price} / đêm',
     ],
     'customNights': ['Different price each night', 'Giá khác nhau mỗi đêm'],
+    // Saved prices of the room (2026-10-09, Tom): tap one instead of typing.
+    'savedPrices': ['Saved prices', 'Giá đã lưu'],
+    // An agreed room price (Fix 5, 2026-10-09, Tom): needs "Đổi giá" and a
+    // reason; the booking keeps the calculated price and who changed it.
+    'agreedSwitch': ['Agreed price', 'Giá thỏa thuận'],
+    'agreedHelp': [
+      'Another room price than calculated, with the reason.',
+      'Tiền phòng khác với giá tính ra, kèm lý do.',
+    ],
+    'agreedPrice': ['Agreed room price', 'Tiền phòng thỏa thuận'],
+    'agreedReason': ['Reason for the change', 'Lý do đổi giá'],
+    'agreedCalculated': [
+      'Calculated: {price}. Surcharges are added on top.',
+      'Giá tính ra: {price}. Phụ thu cộng thêm.',
+    ],
+    'agreedKept': [
+      'Agreed price {price} ({reason}) is kept. Changing it needs "Change prices".',
+      'Giữ giá thỏa thuận {price} ({reason}). Cần quyền "Đổi giá" để sửa.',
+    ],
+    'calculatedPrice': ['Calculated price', 'Giá tính ra'],
+    'agreedBy': ['Changed by', 'Người đổi giá'],
+    'savePrice': ['Save price', 'Lưu giá'],
+    'removePrice': ['Remove this price', 'Xóa giá này'],
+    'savedPricesFull': [
+      'This room already has 8 saved prices. Remove one first.',
+      'Phòng này đã có 8 giá đã lưu. Hãy xóa bớt một giá.',
+    ],
+    'savePriceFailed': [
+      'The price was not saved. Try again.',
+      'Chưa lưu được giá. Hãy thử lại.',
+    ],
     'nightsField': ['Nights', 'Số đêm'],
     'hoursField': ['Hours', 'Số giờ'],
     'hoursCount': ['{n} hours', '{n} giờ'],
@@ -314,6 +345,8 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
           'reason',
           'unitPrice',
           'nightsField',
+          'agreedPrice',
+          'agreedReason',
         ])
           k: TextEditingController(),
       },
@@ -351,10 +384,13 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
       _canManage = false,
       _canCreate = false,
       _canPrice = false,
+      _canSavePrices = false,
+      _savingPrice = false,
       _canCollect = false,
       _canReadIds = false,
       _optionsLoaded = false,
       _customNights = false,
+      _agreed = false,
       _syncingNights = false,
           // Per night / per hour picked by hand (or a price typed): the dates
           // no longer change it (2026-10-05).
@@ -524,6 +560,71 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
   }
 
   int? get _roomNightMinor => _roomRate('nightlyPriceMinor');
+
+  /// The room's saved nightly prices (2026-10-09, Tom). Only when the booking
+  /// is in the room's own currency and shown in it: a saved price is never
+  /// converted.
+  bool get _savedPricesApply {
+    final room = _rooms.where((v) => v['id'] == _room).firstOrNull;
+    if (room == null) return false;
+    final source = room['currency'] as String? ?? 'VND';
+    return source == _currency && _inputCurrency == _currency;
+  }
+
+  List<int> get _savedNights {
+    if (!_savedPricesApply) return const [];
+    final room = _rooms.where((v) => v['id'] == _room).firstOrNull;
+    final list = room?['savedNightPricesMinor'];
+    return list is List ? list.whereType<int>().toList() : const [];
+  }
+
+  /// Fills the price box with a saved price.
+  void _pickSaved(int minor) => setState(() {
+    _conversion.set(_fields['unitPrice']!, minor, _currency);
+    _pricingChosen = true;
+    _message = null;
+  });
+
+  /// Adds the price in the box to the room's saved prices, or removes one.
+  Future<void> _savePrice(int minor, {bool remove = false}) async {
+    final roomId = _room;
+    if (roomId == null || _savingPrice) return;
+    setState(() {
+      _savingPrice = true;
+      _message = null;
+    });
+    try {
+      final r = await widget.service.bookingWorkspace({
+        ..._identity,
+        'action': 'prices',
+        'roomId': roomId,
+        'priceMinor': minor,
+        if (remove) 'remove': true,
+      });
+      if (!mounted) return;
+      setState(() {
+        final room = _rooms.where((v) => v['id'] == roomId).firstOrNull;
+        if (room != null) {
+          room['savedNightPricesMinor'] = List<int>.from(
+            (r['savedNightPricesMinor'] as List? ?? const []).whereType<int>(),
+          );
+        }
+        _savingPrice = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _savingPrice = false;
+        _message =
+            e is FirebaseFunctionsException &&
+                serverReason(e, const ['booking_saved_prices_full']) ==
+                    'booking_saved_prices_full'
+            ? 'savedPricesFull'
+            : 'savePriceFailed';
+      });
+    }
+  }
+
   int? get _roomHourMinor => _roomRate('hourlyPriceMinor');
 
   /// The room's price for the chosen way of pricing (per night / per hour).
@@ -821,6 +922,7 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
     _accounts = list(r['accounts']);
     _zone = r['timeZone'] as String? ?? _zone;
     _canPrice = r['canPrice'] == true;
+    _canSavePrices = r['canSavePrices'] == true;
     _canCollect = r['canCollect'] == true;
     _today = r['today'] as String? ?? _today;
     _canReadIds = r['canReadGuestIds'] == true;
@@ -1003,6 +1105,20 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
           _resetUnit();
         }
         _fields['nightsField']!.text = _nightCount?.toString() ?? '';
+        // An agreed price stays on the booking until changed (Fix 5).
+        final agreed = _agreedOn(r);
+        _agreed = agreed != null;
+        if (agreed != null) {
+          _conversion.set(
+            _fields['agreedPrice']!,
+            ((agreed['total'] as num) * _scale).round(),
+            _currency,
+          );
+          _fields['agreedReason']!.text = '${agreed['reason'] ?? ''}';
+        } else {
+          _fields['agreedPrice']!.clear();
+          _fields['agreedReason']!.clear();
+        }
         final staffId = r?['staffInChargeId'] as String?;
         if (staffId != null && !_staff.any((s) => s['id'] == staffId)) {
           // Someone who left stays shown on their old bookings.
@@ -1038,8 +1154,14 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
     } else if (_pricing == 'nightly') {
       // Same price every night: people with "Đổi giá" send it; others get the
       // room's price (or keep the booking's) on the server.
+      // A saved price of the room may be picked without "Đổi giá"
+      // (2026-10-09, Tom).
       final n = _nightCount;
-      if (_canPrice && n != null) {
+      final saved =
+          unit != null &&
+          unit != _roomNightMinor &&
+          _savedNights.contains(unit);
+      if ((_canPrice || saved) && n != null) {
         if (unit == null || unit <= 0) return null;
         out['nightPricesMinor'] = List<int>.filled(n, unit);
       }
@@ -1067,7 +1189,51 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
       });
     }
     out['surcharges'] = charges;
+    // An agreed room price (Fix 5, 2026-10-09, Tom). Unchanged, it is left
+    // out and the server keeps it with who agreed it; switched off, null goes
+    // back to the calculated price.
+    final had = _agreedOn(_record);
+    if (_canPrice && _agreed) {
+      final value = _conversion.parse(_fields['agreedPrice']!, _currency);
+      final why = _fields['agreedReason']!.text.trim();
+      if (value == null || value <= 0 || why.isEmpty) return null;
+      final same =
+          had != null &&
+          ((had['total'] as num) * _scale).round() == value &&
+          '${had['reason'] ?? ''}' == why;
+      if (!same) {
+        out['overrideMinor'] = value;
+        out['overrideReason'] = why;
+      }
+    } else if (_canPrice && had != null) {
+      out['overrideMinor'] = null;
+    }
     return out;
+  }
+
+  /// The booking's agreed price, when it has one.
+  static Map<String, dynamic>? _agreedOn(Map<String, dynamic>? r) {
+    final o = r?['priceOverride'];
+    return o is Map && o['total'] is num ? Map<String, dynamic>.from(o) : null;
+  }
+
+  /// The room price the form works out (nights × price, or hours × price).
+  int? _estimateMinor() {
+    final unit = _conversion.parse(_fields['unitPrice']!, _currency);
+    if (_pricing == 'hourly') {
+      final h = _hours;
+      return h == null || unit == null || unit <= 0 ? null : (unit * h).round();
+    }
+    final n = _nightCount;
+    if (n == null) return null;
+    if (_customNights) {
+      final list = [
+        for (final c in _nightPrices) _conversion.parse(c, _currency),
+      ];
+      if (list.length != n || list.any((v) => v == null || v <= 0)) return null;
+      return list.fold<int>(0, (a, b) => a + b!);
+    }
+    return unit == null || unit <= 0 ? null : unit * n;
   }
 
   Future<void> _review() async {
@@ -1284,8 +1450,12 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
             'deposit': {
               'amountMinor': deposit,
               'inputCurrency': _inputCurrency,
-              'inputAmountMinor': appParseMoney(_fields['depositAmount']!.text, _inputCurrency),
-              if (_conversion.conversion?.snapshotId != null) 'ratesId': _conversion.conversion!.snapshotId,
+              'inputAmountMinor': appParseMoney(
+                _fields['depositAmount']!.text,
+                _inputCurrency,
+              ),
+              if (_conversion.conversion?.snapshotId != null)
+                'ratesId': _conversion.conversion!.snapshotId,
               'method': _depositMethod,
               'paidOn': _fields['depositDate']!.text.trim(),
             },
@@ -1818,6 +1988,10 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
                 ),
             ],
           ),
+          if (_pricing == 'nightly' &&
+              !_customNights &&
+              (_savedNights.isNotEmpty || _canSavePrices && _savedPricesApply))
+            _savedPriceChips(context),
           if (_pricing == 'nightly') ...[
             if (_canPrice)
               SwitchListTile(
@@ -1899,6 +2073,7 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
                 ),
               ),
             ),
+          ..._agreedFields(context, money, moneyCheck),
         ],
       ),
       WsSection(
@@ -2149,6 +2324,134 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
     ),
   );
 
+  /// "Giá thỏa thuận" (Fix 5, 2026-10-09, Tom): with "Đổi giá" another room
+  /// price than calculated, with a required reason. Without it, an agreed
+  /// price already on the booking is shown and kept.
+  List<Widget> _agreedFields(
+    BuildContext context,
+    TextInputType money,
+    String? Function(String) moneyCheck,
+  ) {
+    final had = _agreedOn(_record);
+    if (!_canPrice) {
+      if (had == null) return const [];
+      return [
+        Padding(
+          padding: const EdgeInsets.only(top: WsSpace.md),
+          child: Text(
+            bt('agreedKept')
+                .replaceAll('{price}', _money(had['total'] as num))
+                .replaceAll('{reason}', '${had['reason'] ?? ''}'),
+            key: const ValueKey('booking-agreed-kept'),
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ),
+      ];
+    }
+    final calculated = _estimateMinor();
+    return [
+      SwitchListTile(
+        key: const ValueKey('booking-agreed'),
+        contentPadding: EdgeInsets.zero,
+        title: Text(bt('agreedSwitch')),
+        subtitle: Text(bt('agreedHelp')),
+        value: _agreed,
+        onChanged: _formEnabled
+            ? (v) => setState(() {
+                _agreed = v;
+                _message = null;
+                // Starts from the calculated room price.
+                if (v &&
+                    _fields['agreedPrice']!.text.trim().isEmpty &&
+                    calculated != null) {
+                  _conversion.set(
+                    _fields['agreedPrice']!,
+                    calculated,
+                    _currency,
+                  );
+                }
+              })
+            : null,
+      ),
+      if (_agreed)
+        WsFieldRow(
+          children: [
+            _input(
+              'agreedPrice',
+              bt('agreedPrice'),
+              keyboard: money,
+              formatters: appMoneyInput(_inputCurrency),
+              required: true,
+              check: moneyCheck,
+              helper: calculated == null
+                  ? null
+                  : bt(
+                      'agreedCalculated',
+                    ).replaceAll('{price}', _money(calculated / _scale)),
+            ),
+            _input(
+              'agreedReason',
+              bt('agreedReason'),
+              required: true,
+              maxLines: null,
+              check: (v) =>
+                  v.length > 1000 ? opsText(context, 'required') : null,
+            ),
+          ],
+        ),
+    ];
+  }
+
+  /// The room's saved nightly prices as chips (2026-10-09, Tom): a tap fills
+  /// the price box. With "Lưu giá phòng" the price in the box can be saved
+  /// and a saved one removed (its ×).
+  Widget _savedPriceChips(BuildContext context) {
+    final saved = _savedNights;
+    final unit = _conversion.parse(_fields['unitPrice']!, _currency);
+    final enabled = _formEnabled && !_savingPrice;
+    final canAdd =
+        enabled &&
+        unit != null &&
+        unit > 0 &&
+        unit <= 1000000000000 &&
+        !saved.contains(unit);
+    return Padding(
+      padding: const EdgeInsets.only(top: WsSpace.md),
+      child: Wrap(
+        key: const ValueKey('booking-saved-prices'),
+        spacing: WsSpace.sm,
+        runSpacing: WsSpace.sm,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          if (saved.isNotEmpty)
+            Text(
+              '${bt('savedPrices')}:',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          for (final v in saved)
+            InputChip(
+              key: ValueKey('booking-saved-price-$v'),
+              label: Text(appMoneyMinor(v, _currency), maxLines: 1),
+              selected: unit == v,
+              showCheckmark: false,
+              onPressed: enabled ? () => _pickSaved(v) : null,
+              onDeleted: _canSavePrices && enabled
+                  ? () => _savePrice(v, remove: true)
+                  : null,
+              deleteButtonTooltipMessage: bt('removePrice'),
+            ),
+          if (_canSavePrices)
+            ActionChip(
+              key: const ValueKey('booking-save-price'),
+              avatar: const Icon(Icons.bookmark_add_outlined, size: 18),
+              label: Text(bt('savePrice'), maxLines: 1),
+              onPressed: canAdd ? () => _savePrice(unit) : null,
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _quoteCard(BuildContext context) {
     final q = _quote!;
     final theme = Theme.of(context);
@@ -2166,10 +2469,17 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             WsInfo(
-              bt('roomPrice'),
+              q['agreedMinor'] != null ? bt('agreedPrice') : bt('roomPrice'),
               '${_money(units(q['baseMinor'] ?? q['totalMinor']))}'
               '${nights != null ? ' · ${_nightsLabel(nights)}' : ''}',
             ),
+            if (q['agreedMinor'] != null) ...[
+              WsInfo(
+                bt('calculatedPrice'),
+                _money(units(q['calculatedMinor'])),
+              ),
+              WsInfo(bt('agreedReason'), '${q['agreedReason'] ?? ''}'),
+            ],
             for (final l
                 in (q['surchargeLines'] as List? ?? const []).cast<Map>())
               WsInfo(
@@ -2320,6 +2630,17 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
             : null,
         children: [
           WsInfo(opsText(context, 'total'), _money(total)),
+          if (_agreedOn(r) case final o?) ...[
+            WsInfo(bt('agreedPrice'), _money(o['total'] as num)),
+            if (o['calculatedTotal'] is num)
+              WsInfo(
+                bt('calculatedPrice'),
+                _money(o['calculatedTotal'] as num),
+              ),
+            WsInfo(bt('agreedReason'), '${o['reason'] ?? ''}'),
+            if ('${o['byName'] ?? ''}'.isNotEmpty)
+              WsInfo(bt('agreedBy'), '${o['byName']}'),
+          ],
           for (final c in charges)
             WsInfo(
               '+ ${c['label']}',

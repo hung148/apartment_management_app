@@ -86,7 +86,7 @@ test('templates retain operational grants and remove additional-workplace author
   // and owner/administrator keep backdating; nothing else changes for current users.
   const old = {
     owner: permissions.filter(p => !p.startsWith('delete')&&!['createBookings','backdateRecords','manageRoles','assignAdditionalWorkplace','changeOrganizationCurrency'].includes(p)),
-    manager: ['manageProperty','manageLease','readBookings','manageBookings','collectPayments','overridePrices','readFinancialReports','readOwnActivity'],
+    manager: ['manageProperty','manageLease','readBookings','manageBookings','collectPayments','overridePrices','readFinancialReports','readOwnActivity','saveRoomPrices'],
     receptionist: ['readBookings','manageBookings','collectPayments','readOwnActivity'],
     housekeeper: ['readAssignedTasks','updateAssignedTasks','readOwnActivity'],
     accountant: ['readBookings','collectPayments','refundPayments','readFinancialReports','readOwnActivity'],

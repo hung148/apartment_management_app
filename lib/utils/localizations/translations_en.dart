@@ -915,6 +915,7 @@ final Map<String, String> _enTranslations = {
   'team_property_unavailable': 'Unavailable property',
   'team_overrides': 'Permission overrides',
   'team_permission_overridePrices': 'Override prices',
+  'team_permission_saveRoomPrices': 'Save room prices',
   'team_permission_refundPayments': 'Refund payments',
   'team_permission_exportData': 'Export data',
   'team_permission_importData': 'Import data',

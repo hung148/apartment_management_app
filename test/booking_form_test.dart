@@ -105,6 +105,7 @@ void main() {
     WidgetTester tester, {
     String role = 'owner',
     int nightlyPrice = 500000,
+    List<int>? saved,
   }) async {
     final s = store()
       ..workspaceRole = role
@@ -115,6 +116,9 @@ void main() {
       'dailyPrice': nightlyPrice,
       'currency': 'VND',
     });
+    if (saved != null) {
+      s.roomPriceLists[s.rooms.last['id'] as String] = List.of(saved);
+    }
     await mountReview(
       tester,
       BookingWorkspaceScreen(
@@ -230,6 +234,184 @@ void main() {
       expect(find.byKey(const ValueKey('booking-custom-nights')), findsNothing);
     },
   );
+
+  // 2026-10-09 (Tom): saved nightly prices per room, as chips to tap.
+  testWidgets(
+    'saved prices: the price in the box is saved, tapped and removed',
+    (tester) async {
+      final s = await openNew(tester);
+      final roomId = s.rooms.last['id'] as String;
+      final save = find.byKey(const ValueKey('booking-save-price'));
+      // The room's own price is not saved yet: it can be.
+      expect(tester.widget<ActionChip>(save).onPressed, isNotNull);
+      await enter(tester, 'ops-unitPrice', '650000');
+      await tester.pumpAndSettle();
+      await tapKey(tester, 'booking-save-price');
+      expect(s.roomPriceLists[roomId], [650000]);
+      final chip = find.byKey(const ValueKey('booking-saved-price-650000'));
+      expect(chip, findsOneWidget);
+      expect(find.text('650,000 VND'), findsOneWidget);
+      // Saved already: nothing to save again.
+      expect(tester.widget<ActionChip>(save).onPressed, isNull);
+      // Another price typed, then the saved one tapped.
+      await enter(tester, 'ops-unitPrice', '480000');
+      await tester.pumpAndSettle();
+      await tapKey(tester, 'booking-saved-price-650000');
+      expect(text(tester, 'ops-unitPrice'), '650,000');
+      expect(tester.widget<InputChip>(chip).selected, isTrue);
+      await press(tester, 'Review calculation');
+      expect(find.text('1,300,000 VND'), findsWidgets);
+      await press(tester, 'Edit');
+      // Removed with its ×.
+      await reveal(tester, chip);
+      await tester.tap(
+        find.descendant(
+          of: chip,
+          matching: find.byTooltip('Remove this price'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(s.roomPriceLists[roomId], isEmpty);
+      expect(chip, findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'saved prices: without "Đổi giá" a saved price is picked, not typed; nothing is saved',
+    (tester) async {
+      final s = await openNew(tester, role: 'receptionist', saved: [450000]);
+      expect(find.byKey(const ValueKey('booking-save-price')), findsNothing);
+      final chip = find.byKey(const ValueKey('booking-saved-price-450000'));
+      expect(tester.widget<InputChip>(chip).onDeleted, isNull);
+      final box = tester.widget<TextFormField>(
+        find.byKey(const ValueKey('ops-unitPrice')),
+      );
+      expect(box.enabled, isFalse);
+      await tapKey(tester, 'booking-saved-price-450000');
+      expect(text(tester, 'ops-unitPrice'), '450,000');
+      await press(tester, 'Review calculation');
+      expect(find.text('900,000 VND'), findsWidgets);
+      await press(tester, 'Confirm and save');
+      expect(s.operationalBookings.single['totalPrice'], 900000);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('saved prices: a full list says so and keeps the form', (
+    tester,
+  ) async {
+    final s = await openNew(
+      tester,
+      saved: [for (var i = 1; i <= 8; i++) i * 100000],
+    );
+    await enter(tester, 'ops-unitPrice', '950000');
+    await tester.pumpAndSettle();
+    await tapKey(tester, 'booking-save-price');
+    expect(
+      find.text('This room already has 8 saved prices. Remove one first.'),
+      findsOneWidget,
+    );
+    expect(s.roomPriceLists.values.single, hasLength(8));
+    expect(text(tester, 'ops-unitPrice'), '950,000');
+  });
+
+  // Fix 5 (2026-10-09, Tom): an agreed room price with "Đổi giá" and a reason;
+  // the booking keeps the calculated price and who changed it.
+  testWidgets(
+    'agreed price: needs a reason; saved with the calculated price; kept by an edit without "Đổi giá"',
+    (tester) async {
+      final s = await openNew(tester);
+      expect(find.byKey(const ValueKey('ops-agreedPrice')), findsNothing);
+      await tapKey(tester, 'booking-agreed');
+      // Starts from the calculated room price: 2 nights × 500,000.
+      expect(text(tester, 'ops-agreedPrice'), '1,000,000');
+      expect(
+        find.text('Calculated: 1,000,000 VND. Surcharges are added on top.'),
+        findsOneWidget,
+      );
+      await enter(tester, 'ops-agreedPrice', '900000');
+      await press(tester, 'Review calculation');
+      // No reason: not checked, nothing saved.
+      expect(find.byKey(const ValueKey('booking-quote')), findsNothing);
+      expect(find.text('Enter a valid value.'), findsWidgets);
+      await enter(tester, 'ops-agreedReason', 'Regular guest');
+      await press(tester, 'Review calculation');
+      final quote = find.byKey(const ValueKey('booking-quote'));
+      expect(
+        find.descendant(of: quote, matching: find.text('Agreed room price')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: quote, matching: find.text('1,000,000 VND')),
+        findsOneWidget,
+        reason: 'the calculated price',
+      );
+      expect(
+        find.descendant(of: quote, matching: find.text('Regular guest')),
+        findsOneWidget,
+      );
+      await press(tester, 'Confirm and save');
+      var b = s.operationalBookings.single;
+      expect(b['totalPrice'], 900000);
+      expect(
+        [
+          (b['priceOverride'] as Map)['total'],
+          (b['priceOverride'] as Map)['calculatedTotal'],
+          (b['priceOverride'] as Map)['reason'],
+        ],
+        [900000, 1000000, 'Regular guest'],
+      );
+      // The details say who changed it and why.
+      expect(find.text('Changed by'), findsOneWidget);
+      expect(find.text('Preview owner'), findsOneWidget);
+      // A receptionist edits the booking: the agreed price stays as it is.
+      s.workspaceRole = 'receptionist';
+      await press(tester, 'Edit');
+      expect(find.byKey(const ValueKey('booking-agreed')), findsNothing);
+      expect(find.byKey(const ValueKey('booking-agreed-kept')), findsOneWidget);
+      await enter(tester, 'ops-guest', 'Anh Tuan');
+      await press(tester, 'Review calculation');
+      await press(tester, 'Confirm and save');
+      b = s.operationalBookings.single;
+      expect(b['guestName'], 'Anh Tuan');
+      expect(b['totalPrice'], 900000);
+      expect((b['priceOverride'] as Map)['byName'], 'Preview owner');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('agreed price: switched off goes back to the calculated price', (
+    tester,
+  ) async {
+    final s = await openNew(tester);
+    await tapKey(tester, 'booking-agreed');
+    await enter(tester, 'ops-agreedPrice', '800000');
+    await enter(tester, 'ops-agreedReason', 'Long stay');
+    await press(tester, 'Review calculation');
+    await press(tester, 'Confirm and save');
+    expect(s.operationalBookings.single['totalPrice'], 800000);
+    await press(tester, 'Edit');
+    final agreed = tester.widget<SwitchListTile>(
+      find.byKey(const ValueKey('booking-agreed')),
+    );
+    expect(agreed.value, isTrue);
+    expect(text(tester, 'ops-agreedPrice'), '800,000');
+    expect(text(tester, 'ops-agreedReason'), 'Long stay');
+    await tapKey(tester, 'booking-agreed');
+    await press(tester, 'Review calculation');
+    await press(tester, 'Confirm and save');
+    final b = s.operationalBookings.single;
+    expect(b['totalPrice'], 1000000);
+    expect(b['priceOverride'], isNull);
+    expect(find.text('Changed by'), findsNothing);
+  });
+
+  testWidgets('agreed price: not offered without "Đổi giá"', (tester) async {
+    await openNew(tester, role: 'receptionist');
+    expect(find.byKey(const ValueKey('booking-agreed')), findsNothing);
+    expect(find.byKey(const ValueKey('ops-agreedPrice')), findsNothing);
+  });
 
   // 2026-10-04: no custom total; the deposit says how and when it was paid and
   // is taken off the total.

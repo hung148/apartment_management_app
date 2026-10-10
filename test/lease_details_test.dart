@@ -99,6 +99,13 @@ void main() {
       '4,500,000',
     );
     await enter(tester, 'lease-periodAmount', '4000000');
+    // Fix 5 (2026-10-09, Tom): another amount needs a reason; the calculated
+    // amount is shown under it.
+    expect(find.text('Calculated: 4,500,000 VND (rent × 3).'), findsOneWidget);
+    await press(tester, 'Create tenant and lease');
+    expect(s.tenants.length, before, reason: 'no reason, no lease');
+    expect(find.text('Enter why the amount differs.'), findsOneWidget);
+    await enter(tester, 'lease-periodReason', 'Paid 3 months ahead');
     await press(tester, 'Create tenant and lease');
     final main = s.tenants.firstWhere(
       (t) =>
@@ -107,5 +114,26 @@ void main() {
     expect(main['contractEndLocalDate'], '2027-09-27');
     expect(main['paymentDueDay'], isNull);
     expect(main['periodRentMinor'], 4000000);
+    expect(main['periodRentOverride'], {
+      'totalMinor': 4000000,
+      'calculatedTotalMinor': 4500000,
+      'reason': 'Paid 3 months ahead',
+      'byName': 'Preview owner',
+      'at': '2026-09-27T00:00:00.000Z',
+    });
+  });
+
+  testWidgets('another amount per period is not offered without "Đổi giá"', (
+    tester,
+  ) async {
+    final s = store()
+      ..workspaceRole = 'manager'
+      ..priceOverride = false;
+    await mountReview(tester, page(s.service));
+    await room(tester, 'room-102');
+    await fill(tester);
+    await tapKey(tester, 'lease-period-3');
+    expect(find.byKey(const ValueKey('lease-own-amount')), findsNothing);
+    expect(find.textContaining('Each period: 4,500,000 VND'), findsOneWidget);
   });
 }

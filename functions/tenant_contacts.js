@@ -23,7 +23,7 @@ function createTenantContactsHandler({db,Timestamp,HttpsError}){
    const details=(v,names,staff)=>({isMainTenant:v.isMainTenant===true,mainTenantName:v.isMainTenant===false?names.get(v.mainTenantId)??'':'',
     moveInLocalDate:v.moveInLocalDate??'',contractEndLocalDate:v.contractEndLocalDate??'',currency:v.currency??'VND',monthlyRentMinor:v.monthlyRentMinor??null,
     nationalId:idText(v.nationalId),residenceRegistered:v.residenceRegistered===true,residenceRegisteredLocalDate:v.residenceRegisteredLocalDate??'',
-    paymentPeriodMonths:v.paymentPeriodMonths??null,paymentDueDay:v.paymentDueDay??null,periodRentMinor:v.periodRentMinor??null,
+    paymentPeriodMonths:v.paymentPeriodMonths??null,paymentDueDay:v.paymentDueDay??null,periodRentMinor:v.periodRentMinor??null,periodRentOverride:v.periodRentOverride&&typeof v.periodRentOverride==='object'&&Number.isSafeInteger(v.periodRentOverride.totalMinor)?{totalMinor:v.periodRentOverride.totalMinor,calculatedTotalMinor:v.periodRentOverride.calculatedTotalMinor??null,reason:String(v.periodRentOverride.reason??''),byName:String(v.periodRentOverride.byName??''),at:v.periodRentOverride.at?.toDate?.().toISOString()??null}:null,
     depositMinor:v.depositMinor??null,depositMethod:v.depositMethod??null,depositAccountLabel:v.depositAccountLabel??'',depositNote:v.depositNote??'',
     staffName:staff.get(v.staffInChargeId)??'',canReadIds:seeIds,
     // 2026-10-04: lease surcharges and the stay status pill.

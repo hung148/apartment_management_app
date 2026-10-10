@@ -4,6 +4,7 @@ import 'dart:ui' show PointerDeviceKind;
 import 'month_calendar.dart';
 
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:flutter/foundation.dart' show ValueListenable, mapEquals;
 import 'package:flutter/material.dart';
 
 import '../../services/team_service.dart';
@@ -417,6 +418,11 @@ class RoomCalendar extends StatefulWidget {
 class _RoomCalendarState extends State<RoomCalendar> {
   final _hBody = ScrollController(), _hHead = ScrollController();
   final _vBody = ScrollController(), _vDates = ScrollController();
+
+  /// Where a bar's name starts (grid pixels) when a cleaning bubble below
+  /// another bar sits over it: only the name moves, the bar stays
+  /// (2026-10-09, Tom). Set after the frame by [_edgeBubbles].
+  final _nudges = ValueNotifier<Map<String, double>>(const {});
   late DateTime _month;
   List<CalProperty> _properties = [];
   bool _busy = true, _loaded = false, _syncing = false, _scrollToToday = true;
@@ -600,6 +606,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
     for (final s in [_hBody, _hHead, _vBody, _vDates]) {
       s.dispose();
     }
+    _nudges.dispose();
     // A page left open must not outlive the calendar that opened it (sign-out,
     // role or organization change): it would keep showing what this person
     // may no longer open. Removed after the frame, when the navigator is free.
@@ -989,23 +996,27 @@ class _RoomCalendarState extends State<RoomCalendar> {
     final Widget? buildingName = current == null
         ? null
         : _properties.length < 2
-        ? Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.apartment_outlined,
-                size: 18,
-                color: theme.colorScheme.primary,
-              ),
-              const SizedBox(width: 8),
-              Flexible(
-                child: Text(
-                  current.name,
-                  key: const ValueKey('calendar-building-name'),
-                  style: theme.textTheme.titleSmall,
+        // One building (2026-10-09, Tom: the label was too small): the same
+        // outlined box as the picker, without the arrow (nothing to choose).
+        ? SizedBox(
+            width: pickerWidth - 40,
+            child: InputDecorator(
+              key: const ValueKey('calendar-building-box'),
+              decoration: const InputDecoration(
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
                 ),
+                prefixIcon: Icon(Icons.apartment_outlined, size: 18),
               ),
-            ],
+              child: Text(
+                current.name,
+                key: const ValueKey('calendar-building-name'),
+                style: theme.textTheme.titleSmall,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           )
         : SizedBox(
             width: pickerWidth,
@@ -1015,17 +1026,25 @@ class _RoomCalendarState extends State<RoomCalendar> {
               isExpanded: true,
               isDense: false,
               itemHeight: null,
-              selectedItemBuilder: (_) => [for (final _ in _properties) Text(current.name)],
+              selectedItemBuilder: (_) => [
+                for (final _ in _properties) Text(current.name),
+              ],
               style: theme.textTheme.titleSmall,
               decoration: const InputDecoration(
-                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 prefixIcon: Icon(Icons.apartment_outlined, size: 18),
               ),
               items: [
                 for (final p in _properties)
                   DropdownMenuItem<String>(
                     value: p.id,
-                    child: Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Text(p.name)),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Text(p.name),
+                    ),
                   ),
               ],
               onChanged: (v) {
@@ -1181,9 +1200,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
         : pickerWidth + 48;
     final propertyActions = Row(
       children: [
-        Expanded(
-          child: building ?? const SizedBox.shrink(),
-        ),
+        Expanded(child: building ?? const SizedBox.shrink()),
         for (final button in actionWidgets)
           Padding(padding: const EdgeInsets.only(left: 8), child: button),
       ],
@@ -1237,27 +1254,46 @@ class _RoomCalendarState extends State<RoomCalendar> {
                       if (building != null || buttons.isNotEmpty || narrow)
                         const SizedBox(height: 6),
                       if (narrow)
-                        LayoutBuilder(builder: (context, constraints) {
-                          if (constraints.maxWidth >= 480) {
-                            return Row(children: [Expanded(child: nav), modes, menu]);
-                          }
-                          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                            Align(alignment: AlignmentDirectional.centerStart, child: nav),
-                            Transform.translate(offset: const Offset(0, 4),
-                              child: Row(children: [modes, const Spacer(), menu])),
-                          ]);
-                        })
-                      else Row(
-                        children: [
-                          Expanded(
-                            child: Align(
-                              alignment: AlignmentDirectional.centerStart,
-                              child: nav,
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            if (constraints.maxWidth >= 480) {
+                              return Row(
+                                children: [
+                                  Expanded(child: nav),
+                                  modes,
+                                  menu,
+                                ],
+                              );
+                            }
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Align(
+                                  alignment: AlignmentDirectional.centerStart,
+                                  child: nav,
+                                ),
+                                Transform.translate(
+                                  offset: const Offset(0, 4),
+                                  child: Row(
+                                    children: [modes, const Spacer(), menu],
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
+                        )
+                      else
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Align(
+                                alignment: AlignmentDirectional.centerStart,
+                                child: nav,
+                              ),
                             ),
-                          ),
-                          if (narrow) menu else tools,
-                        ],
-                      ),
+                            if (narrow) menu else tools,
+                          ],
+                        ),
                     ],
                   ),
           ),
@@ -1469,15 +1505,26 @@ class _RoomCalendarState extends State<RoomCalendar> {
               // status follow it while scrolling sideways (2026-10-04, Tom).
               scroll: _hBody,
               viewWidth: constraints.maxWidth - roomW,
+              nudges: _nudges,
             ),
           ),
         );
       }
     }
 
+    // A cleaning bubble goes below its bar (2026-10-09, Tom), also below the
+    // last row: the grid gets that much room at the bottom so the bubble is
+    // never cut off at the calendar's edge.
+    final below =
+        CalEdgeBubble.heightFor(context) + CalEdgeBubble.tip + _bubbleGap;
+    var bottomRoom = 0.0;
+    for (final s in spots) {
+      if (s.bar.type != 'cleaning') continue;
+      bottomRoom = math.max(bottomRoom, s.top + s.height + below - gridH);
+    }
     final body = SizedBox(
       width: gridW,
-      height: gridH,
+      height: gridH + bottomRoom,
       child: Stack(
         children: [
           Positioned.fill(
@@ -1610,7 +1657,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
     );
     final labels = SizedBox(
       width: roomW,
-      height: gridH,
+      height: gridH + bottomRoom,
       child: Stack(
         children: [
           for (final row in rows)
@@ -1704,6 +1751,10 @@ class _RoomCalendarState extends State<RoomCalendar> {
   /// circle, or another bubble. A plain stretch of another bar may be
   /// covered. With no such place for the whole name it shrinks beside the
   /// bar; failing that it takes the place that covers least.
+  ///
+  /// A cleaning's bubble always goes below its bar, also past the last row
+  /// (2026-10-09, Tom). A name it would cover moves right, past the bubble,
+  /// when the bar has room for it there; the bar itself never moves.
   Widget _edgeBubbles(
     List<_Spot> spots,
     double viewW,
@@ -1716,10 +1767,14 @@ class _RoomCalendarState extends State<RoomCalendar> {
     final from = _hBody.offset, to = from + viewW;
     // The whole name: the bubble may take most of the screen's width; only
     // a name longer than that is drawn smaller (never cut).
-    final maxW = math.max(120.0, viewW - 40), gap = 3.0;
+    final maxW = math.max(120.0, viewW - 40), gap = _bubbleGap;
     final bodyH = CalEdgeBubble.heightFor(context);
     // Text a bubble must keep off, in grid pixels.
     final blocked = <Rect>[];
+    // Each bar's name zone: its place in [blocked] and the room it may move
+    // in (up to the end label and status circle).
+    final names = <String, ({int index, double width, double until})>{};
+    final nudges = <String, double>{};
     final wanted =
         <
           ({
@@ -1746,6 +1801,11 @@ class _RoomCalendarState extends State<RoomCalendar> {
       final zones = tile.textZones(context, visible);
       final top = s.top, bottom = s.top + s.height;
       if (zones.label > 0) {
+        names[s.bar.id] = (
+          index: blocked.length,
+          width: math.min(visRight - visLeft, zones.label),
+          until: visRight - zones.foot,
+        );
         blocked.add(
           Rect.fromLTRB(
             visLeft,
@@ -1781,8 +1841,11 @@ class _RoomCalendarState extends State<RoomCalendar> {
       ));
     }
     // Slivers first: their bubble is the only way left to reach that bar.
+    // Then cleanings: their place is fixed (below), the others work around.
     wanted.sort((x, y) {
       if (x.sliver != y.sliver) return x.sliver ? -1 : 1;
+      final cx = x.s.bar.type == 'cleaning', cy = y.s.bar.type == 'cleaning';
+      if (cx != cy) return cx ? -1 : 1;
       return x.visLeft.compareTo(y.visLeft);
     });
 
@@ -1858,7 +1921,28 @@ class _RoomCalendarState extends State<RoomCalendar> {
         (AxisDirection.up, upDown(AxisDirection.up)),
       ];
       (AxisDirection, Rect)? pick;
-      for (final o in options) {
+      if (s.bar.type == 'cleaning') {
+        final r = upDown(AxisDirection.up);
+        for (final e in names.entries) {
+          if (e.key == s.bar.id) continue;
+          final zone = blocked[e.value.index];
+          final hit = r.intersect(zone);
+          if (hit.width <= 0.5 || hit.height <= 0.5) continue;
+          final start = r.right + gap;
+          // No room past the bubble: the name stays where it is.
+          if (start + e.value.width > e.value.until) continue;
+          blocked[e.value.index] = Rect.fromLTRB(
+            start,
+            zone.top,
+            start + e.value.width,
+            zone.bottom,
+          );
+          nudges[e.key] = start;
+        }
+        pick = (AxisDirection.up, r);
+      }
+      for (final o
+          in pick == null ? options : const <(AxisDirection, Rect)>[]) {
         if (onScreen(o.$2) && cover(o.$2) == 0) {
           pick = o;
           break;
@@ -1911,12 +1995,23 @@ class _RoomCalendarState extends State<RoomCalendar> {
         ),
       );
     }
+    if (!mapEquals(nudges, _nudges.value)) {
+      // After the frame: the bars are already built in this one.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !mapEquals(nudges, _nudges.value)) {
+          _nudges.value = Map.unmodifiable(nudges);
+        }
+      });
+    }
     // Slivers' bubbles last, so they are on top.
     return Stack(clipBehavior: Clip.none, children: bubbles.reversed.toList());
   }
 
   double _x(DateTime t, double dayW) =>
       t.difference(_month).inMinutes / 1440 * dayW;
+
+  /// Space between a bar and its bubble.
+  static const _bubbleGap = 3.0;
 
   Widget _dayCell(
     BuildContext context,
@@ -2189,8 +2284,10 @@ class _RoomCalendarState extends State<RoomCalendar> {
             buildingId: p.id,
             service: widget.service,
             create: false,
-            canDelete:
-                a.allows(TeamPermission.deleteBuildings, buildingId: p.id),
+            canDelete: a.allows(
+              TeamPermission.deleteBuildings,
+              buildingId: p.id,
+            ),
             onBack: close,
           ),
         ),
@@ -2288,7 +2385,11 @@ class _RoomCalendarState extends State<RoomCalendar> {
         service: widget.service,
         onlyRoomId: room.id,
         canDelete:
-            widget.access?.allows(TeamPermission.deleteRooms, buildingId: p.id) == true,
+            widget.access?.allows(
+              TeamPermission.deleteRooms,
+              buildingId: p.id,
+            ) ==
+            true,
         onBuildingFees: buildingFees
             ? () {
                 close();
@@ -2776,6 +2877,9 @@ class CalBarTile extends StatelessWidget {
   /// whole bar is taken as visible.
   final ScrollController? scroll;
   final double? viewWidth;
+
+  /// Where names start (grid pixels) when a cleaning bubble covers them.
+  final ValueListenable<Map<String, double>>? nudges;
   const CalBarTile({
     super.key,
     required this.bar,
@@ -2786,6 +2890,7 @@ class CalBarTile extends StatelessWidget {
     required this.onTap,
     this.scroll,
     this.viewWidth,
+    this.nudges,
   });
 
   /// The visible part of the bar, in the bar's own pixels: (left, right).
@@ -2901,10 +3006,10 @@ class CalBarTile extends StatelessWidget {
               child: CustomPaint(
                 painter: ticks.isEmpty ? null : _TickPainter(ticks, color),
                 child: LayoutBuilder(
-                  builder: (context, box) => scroll == null
+                  builder: (context, box) => scroll == null && nudges == null
                       ? _content(context, box, name, ink)
                       : ListenableBuilder(
-                          listenable: scroll!,
+                          listenable: Listenable.merge([scroll, nudges]),
                           builder: (context, _) =>
                               _content(context, box, name, ink),
                         ),
@@ -3129,6 +3234,13 @@ class CalBarTile extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: nameStyle,
           );
+    // A cleaning bubble below the bar above may push the name right
+    // (2026-10-09, Tom); the bar keeps its place.
+    final nudge = nudges?.value[bar.id];
+    final nameLeft = math.min(
+      math.max(visLeft, nudge == null ? visLeft : nudge - from - 1) + _textLeft,
+      math.max(visLeft + _textLeft, full - rightGap - footWidth - 6),
+    );
     // One line only, like the month view (2026-10-05, Tom): the name, then
     // the icons; what does not fit is cut, never wrapped.
     // A stack so a short bar clips its text instead of overflowing.
@@ -3136,7 +3248,8 @@ class CalBarTile extends StatelessWidget {
       clipBehavior: Clip.hardEdge,
       children: [
         Positioned(
-          left: visLeft + _textLeft,
+          key: const ValueKey('calendar-bar-name-box'),
+          left: nameLeft,
           right: rightGap + footWidth + 6,
           top: 0,
           bottom: 0,

@@ -55,7 +55,7 @@ function createTenantLeasesHandler({db,Timestamp,HttpsError}){
   const uid=request.auth?.uid,d=request.data||{},create=d.action==='create',list=d.action==='rooms';
   if(!uid)fail('unauthenticated');
   if(d.action==='surcharges')return editSurcharges(d,uid);
-  const keys=['action','organizationId','buildingId',...(list?['cursor']:['roomId']),...(create?['operationId','roomRevision','timeZone','currency','fullName','phoneNumber','moveInDate','contractEndDate','rentMinor','backdateReason',...DETAILS,'surcharges','electricityPriceMinor']:[])];
+  const keys=['action','organizationId','buildingId',...(list?['cursor']:['roomId']),...(create?['operationId','roomRevision','timeZone','currency','fullName','phoneNumber','moveInDate','contractEndDate','rentMinor','backdateReason',...DETAILS,'periodAmountReason','surcharges','electricityPriceMinor']:[])];
   if(!['rooms','prepare','create'].includes(d.action)||!id(d.organizationId)||!id(d.buildingId)||(!list&&!id(d.roomId))||Object.keys(d).some(k=>!keys.includes(k))||(list&&d.cursor!=null&&!id(d.cursor)))fail('invalid-argument');
   if(create&&(!id(d.operationId)||typeof d.roomRevision!=='string'||!/^\d+:\d+$/.test(d.roomRevision)||!validZone(d.timeZone)||!['VND','USD'].includes(d.currency)||typeof d.fullName!=='string'||!d.fullName.trim()||d.fullName.length>160||typeof d.phoneNumber!=='string'||d.phoneNumber.length>80||!validDate(d.moveInDate)||!validDate(d.contractEndDate)||d.contractEndDate<=d.moveInDate||!Number.isSafeInteger(d.rentMinor)||d.rentMinor<=0||d.rentMinor>1e12||typeof d.backdateReason!=='string'||d.backdateReason.length>1000||!validDetails(d)||(d.surcharges!==undefined&&!validSurcharges(d.surcharges,false))||(d.electricityPriceMinor!==undefined&&(!Number.isSafeInteger(d.electricityPriceMinor)||d.electricityPriceMinor<=0||d.electricityPriceMinor>1e9))))fail('invalid-argument');
   return db.runTransaction(async tx=>{
@@ -93,6 +93,11 @@ function createTenantLeasesHandler({db,Timestamp,HttpsError}){
    if(start===null||(d.contractEndDate!==null&&end===null))fail('invalid-argument');
    const policy=leaseDatePolicy({moveInMillis:start,nowMillis:now.toMillis(),timeZone:zone,canBackdate:allows(member,'backdateRecords',{organizationId:d.organizationId,userId:uid}),reason:d.backdateReason});
    if(policy.error)fail(policy.error,policy.key);
+   // An own amount per period (Fix 5, 2026-10-09, Tom): another amount than rent × months needs "Đổi giá" and a reason;
+   // the lease keeps it with the calculated amount, the reason and who changed it (periodRentOverride).
+   const calculatedPeriod=d.rentMinor*(d.periodMonths??1),ownPeriod=d.periodAmountMinor!=null&&d.periodAmountMinor!==calculatedPeriod;
+   if(d.periodAmountReason!==undefined&&(typeof d.periodAmountReason!=='string'||d.periodAmountReason.length>1000))fail('invalid-argument');
+   if(ownPeriod&&(!allows(member,'overridePrices',scope)||!d.periodAmountReason?.trim()))fail('permission-denied','lease_price_authority');
    // The lease is open-ended occupancy until an explicit move-out. Roommates
    // cannot be silently displaced, including legacy rows missing main-tenant flags.
    const tenants=await tx.get(db.collection('tenants').where('roomId','==',d.roomId));
@@ -121,7 +126,7 @@ function createTenantLeasesHandler({db,Timestamp,HttpsError}){
     periodRentMinor:d.periodAmountMinor??d.rentMinor*months,...(d.depositMinor!=null?{deposit:d.depositMinor/scale,depositMinor:d.depositMinor}:{}),
     depositMethod:d.depositMethod??null,depositAccountId:account?.id??null,depositAccountLabel:account?.label??null,depositNote:typeof d.depositNote==='string'?d.depositNote.trim()||null:null}:{};
    const tenantId=`lease_${key}`,result={tenantId},moveIn=Timestamp.fromMillis(start);
-   tx.create(db.doc(`tenants/${tenantId}`),{organizationId:d.organizationId,buildingId:d.buildingId,roomId:d.roomId,fullName:d.fullName.trim(),phoneNumber:d.phoneNumber.trim(),status:'active',isMainTenant:true,mainTenantId:null,moveInDate:moveIn,moveInLocalDate:d.moveInDate,moveInTimeZone:zone,moveOutDate:null,contractStartDate:moveIn,contractEndDate:end===null?null:Timestamp.fromMillis(end),contractEndLocalDate:d.contractEndDate,monthlyRent:d.rentMinor/(currency==='USD'?100:1),monthlyRentMinor:d.rentMinor,currency,...details,...(d.surcharges?.length?{surcharges:surchargeRows(d.surcharges,key)}:{}),createdAt:now,updatedAt:now,createdBy:uid,updatedBy:uid});
+   tx.create(db.doc(`tenants/${tenantId}`),{organizationId:d.organizationId,buildingId:d.buildingId,roomId:d.roomId,fullName:d.fullName.trim(),phoneNumber:d.phoneNumber.trim(),status:'active',isMainTenant:true,mainTenantId:null,moveInDate:moveIn,moveInLocalDate:d.moveInDate,moveInTimeZone:zone,moveOutDate:null,contractStartDate:moveIn,contractEndDate:end===null?null:Timestamp.fromMillis(end),contractEndLocalDate:d.contractEndDate,monthlyRent:d.rentMinor/(currency==='USD'?100:1),monthlyRentMinor:d.rentMinor,currency,...details,...(ownPeriod?{periodRentOverride:{totalMinor:d.periodAmountMinor,calculatedTotalMinor:calculatedPeriod,reason:d.periodAmountReason.trim(),byId:uid,byName:String(member.displayName||member.email||uid).slice(0,160),at:now}}:{}),...(d.surcharges?.length?{surcharges:surchargeRows(d.surcharges,key)}:{}),createdAt:now,updatedAt:now,createdBy:uid,updatedBy:uid});
    // Co-tenants entered in the same form become roommates of this lease, from the same day.
    const coTenants=(d.coTenants??[]).map((c,i)=>({id:`roommate_${hash([key,i])}`,c}));
    for(const {id:rid,c} of coTenants)tx.create(db.doc(`tenants/${rid}`),{organizationId:d.organizationId,buildingId:d.buildingId,roomId:d.roomId,mainTenantId:tenantId,isMainTenant:false,fullName:c.fullName.trim(),phoneNumber:(c.phoneNumber??'').trim(),...person(c),status:'active',moveInDate:moveIn,moveInLocalDate:d.moveInDate,moveInTimeZone:zone,moveOutDate:null,currency,createdAt:now,updatedAt:now,createdBy:uid,updatedBy:uid});

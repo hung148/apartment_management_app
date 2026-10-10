@@ -920,6 +920,7 @@ final Map<String, String> _viTranslations = {
   'team_property_unavailable': 'Tòa nhà không khả dụng',
   'team_overrides': 'Quyền tùy chỉnh',
   'team_permission_overridePrices': 'Thay đổi giá',
+  'team_permission_saveRoomPrices': 'Lưu giá phòng',
   'team_permission_refundPayments': 'Hoàn tiền',
   'team_permission_exportData': 'Xuất dữ liệu',
   'team_permission_importData': 'Nhập dữ liệu',
