@@ -23,3 +23,23 @@ test('an unverified or missing email claims nothing; later pages carry no invita
   assert.deepEqual((await call(data,{})).invitations,{pending:false,needsVerifiedEmail:false});
   assert.equal((await call(data,{email:'lan@example.com',email_verified:true},'m_next')).invitations,undefined);
 });
+
+// Speed (2026-10-10): the list only reads: one read-only transaction, and
+// the account check and the membership page are read together.
+test('the organization list reads in one read-only transaction with its reads together',async()=>{
+  const db=fakeDb({
+    'organizations/a':{accessVersion:2,createdBy:'u',name:'A'},
+    'memberships/u_a':{ownerId:'u',organizationId:'a',accessVersion:2,status:'active',role:'owner',buildingScope:'all'},
+  });
+  const transaction=db.runTransaction.bind(db),modes=[];
+  let open=0,most=0;
+  db.runTransaction=(fn,options)=>{modes.push(options?.readOnly===true);return transaction(tx=>fn({...tx,get:async ref=>{
+    open++;most=Math.max(most,open);await new Promise(r=>setTimeout(r,5));
+    try{return await tx.get(ref);}finally{open--;}
+  }}),options);};
+  const out=await createOrganizationDirectory({db,HttpsError:CodeError})({auth:{uid:'u',token:{}},data:{}});
+  assert.deepEqual(modes,[true],'one read-only transaction');
+  assert.deepEqual(out.records.map(r=>r.id),['a']);
+  assert.equal(out.records[0].owner,true);
+  assert.ok(most>=5,`account check and membership page read together (${most} at once)`);
+});
