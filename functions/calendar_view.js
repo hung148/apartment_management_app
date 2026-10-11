@@ -12,7 +12,9 @@ const {validZone}=require('./booking_settings');
 const {validDate}=require('./property_contract');
 const {propertyDate,propertyDayStart}=require('./lease_dates');
 const id=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(v);
-const MAX_DAYS=100,MAX_PROPERTIES=50;
+// One property per call (2026-10-10, scale): no cap on how many an
+// organization has; the app loads the one on screen.
+const MAX_DAYS=100;
 const ACTIVE_BOOKING=['pending','confirmed','checkedIn','checkedOut'];
 const RENT_KINDS=x=>x.invoiceKind==='tenantRent'||(['period','settlement'].includes(x.invoiceKind)&&x.calculation?.includeRent===true);
 const ms=v=>v?.toMillis?.()??null;
@@ -58,99 +60,133 @@ function createCalendarViewHandler({db,Timestamp,HttpsError}){
  return async request=>{
   const uid=request.auth?.uid,d=request.data||{};
   if(!uid)fail('unauthenticated');
-  if(!id(d.organizationId)||!validDate(d.from)||!validDate(d.to)||Object.keys(d).some(k=>!['organizationId','from','to'].includes(k)))fail('invalid-argument');
+  if(!id(d.organizationId)||!validDate(d.from)||!validDate(d.to)||Object.keys(d).some(k=>!['organizationId','from','to','buildingId','list'].includes(k)))fail('invalid-argument');
+  if(d.buildingId!==undefined&&!id(d.buildingId))fail('invalid-argument');
+  if(d.list!==undefined&&typeof d.list!=='boolean')fail('invalid-argument');
   const span=daysBetween(d.from,d.to);
   if(span<1||span>MAX_DAYS)fail('invalid-argument');
-  const [org,memberDoc]=await Promise.all([db.doc(`organizations/${d.organizationId}`).get(),db.doc(`memberships/${uid}_${d.organizationId}`).get()]);
+  const O=d.organizationId;
+  const [org,memberDoc]=await Promise.all([db.doc(`organizations/${O}`).get(),db.doc(`memberships/${uid}_${O}`).get()]);
   const m=memberDoc.data();
-  if(!org.exists||org.data().accessVersion!==2||org.data().closedAt||!m||m.organizationId!==d.organizationId||m.ownerId!==uid||m.accessVersion!==2||m.status!=='active'||!hasRole(m)||!['all','selected'].includes(m.buildingScope))fail('permission-denied');
+  if(!org.exists||org.data().accessVersion!==2||org.data().closedAt||!m||m.organizationId!==O||m.ownerId!==uid||m.accessVersion!==2||m.status!=='active'||!hasRole(m)||!['all','selected'].includes(m.buildingScope))fail('permission-denied');
 
-  // Properties the member reaches (same rule as the workspace property list).
-  // Speed (2026-10-09): read together with the staff names (both only after
-  // the access check above, so an outsider never makes the server read them).
-  const staffRead=db.collection('staffProfiles').where('organizationId','==',d.organizationId).get();
-  staffRead.catch(()=>{});
-  let buildings;
-  if(reachesAllProperties(m)){
-   buildings=(await db.collection('buildings').where('organizationId','==',d.organizationId).get()).docs;
-  }else{
-   const ids=Array.isArray(m.buildingIds)?[...new Set(m.buildingIds.filter(id))]:[];
-   buildings=(await Promise.all(ids.map(v=>db.doc(`buildings/${v}`).get()))).filter(v=>v.exists&&v.data().organizationId===d.organizationId);
-  }
-  buildings=buildings.filter(b=>!b.data().deletedAt).sort((a,b)=>String(a.data().name??'').localeCompare(String(b.data().name??''),undefined,{numeric:true})||a.id.localeCompare(b.id));
-  if(buildings.length>MAX_PROPERTIES)buildings=buildings.slice(0,MAX_PROPERTIES);
-  const staffDocs=(await staffRead).docs;
-  const staffNames=new Map(staffDocs.map(v=>[v.id,String(v.data().displayName??'')]));
-  // Cleaning is assigned to an account; show the member's name (as the task list does).
-  const assigneeNames=new Map();
-
-  const loadBuilding=async building=>{
-   const b=building.data(),zone=b.timeZone,scope={organizationId:d.organizationId,userId:uid,buildingId:building.id},can=p=>allows(m,p,scope);
+  // What this member may do in one property (no reads: permissions only).
+  const rights=buildingId=>{
+   const scope={organizationId:O,userId:uid,buildingId},can=p=>allows(m,p,scope);
    const readBookings=allows(m,'readBookings',{...scope,anyRecord:true}),canLease=can('manageLease');
    const canCreateBookings=can('createBookings'),canManageProperty=can('manageProperty');
    // 2026-10-05 (Tom): cleaners get the calendar too, with cleaning only: their
    // own cleaning bars and which rooms need cleaning (no guests, no money).
    const readTasks=can('readAssignedTasks');
    const cleaningOnly=!readBookings&&!canLease&&!canCreateBookings&&!canManageProperty;
-   if(cleaningOnly&&!readTasks)return null;
-   if(!validZone(zone))return {id:building.id,name:b.name??'',timeZone:null,today:null,needsTimeZone:true,rooms:[],bars:[]};
+   return {scope,can,readBookings,canLease,canCreateBookings,canManageProperty,readTasks,cleaningOnly,shown:!(cleaningOnly&&!readTasks)};
+  };
+  const ids=Array.isArray(m.buildingIds)?[...new Set(m.buildingIds.filter(id))]:[];
+  const reaches=buildingId=>reachesAllProperties(m)||ids.includes(buildingId);
+  const usable=doc=>doc.exists&&doc.data().organizationId===O&&!doc.data().deletedAt&&reaches(doc.id)&&rights(doc.id).shown;
+  const byName=(a,b)=>String(a.data().name??'').localeCompare(String(b.data().name??''),undefined,{numeric:true})||a.id.localeCompare(b.id);
+
+  // Scale (2026-10-10, Tom: 100+ buildings): one property per call. The list
+  // of properties (names only) is read when the app asks for it (first open,
+  // after a property page) or when the asked property cannot be shown; no
+  // cap on how many there are.
+  let list=null,building=null;
+  if(d.buildingId&&d.list!==true){
+   const doc=await db.doc(`buildings/${d.buildingId}`).get();
+   if(usable(doc))building=doc;
+  }
+  if(!building){
+   let docs;
+   if(reachesAllProperties(m))docs=(await db.collection('buildings').where('organizationId','==',O).get()).docs;
+   else docs=await Promise.all(ids.map(v=>db.doc(`buildings/${v}`).get()));
+   list=docs.filter(usable).sort(byName);
+   building=list.find(v=>v.id===d.buildingId)??list[0]??null;
+  }
+  const staffCache=new Map(),memberCache=new Map();
+  // Names by id (2026-10-10, scale): only the staff on the shown bars, not
+  // the whole staff list.
+  const staffName=v=>staffCache.get(v)??'';
+  const readNames=(staffIds,accountIds)=>Promise.all([
+   ...[...staffIds].filter(v=>id(v)&&!staffCache.has(v)).map(async v=>{const x=(await db.doc(`staffProfiles/${v}`).get()).data();staffCache.set(v,x?.organizationId===O?String(x.displayName??''):'');}),
+   ...[...accountIds].filter(v=>id(v)&&!memberCache.has(v)).map(async u=>{const x=(await db.doc(`memberships/${u}_${O}`).get()).data();memberCache.set(u,x?.organizationId!==O?'':typeof x?.displayName==='string'&&x.displayName.trim()?x.displayName.trim():(typeof x?.email==='string'?x.email:''));}),
+  ]);
+
+  const loadBuilding=async building=>{
+   const b=building.data(),zone=b.timeZone,B=building.id;
+   const {scope,can,readBookings,canLease,canCreateBookings,canManageProperty,readTasks,cleaningOnly}=rights(B);
+   if(!validZone(zone))return {id:B,name:b.name??'',timeZone:null,today:null,needsTimeZone:true,rooms:[],bars:[]};
    const today=propertyDate(Timestamp.now().toMillis(),zone),from=propertyDayStart(d.from,zone),to=propertyDayStart(d.to,zone);
    if(from===null||to===null)fail('invalid-argument');
    const canReport=canManageProperty||canCreateBookings||can('manageBookings')||canLease||can('updateAssignedTasks');
    const canReadProblems=canReport||readBookings||can('readAssignedTasks');
-   const where=c=>db.collection(c).where('organizationId','==',d.organizationId).where('buildingId','==',building.id).get();
-   const [rooms,bookings,tenants,history,problems,tasks]=await Promise.all([
-    where('rooms'),where('bookings'),where('tenants'),
-    db.collection('leaseOccupancy').where('buildingId','==',building.id).get(),
-    canReadProblems?db.collection('technicalProblems').where('organizationId','==',d.organizationId).where('buildingId','==',building.id).where('status','==','open').get():null,
-    where('housekeepingTasks'),
+   // Scale (2026-10-10): only what reaches into the asked days, never the
+   // property's whole history. Open stays and cleanings are always read.
+   const fromTs=Timestamp.fromMillis(from),none={docs:[]};
+   const where=c=>db.collection(c).where('organizationId','==',O).where('buildingId','==',B);
+   const [rooms,bookings,tenantsNow,tenantsOut,history,problems,tasksOpen,tasksDone]=await Promise.all([
+    where('rooms').get(),
+    cleaningOnly?none:where('bookings').where('endTime','>',fromTs).get(),
+    cleaningOnly?none:where('tenants').where('status','in',['active','suspended']).get(),
+    cleaningOnly?none:where('tenants').where('moveOutDate','>',fromTs).get(),
+    cleaningOnly?none:db.collection('leaseOccupancy').where('buildingId','==',B).where('end','>',fromTs).get(),
+    canReadProblems?db.collection('technicalProblems').where('organizationId','==',O).where('buildingId','==',B).where('status','==','open').get():null,
+    where('housekeepingTasks').where('status','in',['assigned','inProgress']).get(),
+    where('housekeepingTasks').where('completedAt','>',fromTs).get(),
    ]);
+   const seen=new Set(),merge=(...lists)=>lists.flatMap(q=>q.docs).filter(v=>!seen.has(v.ref?.path??v.id)&&seen.add(v.ref?.path??v.id));
+   const tenantList=merge(tenantsNow,tenantsOut),taskList=merge(tasksOpen,tasksDone);
+   const liveRooms=rooms.docs.filter(v=>!v.data().deletedAt);
    const roomIds=new Set(rooms.docs.map(v=>v.id));
-   const newAssignees=[...new Set(tasks.docs.map(v=>v.data().assigneeId).filter(v=>typeof v==='string'&&v&&!assigneeNames.has(v)&&!staffNames.get(v)))];
-   // Speed (2026-10-09): the cleaners' names, the rent invoices and former
-   // tenants are read at the same time (each was a separate wait before).
-   const namesRead=Promise.all(newAssignees.map(async u=>{const x=(await db.doc(`memberships/${u}_${d.organizationId}`).get()).data();assigneeNames.set(u,typeof x?.displayName==='string'&&x.displayName.trim()?x.displayName.trim():(typeof x?.email==='string'?x.email:''));}));
-   namesRead.catch(()=>{});
+   const nowMs=Timestamp.now().toMillis();
+
+   // Needs cleaning (2026-10-05, Tom): a guest left (check-out, lease
+   // move-out) after the room's last finished cleaning. Scale (2026-10-10):
+   // each room's latest of each, whatever month is shown.
+   const latest=(c,status,field,n)=>r=>db.collection(c).where('organizationId','==',O).where('roomId','==',r).where('status','==',status).orderBy(field,'desc').limit(n).get();
+   const lastCheckout=latest('bookings','checkedOut','endTime',3),lastMoveOut=latest('tenants','moveOut','moveOutDate',3),lastCleaning=latest('housekeepingTasks','completed','completedAt',1);
+   const cleaningRead=Promise.all(liveRooms.map(async r=>{
+    const [out,moved,clean]=await Promise.all([lastCheckout(r.id),lastMoveOut(r.id),lastCleaning(r.id)]);
+    const last=values=>Math.max(-Infinity,...values.filter(v=>Number.isFinite(v)&&v<=nowMs));
+    const left=Math.max(last(out.docs.map(v=>v.data()).map(x=>ms(x.checkedOutAt)??ms(x.endTime))),
+     last(moved.docs.map(v=>v.data()).filter(x=>x.isMainTenant!==false).map(x=>ms(x.moveOutDate))));
+    const cleaned=last(clean.docs.map(v=>ms(v.data().completedAt)));
+    return [r.id,left>-Infinity&&!(cleaned>=left)];
+   }));
+   cleaningRead.catch(()=>{});
+
    const open=new Map();
    for(const p of problems?.docs??[]){const x=p.data();if(!open.has(x.roomId))open.set(x.roomId,[]);open.get(x.roomId).push({id:p.id,title:String(x.title??''),blocksRoom:x.blocksRoom===true});}
-   // Needs cleaning (2026-10-05, Tom): a guest left (check-out, lease move-out)
-   // after the room's last finished cleaning.
-   const nowMs=Timestamp.now().toMillis(),lastOut=new Map(),lastClean=new Map();
-   const later=(map,k,v)=>{if(Number.isFinite(v)&&v<=nowMs&&!(map.get(k)>=v))map.set(k,v);};
-   for(const v of bookings.docs){const x=v.data();if(x.status==='checkedOut')later(lastOut,x.roomId,ms(x.checkedOutAt)??ms(x.endTime));}
-   for(const v of tenants.docs){const x=v.data();if(x.organizationId===d.organizationId&&x.isMainTenant!==false&&x.status==='moveOut')later(lastOut,x.roomId,ms(x.moveOutDate));}
-   for(const v of tasks.docs){const x=v.data();if(x.organizationId===d.organizationId&&x.status==='completed')later(lastClean,x.roomId,ms(x.completedAt));}
-   const needsCleaning=r=>lastOut.has(r)&&!(lastClean.get(r)>=lastOut.get(r));
-   const roomRows=rooms.docs.filter(v=>!v.data().deletedAt).map(v=>{const x=v.data(),mode='both';/* 2026-10-04: every room takes both */return {id:v.id,roomNumber:String(x.roomNumber??''),shortStay:true,monthly:true,blocked:(x.openProblemBlocks??[]).length>0,problems:open.get(v.id)??[],needsCleaning:needsCleaning(v.id)};})
-    .sort((a,c)=>a.roomNumber.localeCompare(c.roomNumber,undefined,{numeric:true})||a.id.localeCompare(c.id));
    const overlaps=(start,end)=>start!==null&&start<to&&(end===null||end>from);
    const bars=[];
 
-   // Invoices (leases) and former tenants (room moves) are found from data
-   // already read; start those reads now, alongside the names.
-   const tenantDocsEarly=tenants.docs.filter(v=>v.data().organizationId===d.organizationId);
-   const mainsEarly=tenantDocsEarly.filter(v=>v.data().isMainTenant!==false);
+   // Rent invoices (leases), former tenants (room moves), names and the
+   // rooms' cleaning state are all read at the same time.
+   const mainsEarly=tenantList.filter(v=>v.data().isMainTenant!==false);
    const leaseIdsEarly=new Set(mainsEarly.map(v=>v.id));
-   for(const h of history.docs){const x=h.data();if(x.organizationId===d.organizationId&&x.isMainTenant!==false&&id(x.tenantId))leaseIdsEarly.add(x.tenantId);}
+   for(const h of history.docs){const x=h.data();if(x.organizationId===O&&x.isMainTenant!==false&&id(x.tenantId))leaseIdsEarly.add(x.tenantId);}
    const invoicePages=[];
    if(canLease){
     const list=[...leaseIdsEarly];
-    for(let i=0;i<list.length;i+=30)invoicePages.push(db.collection('payments').where('organizationId','==',d.organizationId).where('tenantId','in',list.slice(i,i+30)).get());
+    for(let i=0;i<list.length;i+=30)invoicePages.push(db.collection('payments').where('organizationId','==',O).where('tenantId','in',list.slice(i,i+30)).get());
    }
-   const formerIds=cleaningOnly?[]:[...new Set(history.docs.map(h=>h.data()).filter(x=>x.organizationId===d.organizationId&&x.isMainTenant!==false&&roomIds.has(x.roomId)&&id(x.tenantId)&&!mainsEarly.some(v=>v.id===x.tenantId)).map(x=>x.tenantId))];
+   const formerIds=cleaningOnly?[]:[...new Set(history.docs.map(h=>h.data()).filter(x=>x.organizationId===O&&x.isMainTenant!==false&&roomIds.has(x.roomId)&&id(x.tenantId)&&!mainsEarly.some(v=>v.id===x.tenantId)).map(x=>x.tenantId))];
    const formerRead=Promise.all(formerIds.map(t=>db.doc(`tenants/${t}`).get()));
    const pagesRead=Promise.all(invoicePages);
    pagesRead.catch(()=>{});formerRead.catch(()=>{});
-   await namesRead;
+   const assignees=new Set(taskList.map(v=>v.data().assigneeId).filter(v=>typeof v==='string'&&v));
+   await readNames(new Set([...bookings.docs,...tenantList].map(v=>v.data().staffInChargeId).concat([...assignees])),assignees);
+   const cleaning=new Map(await cleaningRead);
+   const roomRows=liveRooms.map(v=>{const x=v.data();/* 2026-10-04: every room takes both */return {id:v.id,roomNumber:String(x.roomNumber??''),shortStay:true,monthly:true,blocked:(x.openProblemBlocks??[]).length>0,problems:open.get(v.id)??[],needsCleaning:cleaning.get(v.id)===true};})
+    .sort((a,c)=>a.roomNumber.localeCompare(c.roomNumber,undefined,{numeric:true})||a.id.localeCompare(c.id));
 
    // Cleaning bars: the planned window and the real work time (Bắt đầu → Xong).
    // Managers and reception see all; a cleaner only their own.
    const allTasks=canManageProperty||readBookings||canCreateBookings||canLease;
    const winFrom=`${d.from} 00:00`,winTo=`${d.to} 00:00`,nowLocal=localStamp(nowMs,zone);
    const addMinutes=(s,n)=>localStamp(Date.parse(s.replace(' ','T')+':00Z')+n*60000,'UTC');
-   for(const doc of tasks.docs){
+   for(const doc of taskList){
     const x=doc.data();
-    if(x.organizationId!==d.organizationId||!roomIds.has(x.roomId)||!['assigned','inProgress','completed'].includes(x.status))continue;
+    if(x.organizationId!==O||!roomIds.has(x.roomId)||!['assigned','inProgress','completed'].includes(x.status))continue;
     if(!allTasks&&!(readTasks&&x.assigneeId===uid))continue;
     const planned=typeof x.plannedStart==='string'&&typeof x.plannedEnd==='string';
     const started=localStamp(ms(x.startedAt),zone),done=localStamp(ms(x.completedAt),zone);
@@ -174,7 +210,7 @@ function createCalendarViewHandler({db,Timestamp,HttpsError}){
     bars.push({id:`cleaning:${doc.id}`,type:'cleaning',kind:'cleaning',roomId:x.roomId,start,end,recordId:doc.id,
      // Its own states, not a stay's (2026-10-05, Tom).
      status:x.status,taskStatus:x.status,
-     canOpen:canManageProperty||own,name:staffNames.get(x.assigneeId)||assigneeNames.get(x.assigneeId)||'',title:String(x.title??''),
+     canOpen:canManageProperty||own,name:staffName(x.assigneeId)||memberCache.get(x.assigneeId)||'',title:String(x.title??''),
      plannedStart:planned?x.plannedStart:null,plannedEnd:planned?x.plannedEnd:null,actualStart:started,actualEnd:done,
      // The solid part: the work done so far.
      pay:x.status==='completed'?'paid':'due',paidUntil:done??(x.status==='inProgress'?nowLocal:null),problem:false});
@@ -196,16 +232,16 @@ function createCalendarViewHandler({db,Timestamp,HttpsError}){
     const deposit=(x.depositPayment&&typeof x.depositPayment==='object')||Math.round((Number(x.depositPaidAmount)||0)*100)>Math.round((Number(x.depositRefundedAmount)||0)*100);
     bars.push({...bar,recordId:doc.id,kind:'short',deposit,name:String(x.guestName??''),
      phone:typeof x.guestPhone==='string'&&x.guestPhone.trim()!=='',channel:x.contactChannel??null,platform:x.platform&&x.platform!=='direct'?x.platform:null,
-     guests:Number.isSafeInteger(x.numberOfGuests)?x.numberOfGuests:null,staffName:staffNames.get(x.staffInChargeId)??'',
+     guests:Number.isSafeInteger(x.numberOfGuests)?x.numberOfGuests:null,staffName:staffName(x.staffInChargeId),
      pay,paidFraction:fraction,paidUntil:localStamp(start+Math.round((end-start)*fraction),zone),
      currency:x.currency??'VND',totalPrice:x.totalPrice??0,paidAmount:x.paidAmount??0});
    }
 
    // Leases (main tenants) in their current room.
-   const tenantDocs=tenants.docs.filter(v=>v.data().organizationId===d.organizationId);
+   const tenantDocs=tenantList.filter(v=>v.data().organizationId===O);
    const mains=tenantDocs.filter(v=>v.data().isMainTenant!==false);
    const leaseIds=new Set(mains.map(v=>v.id));
-   for(const h of history.docs){const x=h.data();if(x.organizationId===d.organizationId&&x.isMainTenant!==false&&id(x.tenantId))leaseIds.add(x.tenantId);}
+   for(const h of history.docs){const x=h.data();if(x.organizationId===O&&x.isMainTenant!==false&&id(x.tenantId))leaseIds.add(x.tenantId);}
    // Rent invoices of these leases (by tenant, so a lease billed in another property still counts).
    const invoices=new Map();
    for(const page of await pagesRead){
@@ -220,7 +256,7 @@ function createCalendarViewHandler({db,Timestamp,HttpsError}){
     const {pay,paidUntil}=leasePay(x,invoices.get(tenantId)??[],today,status);
     return {...bar,recordId:tenantId,deposit:(Number(x.depositMinor)||0)>0||(Number(x.deposit)||0)>0,name:String(x.fullName??''),phone:typeof x.phoneNumber==='string'&&x.phoneNumber.trim()!=='',
      roommates:roommates.get(tenantId)??0,periodMonths:Number.isSafeInteger(x.paymentPeriodMonths)?x.paymentPeriodMonths:1,
-     staffName:staffNames.get(x.staffInChargeId)??'',pay,paidUntil:dateStamp(paidUntil,'00:00')};
+     staffName:staffName(x.staffInChargeId),pay,paidUntil:dateStamp(paidUntil,'00:00')};
    };
    for(const doc of mains){
     if(cleaningOnly)break;
@@ -234,29 +270,24 @@ function createCalendarViewHandler({db,Timestamp,HttpsError}){
    // Rooms a lease lived in before a room move.
    const extra=new Map();
    const former=await formerRead;
-   formerIds.forEach((t,i)=>extra.set(t,former[i].exists&&former[i].data().organizationId===d.organizationId?former[i].data():{}));
+   formerIds.forEach((t,i)=>extra.set(t,former[i].exists&&former[i].data().organizationId===O?former[i].data():{}));
    for(const h of history.docs){
     if(cleaningOnly)break;
     const x=h.data();
-    if(x.organizationId!==d.organizationId||x.isMainTenant===false||!roomIds.has(x.roomId)||!id(x.tenantId))continue;
+    if(x.organizationId!==O||x.isMainTenant===false||!roomIds.has(x.roomId)||!id(x.tenantId))continue;
     const start=ms(x.start),end=ms(x.end);
     if(!Number.isFinite(start)||!Number.isFinite(end)||!overlaps(start,end))continue;
     let t=mains.find(v=>v.id===x.tenantId)?.data()??extra.get(x.tenantId);
-    if(!t){const doc=await db.doc(`tenants/${x.tenantId}`).get();t=doc.exists&&doc.data().organizationId===d.organizationId?doc.data():{};extra.set(x.tenantId,t);}
+    if(!t){const doc=await db.doc(`tenants/${x.tenantId}`).get();t=doc.exists&&doc.data().organizationId===O?doc.data():{};extra.set(x.tenantId,t);}
     bars.push(leaseBar(x.tenantId,t,x.roomId,start,end,'out',null));
    }
    bars.sort((a,c)=>a.roomId.localeCompare(c.roomId)||String(a.start).localeCompare(String(c.start)));
    return {id:building.id,name:String(b.name??''),timeZone:zone,today,now:localStamp(Timestamp.now().toMillis(),zone),canCreateBookings,canLease,canReadProblems,canReportProblems:canReport,
     cleaningOnly,canAssignCleaning:canManageProperty,canReadCleaning:canManageProperty||readTasks,rooms:roomRows,bars};
   };
-  // Independent properties need not wait for each other's database round trips.
-  // Bound fan-out (six initial queries per property) and preserve sorted order.
-  const properties=[];
-  for(let i=0;i<buildings.length;i+=4){
-   const batch=await Promise.all(buildings.slice(i,i+4).map(loadBuilding));
-   properties.push(...batch.filter(Boolean));
-  }
-  return {from:d.from,to:d.to,properties};
+  const property=building?await loadBuilding(building):null;
+  return {from:d.from,to:d.to,properties:property?[property]:[],
+   ...(list?{buildings:list.map(v=>({id:v.id,name:String(v.data().name??'')}))}:{})};
  };
 }
 module.exports={createCalendarViewHandler,bookingPay,leasePay};

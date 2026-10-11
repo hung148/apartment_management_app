@@ -60,6 +60,7 @@ function Save-Done([string]$name, [string]$hash) {
 # Every function is bundled from these files, so any change redeploys them all.
 $functionsHash = Get-Fingerprint (Get-ChildItem functions -File | Where-Object { $_.Extension -in '.js', '.json' } | ForEach-Object { $_.FullName }) @()
 $rulesHash = Get-Fingerprint @('firestore.rules') @()
+$indexesHash = Get-Fingerprint @('firestore.indexes.json') @()
 $webHash = Get-Fingerprint @('lib', 'web', 'assets', 'pubspec.yaml', 'pubspec.lock', 'config/app_check.staging.json') @()
 # Switching -NoWasm on or off is a change too: the build differs.
 $webBuildArgs = @()
@@ -88,6 +89,11 @@ $steps = @(
   @{ name = 'Analyze'; cmd = { flutter analyze --no-fatal-infos --no-fatal-warnings } },
   @{ name = $(if ($Tests.Count) { "Tests ($($Tests -join ', '))" } else { 'Tests (all)' }); cmd = $testCmd },
   @{ name = 'Server tests'; cmd = { node --test --test-concurrency=1 functions/test/*.test.js } },
+  # Database indexes before the functions that need them (2026-10-10). New
+  # indexes build for a few minutes after this; existing ones are untouched.
+  @{ name = 'Firestore indexes'; skip = -not (Test-Changed 'indexes' $indexesHash);
+     cmd = { node functions/node_modules/firebase-tools/lib/bin/firebase.js deploy --only firestore:indexes --config firebase.staging.json --project apartment-management-staging };
+     done = { Save-Done 'indexes' $indexesHash } },
   @{ name = 'Functions deploy'; skip = -not (Test-Changed 'functions' $functionsHash);
      cmd = { node tool/staging_release.cjs all --replace }; done = { Save-Done 'functions' $functionsHash } },
   @{ name = 'Firestore rules'; skip = -not (Test-Changed 'rules' $rulesHash);

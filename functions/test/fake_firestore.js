@@ -16,21 +16,26 @@ function fakeDb(seed={}){
     get:async()=>snap(ref(path)),update:async v=>apply([['update',ref(path),v]]),
     set:async(v,o)=>apply([[o?.merge?'update-or-set':'set',ref(path),v]]),delete:async()=>apply([['delete',ref(path)]])});
   const snap=r=>{const d=store.get(r.path);return {ref:r,id:r.id,exists:d!==undefined,data:()=>d&&{...d},updateTime:{seconds:0,nanoseconds:0}};};
-  const ops={'==':(a,b)=>a!==undefined&&cmp(a,b)===0,'<=':(a,b)=>a!==undefined&&cmp(a,b)<=0,'in':(a,b)=>b.includes(a)};
+  // Range filters skip missing and null fields, as Firestore does (2026-10-10).
+  const has=a=>a!==undefined&&a!==null;
+  const ops={'==':(a,b)=>a!==undefined&&cmp(a,b)===0,'<=':(a,b)=>a!==undefined&&cmp(a,b)<=0,'<':(a,b)=>has(a)&&cmp(a,b)<0,'>':(a,b)=>has(a)&&cmp(a,b)>0,'>=':(a,b)=>has(a)&&cmp(a,b)>=0,'in':(a,b)=>b.includes(a)};
   function collection(name){
     const depth=name.split('/').length+1;
     const make=state=>({
       doc:id=>ref(`${name}/${id??`auto${++autoId}`}`),
       where:(f,op,v)=>make({...state,filters:[...state.filters,[f,op,v]]}),
-      orderBy:f=>make({...state,order:f}),
+      orderBy:(f,dir)=>make({...state,order:f,desc:dir==='desc'}),
       limit:n=>make({...state,max:n}),
-      startAfter:doc=>make({...state,after:doc}),
+      startAfter:doc=>make({...state,after:typeof doc==='string'?{id:doc,data:()=>({})}:doc}),
       get:async()=>{
         let docs=[...store.keys()].filter(p=>p.startsWith(name+'/')&&p.split('/').length===depth).map(p=>snap(ref(p)))
           .filter(s=>state.filters.every(([f,op,v])=>ops[op](s.data()[f],v)));
         const key=s=>state.order&&state.order!=='__name__'?s.data()[state.order]:s.id;
-        docs.sort((a,b)=>cmp(key(a),key(b))||cmp(a.id,b.id));
-        if(state.after)docs=docs.filter(s=>cmp(key(s),key(state.after))>0||(cmp(key(s),key(state.after))===0&&s.id>state.after.id));
+        // Ordering by a field leaves out records without it, as Firestore does.
+        if(state.order&&state.order!=='__name__')docs=docs.filter(s=>s.data()[state.order]!==undefined);
+        const order=(a,b)=>(state.desc?-1:1)*(cmp(key(a),key(b))||cmp(a.id,b.id));
+        docs.sort(order);
+        if(state.after)docs=docs.filter(s=>order(s,state.after)>0);
         docs=docs.slice(0,state.max);
         return {docs,size:docs.length,empty:!docs.length};
       }});

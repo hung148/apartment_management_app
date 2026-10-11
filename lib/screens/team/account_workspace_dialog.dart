@@ -47,7 +47,9 @@ final accountWorkspaceOptions = <AccountWorkspaceOption>[
   ),
 ];
 
-/// Refresh authorization on every menu opening; never show saved owner access.
+/// The saved access shows the menu at once (2026-10-10, Tom); a fresh check
+/// runs on every opening and replaces it. Every action is checked again by
+/// the server, so a stale copy can only show a button the server refuses.
 class AccountWorkspaceButtons extends StatefulWidget {
   final String organizationId;
   final TeamService service;
@@ -69,15 +71,21 @@ class AccountWorkspaceButtons extends StatefulWidget {
 
 class _AccountWorkspaceButtonsState extends State<AccountWorkspaceButtons> {
   late Future<Map<String, dynamic>?> _access;
+  Map<String, dynamic>? _saved;
   bool _opening = false;
   @override
   void initState() {
     super.initState();
     _access = _loadAccess();
+    widget.service.savedMyAccess(widget.organizationId).then((saved) {
+      if (saved != null && mounted) setState(() => _saved = saved);
+    }, onError: (Object _) {});
   }
 
   Future<Map<String, dynamic>?> _loadAccess() async {
     final data = await widget.service.myAccess(widget.organizationId);
+    // The next refresh (after a page closes) shows this answer meanwhile.
+    _saved = data;
     final access = TeamAccess.fromMap(data ?? {});
     if (mounted &&
         access.status == 'active' &&
@@ -103,13 +111,14 @@ class _AccountWorkspaceButtonsState extends State<AccountWorkspaceButtons> {
   Widget build(BuildContext context) => FutureBuilder<Map<String, dynamic>?>(
     future: _access,
     builder: (context, snapshot) {
-      if (snapshot.connectionState != ConnectionState.done) {
+      final waiting = snapshot.connectionState != ConnectionState.done;
+      if (waiting && _saved == null) {
         return const Padding(
           padding: EdgeInsets.all(16),
           child: LinearProgressIndicator(),
         );
       }
-      if (snapshot.hasError) {
+      if (!waiting && snapshot.hasError) {
         return Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -126,7 +135,9 @@ class _AccountWorkspaceButtonsState extends State<AccountWorkspaceButtons> {
           ),
         );
       }
-      final access = TeamAccess.fromMap(snapshot.data ?? {});
+      final access = TeamAccess.fromMap(
+        (waiting ? _saved : snapshot.data) ?? {},
+      );
       return Column(
         mainAxisSize: MainAxisSize.min,
         children: [

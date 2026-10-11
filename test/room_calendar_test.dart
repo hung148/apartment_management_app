@@ -504,6 +504,58 @@ void main() {
     }
     expect(tester.takeException(), isNull);
   });
+  // Scale (2026-10-10, Tom: 100+ buildings): one property per call, every
+  // property in the picker, the next one loaded ahead.
+  testWidgets('many properties: all in the picker, a pick loads only that one', (
+    tester,
+  ) async {
+    final asked = <Map<String, dynamic>>[];
+    final names = {
+      for (var i = 1; i <= 60; i++)
+        'b$i': 'Building ${i.toString().padLeft(2, '0')}',
+    };
+    final service = TeamService(
+      transport: (name, data) async {
+        if (name != 'calendarView') return <String, dynamic>{};
+        asked.add(Map<String, dynamic>.from(data));
+        final id = (data['buildingId'] as String?) ?? 'b1';
+        final m = calendarFixture(
+          data['from'] as String,
+          to: data['to'] as String?,
+        );
+        final p = Map<String, dynamic>.from(
+          (m['properties'] as List).first as Map,
+        )..addAll({'id': id, 'name': names[id]});
+        return {
+          ...m,
+          'properties': [p],
+          if (data['list'] == true)
+            'buildings': [
+              for (final e in names.entries) {'id': e.key, 'name': e.value},
+            ],
+        };
+      },
+    );
+    await mountCalendar(
+      tester,
+      service,
+      access: TeamAccess.fromMap(TeamPreviewStore.grant('owner')),
+    );
+    await tester.pumpAndSettle();
+    expect(asked.first['list'], isTrue);
+    expect(asked.first.containsKey('buildingId'), isFalse);
+    // The next property was loaded ahead, once.
+    expect(asked.where((a) => a['buildingId'] == 'b2'), hasLength(1));
+    await tester.tap(find.byKey(const ValueKey('calendar-building-b1')));
+    await tester.pumpAndSettle();
+    expect(find.text('Building 05'), findsWidgets);
+    await tester.tap(find.text('Building 03').last);
+    await tester.pumpAndSettle();
+    expect(asked.where((a) => a['buildingId'] == 'b3').first.containsKey('list'), isFalse);
+    expect(find.byKey(const ValueKey('calendar-building-b3')), findsOneWidget);
+    expect(asked.where((a) => a['buildingId'] == 'b4'), hasLength(1));
+    expect(tester.takeException(), isNull);
+  });
   testWidgets(
     'populated calendar fits languages, screens, landscape and large text',
     (tester) async {
@@ -772,17 +824,22 @@ void main() {
     (tester) async {
       final calls = Calls();
       await mountCalendar(tester, calendarService(calls));
-      // The month before, the month shown and the month after.
+      // The month before, the month shown and the month after; the first
+      // load also asks for the list of properties (2026-10-10, scale).
       expect(calls.calendar.last, {
         'organizationId': 'preview',
         'from': '2026-09-01',
         'to': '2026-12-01',
+        'list': true,
       });
       expect(find.text('October 2026'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('calendar-next')));
       await tester.pumpAndSettle();
       expect(calls.calendar.last['from'], '2026-10-01');
       expect(calls.calendar.last['to'], '2027-01-01');
+      // Later months: the property on screen only, no list again.
+      expect(calls.calendar.last['buildingId'], 'riverside');
+      expect(calls.calendar.last.containsKey('list'), isFalse);
       expect(find.text('November 2026'), findsOneWidget);
       for (var i = 0; i < 3; i++) {
         await tester.tap(find.byKey(const ValueKey('calendar-prev')));

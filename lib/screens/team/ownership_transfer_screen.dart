@@ -50,6 +50,14 @@ class _OwnershipTransferScreenState extends State<OwnershipTransferScreen> {
       _busy = true;
       _error = null;
     });
+    // The saved page shows at once while the server answers (2026-10-10).
+    if (_data == null) {
+      widget.service.savedTransferRead(widget.organizationId).then((saved) {
+        if (saved != null && mounted && _data == null) {
+          setState(() => _data = saved);
+        }
+      }, onError: (Object _) {});
+    }
     try {
       final data =
           await initialRead ??

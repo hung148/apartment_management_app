@@ -485,6 +485,7 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
       register_error = null;
     });
 
+    final languageCode = AppTranslations.of(context).locale.languageCode;
     await Future.delayed(const Duration(seconds: 2));
 
     try {
@@ -493,6 +494,7 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
         email: registerEmailController.text.trim(),
         password: registerPasswordController.text,
         name: registerNameController.text.trim(),
+        languageCode: languageCode,
       );
 
       if (owner != null) {

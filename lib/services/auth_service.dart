@@ -166,6 +166,7 @@ class AuthService {
     required String password,
     required String name,
     String? inviteCode,
+    String? languageCode,
   }) async {
     UserCredential? result;
     try {
@@ -188,6 +189,15 @@ class AuthService {
       // Legacy organizations copy the sign-in display name into memberships.
       await setAuthDisplayName(name);
       logger.i('New Owner registered');
+      // Staff invitations need a verified email (2026-10-10). Nothing sent
+      // this email before, so new email/password accounts could never
+      // accept an invitation. A failed send never blocks registration; the
+      // entry screen can send it again.
+      try {
+        await sendEmailVerification(languageCode: languageCode);
+      } catch (e) {
+        logger.w('Verification email not sent', error: e);
+      }
 
       return newOwner;
     } catch (e) {
@@ -276,6 +286,23 @@ class AuthService {
       if (e.code == 'user-not-found' || e.code == 'user-disabled') return;
       rethrow;
     }
+  }
+
+  /// Sends the "verify your email" message to the signed-in account.
+  Future<void> sendEmailVerification({String? languageCode}) async {
+    final user = currentUser;
+    if (user == null || user.emailVerified) return;
+    if (languageCode != null) await _auth.setLanguageCode(languageCode);
+    await user.sendEmailVerification();
+  }
+
+  /// Reads the account again and forces a fresh ID token, so the server sees
+  /// a just-verified email without signing out and in.
+  Future<void> reloadVerification() async {
+    final user = currentUser;
+    if (user == null) return;
+    await user.reload();
+    await _auth.currentUser?.getIdToken(true);
   }
 
   /// Forces a fresh ID token so the server sees the new sign-in time right

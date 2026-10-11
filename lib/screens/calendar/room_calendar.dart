@@ -426,6 +426,15 @@ class _RoomCalendarState extends State<RoomCalendar> {
   final _nudges = ValueNotifier<Map<String, double>>(const {});
   late DateTime _month;
   List<CalProperty> _properties = [];
+
+  /// Every property this person may open (id, name), for the picker. Scale
+  /// (2026-10-10, Tom: 100+ buildings): the server sends one property's
+  /// calendar per call and this list when asked ([_listStale]).
+  List<({String id, String name})> _buildings = const [];
+  bool _listStale = true;
+
+  /// Properties whose next window was already loaded ahead ("id|from").
+  final Set<String> _prefetched = {};
   bool _busy = true, _loaded = false, _syncing = false, _scrollToToday = true;
   String? _error, _property;
   int _generation = 0;
@@ -604,6 +613,10 @@ class _RoomCalendarState extends State<RoomCalendar> {
     if (old.organizationId != widget.organizationId ||
         old.service != widget.service) {
       _properties = [];
+      _buildings = const [];
+      _listStale = true;
+      _property = null;
+      _prefetched.clear();
       _loaded = false;
       _load();
     }
@@ -653,11 +666,15 @@ class _RoomCalendarState extends State<RoomCalendar> {
     // right away (the progress bar keeps running); the server's answer then
     // replaces it. If the server cannot be reached, the saved copy stays with
     // the error notice and its own "updated" time.
+    final askList = _listStale;
     try {
       await for (final r in widget.service.calendarViewLive({
         'organizationId': widget.organizationId,
         'from': calYmd(_month),
         'to': calYmd(_monthEnd),
+        // The property on screen (the server picks the first when none).
+        if (_property != null) 'buildingId': _property,
+        if (askList) 'list': true,
       })) {
         if (!mounted || generation != _generation) return;
         setState(() {
@@ -665,6 +682,14 @@ class _RoomCalendarState extends State<RoomCalendar> {
             for (final p in (r.data['properties'] as List? ?? const []))
               CalProperty.fromMap(Map<String, dynamic>.from(p as Map)),
           ];
+          final list = r.data['buildings'];
+          if (list is List) {
+            _buildings = [
+              for (final b in list)
+                if (b is Map) (id: '${b['id']}', name: '${b['name'] ?? ''}'),
+            ];
+          }
+          if (askList && !r.saved) _listStale = false;
           _loadedAt = r.at;
           _clock ??= Timer.periodic(const Duration(minutes: 1), (_) {
             if (mounted) setState(() {});
@@ -683,6 +708,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
             shown.id,
           );
         }
+        if (!r.saved && shown != null) _prefetchNext(shown.id);
         _afterLayout();
       }
     } catch (e) {
@@ -693,9 +719,40 @@ class _RoomCalendarState extends State<RoomCalendar> {
         _busy = false;
         _error = denied ? 'denied' : 'error';
         // No access any more: nothing saved may stay on screen.
-        if (denied) _properties = [];
+        if (denied) {
+          _properties = [];
+          _buildings = const [];
+        }
       });
     }
+  }
+
+  /// Scale (2026-10-10): the next property in the list loads quietly after
+  /// this one, so flipping to it shows at once (from the device copy). Once
+  /// per property and window.
+  void _prefetchNext(String shownId) {
+    final i = _buildings.indexWhere((b) => b.id == shownId);
+    if (i < 0 || i + 1 >= _buildings.length) return;
+    final next = _buildings[i + 1].id, from = calYmd(_month);
+    if (!_prefetched.add('$next|$from')) return;
+    widget.service.prefetchCalendar({
+      'organizationId': widget.organizationId,
+      'from': from,
+      'to': calYmd(_monthEnd),
+      'buildingId': next,
+    });
+  }
+
+  /// The picker's choices: the server's list, or the loaded properties
+  /// (older servers send every property and no list).
+  List<({String id, String name})> get _choices => _buildings.isNotEmpty
+      ? _buildings
+      : [for (final p in _properties) (id: p.id, name: p.name)];
+
+  /// Reload, including the list of properties (names may have changed).
+  void _refresh() {
+    _listStale = true;
+    _load();
   }
 
   void _afterLayout() {
@@ -843,7 +900,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
             child: WsNotice(
               c(_error!),
               action: TextButton(
-                onPressed: _busy ? null : _load,
+                onPressed: _busy ? null : _refresh,
                 child: Text(c('retry')),
               ),
             ),
@@ -946,7 +1003,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
       icon: const Icon(Icons.tune),
       onSelected: (v) {
         if (v == 'legend') _showLegend(context);
-        if (v == 'refresh' && !_busy) _load();
+        if (v == 'refresh' && !_busy) _refresh();
       },
       itemBuilder: (_) => [
         PopupMenuItem(
@@ -992,7 +1049,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
         IconButton(
           key: const ValueKey('calendar-refresh'),
           tooltip: c('refresh'),
-          onPressed: _busy ? null : _load,
+          onPressed: _busy ? null : _refresh,
           icon: const Icon(Icons.refresh),
         ),
       ],
@@ -1011,9 +1068,14 @@ class _RoomCalendarState extends State<RoomCalendar> {
     }
 
     final pickerWidth = current == null ? 240.0 : nameWidth(current.name);
+    // The shown property is always a choice (a list from before it was
+    // created, or a device copy, may not have it yet).
+    final pickable = current == null || _choices.any((b) => b.id == current.id)
+        ? _choices
+        : [..._choices, (id: current.id, name: current.name)];
     final Widget? buildingName = current == null
         ? null
-        : _properties.length < 2
+        : pickable.length < 2
         // One building (2026-10-09, Tom: the label was too small): the same
         // outlined box as the picker, without the arrow (nothing to choose).
         ? SizedBox(
@@ -1045,7 +1107,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
               isDense: false,
               itemHeight: null,
               selectedItemBuilder: (_) => [
-                for (final _ in _properties) Text(current.name),
+                for (final _ in pickable) Text(current.name),
               ],
               style: theme.textTheme.titleSmall,
               decoration: const InputDecoration(
@@ -1056,7 +1118,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
                 prefixIcon: Icon(Icons.apartment_outlined, size: 18),
               ),
               items: [
-                for (final p in _properties)
+                for (final p in pickable)
                   DropdownMenuItem<String>(
                     value: p.id,
                     child: Padding(
@@ -1066,12 +1128,18 @@ class _RoomCalendarState extends State<RoomCalendar> {
                   ),
               ],
               onChanged: (v) {
-                if (v != null && v != _property) {
+                if (v != null && v != current.id) {
                   setState(() {
                     _property = v;
                     _scrollToToday = true;
                   });
-                  _afterLayout();
+                  // Scale (2026-10-10): each property loads on its own;
+                  // the device copy (or the one loaded ahead) shows first.
+                  if (_properties.any((p) => p.id == v)) {
+                    _afterLayout();
+                  } else {
+                    _load();
+                  }
                 }
               },
             ),
@@ -1213,7 +1281,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
             ),
           ]
         : buttons;
-    final buildingWidth = _properties.length < 2 && current != null
+    final buildingWidth = _choices.length < 2 && current != null
         ? nameWidth(current.name) + 48
         : pickerWidth + 48;
     final propertyActions = Row(
@@ -2362,6 +2430,9 @@ class _RoomCalendarState extends State<RoomCalendar> {
   void _openBuilding(CalProperty p, {String? initial}) {
     final pages = _buildingPages(p);
     if (pages.isEmpty) return;
+    // Its name may change there, or it may be deleted: the next load brings
+    // the list of properties again.
+    _listStale = true;
     _page(
       p.name,
       (close) =>
@@ -2387,7 +2458,14 @@ class _RoomCalendarState extends State<RoomCalendar> {
         },
       ),
     );
-    if (mounted && created) setState(() => _property = id);
+    if (mounted && created) {
+      // Show the new building, with the list that now includes it.
+      setState(() {
+        _property = id;
+        _listStale = true;
+      });
+      _load();
+    }
   }
 
   void _newRoom(CalProperty p) {

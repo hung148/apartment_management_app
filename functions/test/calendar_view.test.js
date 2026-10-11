@@ -42,26 +42,91 @@ const call=(store,data={},uid='owner')=>createCalendarViewHandler({db:store,Time
 const code=async(p,c)=>assert.equal((await p.then(()=>null,e=>e)).code,c);
 const bar=(r,i)=>r.properties.flatMap(p=>p.bars).find(b=>b.id.startsWith(i));
 
-test('multiple buildings load concurrently with a bounded batch and stable order',async()=>{
+// Scale (2026-10-10, Tom: 100+ buildings): one property per call, the list
+// of properties when asked, no cap.
+test('one property per call: the asked one, the list when asked, no cap',async()=>{
  const data=seed();
- for(let i=3;i<=9;i++)data[`buildings/b${i}`]={organizationId:'org',name:`Toa ${i}`,timeZone:'Asia/Ho_Chi_Minh'};
- const db=fakeDb(data),collection=db.collection;
- let active=0,peak=0,firstBatch=0;
- const wrap=q=>({
-  where:(...args)=>wrap(q.where(...args)),
-  get:async()=>{
-   active++;peak=Math.max(peak,active);
-   // Hold each room read until the next event-loop turn. This detects serial
-   // building loading without relying on wall-clock performance thresholds.
-   await new Promise(resolve=>setImmediate(()=>{if(!firstBatch)firstBatch=active;resolve();}));
-   try{return await q.get();}finally{active--;}
-  },
- });
- db.collection=name=>name==='rooms'?wrap(collection(name)):collection(name);
- const result=await call(db);
- assert.equal(firstBatch,4,'four buildings must start before the first room read completes');
- assert.equal(peak,4,'do not fan out all buildings at once');
- assert.deepEqual(result,await call(fakeDb(data)),'parallel completion must preserve the complete calendar projection and order');
+ for(let i=1;i<=60;i++)data[`buildings/s${i}`]={organizationId:'org',name:`Zone ${String(i).padStart(2,'0')}`,timeZone:'Asia/Ho_Chi_Minh'};
+ data['rooms/rs55']={organizationId:'org',buildingId:'s55',roomNumber:'5501'};
+ const listed=await call(fakeDb(data),{buildingId:'s55',list:true});
+ assert.equal(listed.buildings.length,62,'every property is listed (no 50 cap)');
+ assert.deepEqual(listed.buildings.slice(0,3).map(b=>b.name),['Toa A','Toa B','Zone 01']);
+ assert.deepEqual(listed.properties.map(p=>p.id),['s55']);
+ assert.deepEqual(listed.properties[0].rooms.map(r=>r.roomNumber),['5501']);
+ // The asked property only: no list, and no other property's records read.
+ const db=fakeDb(data),collection=db.collection,seen=[];
+ db.collection=name=>{seen.push(name);return collection(name);};
+ const one=await call(db,{buildingId:'s55'});
+ assert.equal(one.buildings,undefined);
+ assert.deepEqual(one.properties.map(p=>p.id),['s55']);
+ assert(!seen.includes('buildings'),'the property list is not read when not asked');
+ // No property asked: the list and the first one.
+ const first=await call(fakeDb(data));
+ assert.deepEqual(first.properties.map(p=>p.id),['b1']);
+ assert.equal(first.buildings.length,62);
+ // A property that cannot be shown (another organization, gone, not in the
+ // member's properties): the list and the first one instead.
+ for(const id of ['other','missing']){
+  const r=await call(fakeDb(data),{buildingId:id});
+  assert.deepEqual(r.properties.map(p=>p.id),['b1']);assert.equal(r.buildings.length,62);
+ }
+ const gone=seed();gone['buildings/b2'].deletedAt=at('2026-09-01T00:00:00Z');
+ const g=await call(fakeDb(gone),{buildingId:'b2'});
+ assert.deepEqual(g.properties.map(p=>p.id),['b1']);assert.deepEqual(g.buildings.map(b=>b.id),['b1']);
+});
+
+test('only the shown days are read; old stays never are',async()=>{
+ Ts.clock=Date.parse('2026-10-02T03:00:00Z');
+ const data=seed();
+ for(let i=0;i<50;i++)data[`bookings/old${i}`]={organizationId:'org',buildingId:'b1',roomId:'r101',guestName:`Old ${i}`,status:'checkedOut',
+  startTime:at(`2025-0${1+i%9}-0${1+i%9}T07:00:00Z`),endTime:at(`2025-0${1+i%9}-0${2+i%8}T05:00:00Z`),totalPrice:1,paidAmount:1,currency:'VND'};
+ for(let i=0;i<20;i++)data[`tenants/gone${i}`]={organizationId:'org',buildingId:'b1',roomId:'r10',fullName:`Gone ${i}`,status:'moveOut',isMainTenant:true,
+  moveInDate:at('2024-01-01T00:00:00Z'),moveOutDate:at('2025-01-01T00:00:00Z')};
+ const db=fakeDb(data),collection=db.collection,returned={};
+ const wrap=(name,q)=>({where:(...a)=>wrap(name,q.where(...a)),orderBy:(...a)=>wrap(name,q.orderBy(...a)),limit:n=>wrap(name,q.limit(n)),
+  get:async()=>{const r=await q.get();returned[name]=(returned[name]??0)+r.docs.length;return r;}});
+ db.collection=name=>wrap(name,collection(name));
+ const r=await call(db);
+ assert.deepEqual(r.properties[0].bars.map(b=>b.id).sort(),['booking:k1','booking:k2','lease:lease1:r10:'+Date.parse('2026-09-04T17:00:00Z')].sort());
+ // Ending after the window starts: k1-k4 (k3 cancelled and k4 after the
+ // window are dropped later). Plus each room's latest check-outs: at most 3.
+ assert(returned.bookings<=4+3,`old bookings must not be read (${returned.bookings})`);
+ assert(returned.tenants<=3+3,`old tenants must not be read (${returned.tenants})`);
+});
+
+test('needs cleaning looks at the room\'s latest check-out, however old',async()=>{
+ Ts.clock=Date.parse('2026-10-02T03:00:00Z');
+ const data=seed();
+ // Checked out in March, never cleaned since; the calendar shows October.
+ data['bookings/march']={organizationId:'org',buildingId:'b1',roomId:'r10',guestName:'March',status:'checkedOut',
+  startTime:at('2026-03-01T07:00:00Z'),endTime:at('2026-03-02T05:00:00Z'),checkedOutAt:at('2026-03-02T04:00:00Z'),totalPrice:1,paidAmount:1,currency:'VND'};
+ data['housekeepingTasks/feb']={organizationId:'org',buildingId:'b1',roomId:'r10',assigneeId:'owner',status:'completed',completedAt:at('2026-02-01T00:00:00Z')};
+ const rooms=async s=>(await call(fakeDb(s))).properties[0].rooms;
+ assert.equal((await rooms(data)).find(x=>x.id==='r10').needsCleaning,true);
+ data['housekeepingTasks/apr']={organizationId:'org',buildingId:'b1',roomId:'r10',assigneeId:'owner',status:'completed',completedAt:at('2026-04-01T00:00:00Z')};
+ assert.equal((await rooms(data)).find(x=>x.id==='r10').needsCleaning,false);
+ // A lease that moved out after that cleaning: needs cleaning again; a
+ // roommate leaving does not count.
+ data['tenants/may']={organizationId:'org',buildingId:'b1',roomId:'r10',fullName:'May',status:'moveOut',isMainTenant:true,moveOutDate:at('2026-05-01T00:00:00Z')};
+ assert.equal((await rooms(data)).find(x=>x.id==='r10').needsCleaning,true);
+ data['tenants/may'].isMainTenant=false;
+ assert.equal((await rooms(data)).find(x=>x.id==='r10').needsCleaning,false);
+});
+
+test('staff names are read by id, never the whole staff list',async()=>{
+ Ts.clock=Date.parse('2026-10-02T03:00:00Z');
+ const data=seed();
+ data['bookings/k1'].staffInChargeId='s1';
+ data['staffProfiles/s1']={organizationId:'org',displayName:'Anh Tuan'};
+ data['staffProfiles/s2']={organizationId:'org',displayName:'Unused'};
+ data['staffProfiles/x']={organizationId:'other',displayName:'Not ours'};
+ data['tenants/lease1'].staffInChargeId='x';
+ const db=fakeDb(data),collection=db.collection,asked=[];
+ db.collection=name=>{asked.push(name);return collection(name);};
+ const r=await call(db);
+ assert(!asked.includes('staffProfiles'));
+ assert.equal(bar(r,'booking:k1').staffName,'Anh Tuan');
+ assert.equal(bar(r,'lease:lease1').staffName,'','another organization\'s staff name never shows');
 });
 
 // Speed (2026-10-09): rent invoice pages and former tenants (room moves) are
@@ -84,10 +149,11 @@ test('invoice pages and former tenants are read together with an identical resul
  assert.equal(bar(result,'lease:lease2:r101').name,'Moved Person');
 });
 
-test('owner sees every property, rooms in number order, and the month\'s bars',async()=>{
+test('owner sees every property in the list, rooms in number order, and the month\'s bars',async()=>{
  Ts.clock=Date.parse('2026-10-02T03:00:00Z');
  const r=await call(fakeDb(seed()));
- assert.deepEqual(r.properties.map(p=>p.name),['Toa A','Toa B']);
+ assert.deepEqual(r.buildings,[{id:'b1',name:'Toa A'},{id:'b2',name:'Toa B'}]);
+ assert.deepEqual(r.properties.map(p=>p.name),['Toa A']);
  const a=r.properties[0];
  assert.equal(a.today,'2026-10-02');
  // 2026-10-04: the property's own clock, for the calendar's "now" line.
@@ -140,7 +206,7 @@ test('moved-out lease ends at its move-out day; a room move shows the old room t
  assert.equal(l1.end,'2026-10-15 12:00');assert.equal(l1.status,'out');assert.equal(l1.pay,'paid');
  const old=r.properties[0].bars.find(b=>b.id.startsWith('lease:lease2'));
  assert.equal(old.roomId,'r101');assert.equal(old.name,'Moved Person');assert.equal(old.status,'out');assert.equal(old.end,'2026-10-10 12:00');
- const now=r.properties[1].bars.find(b=>b.id.startsWith('lease:lease2'));
+ const now=(await call(fakeDb(s),{buildingId:'b2'})).properties[0].bars.find(b=>b.id.startsWith('lease:lease2'));
  assert.equal(now.start,'2026-10-10 12:00');assert.equal(now.status,'staying');
 });
 
@@ -150,7 +216,9 @@ test('staff limited to their own bookings and no lease access see other stays an
  s['memberships/rec_org']={ownerId:'rec',organizationId:'org',accessVersion:2,role:'custom1',roleGrants:{readBookings:'own',createBookings:'managed'},status:'active',buildingScope:'selected',buildingIds:['b1']};
  s['bookings/k2'].createdBy='rec';
  const r=await call(fakeDb(s),{},'rec');
- assert.deepEqual(r.properties.map(p=>p.id),['b1']);
+ assert.deepEqual(r.properties.map(p=>p.id),['b1']);assert.deepEqual(r.buildings.map(b=>b.id),['b1']);
+ // A property outside their own: never shown, the list and theirs instead.
+ assert.deepEqual((await call(fakeDb(s),{buildingId:'b2'},'rec')).properties.map(p=>p.id),['b1']);
  const k1=bar(r,'booking:k1');
  assert.deepEqual([k1.anonymous,k1.name,k1.canOpen,k1.pay,k1.platform,k1.recordId],[true,'',false,undefined,undefined,undefined]);
  const k2=bar(r,'booking:k2');
@@ -163,7 +231,8 @@ test('staff limited to their own bookings and no lease access see other stays an
 test('a member with nothing to do on the calendar gets no property',async()=>{
  const s=seed();
  s['memberships/none_org']={ownerId:'none',organizationId:'org',accessVersion:2,role:'custom1',roleGrants:{readOwnActivity:'own'},status:'active',buildingScope:'all',buildingIds:[]};
- assert.deepEqual((await call(fakeDb(s),{},'none')).properties,[]);
+ const r=await call(fakeDb(s),{},'none');
+ assert.deepEqual(r.properties,[]);assert.deepEqual(r.buildings,[]);
 });
 
 // 2026-10-05 (Tom): cleaning on the calendar.
@@ -216,7 +285,8 @@ test('cleaning bars: planned window, real work time, and rooms that need cleanin
 test('a cleaner sees the calendar with only their own cleaning, no guests or money',async()=>{
  Ts.clock=Date.parse('2026-10-03T06:30:00Z');
  const r=await call(fakeDb(cleaningSeed()),{},'maid');
- assert.deepEqual(r.properties.map(p=>p.id),['b1','b2']);
+ assert.deepEqual(r.buildings.map(b=>b.id),['b1','b2']);
+ assert.deepEqual(r.properties.map(p=>p.id),['b1']);
  const a=r.properties[0];
  assert.equal(a.cleaningOnly,true);assert.equal(a.canCreateBookings,false);assert.equal(a.canLease,false);assert.equal(a.canAssignCleaning,false);
  assert.deepEqual(a.bars.map(b=>b.id),['cleaning:t1']);
@@ -235,11 +305,14 @@ test('refuses: signed out, other organization, suspended, bad dates, too many da
  await code(call(fakeDb(seed()),{to:'2026-10-01'}),'invalid-argument');
  await code(call(fakeDb(seed()),{to:'2027-02-01'}),'invalid-argument');
  await code(call(fakeDb(seed()),{extra:1}),'invalid-argument');
+ await code(call(fakeDb(seed()),{buildingId:'../b1'}),'invalid-argument');
+ await code(call(fakeDb(seed()),{buildingId:5}),'invalid-argument');
+ await code(call(fakeDb(seed()),{list:'yes'}),'invalid-argument');
 });
 
 test('a property without a time zone is listed so it can be fixed, with no bars',async()=>{
  const s=seed();delete s['buildings/b2'].timeZone;
- const p=(await call(fakeDb(s))).properties.find(x=>x.id==='b2');
+ const p=(await call(fakeDb(s),{buildingId:'b2'})).properties.find(x=>x.id==='b2');
  assert.equal(p.needsTimeZone,true);assert.deepEqual(p.bars,[]);
 });
 

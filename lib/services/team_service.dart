@@ -472,6 +472,12 @@ class TeamService {
     Map<String, dynamic> payload,
   ) => _live('calendarView', payload);
 
+  /// Loads a calendar window ahead and keeps it on the device, so it shows at
+  /// once when opened (2026-10-10, scale). Never fails the caller.
+  void prefetchCalendar(Map<String, dynamic> payload) {
+    _fresh('calendarView', payload).then((_) {}, onError: (Object _) {});
+  }
+
   Future<Map<String, dynamic>> tenantRent(Map<String, dynamic> payload) =>
       _transport('tenantRent', payload);
 
@@ -501,7 +507,18 @@ class TeamService {
     Map<String, dynamic> payload,
   ) => _transport('roomBookingSettings', payload);
 
+  /// The "read" answer is kept on the device (2026-10-10, Tom) so the
+  /// ownership page shows it at once; the server still checks every action.
   Future<Map<String, dynamic>> transferOrganization(
     Map<String, dynamic> payload,
-  ) => _transport('transferOrganization', payload);
+  ) => payload['action'] == 'read'
+      ? _fresh('transferOrganization', payload)
+      : _transport('transferOrganization', payload);
+
+  /// The saved ownership page, or null.
+  Future<Map<String, dynamic>?> savedTransferRead(String organizationId) async =>
+      (await _cache?.read('transferOrganization', {
+        'action': 'read',
+        'organizationId': organizationId,
+      }))?.data;
 }

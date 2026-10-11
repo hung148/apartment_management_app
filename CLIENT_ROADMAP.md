@@ -358,6 +358,16 @@ the server). Measure before and after each step on staging.
    (writes per call ~2 -> ~0). Strict limits (invitation lookups 12; costly:
    sheet import, merge, create organization) still counted in Firestore per
    call. Leftover AI call names removed from the limits.
+   (5) organizationSettings "read" in a read-only transaction.
+   (6) 2026-10-10 (Tom: 100+ buildings, staging test org scaleTest100 with
+   100 buildings): calendarView was 5.7 s and showed only the first 50
+   buildings. Now one building per call and only records reaching into the
+   shown days; "needs cleaning" from each room's latest check-out / move-out
+   / cleaning; staff names by id; the building list only when asked (first
+   open, refresh, after a building page); the next building loaded ahead.
+   9 new Firestore indexes (staging_all.ps1 now deploys indexes before the
+   functions). Production: deploy the indexes first and wait until they are
+   built, then the functions and the app.
 10. [ ] After the production move (Tom 2026-10-10): run single_organization_audit.js
    on production. If it finds no two-owner organizations, no co-owner
    records and no staff linked to two businesses, and the merge tool is no

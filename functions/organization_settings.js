@@ -143,6 +143,8 @@ function createOrganizationSettingsHandler({db,Timestamp,HttpsError,allowCreate=
   };
 
   if(d.action==='read'){
+   // Only reads (2026-10-10, speed): a read-only transaction, no locks or
+   // commit wait; same consistent snapshot.
    return db.runTransaction(async tx=>{
     const {org,m}=await load(tx),data=org.data(),manage=allows(m,'manageOrganization',context);
     const roleDoc=m.role!=='owner'?await tx.get(db.collection('orgRoles').doc(`${orgId}_${m.role}`)):null;
@@ -151,7 +153,7 @@ function createOrganizationSettingsHandler({db,Timestamp,HttpsError,allowCreate=
     return {id:orgId,accessVersion:2,...serialize(Object.fromEntries(keys.filter(k=>data[k]!==undefined).map(k=>[k,data[k]]))),
      paymentAccounts:(Array.isArray(data.paymentAccounts)?data.paymentAccounts:[]).filter(plain).map(a=>({id:a.id,label:a.label})),
      role:m.role,...(roleName?{roleName}:{}),canManage:manage,canClose:m.role==='owner',canLeave:!ownerMember(m)};
-   });
+   },{readOnly:true});
   }
 
   if(d.action==='update'){

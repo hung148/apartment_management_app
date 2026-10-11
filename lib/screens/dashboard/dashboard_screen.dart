@@ -545,8 +545,22 @@ class _DashboardScreenState extends State<DashboardScreen>
             ),
           WsActions(
             children: [
+              if (entry.needsVerifiedEmail)
+                OutlinedButton(
+                  key: const ValueKey('resend-verification'),
+                  onPressed: _resendVerification,
+                  child: Text(t['verify_email_resend']),
+                ),
               OutlinedButton(
-                onPressed: () {
+                onPressed: () async {
+                  // A just-verified email only reaches the server in a fresh
+                  // sign-in token.
+                  if (entry.needsVerifiedEmail) {
+                    try {
+                      await _authService.reloadVerification();
+                    } catch (_) {}
+                  }
+                  if (!mounted) return;
                   setState(() {
                     _entryKey = UniqueKey();
                   });
@@ -558,6 +572,24 @@ class _DashboardScreenState extends State<DashboardScreen>
         ],
       ),
     );
+  }
+
+  Future<void> _resendVerification() async {
+    final t = AppTranslations.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final email = _authService.currentUser?.email ?? '';
+    try {
+      await _authService.sendEmailVerification(
+        languageCode: t.locale.languageCode,
+      );
+      messenger.showSnackBar(SnackBar(
+        content: Text(t.textWithParams('verify_email_sent', {'email': email})),
+      ));
+    } catch (_) {
+      messenger.showSnackBar(
+        SnackBar(content: Text(t['verify_email_failed'])),
+      );
+    }
   }
 
   Future<void> _showSingleOrganizationActions(Organization org) async {
