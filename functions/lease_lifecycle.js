@@ -18,11 +18,12 @@ function createLeaseLifecycleHandler({db,Timestamp,HttpsError}){
   if(['settlementPreview','settlementQuote','settle'].includes(request.data?.action))return settlement(request);
   const d=request.data||{},uid=request.auth?.uid,write=['terms','move','moveOut'].includes(d.action);
   if(!uid)fail('unauthenticated');
-  const keys=['action','organizationId','buildingId','tenantId',...(write?['operationId','revision','timeZone','reason']:[]),...(d.action==='terms'?['contractEndDate']:[]),...(['move','moveOut'].includes(d.action)?['effectiveDate']:[]),...(d.action==='move'?['destinationRoomId','destinationMainTenantId']:[])];
+  const keys=['action','organizationId','buildingId','tenantId',...(write?['operationId','revision','timeZone','reason']:[]),...(d.action==='terms'?['contractEndDate']:[]),...(['move','moveOut'].includes(d.action)?['effectiveDate']:[]),...(d.action==='move'?['destinationRoomId','destinationMainTenantId']:[]),...(d.action==='destinations'?['destinationBuildingId','list']:[])];
   if(!['read','terms','move','moveOut','history','destinations'].includes(d.action)||!id(d.organizationId)||!id(d.buildingId)||!id(d.tenantId)||Object.keys(d).some(k=>!keys.includes(k)))fail('invalid-argument');
   if(write&&(!id(d.operationId)||typeof d.revision!=='string'||!/^\d+:\d+$/.test(d.revision)||!validZone(d.timeZone)||typeof d.reason!=='string'||!d.reason.trim()||d.reason.length>1000))fail('invalid-argument');
   if(d.action==='terms'&&d.contractEndDate!==null&&!validDate(d.contractEndDate))fail('invalid-argument');
   if(['move','moveOut'].includes(d.action)&&!validDate(d.effectiveDate))fail('invalid-argument');
+  if(d.action==='destinations'&&((d.destinationBuildingId!==undefined&&!id(d.destinationBuildingId))||(d.list!==undefined&&typeof d.list!=='boolean')))fail('invalid-argument');
   if(d.action==='move'&&(!id(d.destinationRoomId)||(d.destinationMainTenantId!==null&&!id(d.destinationMainTenantId))))fail('invalid-argument');
   return db.runTransaction(async tx=>{
    const org=await tx.get(db.doc(`organizations/${d.organizationId}`)),membership=await tx.get(db.doc(`memberships/${uid}_${d.organizationId}`)),m=membership.data();
@@ -44,9 +45,23 @@ function createLeaseLifecycleHandler({db,Timestamp,HttpsError}){
    if(!startDate)fail('failed-precondition');
    if(d.action==='read')return {record:{fullName:t.fullName??'',roomId:t.roomId,isMainTenant:t.isMainTenant===true,status:t.status,revision:revision(doc),timeZone:zone,today,startDate,contractEndDate:t.contractEndLocalDate??(t.contractEndDate?propertyDate(t.contractEndDate.toMillis(),zone):null),roommates,canBackdate:allows(m,'backdateRecords',{organizationId:d.organizationId,userId:uid})}};
    if(d.action==='destinations'){
-    const rooms=await tx.get(db.collection('rooms').where('organizationId','==',d.organizationId));
-    const mains=await tx.get(db.collection('tenants').where('organizationId','==',d.organizationId));
-    return {records:rooms.docs.filter(v=>v.id!==t.roomId&&allows(m,'manageLease',scope(v.data().buildingId))&&!v.data().deletedAt).map(v=>({id:v.id,buildingId:v.data().buildingId,roomNumber:v.data().roomNumber??v.id,mainTenants:mains.docs.filter(x=>x.data().roomId===v.id&&x.data().isMainTenant===true&&active(x.data())).map(x=>({id:x.id,fullName:x.data().fullName??''}))}))};
+    // Scale (2026-10-11, Tom: 100+ buildings): the rooms of one building
+    // (the lease's own unless another is asked) and its current tenants,
+    // not every room and tenant of the organization. The list of buildings
+    // the member may move leases to comes when asked (list: true).
+    const target=d.destinationBuildingId??d.buildingId;
+    if(!allows(m,'manageLease',scope(target)))fail('permission-denied');
+    const usable=v=>v.exists&&v.data().organizationId===d.organizationId&&!v.data().deletedAt&&allows(m,'manageLease',scope(v.id));
+    const [targetDoc,rooms,mains,all]=await Promise.all([
+     target===d.buildingId?building:tx.get(db.doc(`buildings/${target}`)),
+     tx.get(db.collection('rooms').where('organizationId','==',d.organizationId).where('buildingId','==',target)),
+     tx.get(db.collection('tenants').where('organizationId','==',d.organizationId).where('buildingId','==',target).where('status','in',['active','suspended'])),
+     d.list===true?tx.get(db.collection('buildings').where('organizationId','==',d.organizationId)):null,
+    ]);
+    if(!usable(targetDoc))fail('not-found');
+    const byNumber=(a,c)=>String(a.roomNumber).localeCompare(String(c.roomNumber),undefined,{numeric:true})||a.id.localeCompare(c.id);
+    return {buildingId:target,records:rooms.docs.filter(v=>v.id!==t.roomId&&!v.data().deletedAt).map(v=>({id:v.id,buildingId:target,roomNumber:v.data().roomNumber??v.id,mainTenants:mains.docs.filter(x=>x.data().roomId===v.id&&x.data().isMainTenant===true&&active(x.data())).map(x=>({id:x.id,fullName:x.data().fullName??''}))})).sort(byNumber),
+     ...(all?{buildings:all.docs.filter(usable).map(v=>({id:v.id,name:String(v.data().name??'')})).sort((a,c)=>a.name.localeCompare(c.name,undefined,{numeric:true})||a.id.localeCompare(c.id))}:{})};
    }
    if(!active(t))fail('failed-precondition');
    if(d.revision!==revision(doc)||d.timeZone!==zone)fail('aborted');

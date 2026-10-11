@@ -1,4 +1,5 @@
 'use strict';
+const {staffNames:readStaffNames}=require('./staff_directory');
 const {createHash}=require('node:crypto');
 const {allows}=require('./team_access');
 const {propertyDate}=require('./lease_dates');
@@ -40,8 +41,8 @@ function createTenantContactsHandler({db,Timestamp,HttpsError}){
     for(const m of new Set(docs.map(x=>x.data()).filter(v=>v.isMainTenant===false&&id(v.mainTenantId)&&!names.has(v.mainTenantId)).map(v=>v.mainTenantId))){
      const main=await tx.get(db.doc(`tenants/${m}`));if(main.exists&&main.data().organizationId===d.organizationId)names.set(m,String(main.data().fullName??''));
     }
-    const staffDocs=await tx.get(db.collection('staffProfiles').where('organizationId','==',d.organizationId));
-    return {names,staff:new Map(staffDocs.docs.map(x=>[x.id,String(x.data().displayName??'')]))};
+    // Only the staff these tenants name (2026-10-11, scale).
+    return {names,staff:await readStaffNames(r=>tx.get(r),db,d.organizationId,docs.map(x=>x.data().staffInChargeId))};
    };
    const projection=(doc,numbers=new Map(),maps={names:new Map(),staff:new Map()})=>{const v=doc.data();return {...details(v,maps.names,maps.staff),id:doc.id,fullName:v.fullName??'',phoneNumber:v.phoneNumber??'',roomId:v.roomId??'',roomNumber:numbers.get(v.roomId)??'',status:v.status??'unknown',canAddRoommate:v.isMainTenant===true&&v.status==='active'&&v.moveOutDate==null,canReadRentHistory:allows(member.data(),'overridePrices',scope),canEditRent:v.isMainTenant===true&&['active','suspended'].includes(v.status)&&v.moveOutDate==null&&allows(member.data(),'overridePrices',scope),mainTenantId:v.isMainTenant===false?v.mainTenantId??null:null,canBill:v.isMainTenant===true&&allows(member.data(),'collectPayments',scope),canSettle:v.isMainTenant===true&&!v.settlementId&&((['active','suspended'].includes(v.status)&&v.moveOutDate==null)||(v.status==='moveOut'&&v.moveOutDate!=null))&&allows(member.data(),'manageLease',scope)&&allows(member.data(),'collectPayments',scope),settled:!!v.settlementId};};
    if(list){

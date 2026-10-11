@@ -1,4 +1,5 @@
 'use strict';
+const {forgetStaff}=require('./staff_directory');
 const {createHash}=require('node:crypto');
 const {sessionCheck}=require('./account_sessions');
 const {hasRole}=require('./team_access');
@@ -343,7 +344,7 @@ function createCallableGroups({onCall,observe,...dependencies}){
   const run=async()=>{
    if(!known)throw new dependencies.HttpsError('not-found','unknown_call');
    try{return await entry.handler(inner);}
-   finally{if(!isRead(entry,inner))guard.forget(inner.auth?.uid,organizationOf(inner.data));}
+   finally{if(!isRead(entry,inner)){guard.forget(inner.auth?.uid,organizationOf(inner.data));forgetStaff(organizationOf(inner.data));}}
   };
   const early=known&&startsEarly(entry,inner);
   const guarded=async()=>{

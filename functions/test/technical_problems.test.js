@@ -130,3 +130,25 @@ test('input checks',()=>{
  assert.equal(invalidProblemInput({...base,...fix('p',{recordExpense:true,paymentMethod:'cash',accountId:'vcb'})}),'problem_invalid_fix');
  assert.equal(invalidProblemInput({...base,...fix('p',{fixedDate:'2026-02-30'})}),'problem_invalid_fix');
 });
+
+// Scale (2026-10-11, Tom): every open problem and only the 300 newest fixed
+// ones are read, not every problem the building ever had.
+test('problem list: all open, the 300 newest fixed, nothing older read',async()=>{
+ const {db,call}=setup();
+ const base={organizationId:'o',buildingId:'b',roomId:'r1',title:'x',description:'',blocksRoom:false,photos:[]};
+ for(let i=0;i<350;i++)db.store.set(`technicalProblems/f${String(i).padStart(3,'0')}`,{...base,status:'fixed',reportedLocalDate:new Date(Date.parse('2025-01-01T00:00:00Z')+i*86400000).toISOString().slice(0,10),createdAt:Ts.fromMillis(Date.parse('2025-01-01T00:00:00Z')+i*86400000)});
+ for(let i=0;i<3;i++)db.store.set(`technicalProblems/o${i}`,{...base,status:'open',reportedLocalDate:'2026-11-0'+(i+1),createdAt:Ts.fromMillis(Date.parse('2026-11-01T00:00:00Z')+i*86400000)});
+ const collection=db.collection;let returned=0;
+ const wrap=q=>({where:(...a)=>wrap(q.where(...a)),orderBy:(...a)=>wrap(q.orderBy(...a)),limit:n=>wrap(q.limit(n)),get:async()=>{const r=await q.get();returned+=r.docs.length;return r;}});
+ db.collection=name=>name==='technicalProblems'?wrap(collection(name)):collection(name);
+ const all=await call({action:'list'});
+ assert.equal(all.records.length,300);
+ assert.deepEqual(all.records.slice(0,3).map(r=>r.status),['open','open','open']);
+ assert(all.records.some(r=>r.id==='f349'),'the newest fixed one is listed');
+ assert(!all.records.some(r=>r.id==='f000'),'the oldest fixed one is not');
+ assert(returned<=303,`at most the open ones and 300 fixed (${returned})`);
+ returned=0;
+ const open=await call({action:'list',status:'open'});
+ assert.deepEqual(open.records.map(r=>r.id).sort(),['o0','o1','o2']);
+ assert.equal(returned,3,'only open problems read');
+});

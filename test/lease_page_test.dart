@@ -87,6 +87,15 @@ void main() {
     // Moving the lease: in the "…" menu; refused while someone lives with them.
     await tapKey(tester, 'lease-more-tenant-anh');
     await tapKey(tester, 'lease-move-room');
+    // 2026-10-11 (scale): rooms one building at a time, the lease's own first;
+    // another building shows its own rooms (Garden has none).
+    await tapKey(tester, 'lease-change-building');
+    await tester.tap(find.text('Garden Homestay').last);
+    await tester.pumpAndSettle();
+    expect(find.text('There is no other room to move to.'), findsOneWidget);
+    await tapKey(tester, 'lease-change-building');
+    await tester.tap(find.text('Riverside — Khu căn hộ phía Đông').last);
+    await tester.pumpAndSettle();
     await tapKey(tester, 'lease-change-room');
     await tester.tap(find.text('Room 102').last);
     await tester.pumpAndSettle();

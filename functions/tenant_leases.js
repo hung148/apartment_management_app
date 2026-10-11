@@ -1,4 +1,5 @@
 'use strict';
+const {staffChoices}=require('./staff_directory');
 const {createHash}=require('node:crypto');
 const {allows}=require('./team_access');
 const {validZone}=require('./booking_settings');
@@ -80,8 +81,7 @@ function createTenantLeasesHandler({db,Timestamp,HttpsError}){
    // B7: a room with an open "room unavailable" problem takes no new lease.
    if(roomBlocked(r))fail('failed-precondition','room_has_open_problem');
    if(!create){
-    const staffDocs=await tx.get(db.collection('staffProfiles').where('organizationId','==',d.organizationId));
-    const staff=staffDocs.docs.filter(v=>v.data().employmentStatus!=='inactive').map(v=>({id:v.id,displayName:String(v.data().displayName??'')})).sort((a,b)=>a.displayName.localeCompare(b.displayName));
+    const staff=await staffChoices(r=>tx.get(r),db,d.organizationId);
     const accounts=(Array.isArray(org.data().paymentAccounts)?org.data().paymentAccounts:[]).filter(plain).map(a=>({id:a.id,label:a.label}));
     const roomCurrency=r.currency??'VND';
     const roomRent=Number.isFinite(r.roomPrice)&&r.roomPrice>0?{amountMinor:Math.round(r.roomPrice*(roomCurrency==='USD'?100:1)),currency:roomCurrency}:null;

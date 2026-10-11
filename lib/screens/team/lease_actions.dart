@@ -66,6 +66,7 @@ String leaseActionText(BuildContext context, String key) {
     'moveTitle': ['Move to another room', 'Chuyển sang phòng khác'],
     'moveRoom': ['Move room', 'Chuyển phòng'],
     'room': ['New room', 'Phòng mới'],
+    'building': ['Building', 'Tòa nhà'],
     'roomNumber': ['Room {n}', 'Phòng {n}'],
     'liveWith': ['Lives with', 'Ở cùng'],
     'moveDate': ['Moved on (YYYY-MM-DD)', 'Ngày chuyển (YYYY-MM-DD)'],
@@ -337,8 +338,13 @@ class _LifecycleDialogState extends State<_LifecycleDialog> {
   final _date = TextEditingController(), _reason = TextEditingController();
   Map<String, dynamic>? _record, _pending;
   List<Map<String, dynamic>> _rooms = [];
-  String? _room, _main, _error;
-  bool _busy = true;
+
+  /// Scale (2026-10-11, Tom: 100+ buildings): rooms are offered one building
+  /// at a time (the lease's own first); other buildings from this list.
+  List<Map<String, dynamic>> _buildings = [];
+  String? _room, _main, _error, _building;
+  bool _busy = true, _roomsBusy = false;
+  int _roomsGeneration = 0;
   String lt(String k) => leaseActionText(context, k);
 
   @override
@@ -364,6 +370,7 @@ class _LifecycleDialogState extends State<_LifecycleDialog> {
           ? await widget.service.leaseLifecycle({
               ...widget.identity,
               'action': 'destinations',
+              'list': true,
             })
           : null;
       if (!mounted) return;
@@ -373,6 +380,13 @@ class _LifecycleDialogState extends State<_LifecycleDialog> {
           for (final v in (rooms?['records'] as List? ?? const []))
             Map<String, dynamic>.from(v as Map),
         ];
+        _buildings = [
+          for (final v in (rooms?['buildings'] as List? ?? const []))
+            Map<String, dynamic>.from(v as Map),
+        ];
+        _building =
+            rooms?['buildingId'] as String? ??
+            widget.identity['buildingId'] as String?;
         _date.text = widget.change == LeaseChange.endDate
             ? '${_record!['contractEndDate'] ?? ''}'
             : '${_record!['today'] ?? ''}';
@@ -382,6 +396,41 @@ class _LifecycleDialogState extends State<_LifecycleDialog> {
       if (mounted) {
         setState(() {
           _busy = false;
+          _error = lt('loadFailed');
+        });
+      }
+    }
+  }
+
+  /// Another building chosen: its rooms and tenants.
+  Future<void> _pickBuilding(String id) async {
+    final generation = ++_roomsGeneration;
+    setState(() {
+      _building = id;
+      _room = null;
+      _main = null;
+      _rooms = [];
+      _roomsBusy = true;
+      _error = null;
+    });
+    try {
+      final r = await widget.service.leaseLifecycle({
+        ...widget.identity,
+        'action': 'destinations',
+        'destinationBuildingId': id,
+      });
+      if (!mounted || generation != _roomsGeneration) return;
+      setState(() {
+        _rooms = [
+          for (final v in (r['records'] as List? ?? const []))
+            Map<String, dynamic>.from(v as Map),
+        ];
+        _roomsBusy = false;
+      });
+    } catch (_) {
+      if (mounted && generation == _roomsGeneration) {
+        setState(() {
+          _roomsBusy = false;
           _error = lt('loadFailed');
         });
       }
@@ -471,7 +520,10 @@ class _LifecycleDialogState extends State<_LifecycleDialog> {
       busy: _busy,
       error: _error,
       saveKey: const ValueKey('lease-change-save'),
-      onSave: r == null || (widget.change == LeaseChange.move && _rooms.isEmpty)
+      onSave:
+          r == null ||
+              (widget.change == LeaseChange.move &&
+                  (_rooms.isEmpty || _roomsBusy))
           ? null
           : _save,
       children: [
@@ -482,10 +534,44 @@ class _LifecycleDialogState extends State<_LifecycleDialog> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 if (widget.change == LeaseChange.move) ...[
-                  if (_rooms.isEmpty)
+                  if (_buildings.length > 1)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: WsSpace.sm),
+                      child: DropdownButtonFormField<String>(
+                        key: const ValueKey('lease-change-building'),
+                        initialValue:
+                            _buildings.any((b) => b['id'] == _building)
+                            ? _building
+                            : null,
+                        isExpanded: true,
+                        decoration: InputDecoration(labelText: lt('building')),
+                        items: [
+                          for (final b in _buildings)
+                            DropdownMenuItem(
+                              value: b['id'] as String,
+                              child: Text('${b['name']}'),
+                            ),
+                        ],
+                        onChanged: locked
+                            ? null
+                            : (v) {
+                                if (v != null && v != _building) {
+                                  _pickBuilding(v);
+                                }
+                              },
+                      ),
+                    ),
+                  if (_roomsBusy)
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: WsSpace.sm),
+                      child: LinearProgressIndicator(),
+                    )
+                  else if (_rooms.isEmpty)
                     Text(lt('noRooms'))
                   else
                     Padding(
+                      // A new building starts with no room chosen.
+                      key: ValueKey('lease-change-rooms-$_building'),
                       padding: const EdgeInsets.only(bottom: WsSpace.sm),
                       child: DropdownButtonFormField<String>(
                         key: const ValueKey('lease-change-room'),

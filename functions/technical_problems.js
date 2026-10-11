@@ -96,8 +96,14 @@ function createTechnicalProblemsHandler({db,Timestamp,HttpsError,drive=null}){
    const currency=org.data().displayCurrency??(b.currency==='USD'?'USD':'VND'),scale=currency==='USD'?100:1;
 
    if(d.action==='list'){
-    const rows=(await tx.get(db.collection('technicalProblems').where('organizationId','==',d.organizationId).where('buildingId','==',d.buildingId))).docs;
-    const status=d.status??'all';
+    // Scale (2026-10-11, Tom): every open problem, and only the 300 most
+    // recent fixed ones (the list shows at most 300), not every problem ever.
+    const status=d.status??'all',base=db.collection('technicalProblems').where('organizationId','==',d.organizationId).where('buildingId','==',d.buildingId);
+    const [openRows,fixedRows]=await Promise.all([
+     status==='fixed'?{docs:[]}:tx.get(base.where('status','==','open')),
+     status==='open'?{docs:[]}:tx.get(base.where('status','==','fixed').orderBy('createdAt','desc').limit(300)),
+    ]);
+    const rows=[...openRows.docs,...fixedRows.docs];
     const records=rows.filter(v=>status==='all'||v.data().status===status).map(v=>{const x=v.data();return {
      id:v.id,revision:revision(v),roomId:x.roomId,roomNumber:x.roomNumber??'',title:x.title,description:x.description??'',status:x.status,blocksRoom:x.blocksRoom===true,
      reportedByName:x.reportedByName??'',reportedLocalDate:x.reportedLocalDate??null,occupant:x.occupant??null,fixedByName:x.fixedByName??null,fixedLocalDate:x.fixedLocalDate??null,

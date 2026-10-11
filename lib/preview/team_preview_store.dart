@@ -610,12 +610,21 @@ class TeamPreviewStore {
         return {'records': leaseHistory[d['tenantId']] ?? []};
       }
       if (d['action'] == 'destinations') {
+        // One building at a time, like the server (2026-10-11).
+        final target = d['destinationBuildingId'] ?? d['buildingId'];
+        if (assignedOnly && target != 'riverside') reject();
         return {
+          'buildingId': target,
+          if (d['list'] == true)
+            'buildings': [
+              for (final b in buildings)
+                if (!assignedOnly || b['id'] == 'riverside')
+                  {'id': b['id'], 'name': b['name']},
+            ],
           'records': rooms
               .where(
                 (v) =>
-                    v['id'] != tenant['roomId'] &&
-                    (!assignedOnly || v['buildingId'] == 'riverside'),
+                    v['id'] != tenant['roomId'] && v['buildingId'] == target,
               )
               .map(
                 (v) => {
