@@ -210,25 +210,28 @@ class _TenantContactsScreenState extends State<TenantContactsScreen> {
       _clear();
     });
     try {
-      final result = await widget.service.tenantContacts({
+      // 2026-10-11 (Tom: open at once): the copy saved on this device first,
+      // still locked (busy) until the server's answer replaces it.
+      await for (final answer in widget.service.readLive('tenantContacts', {
         'action': 'read',
         ..._identity,
         'tenantId': id,
-      });
-      if (!mounted || generation != _generation) return;
-      final row = result['record'] as Map;
-      setState(() {
-        _name.text = row['fullName'] as String;
-        _phone.text = row['phoneNumber'] as String;
-        _room = (row['roomNumber'] as String?)?.isNotEmpty == true
-            ? row['roomNumber'] as String
-            : row['roomId'] as String;
-        _status = row['status'] as String;
-        _detail = Map<String, dynamic>.from(row);
-        _revision = row['revision'] as String;
-        _busy = false;
-        _message = saved ? 'tenant_contacts_saved' : null;
-      });
+      })) {
+        if (!mounted || generation != _generation) return;
+        final row = answer.data['record'] as Map;
+        setState(() {
+          _name.text = row['fullName'] as String;
+          _phone.text = row['phoneNumber'] as String;
+          _room = (row['roomNumber'] as String?)?.isNotEmpty == true
+              ? row['roomNumber'] as String
+              : row['roomId'] as String;
+          _status = row['status'] as String;
+          _detail = Map<String, dynamic>.from(row);
+          _revision = row['revision'] as String;
+          _busy = answer.saved;
+          _message = saved && !answer.saved ? 'tenant_contacts_saved' : null;
+        });
+      }
     } catch (_) {
       if (mounted && generation == _generation) {
         setState(() {

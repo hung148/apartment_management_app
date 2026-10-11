@@ -368,6 +368,14 @@ the server). Measure before and after each step on staging.
    9 new Firestore indexes (staging_all.ps1 now deploys indexes before the
    functions). Production: deploy the indexes first and wait until they are
    built, then the functions and the app.
+   (7) 2026-10-11 (Tom: open at once, also when screens are added later):
+   screens read through TeamService.readLive (device copy first, locked
+   until the server answers; changes always go to the server). Reads a
+   screen opens with ('read', 'list', 'rooms', 'prepare', ...) are kept on
+   the device automatically; quotes, previews, photos and changes never.
+   New screens: use readLive. Removed screens: nothing to do (copies age
+   out; at most 150, 30 days). Done: calendar, tenant list and page, rent,
+   electricity, bookings, problems, cleaning, lease form, staff, invoices.
 10. [ ] After the production move (Tom 2026-10-10): run single_organization_audit.js
    on production. If it finds no two-owner organizations, no co-owner
    records and no staff linked to two businesses, and the merge tool is no

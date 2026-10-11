@@ -155,6 +155,30 @@ class _HousekeepingScreenState extends State<HousekeepingScreen> {
         _manager = false;
       }
     });
+    // 2026-10-11 (Tom: open at once): the list as it was last time, from this
+    // device, while the server is asked (still locked until it answers).
+    final savedKey = 'housekeeping:${widget.buildingId}';
+    if (!more) {
+      widget.service.saved(savedKey, widget.organizationId).then((saved) {
+        if (saved == null ||
+            !mounted ||
+            generation != _generation ||
+            !_busy ||
+            _tasks.isNotEmpty) {
+          return;
+        }
+        List<Map<String, dynamic>> rows(String k) => [
+          for (final v in (saved[k] as List? ?? const []))
+            Map<String, dynamic>.from(v as Map),
+        ];
+        setState(() {
+          _tasks = rows('tasks');
+          _rooms = rows('rooms');
+          _people = rows('people');
+          _manager = saved['manager'] == true;
+        });
+      }, onError: (Object _) {});
+    }
     try {
       final access =
           widget.access ??
@@ -183,6 +207,14 @@ class _HousekeepingScreenState extends State<HousekeepingScreen> {
       final rooms = more ? _rooms : await roomsRead;
       final people = more ? _people : await peopleRead;
       if (!mounted || generation != _generation) return;
+      if (!more) {
+        widget.service.save(savedKey, widget.organizationId, {
+          'tasks': page.records,
+          'rooms': rooms,
+          'people': people,
+          'manager': manager,
+        });
+      }
       setState(() {
         _manager = manager;
         _tasks = [if (more) ..._tasks, ...page.records];

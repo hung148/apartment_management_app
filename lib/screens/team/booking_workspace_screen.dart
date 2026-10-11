@@ -935,21 +935,27 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
       _status = null;
     });
     try {
-      final r = await widget.service.bookingWorkspace({
+      // 2026-10-11 (Tom: open at once): the device copy first, locked
+      // (busy) until the server's answer replaces it.
+      await for (final answer in widget.service.readLive('bookingWorkspace', {
         ..._identity,
         'action': 'read',
         'bookingId': id,
-      });
-      if (!mounted || generation != _generation) return;
-      setState(() {
-        _record = Map<String, dynamic>.from(r['record'] as Map);
-        _currency = _record!['currency'] as String;
-        _zone = _record!['timeZone'] as String;
-        _mode = 'detail';
-        _busy = false;
-        _fields['reason']!.clear();
-        _fields['amount']!.clear();
-      });
+      })) {
+        if (!mounted || generation != _generation) return;
+        final first = _record == null || _record!['id'] != id;
+        setState(() {
+          _record = Map<String, dynamic>.from(answer.data['record'] as Map);
+          _currency = _record!['currency'] as String;
+          _zone = _record!['timeZone'] as String;
+          _mode = 'detail';
+          _busy = answer.saved;
+          if (first || !answer.saved) {
+            _fields['reason']!.clear();
+            _fields['amount']!.clear();
+          }
+        });
+      }
     } catch (_) {
       if (mounted && generation == _generation) _deny();
     }

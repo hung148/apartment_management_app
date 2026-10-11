@@ -171,19 +171,23 @@ class _LeaseElectricitySectionState extends State<LeaseElectricitySection> {
       _error = null;
     });
     try {
-      final data = await widget.service.utilityReadings({
+      // 2026-10-11 (Tom: open at once): this device's copy first, locked
+      // (busy) until the server's answer replaces it.
+      await for (final answer in widget.service.readLive('utilityReadings', {
         'action': 'read',
         ..._scope,
-      });
-      if (!mounted || generation != _generation) return;
-      setState(() {
-        _record = Map<String, dynamic>.from(data['record'] as Map);
-        _rows = [
-          for (final r in (data['records'] as List? ?? const []))
-            Map<String, dynamic>.from(r as Map),
-        ];
-        _busy = false;
-      });
+      })) {
+        final data = answer.data;
+        if (!mounted || generation != _generation) return;
+        setState(() {
+          _record = Map<String, dynamic>.from(data['record'] as Map);
+          _rows = [
+            for (final r in (data['records'] as List? ?? const []))
+              Map<String, dynamic>.from(r as Map),
+          ];
+          _busy = answer.saved;
+        });
+      }
     } on FirebaseFunctionsException catch (e) {
       if (!mounted || generation != _generation) return;
       setState(() {

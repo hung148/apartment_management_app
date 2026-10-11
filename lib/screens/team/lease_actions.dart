@@ -695,6 +695,8 @@ class LeaseRentRows extends StatefulWidget {
 }
 
 class _LeaseRentRowsState extends State<LeaseRentRows> {
+  /// The record came from the server (not only this device's copy).
+  bool _fresh = false;
   Map<String, dynamic>? _record;
   int _generation = 0;
   Map<String, dynamic> get _identity => {
@@ -721,12 +723,18 @@ class _LeaseRentRowsState extends State<LeaseRentRows> {
   Future<void> _load() async {
     final generation = ++_generation;
     try {
-      final r = await widget.service.tenantRent({
+      // 2026-10-11 (Tom: open at once): this device's copy first; changes
+      // wait for the server's answer ([_fresh]).
+      await for (final answer in widget.service.readLive('tenantRent', {
         'action': 'read',
         ..._identity,
-      });
-      if (mounted && generation == _generation) {
-        setState(() => _record = Map<String, dynamic>.from(r['record'] as Map));
+      })) {
+        if (mounted && generation == _generation) {
+          setState(() {
+            _record = Map<String, dynamic>.from(answer.data['record'] as Map);
+            _fresh = !answer.saved;
+          });
+        }
       }
     } catch (_) {
       // The plain rent stays on screen.
@@ -735,7 +743,7 @@ class _LeaseRentRowsState extends State<LeaseRentRows> {
 
   Future<void> _open({String? cancel}) async {
     final r = _record;
-    if (r == null) return;
+    if (r == null || !_fresh) return;
     final saved = await showDialog<bool>(
       context: context,
       barrierDismissible: false,

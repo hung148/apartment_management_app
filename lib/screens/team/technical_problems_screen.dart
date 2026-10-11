@@ -136,18 +136,24 @@ class _TechnicalProblemsScreenState extends State<TechnicalProblemsScreen> {
       _error = null;
     });
     try {
-      final data = await widget.service.technicalProblems({
+      // 2026-10-11 (Tom: open at once): the device copy first, locked
+      // (busy) until the server's answer replaces it.
+      await for (final answer in widget.service.readLive('technicalProblems', {
         'action': 'list',
         'organizationId': widget.organizationId,
         'buildingId': widget.buildingId,
-      });
-      if (!mounted || generation != _generation) return;
-      setState(() {
-        _data = data;
-        _busy = false;
-        if (_problemId != null && _problem == null && _view != _View.done)
-          _view = _View.list;
-      });
+      })) {
+        if (!mounted || generation != _generation) return;
+        setState(() {
+          _data = answer.data;
+          _busy = answer.saved;
+          if (!answer.saved &&
+              _problemId != null &&
+              _problem == null &&
+              _view != _View.done)
+            _view = _View.list;
+        });
+      }
       final room = widget.reportRoomId;
       if (!_reportOpened &&
           room != null &&

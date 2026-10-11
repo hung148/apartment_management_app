@@ -111,6 +111,39 @@ class TeamService {
     yield Saved(fresh, saved: false, at: DateTime.now());
   }
 
+  /// Any read, saved copy first (2026-10-11, Tom: every screen opens at
+  /// once). Screens show the saved copy right away and keep their buttons
+  /// locked until the fresh answer ([Saved.saved] false) replaces it, so a
+  /// change is never made from an old copy (the server checks revisions too).
+  /// New screens: read through this to open instantly; a removed screen's
+  /// copies simply age out (ReadCache.maxEntries / maxAge).
+  Stream<Saved<Map<String, dynamic>>> readLive(
+    String call,
+    Map<String, dynamic> payload,
+  ) => _live(call, payload);
+
+  /// A read keeps its answer on the device (so [readLive] can show it next
+  /// time); a change goes straight to the server.
+  /// Only answers a screen opens with are kept: not quotes, previews or
+  /// photos, which change with every keystroke or are too large, and would
+  /// push the useful copies out.
+  Future<Map<String, dynamic>> _read(
+    String call,
+    Map<String, dynamic> payload,
+  ) => _keptActions.contains(payload['action'])
+      ? _fresh(call, payload)
+      : _transport(call, payload);
+  static const _keptActions = {
+    'read',
+    'list',
+    'rooms',
+    'prepare',
+    'prepareCreate',
+    'tenants',
+    'history',
+    'destinations',
+  };
+
   Future<Map<String, dynamic>> _fresh(
     String call,
     Map<String, dynamic> payload,
@@ -335,7 +368,7 @@ class TeamService {
       _transport('mutateHousekeepingTask', payload);
 
   Future<Map<String, dynamic>> tenantContacts(Map<String, dynamic> payload) =>
-      _transport('tenantContacts', payload);
+      _read('tenantContacts', payload);
 
   /// Display-only saved tenant list, followed by an authoritative fresh list.
   /// Deliberately excludes contact edits and private tenant detail requests.
@@ -349,19 +382,19 @@ class TeamService {
   }
 
   Future<Map<String, dynamic>> tenantLeases(Map<String, dynamic> payload) =>
-      _transport('tenantLeases', payload);
+      _read('tenantLeases', payload);
 
   Future<Map<String, dynamic>> tenantRoommates(Map<String, dynamic> payload) =>
-      _transport('tenantRoommates', payload);
+      _read('tenantRoommates', payload);
 
   Future<Map<String, dynamic>> leaseLifecycle(Map<String, dynamic> payload) =>
-      _transport('leaseLifecycle', payload);
+      _read('leaseLifecycle', payload);
 
   /// B7 technical problems (list, report, update, fix, reopen; B7b photos:
   /// addPhoto, photo, removePhoto).
   Future<Map<String, dynamic>> technicalProblems(
     Map<String, dynamic> payload,
-  ) => _transport('technicalProblems', payload);
+  ) => _read('technicalProblems', payload);
 
   /// B7b Google Drive connection (status, connect, disconnect).
   Future<Map<String, dynamic>> googleDrive(Map<String, dynamic> payload) =>
@@ -392,7 +425,7 @@ class TeamService {
       _transport('propertyLayout', payload);
 
   Future<Map<String, dynamic>> bookingWorkspace(Map<String, dynamic> payload) =>
-      _transport('bookingWorkspace', payload);
+      _read('bookingWorkspace', payload);
 
   // The booking form's options (rooms, staff, receiving accounts, price list,
   // what the person may do), 2026-10-09 speed: kept in memory for this
@@ -481,29 +514,29 @@ class TeamService {
   }
 
   Future<Map<String, dynamic>> tenantRent(Map<String, dynamic> payload) =>
-      _transport('tenantRent', payload);
+      _read('tenantRent', payload);
 
   Future<Map<String, dynamic>> propertyContract(Map<String, dynamic> payload) =>
-      _transport('propertyContract', payload);
+      _read('propertyContract', payload);
 
   Future<Map<String, dynamic>> organizationCurrency(
     Map<String, dynamic> payload,
   ) => _transport('organizationSettings', payload);
 
   Future<Map<String, dynamic>> propertyDetails(Map<String, dynamic> payload) =>
-      _transport('propertyDetails', payload);
+      _read('propertyDetails', payload);
 
   Future<Map<String, dynamic>> roomDetails(Map<String, dynamic> payload) =>
-      _transport('roomDetails', payload);
+      _read('roomDetails', payload);
   Future<Map<String, dynamic>> utilityReadings(Map<String, dynamic> payload) =>
-      _transport('utilityReadings', payload);
+      _read('utilityReadings', payload);
 
   /// B5 service fee definitions and room rates (billing goes through invoices).
   Future<Map<String, dynamic>> serviceFees(Map<String, dynamic> payload) =>
-      _transport('serviceFees', payload);
+      _read('serviceFees', payload);
 
   Future<Map<String, dynamic>> roomRates(Map<String, dynamic> payload) =>
-      _transport('roomRates', payload);
+      _read('roomRates', payload);
 
   Future<Map<String, dynamic>> roomBookingSettings(
     Map<String, dynamic> payload,

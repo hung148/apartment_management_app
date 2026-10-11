@@ -46,7 +46,9 @@ class ReadCache {
   static ReadCache? shared;
 
   static const _prefix = 'rc1|';
-  static const maxEntries = 40;
+  // 2026-10-11 (Tom: every screen opens from the device copy): room for the
+  // screens of several buildings; the oldest copies go first.
+  static const maxEntries = 150;
   static const maxChars = 3000000;
   static const maxAge = Duration(days: 30);
 

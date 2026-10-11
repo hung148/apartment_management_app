@@ -193,6 +193,27 @@ void main() {
     expect(await c.read('calendarView', payload), isNull);
   });
 
+  // 2026-10-11 (Tom: every screen opens at once): reads a screen opens with
+  // are kept and shown first next time; quotes and changes never are.
+  test('screen reads are kept for next time; quotes and changes are not', () async {
+    final c = cache();
+    var n = 0;
+    final service = TeamService(
+      cache: c,
+      transport: (name, data) async => {'n': ++n, 'action': data['action']},
+    );
+    final read = {'organizationId': 'o1', 'buildingId': 'b', 'action': 'list'};
+    await service.technicalProblems(read);
+    final live = await service.readLive('technicalProblems', read).toList();
+    expect(live.map((s) => (s.data['n'], s.saved)), [(1, true), (2, false)]);
+    final quote = {'organizationId': 'o1', 'action': 'quote'};
+    await service.bookingWorkspace(quote);
+    expect(await c.read('bookingWorkspace', quote), isNull);
+    final change = {'organizationId': 'o1', 'action': 'update'};
+    await service.tenantContacts(change);
+    expect(await c.read('tenantContacts', change), isNull);
+  });
+
   test('a service with a test transport uses no device copy by default', () async {
     ReadCache.shared = cache();
     addTearDown(() => ReadCache.shared = null);

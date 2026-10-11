@@ -6,6 +6,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../../services/team_service.dart';
+import '../../services/read_cache.dart' show Saved;
 import '../../utils/app_number.dart';
 import '../../utils/localizations/app_localizations.dart';
 import 'property_contract_screen.dart' show contractDate;
@@ -337,22 +338,36 @@ class _TenantLeaseScreenState extends State<TenantLeaseScreen> {
       }
     });
     try {
-      final r = await _request({
+      // 2026-10-11 (Tom: open at once): the first page of rooms from this
+      // device first, then the server's (still locked until it answers).
+      final payload = {
         'action': 'rooms',
         ..._identity,
         if (more) 'cursor': _cursor,
-      });
-      if (!mounted || generation != _generation) return;
-      setState(() {
-        final known = _rooms.map((v) => v['id']).toSet();
-        _rooms.addAll(
-          (r['records'] as List)
-              .map((v) => Map<String, dynamic>.from(v as Map))
-              .where((v) => known.add(v['id'])),
-        );
-        _cursor = r['nextCursor'] as String?;
-        _busy = false;
-      });
+      };
+      final answers = _roommate || more
+          ? Stream.fromFuture(
+              _request(
+                payload,
+              ).then((v) => Saved(v, saved: false, at: DateTime.now())),
+            )
+          : widget.service.readLive('tenantLeases', payload);
+      final before = List<Map<String, dynamic>>.of(_rooms);
+      await for (final answer in answers) {
+        if (!mounted || generation != _generation) return;
+        final r = answer.data;
+        setState(() {
+          _rooms = List.of(before);
+          final known = _rooms.map((v) => v['id']).toSet();
+          _rooms.addAll(
+            (r['records'] as List)
+                .map((v) => Map<String, dynamic>.from(v as Map))
+                .where((v) => known.add(v['id'])),
+          );
+          _cursor = r['nextCursor'] as String?;
+          _busy = answer.saved;
+        });
+      }
     } catch (_) {
       if (mounted && generation == _generation) {
         setState(() {
@@ -376,59 +391,73 @@ class _TenantLeaseScreenState extends State<TenantLeaseScreen> {
       _message = null;
     });
     try {
-      final r = await _request({
+      // 2026-10-11 (Tom: open at once): the room's form from this device
+      // first (shown, locked); the server's answer then fills the dates and
+      // amounts, so an old "today" is never put in the form.
+      final payload = {
         'action': 'prepare',
         ..._identity,
         if (!_roommate) 'roomId': id,
-      });
-      if (!mounted || generation != _generation) return;
-      setState(() {
-        _record = Map<String, dynamic>.from(r['record'] as Map);
-        _busy = false;
-        if (_fields['start']!.text.isEmpty) {
-          _fields['start']!.text = _record!['today'] as String;
-          if (_roommate &&
-              (_record!['earliestDate'] as String).compareTo(
-                    _fields['start']!.text,
-                  ) >
-                  0) {
-            _fields['start']!.text = _record!['earliestDate'] as String;
-          }
-        }
-        // The room's monthly price as a starting point for the rent.
-        int? roomRent = _record!['monthlyRentMinor'] as int?;
-        final source = _record!['roomRent'];
-        if (roomRent == null &&
-            source is Map &&
-            source['amountMinor'] is int &&
-            source['currency'] is String) {
-          final sourceCurrency = source['currency'] as String;
-          if (sourceCurrency == _currency) {
-            roomRent = source['amountMinor'] as int;
-          } else {
-            try {
-              roomRent = _conversion.conversion?.convertMinor(
-                source['amountMinor'] as int,
-                sourceCurrency,
-                _currency,
-              );
-            } on StateError {
-              // Without rates, leave the suggested rent empty. Never relabel
-              // a source price; the user can enter the new lease's currency.
+      };
+      final answers = _roommate
+          ? Stream.fromFuture(
+              _request(
+                payload,
+              ).then((v) => Saved(v, saved: false, at: DateTime.now())),
+            )
+          : widget.service.readLive('tenantLeases', payload);
+      await for (final answer in answers) {
+        final r = answer.data;
+        if (!mounted || generation != _generation) return;
+        setState(() {
+          _record = Map<String, dynamic>.from(r['record'] as Map);
+          _busy = answer.saved;
+          if (answer.saved) return;
+          if (_fields['start']!.text.isEmpty) {
+            _fields['start']!.text = _record!['today'] as String;
+            if (_roommate &&
+                (_record!['earliestDate'] as String).compareTo(
+                      _fields['start']!.text,
+                    ) >
+                    0) {
+              _fields['start']!.text = _record!['earliestDate'] as String;
             }
           }
-        }
-        if (_fields['rent']!.text.isEmpty && roomRent is int) {
-          _conversion.set(_fields['rent']!, roomRent, _currency);
-        }
-        if (_staffId != null && !_staff.any((s) => s['id'] == _staffId)) {
-          _staffId = null;
-        }
-        if (_depositAccount != null &&
-            !_accounts.any((a) => a['id'] == _depositAccount)) {
-          _depositAccount = null;
-        }
-      });
+          // The room's monthly price as a starting point for the rent.
+          int? roomRent = _record!['monthlyRentMinor'] as int?;
+          final source = _record!['roomRent'];
+          if (roomRent == null &&
+              source is Map &&
+              source['amountMinor'] is int &&
+              source['currency'] is String) {
+            final sourceCurrency = source['currency'] as String;
+            if (sourceCurrency == _currency) {
+              roomRent = source['amountMinor'] as int;
+            } else {
+              try {
+                roomRent = _conversion.conversion?.convertMinor(
+                  source['amountMinor'] as int,
+                  sourceCurrency,
+                  _currency,
+                );
+              } on StateError {
+                // Without rates, leave the suggested rent empty. Never relabel
+                // a source price; the user can enter the new lease's currency.
+              }
+            }
+          }
+          if (_fields['rent']!.text.isEmpty && roomRent is int) {
+            _conversion.set(_fields['rent']!, roomRent, _currency);
+          }
+          if (_staffId != null && !_staff.any((s) => s['id'] == _staffId)) {
+            _staffId = null;
+          }
+          if (_depositAccount != null &&
+              !_accounts.any((a) => a['id'] == _depositAccount)) {
+            _depositAccount = null;
+          }
+        });
+      }
     } catch (e) {
       if (mounted && generation == _generation) {
         setState(() {
