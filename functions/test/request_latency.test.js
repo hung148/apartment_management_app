@@ -204,3 +204,23 @@ test('a bucket is read again after 60 s, so other server copies count too',async
  db.store.set(key,{tokens:0,updatedAtMs:time,expiresAt:time});
  await assert.rejects(call(),e=>e.code==='resource-exhausted');
 });
+
+// Scale (2026-10-10, Tom: 100+ staff): the guard reads only the owner and
+// co-owner records of the organization, never the whole staff list, and still
+// refuses an organization with a second active owner.
+test('guard reads only owner records, however many staff there are',async()=>{
+ const data={
+  'organizations/org':{accessVersion:2,createdBy:'boss'},
+  'memberships/boss_org':{ownerId:'boss',organizationId:'org',accessVersion:2,role:'owner',status:'active',buildingScope:'all',buildingIds:[]},
+ };
+ for(let i=0;i<100;i++)data[`memberships/s${i}_org`]={ownerId:`s${i}`,organizationId:'org',accessVersion:2,role:'receptionist',status:'active',buildingScope:'all',buildingIds:[]};
+ const db=fakeDb(data),collection=db.collection;let returned=0;
+ const wrap=q=>({where:(...a)=>wrap(q.where(...a)),get:async()=>{const r=await q.get();returned+=r.docs.length;return r;}});
+ db.collection=name=>name==='memberships'?wrap(collection(name)):collection(name);
+ const guard=createRequestGuard({db,Timestamp:{fromMillis:v=>v},HttpsError:Error});
+ await guard('readWorkspace',{auth:{uid:'boss',token:{auth_time:Date.now()/1000}},app:{appId:'app'},data:{organizationId:'org'}});
+ assert(returned<=2,`only owner records (and the account's own) are read, not 100 staff (${returned})`);
+ const second={...data,'memberships/x_org':{ownerId:'x',organizationId:'org',accessVersion:2,role:'owner',status:'active'}};
+ const g2=createRequestGuard({db:fakeDb(second),Timestamp:{fromMillis:v=>v},HttpsError:Error});
+ await assert.rejects(g2('readWorkspace',{auth:{uid:'boss',token:{auth_time:Date.now()/1000}},app:{appId:'app'},data:{organizationId:'org'}}),/permission-denied/,"a second active owner is still refused");
+});

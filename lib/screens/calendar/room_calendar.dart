@@ -2691,6 +2691,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
         organizationId: widget.organizationId,
         buildingId: p.id,
         service: widget.service,
+        access: widget.access,
         initialRoomId: roomId,
         initialStart: start,
         initialEnd: end,

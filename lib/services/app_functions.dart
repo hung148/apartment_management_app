@@ -105,6 +105,16 @@ class ServerWrites {
     'readRates',
     'closedList',
     'copyPreview',
+    // 2026-10-11 (Tom: closing "Tạo tòa nhà" / "Tạo phòng" without saving
+    // reloaded the calendar): the new-record forms' first read, and the
+    // other read-only actions (checked on the server: none of them write).
+    'prepareCreate',
+    'prepareBulk',
+    'settlementPreview',
+    'settlementQuote',
+    'destinations',
+    'photo',
+    'recoveryList',
   };
 
   static bool isRead(String name, Object? data) {

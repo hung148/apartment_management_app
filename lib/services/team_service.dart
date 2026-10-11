@@ -232,12 +232,14 @@ class TeamService {
     String view, {
     String? buildingId,
     String? cursor,
+    int? limit,
   }) async => TeamPage(
     await _transport('readWorkspace', {
       'organizationId': organizationId,
       'view': view,
       'buildingId': ?buildingId,
       'cursor': ?cursor,
+      'limit': ?limit,
     }),
   );
 

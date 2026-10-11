@@ -26,8 +26,8 @@ test('bookings list carries the room number and property-local times',async()=>{
 test('task list names the assigned person',async()=>{
   const store=db();
   store.store.set('memberships/maid_org',{ownerId:'maid',organizationId:'org',accessVersion:2,role:'housekeeper',status:'active',buildingScope:'all',buildingIds:[],displayName:'Chị Lan'});
-  store.store.set('housekeepingTasks/t1',{organizationId:'org',buildingId:'b1',roomId:'r1',title:'Dọn phòng',status:'open',assigneeId:'maid'});
-  store.store.set('housekeepingTasks/t2',{organizationId:'org',buildingId:'b1',roomId:'r1',title:'Gone',status:'open',assigneeId:'left'});
+  store.store.set('housekeepingTasks/t1',{organizationId:'org',buildingId:'b1',roomId:'r1',title:'Dọn phòng',status:'open',assigneeId:'maid',createdAt:new Ts(1)});
+  store.store.set('housekeepingTasks/t2',{organizationId:'org',buildingId:'b1',roomId:'r1',title:'Gone',status:'open',assigneeId:'left',createdAt:new Ts(2)});
   const {records}=await call(store,{view:'tasks'});
   const by=Object.fromEntries(records.map(r=>[r.id,r]));
   assert.deepEqual([by.t1.assigneeName,by.t1.roomNumber],['Chị Lan','P602']);
@@ -37,11 +37,27 @@ test('task list names the assigned person',async()=>{
 test('task list shows the real work time in the property time zone',async()=>{
   const store=db();
   store.store.set('housekeepingTasks/t1',{organizationId:'org',buildingId:'b1',roomId:'r1',title:'Don',status:'completed',assigneeId:'owner',
-    startedAt:new Ts(Date.parse('2026-10-06T02:45:00Z')),completedAt:new Ts(Date.parse('2026-10-06T03:20:00Z'))});
-  store.store.set('housekeepingTasks/t2',{organizationId:'org',buildingId:'b1',roomId:'r1',title:'New',status:'assigned',assigneeId:'owner'});
+    startedAt:new Ts(Date.parse('2026-10-06T02:45:00Z')),completedAt:new Ts(Date.parse('2026-10-06T03:20:00Z')),createdAt:new Ts(1)});
+  store.store.set('housekeepingTasks/t2',{organizationId:'org',buildingId:'b1',roomId:'r1',title:'New',status:'assigned',assigneeId:'owner',createdAt:new Ts(2)});
   const {records}=await call(store,{view:'tasks'});
   const by=Object.fromEntries(records.map(r=>[r.id,r]));
   assert.deepEqual([by.t1.startedLocal,by.t1.completedLocal],['2026-10-06 09:45','2026-10-06 10:20']);
   assert.deepEqual([by.t2.startedLocal,by.t2.completedLocal],[undefined,undefined]);
   assert.equal(by.t1.startedAt,undefined);
+});
+
+// 2026-10-11 (Tom): cleaning tasks newest first, page after page.
+test('task list is newest first across pages',async()=>{
+  const store=db();
+  for(let i=1;i<=30;i++)store.store.set(`housekeepingTasks/t${String(i).padStart(2,'0')}`,{organizationId:'org',buildingId:'b1',roomId:'r1',title:'Don',status:'completed',assigneeId:'owner',
+    createdAt:new Ts(Date.parse('2026-01-01T00:00:00Z')+i*86400000)});
+  const first=await call(store,{view:'tasks',limit:20});
+  assert.deepEqual(first.records.slice(0,3).map(r=>r.id),['t30','t29','t28']);
+  assert.equal(first.nextCursor,'t11');
+  const second=await call(store,{view:'tasks',limit:20,cursor:first.nextCursor});
+  assert.deepEqual(second.records.map(r=>r.id),['t10','t09','t08','t07','t06','t05','t04','t03','t02','t01']);
+  assert.equal(second.nextCursor,null);
+  // Another organization's task is never a cursor.
+  store.store.set('housekeepingTasks/x',{organizationId:'other',buildingId:'b1',createdAt:new Ts(5)});
+  await assert.rejects(call(store,{view:'tasks',cursor:'x'}),e=>e.code==='invalid-argument');
 });

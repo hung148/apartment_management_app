@@ -40,8 +40,19 @@ function createWorkspaceHandler({db,HttpsError}) {
         if(d.view!=='taskAssignees')query=query.where('buildingId','==',d.buildingId);
         if(d.view==='tasks'&&!allows(m,'manageProperty',context))query=query.where('assigneeId','==',uid);
       }
-      query=query.orderBy('__name__');
-      if(d.cursor)query=query.startAfter(d.cursor);
+      // Cleaning tasks newest first (2026-10-11, Tom); every task has createdAt
+      // (the only way tasks are made). The cursor is the last task's ID.
+      if(d.view==='tasks'){
+        query=query.orderBy('createdAt','desc');
+        if(d.cursor){
+          const after=await tx.get(db.doc(`housekeepingTasks/${d.cursor}`));
+          if(!after.exists||after.data().organizationId!==d.organizationId)fail('invalid-argument');
+          query=query.startAfter(after);
+        }
+      }else{
+        query=query.orderBy('__name__');
+        if(d.cursor)query=query.startAfter(d.cursor);
+      }
       const limit=d.limit??25,snapshot=await tx.get(query.limit(limit+1));
       const docs=snapshot.docs.slice(0,limit);
       const visible=docs.filter(doc=>{

@@ -18,6 +18,11 @@ class HousekeepingScreen extends StatefulWidget {
   /// From a day on the calendar (2026-10-05): open the assign form for this
   /// room with this planned window ("YYYY-MM-DD HH:mm").
   final String? initialRoomId, initialStart, initialEnd;
+
+  /// What this person may do, when the opener already knows it (the
+  /// calendar): no extra "my access" read before the list (2026-10-11, Tom).
+  /// The server still checks every read and change.
+  final TeamAccess? access;
   const HousekeepingScreen({
     super.key,
     required this.organizationId,
@@ -27,6 +32,7 @@ class HousekeepingScreen extends StatefulWidget {
     this.initialRoomId,
     this.initialStart,
     this.initialEnd,
+    this.access,
   });
   @override
   State<HousekeepingScreen> createState() => _HousekeepingScreenState();
@@ -116,11 +122,14 @@ class _HousekeepingScreenState extends State<HousekeepingScreen> {
     String? cursor;
     final seen = <String>{};
     do {
+      // 100 a page (the most the server gives): 100 staff is one or two
+      // reads, not four or five one after another (2026-10-11, Tom).
       final page = await widget.service.workspace(
         widget.organizationId,
         view,
         buildingId: widget.buildingId,
         cursor: cursor,
+        limit: 100,
       );
       rows.addAll(page.records);
       cursor = page.nextCursor;
@@ -147,25 +156,32 @@ class _HousekeepingScreenState extends State<HousekeepingScreen> {
       }
     });
     try {
-      final access = TeamAccess.fromMap(
-        await widget.service.myAccess(widget.organizationId) ?? {},
-      );
+      final access =
+          widget.access ??
+          TeamAccess.fromMap(
+            await widget.service.myAccess(widget.organizationId) ?? {},
+          );
       final manager = access.allows(
         TeamPermission.manageProperty,
         buildingId: widget.buildingId,
       );
-      final page = await widget.service.workspace(
+      // Speed (2026-10-11, Tom): the tasks, rooms and people are read at the
+      // same time (they were three waits one after another).
+      final none = Future.value(<Map<String, dynamic>>[]);
+      final pageRead = widget.service.workspace(
         widget.organizationId,
         'tasks',
         buildingId: widget.buildingId,
         cursor: more ? _cursor : null,
       );
-      final rooms = manager
-          ? await _all('taskRooms')
-          : <Map<String, dynamic>>[];
-      final people = manager
-          ? await _all('taskAssignees')
-          : <Map<String, dynamic>>[];
+      final roomsRead = manager && !more ? _all('taskRooms') : none;
+      final peopleRead = manager && !more ? _all('taskAssignees') : none;
+      // One failure is reported once (below); the others are not left unhandled.
+      roomsRead.ignore();
+      peopleRead.ignore();
+      final page = await pageRead;
+      final rooms = more ? _rooms : await roomsRead;
+      final people = more ? _people : await peopleRead;
       if (!mounted || generation != _generation) return;
       setState(() {
         _manager = manager;

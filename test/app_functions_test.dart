@@ -70,6 +70,9 @@ void main() {
       ('bookingWorkspace', {'action': 'quote'}),
       ('tenantContacts', {'action': 'read'}),
       ('organizationSettings', {'action': 'readCurrency'}),
+      // Opening "Tạo tòa nhà" / "Tạo phòng" and closing without saving.
+      ('propertyDetails', {'action': 'prepareCreate'}),
+      ('roomDetails', {'action': 'prepareCreate'}),
     ]) {
       ServerWrites.note(name, data);
     }

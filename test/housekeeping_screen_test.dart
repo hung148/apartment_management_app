@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:phan_mem_quan_ly_can_ho/models/team_access.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/team/housekeeping_screen.dart';
 import 'package:phan_mem_quan_ly_can_ho/preview/team_preview_store.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/team_service.dart';
@@ -11,6 +12,40 @@ import 'staff_editor_test.dart' show press, reveal;
 import 'access_editor_test.dart' show choose;
 
 void main() {
+  // 2026-10-11 (Tom): opened from the calendar, which already knows the
+  // person's access: no "my access" read, and the tasks, rooms and people are
+  // asked for together.
+  testWidgets('known access: no access read; tasks, rooms, people together', (
+    tester,
+  ) async {
+    final store = TeamPreviewStore()..workspaceRole = 'manager';
+    final asked = <String>[];
+    var inFlight = 0, peak = 0;
+    final service = TeamService(
+      transport: (name, data) async {
+        asked.add('$name/${data['view'] ?? data['action'] ?? ''}');
+        inFlight++;
+        if (inFlight > peak) peak = inFlight;
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+        inFlight--;
+        return store.call(name, data);
+      },
+    );
+    await mountReview(
+      tester,
+      HousekeepingScreen(
+        organizationId: 'preview',
+        buildingId: 'riverside',
+        service: service,
+        access: TeamAccess.fromMap(TeamPreviewStore.grant('manager')),
+        onBack: () {},
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(asked.where((a) => a.startsWith('readTeam/')), isEmpty);
+    expect(peak, greaterThanOrEqualTo(3));
+    expect(tester.takeException(), isNull);
+  });
   testWidgets('switching context during a save unlocks the new context', (
     tester,
   ) async {

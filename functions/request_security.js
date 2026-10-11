@@ -225,7 +225,9 @@ function createRequestGuard({db,Timestamp,HttpsError,now=Date.now,policyCacheMs=
    member,
    // Read-only: takes no locks (it only reads), same consistent snapshot.
    remembered(`policy|${uid}`,()=>db.runTransaction(tx=>accountPolicy(db,tx,uid),{readOnly:true})),
-   remembered(`members|${orgId}`,()=>db.collection('memberships').where('organizationId','==',orgId).get()),
+   // Scale (2026-10-10, Tom: 100+ staff): only the owner and co-owner
+   // records (the only ones the checks below look at), not every member.
+   remembered(`owners|${orgId}`,()=>db.collection('memberships').where('organizationId','==',orgId).where('role','in',['owner','coOwner']).get()),
   ]):null;
   checks?.catch(()=>{});
   // Charge before policy checks so forbidden/conflicted attempts are limited too.

@@ -19,6 +19,9 @@ const callables=createCallableGroups({onCall:functions.https.onCall,db,Timestamp
 const secureCallable=callables.register;
 // readOnly (2026-10-09, speed): calls that only read start alongside the request
 // guard; their answer is held until the guard passes (request_security.js).
+// 2026-10-11 (Tom: forms other than Đặt phòng were slow to open): the forms'
+// first reads too (lease rooms/prepare, problems list, building and room
+// read/prepareCreate, lease read/history/destinations). Checked: none writes.
 const {createDeletedRecordsHandler}=require('./deleted_records');
 const deletedRecords=createDeletedRecordsHandler({db,Timestamp,HttpsError:functions.https.HttpsError});
 secureCallable('deletedRecords',request=>deletedRecords(request));
@@ -41,7 +44,7 @@ const serviceFeesHandler=createServiceFeesHandler({db,Timestamp,HttpsError:funct
 secureCallable('serviceFees',request=>serviceFeesHandler(request));
 const {createLeaseLifecycleHandler}=require('./lease_lifecycle');
 const leaseLifecycleHandler=createLeaseLifecycleHandler({db,Timestamp:Timestamp,HttpsError:functions.https.HttpsError});
-secureCallable('leaseLifecycle',request=>leaseLifecycleHandler(request));
+secureCallable('leaseLifecycle',{readOnly:d=>['read','history','destinations'].includes(d?.action)},request=>leaseLifecycleHandler(request));
 const {createTenantRentHandler}=require('./tenant_rent');
 const tenantRentHandler=createTenantRentHandler({db,Timestamp:Timestamp,HttpsError:functions.https.HttpsError});
 secureCallable('tenantRent',request=>tenantRentHandler(request));
@@ -50,7 +53,7 @@ const tenantRoommatesHandler=createTenantRoommatesHandler({db,Timestamp:Timestam
 secureCallable('tenantRoommates',request=>tenantRoommatesHandler(request));
 const {createTenantLeasesHandler}=require('./tenant_leases');
 const tenantLeasesHandler=createTenantLeasesHandler({db,Timestamp:Timestamp,HttpsError:functions.https.HttpsError});
-secureCallable('tenantLeases',request=>tenantLeasesHandler(request));
+secureCallable('tenantLeases',{readOnly:d=>['rooms','prepare'].includes(d?.action)},request=>tenantLeasesHandler(request));
 const {createTenantContactsHandler}=require('./tenant_contacts');
 const tenantContactsHandler=createTenantContactsHandler({db,Timestamp:Timestamp,HttpsError:functions.https.HttpsError});
 secureCallable('tenantContacts',{readOnly:d=>['list','read'].includes(d?.action)},request=>tenantContactsHandler(request));
@@ -65,10 +68,10 @@ const roomRatesHandler=createRoomRatesHandler({db,Timestamp:Timestamp,HttpsError
 secureCallable('roomRates',request=>roomRatesHandler(request));
 const {createRoomDetailsHandler}=require('./room_details');
 const roomDetailsHandler=createRoomDetailsHandler({db,Timestamp:Timestamp,HttpsError:functions.https.HttpsError});
-secureCallable('roomDetails',request=>roomDetailsHandler(request));
+secureCallable('roomDetails',{readOnly:d=>['read','prepareCreate','prepareBulk'].includes(d?.action)},request=>roomDetailsHandler(request));
 const {createPropertyDetailsHandler}=require('./property_details');
 const propertyDetailsHandler=createPropertyDetailsHandler({db,Timestamp:Timestamp,HttpsError:functions.https.HttpsError});
-secureCallable('propertyDetails',request=>propertyDetailsHandler(request));
+secureCallable('propertyDetails',{readOnly:d=>['read','prepareCreate'].includes(d?.action)},request=>propertyDetailsHandler(request));
 const {createHousekeepingHandler}=require('./housekeeping');
 const housekeepingHandler=createHousekeepingHandler({db,Timestamp:Timestamp,HttpsError:functions.https.HttpsError});
 secureCallable('mutateHousekeepingTask',request=>housekeepingHandler(request));
@@ -78,7 +81,7 @@ const {createTechnicalProblemsHandler}=require('./technical_problems');
 const {createGoogleDriveHandler,googleDrive,fakeDrive}=require('./drive');
 const drive=require('./request_security').localEmulator()?fakeDrive(db):googleDrive();
 const technicalProblemsHandler=createTechnicalProblemsHandler({db,Timestamp:Timestamp,HttpsError:functions.https.HttpsError,drive});
-secureCallable('technicalProblems',request=>technicalProblemsHandler(request));
+secureCallable('technicalProblems',{readOnly:d=>d?.action==='list'},request=>technicalProblemsHandler(request));
 const googleDriveHandler=createGoogleDriveHandler({db,Timestamp:Timestamp,HttpsError:functions.https.HttpsError,drive});
 secureCallable('googleDrive',request=>googleDriveHandler(request));
 // 2026-10-05: import the old app's .xlsx export (owner only), see IMPORT_SHEET.md.
