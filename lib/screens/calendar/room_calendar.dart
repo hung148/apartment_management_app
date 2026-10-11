@@ -755,10 +755,23 @@ class _RoomCalendarState extends State<RoomCalendar> {
     _load();
   }
 
-  void _afterLayout() {
+  void _afterLayout([int tries = 0]) {
     if (!_scrollToToday && _jumpTo == null) return;
+    // 2026-10-11 (Tom: the saved copy opened on the 1st of the month): the
+    // grid may not be laid out on the first frame (no scroll position yet,
+    // or no width to scroll in). Try again on the next frames, a few times.
+    void again() {
+      if (tries >= 8 || !mounted) return;
+      _afterLayout(tries + 1);
+      WidgetsBinding.instance.scheduleFrame();
+    }
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_hBody.hasClients) return;
+      if (!mounted) return;
+      if (!_hBody.hasClients || _hBody.positions.length != 1) {
+        again();
+        return;
+      }
       final today = _today;
       double? target;
       if (_scrollToToday &&
@@ -782,6 +795,13 @@ class _RoomCalendarState extends State<RoomCalendar> {
         target = _x(at, _lastDayW) - _lastViewW / 4;
       } else if (_jumpTo != null) {
         target = _jumpTo!.difference(_month).inDays * _lastDayW;
+      }
+      if (target != null &&
+          target > 0 &&
+          _hBody.position.maxScrollExtent <= 0 &&
+          tries < 8) {
+        again();
+        return;
       }
       _scrollToToday = false;
       _jumpTo = null;

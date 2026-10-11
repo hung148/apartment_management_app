@@ -18,7 +18,8 @@ class UpdateService {
   /// Check if an update is available (works on all platforms)
   Future<bool> isUpdateAvailable() async {
     debugPrint('🔍 UpdateService.isUpdateAvailable() called');
-    
+    // The web app always loads the newest version; Platform is not there.
+    if (kIsWeb) return false;
     try {
       if (Platform.isAndroid) {
         debugPrint('📱 Platform: Android');
