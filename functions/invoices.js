@@ -50,13 +50,22 @@ function createInvoiceHandler({db,Timestamp,HttpsError}){
     let q=db.collection('payments').where('organizationId','==',d.organizationId).where('buildingId','==',d.buildingId).orderBy('__name__');if(d.cursor)q=q.startAfter(d.cursor);const page=await tx.get(q.limit(26)),rows=page.docs.slice(0,25);return {records:rows.map(projection),nextCursor:page.size>25?rows.at(-1).id:null,canCreate:allows(m,'collectPayments',scope),canPrice:allows(m,'overridePrices',scope)};
    }
    if(d.action==='tenants'){
-    const rows=await tx.get(db.collection('tenants').where('organizationId','==',d.organizationId).where('buildingId','==',d.buildingId));
-    const past=await tx.get(db.collection('leaseOccupancy').where('buildingId','==',d.buildingId));const known=new Map(rows.docs.map(v=>[v.id,v]));
-    for(const h of past.docs){if(h.data().organizationId!==d.organizationId||known.has(h.data().tenantId))continue;const tenant=await tx.get(db.doc(`tenants/${h.data().tenantId}`));if(tenant.exists&&tenant.data().organizationId===d.organizationId)known.set(tenant.id,tenant);}
+    // Speed (2026-10-11): both lists, then the tenants who moved away, read together.
+    const [rows,past]=await Promise.all([tx.get(db.collection('tenants').where('organizationId','==',d.organizationId).where('buildingId','==',d.buildingId)),tx.get(db.collection('leaseOccupancy').where('buildingId','==',d.buildingId))]);
+    const known=new Map(rows.docs.map(v=>[v.id,v]));
+    const moved=[...new Set(past.docs.map(h=>h.data()).filter(x=>x.organizationId===d.organizationId&&id(x.tenantId)&&!known.has(x.tenantId)).map(x=>x.tenantId))];
+    for(const tenant of await Promise.all(moved.map(t=>tx.get(db.doc(`tenants/${t}`)))))if(tenant.exists&&tenant.data().organizationId===d.organizationId)known.set(tenant.id,tenant);
     return {records:[...known.values()].filter(v=>v.data().isMainTenant===true).map(v=>({id:v.id,fullName:v.data().fullName??'',roomId:v.data().roomId,currency:org.data().displayCurrency??v.data().currency??'VND'})),today,timeZone:zone,currency:org.data().displayCurrency??b.currency??'VND'};
    }
    const datePolicy=date=>{if(date<today&&!allows(m,'backdateRecords',{organizationId:d.organizationId,userId:uid}))fail('permission-denied','invoice_backdate_owner_required');};
    let ref,snapshot,old,patch,result,utilitySource,serviceSource,periodSource;
+   // The building's invoices of one tenant. Without a tenant (null), every
+   // invoice of the building: a record without the field counts as "no
+   // tenant" too, which an equality query on null would miss.
+   const tenantInvoices=tenantId=>{
+    const q=db.collection('payments').where('organizationId','==',d.organizationId).where('buildingId','==',d.buildingId);
+    return typeof tenantId==='string'&&tenantId?q.where('tenantId','==',tenantId):q;
+   };
    const leaseOf=async tenantId=>{
     const tenant=await tx.get(db.doc(`tenants/${tenantId}`)),t=tenant.data();if(!t||t.organizationId!==d.organizationId||t.isMainTenant!==true)fail('not-found');
     const history=await tx.get(db.collection('leaseOccupancy').where('tenantId','==',tenantId));
@@ -70,7 +79,8 @@ function createInvoiceHandler({db,Timestamp,HttpsError}){
     // B6: suggest the next period and list what can go on it.
     if(!allows(m,'collectPayments',scope))fail('permission-denied');
     const {t,intervals,room}=await leaseOf(d.tenantId);
-    const existing=await tx.get(db.collection('payments').where('organizationId','==',d.organizationId).where('buildingId','==',d.buildingId));
+    // Scale (2026-10-11, Tom): this lease's invoices only, not the building's.
+    const existing=await tx.get(tenantInvoices(d.tenantId));
     let lastRent=null;
     for(const v of existing.docs){const x=v.data();if(x.status==='cancelled'||(x.tenantId??null)!==d.tenantId)continue;if((x.invoiceKind==='tenantRent'||(x.invoiceKind==='period'&&x.calculation?.includeRent===true))&&(!lastRent||x.billingEndLocalDate>lastRent))lastRent=x.billingEndLocalDate;}
     const leaseStart=intervals.map(i=>i.startDate).sort()[0];
@@ -149,7 +159,9 @@ function createInvoiceHandler({db,Timestamp,HttpsError}){
     const totalMinor=calculation.amountMinor+feeKeys.reduce((n,k)=>n+d.feesMinor[k],0);if(!Number.isSafeInteger(totalMinor)||totalMinor>1e12)fail('invalid-argument');
     const quoteRevision=hash([sourceRevision,revision(building),calculation,d.feesMinor,d.dueDate,direction]);
     // Checked at review too, so double billing is explained before anyone presses Create.
-    const existing=await tx.get(db.collection('payments').where('organizationId','==',d.organizationId).where('buildingId','==',d.buildingId));
+    // Every check below only looks at invoices of the same tenant (2026-10-11,
+    // scale): read those, not every invoice of the building.
+    const existing=await tx.get(tenantInvoices(d.tenantId));
     // Quantity extras are separate one-off services; every other kind is billed once per period.
     // Rent and service fees may also sit on a period invoice (B6), and the reverse.
     if(['tenantRent','service','period'].includes(d.kind)&&existing.docs.some(v=>periodConflict(v.data(),{kind:d.kind,tenantId:d.tenantId,roomId,startDate:d.startDate,endDate:d.endDate,includeRent:d.includeRent===true,feeIds:d.kind==='period'?d.serviceFeeIds:d.kind==='service'&&serviceSource.fee.basis!=='quantity'?[d.feeId]:[]})))fail('already-exists','invoice_period_exists');

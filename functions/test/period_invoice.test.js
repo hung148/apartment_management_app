@@ -176,3 +176,23 @@ test('overdue shows on unpaid invoices after the due date',async()=>{
  Ts.clock=Date.parse('2026-10-10T05:00:00Z');
  const list=(await bill({action:'list'})).records;assert.equal(list[0].overdue,true);assert.equal(list[0].roomId,'r');
 });
+
+// Scale (2026-10-11, Tom): the next-period suggestion and the double-billing
+// checks read this tenant's invoices only, not every invoice of the building;
+// the answers are the same.
+test('period preview and checks read only the tenant\'s invoices',async()=>{
+ const {db,bill}=setup();
+ await create(bill);
+ for(let i=0;i<200;i++)db.store.set(`payments/other${i}`,{organizationId:'o',buildingId:'b',tenantId:`x${i}`,roomId:'r',invoiceKind:'tenantRent',status:'paid',billingStartLocalDate:'2027-01-02',billingEndLocalDate:'2027-04-02'});
+ const collection=db.collection;let returned=0;
+ const wrap=q=>({where:(...a)=>wrap(q.where(...a)),orderBy:(...a)=>wrap(q.orderBy(...a)),limit:n=>wrap(q.limit(n)),startAfter:v=>wrap(q.startAfter(v)),get:async()=>{const r=await q.get();returned+=r.docs.length;return r;}});
+ db.collection=name=>name==='payments'?wrap(collection(name)):collection(name);
+ const p=(await bill({action:'periodPreview',tenantId:'t'})).record;
+ assert.equal(p.suggestion.startDate,'2027-01-02','other tenants\' invoices never move this lease\'s next period');
+ assert(returned<5,`only this tenant's invoices are read (${returned})`);
+ returned=0;
+ await assert.rejects(bill({action:'quote',...period()}),e=>e.message==='invoice_period_exists');
+ assert(returned<5,`the double-billing check reads only this tenant's invoices (${returned})`);
+ // Another tenant's invoice for the same dates is no conflict.
+ await bill({action:'quote',...period({startDate:'2027-01-02',endDate:'2027-04-02',dueDate:'2027-01-05'})});
+});
