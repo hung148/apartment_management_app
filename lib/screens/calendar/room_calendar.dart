@@ -2025,10 +2025,11 @@ class _RoomCalendarState extends State<RoomCalendar> {
       bottomRoom = math.max(bottomRoom, s.top + s.height + below - gridH);
     }
     final slotW = dayW / 12;
-    // A bright blue, not the app's slate (2026-10-12, Tom: the grey cell did
-    // not stand out); the client's picture uses the same blue for a choice.
-    final accent = calHoverBlue(context);
-    final hoverFill = accent.withValues(alpha: 0.18);
+    // The app's own slate, strong (2026-10-12, Tom: blue did not fit the
+    // theme, a light tint did not stand out): a dark cell, solid room and
+    // hour, light grey bands.
+    final accent = scheme.primary;
+    final hoverFill = accent.withValues(alpha: 0.55);
     void hoverAt(Offset at) {
       (int, int)? cell;
       if (at.dy < gridH && at.dx >= 0 && at.dx < gridW) {
@@ -2060,8 +2061,8 @@ class _RoomCalendarState extends State<RoomCalendar> {
     // Strong on purpose (2026-10-12, Tom: "really stand out"): the cell is
     // solid with a thick border, light bands lead along its row and down its
     // column, and its room and hour turn solid with white text.
-    const onAccent = Colors.white;
-    final band = accent.withValues(alpha: 0.07);
+    final onAccent = scheme.onPrimary;
+    final band = scheme.onSurface.withValues(alpha: 0.05);
     final body = MouseRegion(
       onHover: (e) => hoverAt(e.localPosition),
       onExit: (_) => _clearHover(),
@@ -4381,12 +4382,6 @@ class _TickPainter extends CustomPainter {
   bool shouldRepaint(_TickPainter old) =>
       old.ticks.length != ticks.length || old.color != color;
 }
-
-/// The hovered cell, its room and its hour (2026-10-12, Tom): bright blue.
-Color calHoverBlue(BuildContext context) =>
-    Theme.of(context).brightness == Brightness.dark
-    ? const Color(0xFF3B82F6)
-    : const Color(0xFF2563EB);
 
 /// The line between days (client's design, 2026-10-11): green.
 Color calDayLine(BuildContext context) =>
