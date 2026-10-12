@@ -487,6 +487,97 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  // 2026-10-12 (Tom): the card ends at the last room; hovering a cell
+  // highlights it, its room and its hour.
+  testWidgets(
+    'the card ends at the last room; hover highlights cell, room, hour',
+    (tester) async {
+      await mountCalendar(tester, calendarService(Calls()), showTools: false);
+      await tester.pumpAndSettle();
+      final card = tester.getRect(find.byKey(const ValueKey('calendar-card')));
+      final last = tester.getRect(
+        find.byKey(const ValueKey('calendar-room-r104')),
+      );
+      // Only the border, or room for a cleaning bubble, below the last room.
+      expect(card.bottom - last.bottom, inInclusiveRange(0, 80));
+      expect(card.bottom, lessThan(700));
+
+      final mouse = await tester.createGesture(
+        kind: ui.PointerDeviceKind.mouse,
+      );
+      await mouse.addPointer(location: Offset.zero);
+      addTearDown(mouse.removePointer);
+      final room = tester.getRect(
+        find.byKey(const ValueKey('calendar-room-r102')),
+      );
+      final today = tester.getRect(
+        find.byKey(const ValueKey('calendar-today-column')),
+      );
+      // 13:00 today in room 102's row: the 12–14 cell.
+      await mouse.moveTo(
+        Offset(today.left + today.width * 13 / 24, room.center.dy),
+      );
+      await tester.pump();
+      final cell = tester.getRect(
+        find.byKey(const ValueKey('calendar-hover-cell')),
+      );
+      expect(cell.top, closeTo(room.top, 1));
+      expect(cell.height, closeTo(room.height, 1));
+      expect(cell.left, closeTo(today.left + today.width / 2, 1));
+      expect(cell.width, closeTo(today.width / 12, 1));
+      // Its hour in the header, its room in the room column.
+      final hour = tester.getRect(
+        find.byKey(const ValueKey('calendar-hover-time')),
+      );
+      expect(hour.center.dx, closeTo(cell.center.dx, 1));
+      // The hour shows on the solid pill; bands lead along the row and down
+      // the column; the day is tinted.
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('calendar-hover-time')),
+          matching: find.text('12'),
+        ),
+        findsOneWidget,
+      );
+      final row = tester.getRect(
+        find.byKey(const ValueKey('calendar-hover-row')),
+      );
+      expect(row.top, closeTo(room.top, 1));
+      expect(row.width, greaterThan(today.width * 3));
+      final column = tester.getRect(
+        find.byKey(const ValueKey('calendar-hover-column')),
+      );
+      expect(column.left, closeTo(cell.left, 1));
+      // From the first room down to the last one.
+      expect(column.bottom, closeTo(last.bottom, 1));
+      expect(column.height, greaterThan(room.height));
+      expect(
+        tester.getRect(find.byKey(const ValueKey('calendar-hover-day'))).left,
+        closeTo(today.left, 1),
+      );
+      expect(hour.bottom, lessThanOrEqualTo(today.bottom));
+      final label = tester.getRect(
+        find.byKey(const ValueKey('calendar-hover-room')),
+      );
+      expect(label.top, closeTo(room.top, 1));
+      expect(label.height, closeTo(room.height, 1));
+      // Leaving the grid clears all three.
+      await mouse.moveTo(const Offset(2, 2));
+      await tester.pump();
+      for (final key in [
+        'calendar-hover-cell',
+        'calendar-hover-row',
+        'calendar-hover-column',
+        'calendar-hover-day',
+        'calendar-hover-time',
+        'calendar-hover-room',
+      ]) {
+        expect(find.byKey(ValueKey(key)), findsNothing, reason: key);
+      }
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('client design fits phones, landscape and large text', (
     tester,
   ) async {

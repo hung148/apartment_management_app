@@ -464,6 +464,12 @@ class _RoomCalendarState extends State<RoomCalendar> {
 
   String c(String key) => calText(context, key);
 
+  /// The cell under the mouse (2026-10-12, Tom): (row, 2-hour slot from the
+  /// first loaded day). The cell, its room and its hour are highlighted.
+  final ValueNotifier<(int, int)?> _hover = ValueNotifier(null);
+
+  void _clearHover() => _hover.value = null;
+
   @override
   void initState() {
     super.initState();
@@ -478,6 +484,10 @@ class _RoomCalendarState extends State<RoomCalendar> {
     _link(_vBody, _vDates);
     _link(_vDates, _vBody);
     _hBody.addListener(_edge);
+    // Scrolling moves the cells under the mouse: the highlight waits for the
+    // next mouse move.
+    _hBody.addListener(_clearHover);
+    _vBody.addListener(_clearHover);
     _load();
   }
 
@@ -651,6 +661,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
       s.dispose();
     }
     _nudges.dispose();
+    _hover.dispose();
     // A page left open must not outlive the calendar that opened it (sign-out,
     // role or organization change): it would keep showing what this person
     // may no longer open. Removed after the frame, when the navigator is free.
@@ -1004,7 +1015,9 @@ class _RoomCalendarState extends State<RoomCalendar> {
         Expanded(
           child: Padding(
             // Phones: the calendar uses the whole width (every pixel counts
-            // there); wider screens: a card with room around it.
+            // there); wider screens: a card with room around it. The card
+            // ends at the last room (2026-10-12, Tom: no empty space below);
+            // with more rooms than fit it fills the height and scrolls.
             padding: narrow
                 ? const EdgeInsets.only(top: 8)
                 : EdgeInsets.fromLTRB(
@@ -1014,30 +1027,39 @@ class _RoomCalendarState extends State<RoomCalendar> {
                     oneLine ? 6 : 16,
                   ),
             // The calendar card: rounded, a soft shadow.
-            child: Container(
-              key: const ValueKey('calendar-card'),
-              clipBehavior: Clip.antiAlias,
-              decoration: narrow
-                  ? BoxDecoration(color: scheme.surfaceContainerLowest)
-                  : BoxDecoration(
-                      color: scheme.surfaceContainerLowest,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: scheme.outlineVariant.withValues(alpha: 0.5),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(
-                            alpha: theme.brightness == Brightness.dark
-                                ? 0.3
-                                : 0.06,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Flexible(
+                  child: Container(
+                    key: const ValueKey('calendar-card'),
+                    clipBehavior: Clip.antiAlias,
+                    decoration: narrow
+                        ? BoxDecoration(color: scheme.surfaceContainerLowest)
+                        : BoxDecoration(
+                            color: scheme.surfaceContainerLowest,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: scheme.outlineVariant.withValues(
+                                alpha: 0.5,
+                              ),
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(
+                                  alpha: theme.brightness == Brightness.dark
+                                      ? 0.3
+                                      : 0.06,
+                                ),
+                                blurRadius: 16,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
                           ),
-                          blurRadius: 16,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-              child: _body(context),
+                    child: _body(context),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -1170,7 +1192,13 @@ class _RoomCalendarState extends State<RoomCalendar> {
               Expanded(child: title(flexible: true)),
               if (picker != null) ...[
                 const SizedBox(width: 8),
-                Flexible(child: picker),
+                // At the right edge, like the one-line header.
+                Flexible(
+                  child: Align(
+                    alignment: AlignmentDirectional.centerEnd,
+                    child: picker,
+                  ),
+                ),
               ],
             ],
           ),
@@ -1996,95 +2024,176 @@ class _RoomCalendarState extends State<RoomCalendar> {
       if (s.bar.type != 'cleaning') continue;
       bottomRoom = math.max(bottomRoom, s.top + s.height + below - gridH);
     }
-    final body = SizedBox(
-      width: gridW,
-      height: gridH + bottomRoom,
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: GestureDetector(
-              key: const ValueKey('calendar-grid'),
-              behavior: HitTestBehavior.opaque,
-              onTapUp: (d) {
-                final day = (d.localPosition.dx / dayW).floor();
-                if (day < 0 || day >= _days) return;
-                for (final row in rows) {
-                  if (d.localPosition.dy >= row.top &&
-                      d.localPosition.dy < row.top + row.height) {
-                    final room = row.room;
-                    if (!row.band && room != null) {
-                      _openCell(
-                        row.p,
-                        room,
-                        DateTime.utc(_month.year, _month.month, 1 + day),
-                      );
-                    }
-                    return;
-                  }
-                }
-              },
-              child: CustomPaint(
-                painter: _GridPainter(
-                  days: _days,
-                  dayW: dayW,
-                  todayCol: todayCol,
-                  rows: [
-                    for (final r in rows)
-                      (r.top, r.height, r.band, r.room?.blocked == true),
-                  ],
-                  line: scheme.outlineVariant.withValues(alpha: 0.6),
-                  dayLine: calDayLine(context),
-                  band: scheme.primary.withValues(alpha: 0.06),
-                  blockedFill: wsToneColor(
-                    context,
-                    WsTone.bad,
-                  ).withValues(alpha: 0.08),
-                ),
-              ),
-            ),
+    final slotW = dayW / 12;
+    // A bright blue, not the app's slate (2026-10-12, Tom: the grey cell did
+    // not stand out); the client's picture uses the same blue for a choice.
+    final accent = calHoverBlue(context);
+    final hoverFill = accent.withValues(alpha: 0.18);
+    void hoverAt(Offset at) {
+      (int, int)? cell;
+      if (at.dy < gridH && at.dx >= 0 && at.dx < gridW) {
+        for (var i = 0; i < rows.length; i++) {
+          final r = rows[i];
+          if (at.dy >= r.top && at.dy < r.top + r.height) {
+            if (!r.band && r.room != null) {
+              cell = (i, (at.dx / slotW).floor());
+            }
+            break;
+          }
+        }
+      }
+      if (_hover.value != cell) _hover.value = cell;
+    }
+
+    // The highlight for the cell, its room or its hour (nothing when the
+    // mouse is elsewhere).
+    Widget hovered(List<Widget> Function((int, int) cell) draw) =>
+        IgnorePointer(
+          child: ValueListenableBuilder<(int, int)?>(
+            valueListenable: _hover,
+            builder: (context, cell, _) =>
+                cell == null || cell.$1 >= rows.length
+                ? const SizedBox.shrink()
+                : Stack(children: draw(cell)),
           ),
-          for (final row in rows)
-            if (!row.band && row.room == null)
-              Positioned(
-                left: 12,
-                top: row.top,
-                height: row.height,
-                child: Center(
-                  child: Text(
-                    c('noRooms'),
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                    ),
+        );
+    // Strong on purpose (2026-10-12, Tom: "really stand out"): the cell is
+    // solid with a thick border, light bands lead along its row and down its
+    // column, and its room and hour turn solid with white text.
+    const onAccent = Colors.white;
+    final band = accent.withValues(alpha: 0.07);
+    final body = MouseRegion(
+      onHover: (e) => hoverAt(e.localPosition),
+      onExit: (_) => _clearHover(),
+      child: SizedBox(
+        width: gridW,
+        height: gridH + bottomRoom,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(
+                key: const ValueKey('calendar-grid'),
+                behavior: HitTestBehavior.opaque,
+                onTapUp: (d) {
+                  final day = (d.localPosition.dx / dayW).floor();
+                  if (day < 0 || day >= _days) return;
+                  for (final row in rows) {
+                    if (d.localPosition.dy >= row.top &&
+                        d.localPosition.dy < row.top + row.height) {
+                      final room = row.room;
+                      if (!row.band && room != null) {
+                        _openCell(
+                          row.p,
+                          room,
+                          DateTime.utc(_month.year, _month.month, 1 + day),
+                        );
+                      }
+                      return;
+                    }
+                  }
+                },
+                child: CustomPaint(
+                  painter: _GridPainter(
+                    days: _days,
+                    dayW: dayW,
+                    todayCol: todayCol,
+                    rows: [
+                      for (final r in rows)
+                        (r.top, r.height, r.band, r.room?.blocked == true),
+                    ],
+                    line: scheme.outlineVariant.withValues(alpha: 0.6),
+                    rowLine: scheme.outlineVariant,
+                    dayLine: calDayLine(context),
+                    band: scheme.primary.withValues(alpha: 0.06),
+                    blockedFill: wsToneColor(
+                      context,
+                      WsTone.bad,
+                    ).withValues(alpha: 0.08),
                   ),
                 ),
               ),
-          // The now line under the bars (2026-10-04, Tom: it ran through a
-          // name): full red in empty cells, faint through a bar's colour,
-          // never over a name or an end label (they sit on light boxes).
-          if (nowX != null)
-            Positioned(
-              key: const ValueKey('calendar-now-line'),
-              left: nowX - 1,
-              width: 2,
-              top: 0,
-              bottom: 0,
-              child: IgnorePointer(child: ColoredBox(color: nowColor)),
             ),
-          ...bars,
-          // A bar cut by the screen edge with only a sliver left shows a
-          // bubble next to that sliver: name and status (2026-10-04, Tom).
-          Positioned.fill(
-            child: ListenableBuilder(
-              listenable: _hBody,
-              builder: (context, _) => _edgeBubbles(
-                spots,
-                constraints.maxWidth - roomW,
-                gridW,
-                gridH,
+            for (final row in rows)
+              if (!row.band && row.room == null)
+                Positioned(
+                  left: 12,
+                  top: row.top,
+                  height: row.height,
+                  child: Center(
+                    child: Text(
+                      c('noRooms'),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ),
+            // The cell under the mouse, under the bars: its row and column
+            // bands, then the cell itself.
+            Positioned.fill(
+              child: hovered(
+                (cell) => [
+                  Positioned(
+                    key: const ValueKey('calendar-hover-row'),
+                    left: 0,
+                    right: 0,
+                    top: rows[cell.$1].top,
+                    height: rows[cell.$1].height,
+                    child: ColoredBox(color: band),
+                  ),
+                  Positioned(
+                    key: const ValueKey('calendar-hover-column'),
+                    left: cell.$2 * slotW,
+                    width: slotW,
+                    top: 0,
+                    height: gridH,
+                    child: ColoredBox(color: band),
+                  ),
+                  Positioned(
+                    key: const ValueKey('calendar-hover-cell'),
+                    left: cell.$2 * slotW,
+                    top: rows[cell.$1].top,
+                    width: slotW,
+                    height: rows[cell.$1].height,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: hoverFill,
+                        border: Border.all(color: accent, width: 2),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-          ),
-        ],
+            // The now line under the bars (2026-10-04, Tom: it ran through a
+            // name): full red in empty cells, faint through a bar's colour,
+            // never over a name or an end label (they sit on light boxes).
+            if (nowX != null)
+              Positioned(
+                key: const ValueKey('calendar-now-line'),
+                left: nowX - 1,
+                width: 2,
+                top: 0,
+                bottom: 0,
+                child: IgnorePointer(child: ColoredBox(color: nowColor)),
+              ),
+            ...bars,
+            // A bar cut by the screen edge with only a sliver left shows a
+            // bubble next to that sliver: name and status (2026-10-04, Tom).
+            Positioned.fill(
+              child: ListenableBuilder(
+                listenable: _hBody,
+                builder: (context, _) => _edgeBubbles(
+                  spots,
+                  constraints.maxWidth - roomW,
+                  gridW,
+                  gridH,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
 
@@ -2096,23 +2205,69 @@ class _RoomCalendarState extends State<RoomCalendar> {
     final nowSlot = nowX == null || todayCol == null
         ? null
         : ((nowX / dayW - todayCol) * 12).floor().clamp(0, 11);
+    final hourH = headH < 60 ? 20.0 : 26.0; // as in _dayCell
     final header = ColoredBox(
       color: headBg,
       child: SizedBox(
         width: gridW,
         height: headH,
-        child: Row(
+        child: Stack(
           children: [
-            for (var i = 0; i < _days; i++)
-              _dayCell(
-                context,
-                DateTime.utc(_month.year, _month.month, 1 + i),
-                weekdays,
-                dayW,
-                headH,
-                i == todayCol,
-                i == todayCol ? nowSlot : null,
+            Row(
+              children: [
+                for (var i = 0; i < _days; i++)
+                  _dayCell(
+                    context,
+                    DateTime.utc(_month.year, _month.month, 1 + i),
+                    weekdays,
+                    dayW,
+                    headH,
+                    i == todayCol,
+                    i == todayCol ? nowSlot : null,
+                  ),
+              ],
+            ),
+            // The hovered cell's day (light) and hour (solid, white text),
+            // over the labels.
+            Positioned.fill(
+              child: hovered(
+                (cell) => [
+                  Positioned(
+                    key: const ValueKey('calendar-hover-day'),
+                    left: (cell.$2 ~/ 12) * dayW,
+                    width: dayW - 1,
+                    top: 0,
+                    height: headH - hourH,
+                    child: ColoredBox(color: band),
+                  ),
+                  Positioned(
+                    key: const ValueKey('calendar-hover-time'),
+                    left: cell.$2 * slotW + 2,
+                    width: slotW - 4,
+                    top: headH - hourH + 1,
+                    height: hourH - 3,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: accent,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Center(
+                        child: Text(
+                          _two((cell.$2 % 12) * 2),
+                          maxLines: 1,
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            height: 1,
+                            fontWeight: FontWeight.w700,
+                            color: onAccent,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
+            ),
           ],
         ),
       ),
@@ -2130,6 +2285,38 @@ class _RoomCalendarState extends State<RoomCalendar> {
               height: row.height,
               child: _roomLabel(context, row.p, row.room),
             ),
+          // The hovered cell's room: solid, its name in white.
+          Positioned.fill(
+            child: hovered(
+              (cell) => [
+                Positioned(
+                  key: const ValueKey('calendar-hover-room'),
+                  left: 0,
+                  top: rows[cell.$1].top,
+                  width: roomW - 1,
+                  height: rows[cell.$1].height - 1,
+                  child: ColoredBox(
+                    color: accent,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Align(
+                        alignment: AlignmentDirectional.centerStart,
+                        child: Text(
+                          rows[cell.$1].room?.number ?? '',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: _roomNameStyle(
+                            context,
+                            rows[cell.$1].room?.number ?? '',
+                          )?.copyWith(color: onAccent),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -2137,76 +2324,84 @@ class _RoomCalendarState extends State<RoomCalendar> {
     final drag = ScrollConfiguration.of(
       context,
     ).copyWith(dragDevices: PointerDeviceKind.values.toSet());
-    return NotificationListener<ScrollEndNotification>(
-      // A drag or fling that ended near either end of the loaded months.
-      onNotification: (n) {
-        if (n.metrics.axis == Axis.horizontal) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) _edge();
-          });
-        }
-        return false;
-      },
-      child: ScrollConfiguration(
-        behavior: drag,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Container(
-                  key: const ValueKey('calendar-room-head'),
-                  width: roomW,
-                  height: headH,
-                  padding: const EdgeInsetsDirectional.only(start: 16),
-                  alignment: AlignmentDirectional.centerStart,
-                  decoration: BoxDecoration(
-                    color: headBg,
-                    border: Border(
-                      right: BorderSide(color: scheme.outlineVariant),
-                      bottom: BorderSide(color: scheme.outlineVariant),
-                    ),
-                  ),
-                  child: Text(
-                    c('roomHead'),
-                    maxLines: 1,
-                    style: _roomHeadStyle(context),
-                  ),
-                ),
-                Expanded(
-                  child: Scrollbar(
-                    controller: _hHead,
-                    child: SingleChildScrollView(
-                      controller: _hHead,
-                      scrollDirection: Axis.horizontal,
-                      child: header,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            Expanded(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+    // As tall as the rooms need (the card ends at the last room), at most
+    // the space there is.
+    final contentH = headH + gridH + bottomRoom;
+    return SizedBox(
+      height: constraints.maxHeight.isFinite
+          ? math.min(constraints.maxHeight, contentH)
+          : contentH,
+      child: NotificationListener<ScrollEndNotification>(
+        // A drag or fling that ended near either end of the loaded months.
+        onNotification: (n) {
+          if (n.metrics.axis == Axis.horizontal) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _edge();
+            });
+          }
+          return false;
+        },
+        child: ScrollConfiguration(
+          behavior: drag,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
                 children: [
-                  SingleChildScrollView(controller: _vDates, child: labels),
+                  Container(
+                    key: const ValueKey('calendar-room-head'),
+                    width: roomW,
+                    height: headH,
+                    padding: const EdgeInsetsDirectional.only(start: 16),
+                    alignment: AlignmentDirectional.centerStart,
+                    decoration: BoxDecoration(
+                      color: headBg,
+                      border: Border(
+                        right: BorderSide(color: scheme.outlineVariant),
+                        bottom: BorderSide(color: scheme.outlineVariant),
+                      ),
+                    ),
+                    child: Text(
+                      c('roomHead'),
+                      maxLines: 1,
+                      style: _roomHeadStyle(context),
+                    ),
+                  ),
                   Expanded(
                     child: Scrollbar(
-                      controller: _vBody,
+                      controller: _hHead,
                       child: SingleChildScrollView(
-                        controller: _vBody,
-                        child: SingleChildScrollView(
-                          controller: _hBody,
-                          scrollDirection: Axis.horizontal,
-                          child: body,
-                        ),
+                        controller: _hHead,
+                        scrollDirection: Axis.horizontal,
+                        child: header,
                       ),
                     ),
                   ),
                 ],
               ),
-            ),
-          ],
+              Expanded(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SingleChildScrollView(controller: _vDates, child: labels),
+                    Expanded(
+                      child: Scrollbar(
+                        controller: _vBody,
+                        child: SingleChildScrollView(
+                          controller: _vBody,
+                          child: SingleChildScrollView(
+                            controller: _hBody,
+                            scrollDirection: Axis.horizontal,
+                            child: body,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -4187,6 +4382,12 @@ class _TickPainter extends CustomPainter {
       old.ticks.length != ticks.length || old.color != color;
 }
 
+/// The hovered cell, its room and its hour (2026-10-12, Tom): bright blue.
+Color calHoverBlue(BuildContext context) =>
+    Theme.of(context).brightness == Brightness.dark
+    ? const Color(0xFF3B82F6)
+    : const Color(0xFF2563EB);
+
 /// The line between days (client's design, 2026-10-11): green.
 Color calDayLine(BuildContext context) =>
     Theme.of(context).brightness == Brightness.dark
@@ -4194,7 +4395,7 @@ Color calDayLine(BuildContext context) =>
     : const Color(0xFF8FCB93);
 
 /// The rooms' grid (client's design, 2026-10-11): white, a light line every
-/// 2 hours, a green line between days, no lines between rooms.
+/// 2 hours, a green line between days, a line under every room.
 class _GridPainter extends CustomPainter {
   final int days;
   final int? todayCol;
@@ -4202,13 +4403,14 @@ class _GridPainter extends CustomPainter {
 
   /// (top, height, property band, closed by a problem) per row.
   final List<(double, double, bool, bool)> rows;
-  final Color line, dayLine, band, blockedFill;
+  final Color line, rowLine, dayLine, band, blockedFill;
   _GridPainter({
     required this.days,
     required this.dayW,
     required this.todayCol,
     required this.rows,
     required this.line,
+    required this.rowLine,
     required this.dayLine,
     required this.band,
     required this.blockedFill,
@@ -4231,13 +4433,24 @@ class _GridPainter extends CustomPainter {
           fill..color = blockedFill,
         );
     }
+    // The lines stop at the last room (the space below is only for a
+    // cleaning bubble).
+    final bottom = rows.isEmpty ? size.height : rows.last.$1 + rows.last.$2;
+    // A line under every room (2026-10-12, Tom: back, like the room column).
+    final under = Paint()
+      ..color = rowLine
+      ..strokeWidth = 1;
+    for (final (top, height, _, _) in rows) {
+      final y = top + height - 0.5;
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), under);
+    }
     final hours = Paint()
       ..color = line
       ..strokeWidth = 1;
     for (var i = 0; i < days; i++) {
       for (var slot = 1; slot < 12; slot++) {
         final x = (i + slot / 12) * dayW - 0.5;
-        canvas.drawLine(Offset(x, 0), Offset(x, size.height), hours);
+        canvas.drawLine(Offset(x, 0), Offset(x, bottom), hours);
       }
     }
     final between = Paint()
@@ -4245,7 +4458,7 @@ class _GridPainter extends CustomPainter {
       ..strokeWidth = 1;
     for (var i = 1; i <= days; i++) {
       final x = i * dayW - 0.5;
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), between);
+      canvas.drawLine(Offset(x, 0), Offset(x, bottom), between);
     }
   }
 
@@ -4257,6 +4470,7 @@ class _GridPainter extends CustomPainter {
       old.rows.length != rows.length ||
       old.rows.join(',') != rows.join(',') ||
       old.line != line ||
+      old.rowLine != rowLine ||
       old.dayLine != dayLine;
 }
 
