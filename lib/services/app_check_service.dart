@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:flutter/foundation.dart';
 
@@ -22,4 +23,13 @@ Future<void> activateAppCheck() async {
     providerApple: const AppleAppAttestWithDeviceCheckFallbackProvider(),
   );
   await FirebaseAppCheck.instance.setTokenAutoRefreshEnabled(true);
+  // Speed (2026-10-11, Tom): get the App Check pass now, while the app waits
+  // for the sign-in check, so the first server call does not wait for it.
+  // Not awaited; a failure here changes nothing (each call gets its own).
+  unawaited(
+    FirebaseAppCheck.instance.getToken().then<void>(
+      (_) {},
+      onError: (Object _) {},
+    ),
+  );
 }

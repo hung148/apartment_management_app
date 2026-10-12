@@ -1,3 +1,4 @@
+import 'package:phan_mem_quan_ly_can_ho/services/startup_timing.dart';
 import 'dashboard_organization_header.dart';
 import 'account_menu_dialog.dart';
 import '../team/org_shell.dart';
@@ -237,6 +238,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     final service = getIt<TeamService>();
     // A failed check (offline) shows its error screen; the kept copy stays.
     final entry = await _accountEntryService.load();
+    StartupTiming.mark('accountCheck');
     _needsVerifiedEmail = entry.needsVerifiedEmail;
     // Speed (2026-10-09): a check that opens one workplace is kept, so the
     // next start shows that workspace at once (locked until this check runs

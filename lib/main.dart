@@ -1,3 +1,4 @@
+import 'package:phan_mem_quan_ly_can_ho/services/startup_timing.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/app_theme.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/auth_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/booking_notifier.dart';
@@ -83,6 +84,7 @@ void main() async {
   };
 
   WidgetsFlutterBinding.ensureInitialized();
+  StartupTiming.mark('main');
 
   // Startup waits (2026-10-10, speed): the window, the saved settings and the
   // theme do not need Firebase, so they start now and run alongside its
@@ -102,11 +104,13 @@ void main() async {
         ? localFirebaseOptions
         : DefaultFirebaseOptions.currentPlatform,
   );
+  StartupTiming.mark('firebase');
   if (localEmulators) {
     await useLocalEmulators();
   } else {
     await activateAppCheck();
   }
+  StartupTiming.mark('appCheck');
 
   try {
     if (!kIsWeb) {
@@ -120,7 +124,9 @@ void main() async {
   }
 
   await FirebaseAuth.instance.authStateChanges().first;
+  StartupTiming.mark('signIn');
   await early;
+  StartupTiming.mark('settings');
 
   final prefs = await SharedPreferences.getInstance();
   // The copy of server answers kept on this device (2026-10-06, speed): it
@@ -143,9 +149,13 @@ void main() async {
   final savedCountry = savedLang == 'vi' ? 'VN' : 'US';
   getIt<LocaleNotifier>().setLocale(Locale(savedLang, savedCountry));
 
+  StartupTiming.mark('deviceCopy');
   runApp(const MyApp());
   // The page's own loading screen stays until the app has drawn (web).
-  WidgetsBinding.instance.addPostFrameCallback((_) => hideStartScreen());
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    StartupTiming.mark('firstFrame');
+    hideStartScreen();
+  });
   watchAuthChanges(navigatorKey);
 }
 

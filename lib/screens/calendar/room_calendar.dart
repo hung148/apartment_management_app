@@ -1,3 +1,4 @@
+import 'package:phan_mem_quan_ly_can_ho/services/startup_timing.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' show PointerDeviceKind;
@@ -660,6 +661,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
   }
 
   Future<void> _load() async {
+    StartupTiming.mark('calendarStart');
     final generation = ++_generation;
     setState(() {
       _busy = true;
@@ -680,6 +682,11 @@ class _RoomCalendarState extends State<RoomCalendar> {
         if (askList) 'list': true,
       })) {
         if (!mounted || generation != _generation) return;
+        if (r.saved) {
+          StartupTiming.mark('calendarSaved');
+        } else {
+          StartupTiming.finish('calendarServer');
+        }
         setState(() {
           _properties = [
             for (final p in (r.data['properties'] as List? ?? const []))

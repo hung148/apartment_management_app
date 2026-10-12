@@ -842,4 +842,21 @@ Passed: 1 gear hover, 2 Personal information opens, 3 name and phone.
 - Current single-owner/different-owner denial is an intermediate implementation. Hold its release until this revised model is settled. Agreement acceptance, joint approval and recovery details remain design work; see STAFF_ACCOUNT_POLICY.md.
 
 ### Client UI request
-1. 
+1. Khi hover chuot tren calender grid it will high light phong and time 
+2. add nut tuy chinh so luong 
+3. bo dong gia toggle
+4. Them add for moi dem
+5. Gia khac nhau moi gio (luu)
+6. phu phi option ngan ngay theo phong only
+7. Tien coc cho tien mat la ngay tra tien (tag nhan vien thu tien, nhan tai khoan)
+8. ngan ngay khi click kiem tra tien doesn't work 
+9. Dem tinh tu sau 7 gio toi
+10. Da coc mau do, chua check in mau cam, dang o, da check out 
+11. Bar hien ten khach hang voi kenh lien lac
+12. time line every 2 hour
+13. calander mode ngay thang nam
+14. them giong + 
+15. phong list and doi phong show list option
+16. lien ket voi bo cong an de tu cond check tam tru
+17. Tnh tu ngay vao o den coi thang (1) tinh tu ngay vao o den dung ngay do tahng sau(2)
+18. chon ngay thanh tao cho ky thanh toan.
