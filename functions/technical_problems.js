@@ -26,7 +26,7 @@ const ACTIVE_BOOKING=['pending','confirmed','checkedIn'];
 const ms=v=>v?.toMillis?.()??(typeof v?.__timestamp==='number'?v.__timestamp:null);
 
 const KEYS={
- list:['status'],
+ list:['status','cursor'],
  report:['operationId','roomId','title','description','blocksRoom'],
  update:['operationId','problemId','revision','title','description','blocksRoom'],
  fix:['inputCurrency','operationId','problemId','revision','fixedByName','fixedDate','costMinor','recordExpense','paymentMethod','accountId','note'],
@@ -45,7 +45,7 @@ function invalidProblemInput(d){
  if(!d||!Object.hasOwn(KEYS,d.action))return 'problem_invalid';
  const keys=['action','organizationId','buildingId',...KEYS[d.action]];
  if(Object.keys(d).some(k=>!keys.includes(k))||!id(d.organizationId)||!id(d.buildingId))return 'problem_invalid';
- if(d.action==='list')return d.status===undefined||['open','fixed','all'].includes(d.status)?null:'problem_invalid';
+ if(d.action==='list')return (d.status===undefined||['open','fixed','all'].includes(d.status))&&(d.cursor===undefined||(d.status==='fixed'&&id(d.cursor)))?null:'problem_invalid';
  if(d.action==='photo')return id(d.problemId)&&id(d.photoId)?null:'problem_invalid';
  if(!id(d.operationId))return 'problem_invalid';
  if(d.action==='addPhoto'){
@@ -96,25 +96,38 @@ function createTechnicalProblemsHandler({db,Timestamp,HttpsError,drive=null}){
    const currency=org.data().displayCurrency??(b.currency==='USD'?'USD':'VND'),scale=currency==='USD'?100:1;
 
    if(d.action==='list'){
-    // Scale (2026-10-11, Tom): every open problem, and only the 300 most
-    // recent fixed ones (the list shows at most 300), not every problem ever.
+    // Scale (2026-10-11, Tom): every open problem; fixed ones 25 at a time,
+    // newest first, when "Đã sửa" is opened (status 'fixed' with a cursor).
+    // Without a status (older apps): the open ones and the 300 newest fixed.
     const status=d.status??'all',base=db.collection('technicalProblems').where('organizationId','==',d.organizationId).where('buildingId','==',d.buildingId);
-    const [openRows,fixedRows]=await Promise.all([
+    const FIXED_PAGE=25;
+    let fixedQuery=base.where('status','==','fixed').orderBy('createdAt','desc');
+    if(status==='fixed'&&d.cursor){
+     const after=await tx.get(db.doc(`technicalProblems/${d.cursor}`));
+     if(!after.exists||after.data().organizationId!==d.organizationId||after.data().buildingId!==d.buildingId)fail('invalid-argument','problem_invalid');
+     fixedQuery=fixedQuery.startAfter(after);
+    }
+    const [openRows,fixedRows,roomDocs,drive]=await Promise.all([
      status==='fixed'?{docs:[]}:tx.get(base.where('status','==','open')),
-     status==='open'?{docs:[]}:tx.get(base.where('status','==','fixed').orderBy('createdAt','desc').limit(300)),
+     status==='open'?{docs:[]}:tx.get(fixedQuery.limit(status==='fixed'?FIXED_PAGE+1:300)),
+     tx.get(db.collection('rooms').where('organizationId','==',d.organizationId).where('buildingId','==',d.buildingId)),
+     driveConnectionFor(db,d.organizationId,r=>tx.get(r)),
     ]);
-    const rows=[...openRows.docs,...fixedRows.docs];
+    const fixedDocs=status==='fixed'?fixedRows.docs.slice(0,FIXED_PAGE):fixedRows.docs;
+    const nextCursor=status==='fixed'&&fixedRows.docs.length>FIXED_PAGE?fixedDocs.at(-1).id:null;
+    const rows=[...openRows.docs,...fixedDocs];
     const records=rows.filter(v=>status==='all'||v.data().status===status).map(v=>{const x=v.data();return {
      id:v.id,revision:revision(v),roomId:x.roomId,roomNumber:x.roomNumber??'',title:x.title,description:x.description??'',status:x.status,blocksRoom:x.blocksRoom===true,
      reportedByName:x.reportedByName??'',reportedLocalDate:x.reportedLocalDate??null,occupant:x.occupant??null,fixedByName:x.fixedByName??null,fixedLocalDate:x.fixedLocalDate??null,
      costMinor:x.costMinor??null,currency:x.currency??(b.currency==='USD'?'USD':'VND'),expenseId:x.expenseId??null,note:x.note??'',
      photos:(x.photos??[]).map(p=>({id:p.id,mimeType:p.mimeType,addedBy:p.addedBy,addedByName:p.addedByName??'',addedLocalDate:p.addedLocalDate??null}))};})
-     .sort((a,b2)=>(a.status===b2.status?0:a.status==='open'?-1:1)||String(b2.reportedLocalDate).localeCompare(String(a.reportedLocalDate))||a.id.localeCompare(b2.id)).slice(0,300);
-    const rooms=(await tx.get(db.collection('rooms').where('organizationId','==',d.organizationId).where('buildingId','==',d.buildingId))).docs
+     // A page of fixed ones keeps the server's newest-first order.
+     .sort((a,b2)=>status==='fixed'?0:(a.status===b2.status?0:a.status==='open'?-1:1)||String(b2.reportedLocalDate).localeCompare(String(a.reportedLocalDate))||a.id.localeCompare(b2.id)).slice(0,300);
+    const rooms=roomDocs.docs
      .map(v=>({id:v.id,roomNumber:v.data().roomNumber??'',blocked:(v.data().openProblemBlocks??[]).length>0})).sort((a,b2)=>String(a.roomNumber).localeCompare(String(b2.roomNumber),undefined,{numeric:true}));
     const accounts=canExpense?(Array.isArray(org.data().paymentAccounts)?org.data().paymentAccounts:[]).filter(a=>a&&id(a.id)).map(a=>({id:a.id,label:a.label??''})):[];
-    const driveState=driveSummary((await driveConnectionFor(db,d.organizationId,r=>tx.get(r))).data);
-    return {records,rooms,accounts,currency,today,canReport,canManage,canExpense,uid,drive:{state:driveState.state,email:driveState.email}};
+    const driveState=driveSummary(drive.data);
+    return {records,...(status==='fixed'?{nextCursor}:{}),rooms,accounts,currency,today,canReport,canManage,canExpense,uid,drive:{state:driveState.state,email:driveState.email}};
    }
 
    if(d.action==='report'?!canReport:!canManage)fail('permission-denied','problem_access_denied');

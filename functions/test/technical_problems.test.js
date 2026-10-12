@@ -152,3 +152,20 @@ test('problem list: all open, the 300 newest fixed, nothing older read',async()=
  assert.deepEqual(open.records.map(r=>r.id).sort(),['o0','o1','o2']);
  assert.equal(returned,3,'only open problems read');
 });
+
+// 2026-10-11 (Tom: 1000 fixed problems): "Đã sửa" pages 25 at a time.
+test('fixed problems come 25 at a time, newest first',async()=>{
+ const {db,call}=setup();
+ const base={organizationId:'o',buildingId:'b',roomId:'r1',title:'x',description:'',blocksRoom:false,photos:[],status:'fixed'};
+ for(let i=0;i<60;i++)db.store.set(`technicalProblems/f${String(i).padStart(2,'0')}`,{...base,reportedLocalDate:'2026-01-01',createdAt:Ts.fromMillis(Date.parse('2026-01-01T00:00:00Z')+i*3600000)});
+ const p1=await call({action:'list',status:'fixed'});
+ assert.deepEqual(p1.records.slice(0,2).map(r=>r.id),['f59','f58']);
+ assert.equal(p1.records.length,25);assert.equal(p1.nextCursor,'f35');
+ const p2=await call({action:'list',status:'fixed',cursor:p1.nextCursor});
+ assert.equal(p2.records[0].id,'f34');
+ const p3=await call({action:'list',status:'fixed',cursor:p2.nextCursor});
+ assert.equal(p3.records.length,10);assert.equal(p3.nextCursor,null);
+ const open=await call({action:'list',status:'open'});
+ assert.equal(open.nextCursor,undefined);assert.deepEqual(open.records,[]);
+ await assert.rejects(call({action:'list',status:'open',cursor:'f10'}),e=>e.code==='invalid-argument');
+});

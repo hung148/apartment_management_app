@@ -376,6 +376,10 @@ the server). Measure before and after each step on staging.
    New screens: use readLive. Removed screens: nothing to do (copies age
    out; at most 150, 30 days). Done: calendar, tenant list and page, rent,
    electricity, bookings, problems, cleaning, lease form, staff, invoices.
+   (8) Forms loaded ahead: when the calendar shows a building, the forms'
+   first reads load once per session (room_calendar.dart _prefetchForms:
+   Dài hạn rooms, Sự cố, Dọn phòng; Đặt phòng options already). A new form:
+   add a line there with the same call and data the form reads.
 10. [ ] After the production move (Tom 2026-10-10): run single_organization_audit.js
    on production. If it finds no two-owner organizations, no co-owner
    records and no staff linked to two businesses, and the merge tool is no
@@ -836,3 +840,6 @@ Passed: 1 gear hover, 2 Personal information opens, 3 name and phone.
 - [ ] Co-owners with an agreed, configurable permission list (Tom's choice), including sensitive ownership actions; not automatically full access.
 - [ ] Explicitly approved staff sharing between separate companies, with separate roles/data access and revocation.
 - Current single-owner/different-owner denial is an intermediate implementation. Hold its release until this revised model is settled. Agreement acceptance, joint approval and recovery details remain design work; see STAFF_ACCOUNT_POLICY.md.
+
+### Client UI request
+1. 

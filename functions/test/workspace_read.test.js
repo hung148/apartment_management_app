@@ -61,3 +61,24 @@ test('task list is newest first across pages',async()=>{
   store.store.set('housekeepingTasks/x',{organizationId:'other',buildingId:'b1',createdAt:new Ts(5)});
   await assert.rejects(call(store,{view:'tasks',cursor:'x'}),e=>e.code==='invalid-argument');
 });
+
+// 2026-10-11 (Tom: 100+ staff): the "assign to" list pages through members
+// remembered for 30 s, with the same answers, and a change clears it.
+test('task assignees page through remembered members',async()=>{
+  const {forgetStaff}=require('../staff_directory');
+  const store=db();
+  for(let i=0;i<30;i++)store.store.set(`memberships/m${String(i).padStart(2,'0')}_org`,{ownerId:`m${String(i).padStart(2,'0')}`,organizationId:'org',accessVersion:2,role:'housekeeper',status:'active',buildingScope:'all',buildingIds:[],displayName:`Chi ${i}`});
+  const collection=store.collection;let reads=0;
+  const wrap=q=>({where:(...a)=>wrap(q.where(...a)),orderBy:(...a)=>wrap(q.orderBy(...a)),limit:n=>wrap(q.limit(n)),startAfter:v=>wrap(q.startAfter(v)),get:async()=>{reads++;return q.get();}});
+  store.collection=name=>name==='memberships'?wrap(collection(name)):collection(name);
+  const first=await call(store,{view:'taskAssignees',limit:20});
+  const second=await call(store,{view:'taskAssignees',limit:20,cursor:first.nextCursor});
+  assert.equal(first.records.length+second.records.length,31,'every housekeeper and the owner');
+  assert.equal(second.nextCursor,null);
+  assert.equal(reads,1,'the members are read once for both pages');
+  store.store.set('memberships/new_org',{ownerId:'new',organizationId:'org',accessVersion:2,role:'housekeeper',status:'active',buildingScope:'all',buildingIds:[],displayName:'Moi'});
+  forgetStaff('org');
+  const again=await call(store,{view:'taskAssignees',limit:100});
+  assert(again.records.some(r=>r.id==='new_org'),'a change on this server copy shows at once');
+  await assert.rejects(call(store,{view:'taskAssignees',cursor:'nobody_org'}),e=>e.code==='invalid-argument');
+});

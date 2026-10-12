@@ -106,19 +106,31 @@ class _TechnicalProblemsScreenState extends State<TechnicalProblemsScreen> {
     super.dispose();
   }
 
-  List<Map> get _records => ((_data?['records'] as List?) ?? const [])
-      .cast<Map>()
-      .where(
-        (r) => widget.onlyRoomId == null || r['roomId'] == widget.onlyRoomId,
-      )
-      .toList();
+  /// Open problems (from [_load]) and the fixed ones loaded so far, 25 at a
+  /// time when "Đã sửa" or "Tất cả" is chosen (2026-10-11, Tom: 1000 fixed).
+  List<Map> get _records =>
+      [
+            ...((_data?['records'] as List?) ?? const []).cast<Map>(),
+            ..._fixed.where(
+              (f) => !((_data?['records'] as List?) ?? const []).any(
+                (o) => (o as Map)['id'] == f['id'],
+              ),
+            ),
+          ]
+          .where(
+            (r) =>
+                widget.onlyRoomId == null || r['roomId'] == widget.onlyRoomId,
+          )
+          .toList();
   List<Map> get _rooms => ((_data?['rooms'] as List?) ?? const [])
       .cast<Map>()
       .where((r) => widget.onlyRoomId == null || r['id'] == widget.onlyRoomId)
       .toList();
   List<Map> get _accounts =>
       ((_data?['accounts'] as List?) ?? const []).cast<Map>();
-  late final MoneyForm _money = MoneyForm(OrganizationMoney.shared.forOrganization(widget.organizationId));
+  late final MoneyForm _money = MoneyForm(
+    OrganizationMoney.shared.forOrganization(widget.organizationId),
+  );
   String get _inputCurrency => _money.currency(_currency);
   String get _currency => '${_data?['currency'] ?? 'VND'}';
   bool get _canReport => _data?['canReport'] == true;
@@ -129,6 +141,47 @@ class _TechnicalProblemsScreenState extends State<TechnicalProblemsScreen> {
   Map? get _problem => _records.where((r) => r['id'] == _problemId).firstOrNull;
   bool get _locked => _saving || _pending != null;
 
+  List<Map> _fixed = [];
+  String? _fixedCursor;
+  bool _fixedLoaded = false, _fixedBusy = false;
+  int _fixedGeneration = 0;
+
+  /// The next page of fixed problems; with [reset], the first pages again (as
+  /// many as were shown, so an open one stays on screen after a change).
+  Future<void> _loadFixed({bool reset = false}) async {
+    final generation = ++_fixedGeneration;
+    final want = reset ? _fixed.length : 0;
+    setState(() => _fixedBusy = true);
+    try {
+      final rows = reset ? <Map>[] : List<Map>.of(_fixed);
+      String? cursor = reset ? null : _fixedCursor;
+      do {
+        final page = await widget.service.technicalProblems({
+          'action': 'list',
+          'status': 'fixed',
+          'organizationId': widget.organizationId,
+          'buildingId': widget.buildingId,
+          'cursor': ?cursor,
+        });
+        rows.addAll(((page['records'] as List?) ?? const []).cast<Map>());
+        cursor = page['nextCursor'] as String?;
+      } while (cursor != null && rows.length < want);
+      if (!mounted || generation != _fixedGeneration) return;
+      setState(() {
+        _fixed = rows;
+        _fixedCursor = cursor;
+        _fixedLoaded = true;
+        _fixedBusy = false;
+      });
+    } catch (e) {
+      if (!mounted || generation != _fixedGeneration) return;
+      setState(() {
+        _fixedBusy = false;
+        _error = _message(FeeText(context), e);
+      });
+    }
+  }
+
   Future<void> _load() async {
     final generation = ++_generation;
     setState(() {
@@ -138,8 +191,10 @@ class _TechnicalProblemsScreenState extends State<TechnicalProblemsScreen> {
     try {
       // 2026-10-11 (Tom: open at once): the device copy first, locked
       // (busy) until the server's answer replaces it.
+      // Open problems only; fixed ones load when their filter is chosen.
       await for (final answer in widget.service.readLive('technicalProblems', {
         'action': 'list',
+        'status': 'open',
         'organizationId': widget.organizationId,
         'buildingId': widget.buildingId,
       })) {
@@ -153,6 +208,9 @@ class _TechnicalProblemsScreenState extends State<TechnicalProblemsScreen> {
               _view != _View.done)
             _view = _View.list;
         });
+      }
+      if (_fixedLoaded && mounted && generation == _generation) {
+        _loadFixed(reset: true);
       }
       final room = widget.reportRoomId;
       if (!_reportOpened &&
@@ -336,7 +394,9 @@ class _TechnicalProblemsScreenState extends State<TechnicalProblemsScreen> {
         }
       case _View.fix:
         final costText = _cost.text.trim();
-        final cost = costText.isEmpty ? null : appParseMoney(_cost.text, _inputCurrency);
+        final cost = costText.isEmpty
+            ? null
+            : appParseMoney(_cost.text, _inputCurrency);
         if (_fixedBy.text.trim().isEmpty) {
           problem = x.tr('Enter who fixed it.', 'Nhập ai đã sửa.');
         } else if (!feeDate(_fixedDate.text.trim())) {
@@ -490,7 +550,12 @@ class _TechnicalProblemsScreenState extends State<TechnicalProblemsScreen> {
                 ChoiceChip(
                   key: ValueKey('problem-filter-$f'),
                   selected: _filter == f,
-                  onSelected: (_) => setState(() => _filter = f),
+                  onSelected: (_) {
+                    setState(() => _filter = f);
+                    if (f != 'open' && !_fixedLoaded && !_fixedBusy) {
+                      _loadFixed();
+                    }
+                  },
                   label: Text(switch (f) {
                     'open' => '${x.tr('Open', 'Đang mở')} ($open)',
                     'fixed' => x.tr('Fixed', 'Đã sửa'),
@@ -500,7 +565,8 @@ class _TechnicalProblemsScreenState extends State<TechnicalProblemsScreen> {
             ],
           ),
           const SizedBox(height: WsSpace.md),
-          if (shown.isEmpty)
+          if (shown.isEmpty &&
+              (_filter == 'open' || (_fixedLoaded && !_fixedBusy)))
             WsEmpty(
               icon: Icons.build_outlined,
               message: _filter == 'open'
@@ -529,6 +595,15 @@ class _TechnicalProblemsScreenState extends State<TechnicalProblemsScreen> {
                   '${x.tr('Fixed', 'Sửa')}: ${r['fixedByName']} · ${_date(r['fixedLocalDate'])}${r['costMinor'] == null ? '' : ' · ${x.money(r['costMinor'] as num, '${r['currency']}')}'}',
               ],
               onTap: () => _open(_View.detail, problemId: '${r['id']}'),
+            ),
+          if (_filter != 'open' && _fixedBusy) const LinearProgressIndicator(),
+          if (_filter != 'open' && !_fixedBusy && _fixedCursor != null)
+            Center(
+              child: OutlinedButton(
+                key: const ValueKey('problems-more'),
+                onPressed: _loadFixed,
+                child: Text(x.tr('Load more', 'Tải thêm')),
+              ),
             ),
         ],
       ],

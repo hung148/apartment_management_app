@@ -509,9 +509,18 @@ class TeamService {
 
   /// Loads a calendar window ahead and keeps it on the device, so it shows at
   /// once when opened (2026-10-10, scale). Never fails the caller.
-  void prefetchCalendar(Map<String, dynamic> payload) {
-    _fresh('calendarView', payload).then((_) {}, onError: (Object _) {});
+  void prefetchCalendar(Map<String, dynamic> payload) =>
+      prefetch('calendarView', payload);
+
+  /// Any read loaded ahead and kept on the device, so its screen opens at once
+  /// ([readLive]). Never fails the caller (2026-10-11).
+  void prefetch(String call, Map<String, dynamic> payload) {
+    _fresh(call, payload).then((_) {}, onError: (Object _) {});
   }
+
+  /// Answers are kept on this device (the app; tests usually have no copy,
+  /// so loading ahead would only add calls there).
+  bool get keepsCopies => _cache != null;
 
   Future<Map<String, dynamic>> tenantRent(Map<String, dynamic> payload) =>
       _read('tenantRent', payload);
@@ -551,9 +560,10 @@ class TeamService {
       : _transport('transferOrganization', payload);
 
   /// The saved ownership page, or null.
-  Future<Map<String, dynamic>?> savedTransferRead(String organizationId) async =>
-      (await _cache?.read('transferOrganization', {
-        'action': 'read',
-        'organizationId': organizationId,
-      }))?.data;
+  Future<Map<String, dynamic>?> savedTransferRead(
+    String organizationId,
+  ) async => (await _cache?.read('transferOrganization', {
+    'action': 'read',
+    'organizationId': organizationId,
+  }))?.data;
 }

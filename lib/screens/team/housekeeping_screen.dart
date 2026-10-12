@@ -8,6 +8,78 @@ import '../../utils/localizations/app_localizations.dart';
 import 'team_display.dart';
 import 'ws_ui.dart';
 
+typedef HousekeepingFirstPage = ({
+  List<Map<String, dynamic>> tasks,
+  String? cursor,
+  List<Map<String, dynamic>> rooms,
+  List<Map<String, dynamic>> people,
+  bool manager,
+});
+
+/// The cleaning list's first page with the rooms and people a manager assigns
+/// to, kept on this device for the next open. The calendar also calls this to
+/// load it ahead (2026-10-11, Tom: forms ready before they are tapped).
+Future<HousekeepingFirstPage> loadHousekeeping(
+  TeamService service,
+  String organizationId,
+  String buildingId,
+  TeamAccess access,
+) async {
+  final manager = access.allows(
+    TeamPermission.manageProperty,
+    buildingId: buildingId,
+  );
+  // 100 a page (the most the server gives): 100 staff is one or two reads.
+  Future<List<Map<String, dynamic>>> all(String view) async {
+    final rows = <Map<String, dynamic>>[];
+    String? cursor;
+    final seen = <String>{};
+    do {
+      final page = await service.workspace(
+        organizationId,
+        view,
+        buildingId: buildingId,
+        cursor: cursor,
+        limit: 100,
+      );
+      rows.addAll(page.records);
+      cursor = page.nextCursor;
+      if (cursor != null && !seen.add(cursor)) {
+        throw StateError('Repeated cursor');
+      }
+    } while (cursor != null);
+    return rows;
+  }
+
+  // The tasks, rooms and people are read at the same time (2026-10-11).
+  final none = Future.value(<Map<String, dynamic>>[]);
+  final pageRead = service.workspace(
+    organizationId,
+    'tasks',
+    buildingId: buildingId,
+  );
+  final roomsRead = manager ? all('taskRooms') : none;
+  final peopleRead = manager ? all('taskAssignees') : none;
+  // One failure is reported once; the others are not left unhandled.
+  roomsRead.ignore();
+  peopleRead.ignore();
+  final page = await pageRead;
+  final rooms = await roomsRead, people = await peopleRead;
+  service.save('housekeeping:$buildingId', organizationId, {
+    'tasks': page.records,
+    'rooms': rooms,
+    'people': people,
+    'manager': manager,
+  });
+  return (
+    tasks: page.records,
+    cursor: page.nextCursor,
+    rooms: rooms,
+    people: people,
+    manager: manager,
+  );
+}
+
 class HousekeepingScreen extends StatefulWidget {
   final String organizationId, buildingId;
   final TeamService service;
@@ -98,7 +170,8 @@ class _HousekeepingScreenState extends State<HousekeepingScreen> {
   /// the work is still going.
   String _endPart(String start, Object? end) {
     if (end is! String || end.isEmpty) return '…';
-    return end.length >= 16 && start.length >= 10 &&
+    return end.length >= 16 &&
+            start.length >= 10 &&
             end.substring(0, 10) == start.substring(0, 10)
         ? end.substring(11)
         : end;
@@ -115,29 +188,6 @@ class _HousekeepingScreenState extends State<HousekeepingScreen> {
         return n.trim();
     }
     return '${task['assigneeId'] ?? ''}';
-  }
-
-  Future<List<Map<String, dynamic>>> _all(String view) async {
-    final rows = <Map<String, dynamic>>[];
-    String? cursor;
-    final seen = <String>{};
-    do {
-      // 100 a page (the most the server gives): 100 staff is one or two
-      // reads, not four or five one after another (2026-10-11, Tom).
-      final page = await widget.service.workspace(
-        widget.organizationId,
-        view,
-        buildingId: widget.buildingId,
-        cursor: cursor,
-        limit: 100,
-      );
-      rows.addAll(page.records);
-      cursor = page.nextCursor;
-      if (cursor != null && !seen.add(cursor)) {
-        throw StateError('Repeated cursor');
-      }
-    } while (cursor != null);
-    return rows;
   }
 
   Future<void> _load({bool more = false}) async {
@@ -189,36 +239,35 @@ class _HousekeepingScreenState extends State<HousekeepingScreen> {
         TeamPermission.manageProperty,
         buildingId: widget.buildingId,
       );
-      // Speed (2026-10-11, Tom): the tasks, rooms and people are read at the
-      // same time (they were three waits one after another).
-      final none = Future.value(<Map<String, dynamic>>[]);
-      final pageRead = widget.service.workspace(
-        widget.organizationId,
-        'tasks',
-        buildingId: widget.buildingId,
-        cursor: more ? _cursor : null,
-      );
-      final roomsRead = manager && !more ? _all('taskRooms') : none;
-      final peopleRead = manager && !more ? _all('taskAssignees') : none;
-      // One failure is reported once (below); the others are not left unhandled.
-      roomsRead.ignore();
-      peopleRead.ignore();
-      final page = await pageRead;
-      final rooms = more ? _rooms : await roomsRead;
-      final people = more ? _people : await peopleRead;
-      if (!mounted || generation != _generation) return;
-      if (!more) {
-        widget.service.save(savedKey, widget.organizationId, {
-          'tasks': page.records,
-          'rooms': rooms,
-          'people': people,
-          'manager': manager,
-        });
+      final HousekeepingFirstPage first;
+      if (more) {
+        final page = await widget.service.workspace(
+          widget.organizationId,
+          'tasks',
+          buildingId: widget.buildingId,
+          cursor: _cursor,
+        );
+        first = (
+          tasks: [..._tasks, ...page.records],
+          cursor: page.nextCursor,
+          rooms: _rooms,
+          people: _people,
+          manager: manager,
+        );
+      } else {
+        first = await loadHousekeeping(
+          widget.service,
+          widget.organizationId,
+          widget.buildingId,
+          access,
+        );
       }
+      final rooms = first.rooms, people = first.people;
+      if (!mounted || generation != _generation) return;
       setState(() {
         _manager = manager;
-        _tasks = [if (more) ..._tasks, ...page.records];
-        _cursor = page.nextCursor;
+        _tasks = first.tasks;
+        _cursor = first.cursor;
         _rooms = rooms;
         _people = people;
         _busy = false;

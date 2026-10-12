@@ -6,6 +6,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/read_cache.dart';
 import 'package:phan_mem_quan_ly_can_ho/services/team_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/widgets.dart' show ValueKey;
+import 'package:phan_mem_quan_ly_can_ho/models/team_access.dart';
+import 'package:phan_mem_quan_ly_can_ho/preview/team_preview_store.dart';
 
 import 'room_calendar_test.dart' show bar, calendarFixture, mountCalendar;
 import 'tenant_contacts_test.dart' as tenants;
@@ -220,6 +223,54 @@ void main() {
     final service = TeamService(transport: (n, d) async => {'v': 1});
     await service.calendarViewLive({'organizationId': 'o1'}).toList();
     expect(prefs.getKeys().where((k) => k.startsWith('rc1|')), isEmpty);
+  });
+
+  // Step 2 (2026-10-11, Tom): the shown building's forms load ahead once, with
+  // the same call and data the form uses, so it opens from the device copy.
+  testWidgets('the calendar loads the building\'s forms ahead, once', (
+    tester,
+  ) async {
+    final c = cache();
+    final asked = <String>[];
+    final service = TeamService(
+      cache: c,
+      transport: (name, data) async {
+        asked.add('$name/${data['action'] ?? data['view'] ?? ''}');
+        if (name == 'calendarView') {
+          final m = calendarFixture(
+            data['from'] as String,
+            to: data['to'] as String?,
+          );
+          for (final p in m['properties'] as List) {
+            (p as Map)['canReadCleaning'] = true;
+          }
+          return m;
+        }
+        if (name == 'readWorkspace') return {'records': <Object>[]};
+        return <String, dynamic>{'records': <Object>[]};
+      },
+    );
+    await mountCalendar(
+      tester,
+      service,
+      access: TeamAccess.fromMap(TeamPreviewStore.grant('owner')),
+    );
+    await tester.pumpAndSettle();
+    expect(asked.where((a) => a == 'tenantLeases/rooms'), hasLength(1));
+    expect(asked.where((a) => a == 'technicalProblems/list'), hasLength(1));
+    expect(asked, contains('readWorkspace/tasks'));
+    final rooms = {
+      'action': 'rooms',
+      'organizationId': 'preview',
+      'buildingId': 'riverside',
+    };
+    expect(await c.read('tenantLeases', rooms), isNotNull,
+        reason: 'kept under the same key the form reads');
+    // Reloading the calendar does not load the forms again.
+    await tester.tap(find.byKey(const ValueKey('calendar-refresh')));
+    await tester.pumpAndSettle();
+    expect(asked.where((a) => a == 'tenantLeases/rooms'), hasLength(1));
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('the calendar shows the saved copy when the server is unreachable, '

@@ -32,8 +32,19 @@ async function staffChoices(get,db,organizationId,now=Date.now()){
  cache.set(organizationId,{at:now,list});
  return list;
 }
+/** The organization's member records ({id, data()}), sorted by ID, remembered
+ *  like [staffChoices] (2026-10-11: the cleaning form's "assign to" list). */
+async function memberRecords(get,db,organizationId,now=Date.now()){
+ const cache=cacheOf(db),key='members|'+organizationId,hit=cache.get(key);
+ if(hit&&now-hit.at<CHOICES_MS)return hit.list;
+ const docs=(await get(db.collection('memberships').where('organizationId','==',organizationId))).docs;
+ const list=docs.map(v=>{const x=v.data();return {id:v.id,data:()=>x};}).sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0);
+ if(cache.size>=MAX_ORGS)cache.clear();
+ cache.set(key,{at:now,list});
+ return list;
+}
 /** A change on this server copy: forget the organization's remembered staff. */
 function forgetStaff(organizationId){
- for(const ref of caches){const c=ref.deref();if(!c){caches.delete(ref);continue;}if(organizationId)c.delete(organizationId);else c.clear();}
+ for(const ref of caches){const c=ref.deref();if(!c){caches.delete(ref);continue;}if(organizationId){c.delete(organizationId);c.delete('members|'+organizationId);}else c.clear();}
 }
-module.exports={staffNames,staffChoices,forgetStaff};
+module.exports={staffNames,staffChoices,memberRecords,forgetStaff};

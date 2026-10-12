@@ -435,6 +435,9 @@ class _RoomCalendarState extends State<RoomCalendar> {
 
   /// Properties whose next window was already loaded ahead ("id|from").
   final Set<String> _prefetched = {};
+
+  /// Properties whose forms were already loaded ahead this session.
+  final Set<String> _formsLoaded = {};
   bool _busy = true, _loaded = false, _syncing = false, _scrollToToday = true;
   String? _error, _property;
   int _generation = 0;
@@ -708,7 +711,10 @@ class _RoomCalendarState extends State<RoomCalendar> {
             shown.id,
           );
         }
-        if (!r.saved && shown != null) _prefetchNext(shown.id);
+        if (!r.saved && shown != null) {
+          _prefetchNext(shown.id);
+          _prefetchForms(shown);
+        }
         _afterLayout();
       }
     } catch (e) {
@@ -741,6 +747,36 @@ class _RoomCalendarState extends State<RoomCalendar> {
       'to': calYmd(_monthEnd),
       'buildingId': next,
     });
+  }
+
+  /// Step 2 of "open at once" (2026-10-11, Tom): the forms of the building
+  /// on screen are loaded ahead, once per session, so even their first open
+  /// shows at once. Each form reads exactly what it reads when opened (same
+  /// call and data), so the device copy matches. A new form: add a line here;
+  /// a removed form: remove its line. Đặt phòng's options load just above.
+  void _prefetchForms(CalProperty p) {
+    final service = widget.service, org = widget.organizationId;
+    if (!service.keepsCopies || p.needsTimeZone || !_formsLoaded.add(p.id)) {
+      return;
+    }
+    final building = {'organizationId': org, 'buildingId': p.id};
+    // Dài hạn: the room list (the form's first step).
+    if (p.canLease) {
+      service.prefetch('tenantLeases', {'action': 'rooms', ...building});
+    }
+    // Sự cố / Báo sự cố.
+    if (p.canReadProblems) {
+      service.prefetch('technicalProblems', {
+        'action': 'list',
+        'status': 'open',
+        ...building,
+      });
+    }
+    // Dọn phòng / Giao việc (with the rooms and people to assign).
+    final access = widget.access;
+    if (p.canReadCleaning && access != null) {
+      loadHousekeeping(service, org, p.id, access).ignore();
+    }
   }
 
   /// The picker's choices: the server's list, or the loaded properties

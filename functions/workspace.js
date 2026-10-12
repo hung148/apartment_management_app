@@ -1,5 +1,6 @@
 'use strict';
 const {allows,hasRole,reachesAllProperties}=require('./team_access');
+const {memberRecords}=require('./staff_directory');
 const id=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,256}$/.test(v);
 const specs={
   rooms:{collection:'rooms',permission:'manageProperty',fields:['roomNumber','roomType','area','rentalMode']},
@@ -37,7 +38,18 @@ function createWorkspaceHandler({db,HttpsError}) {
         if(!allows(m,spec.permission,{...context,anyRecord:true}) && !(d.view==='paymentActions'&&allows(m,'refundPayments',context)) && !(d.view==='tasks'&&allows(m,'manageProperty',context)))fail('permission-denied');
         const building=await tx.get(db.doc(`buildings/${d.buildingId}`));
         if(!building.exists||building.data().organizationId!==d.organizationId)fail('permission-denied');
-        if(d.view!=='taskAssignees')query=query.where('buildingId','==',d.buildingId);
+        // Who a cleaning can be given to (2026-10-11, scale): the members are
+        // remembered 30 s per server copy (staff_directory.js), paged here.
+        if(d.view==='taskAssignees'){
+          const all=await memberRecords(r=>tx.get(r),db,d.organizationId);
+          const start=d.cursor?all.findIndex(v=>v.id===d.cursor)+1:0;
+          if(d.cursor&&start===0)fail('invalid-argument');
+          const limit=d.limit??25,docs=all.slice(start,start+limit);
+          const records=docs.filter(doc=>doc.id===`${doc.data().ownerId}_${d.organizationId}`&&allows(doc.data(),'updateAssignedTasks',{organizationId:d.organizationId,userId:doc.data().ownerId,buildingId:d.buildingId}))
+            .map(doc=>({id:doc.id,...Object.fromEntries(spec.fields.filter(k=>doc.data()[k]!==undefined).map(k=>[k,doc.data()[k]]))}));
+          return {records,nextCursor:all.length>start+limit?docs.at(-1).id:null};
+        }
+        query=query.where('buildingId','==',d.buildingId);
         if(d.view==='tasks'&&!allows(m,'manageProperty',context))query=query.where('assigneeId','==',uid);
       }
       // Cleaning tasks newest first (2026-10-11, Tom); every task has createdAt
