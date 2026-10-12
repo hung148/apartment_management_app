@@ -78,7 +78,8 @@ if ($MarkDeployed) {
 $Tests = @($Tests | ForEach-Object { $_ -split '[,\s]+' } | Where-Object { $_ -and $_ -notmatch '[*?\[\]]' })
 $testCmd = if ($Tests.Count -gt 0) {
   # Always a list: one file name must not be split into letters by @files.
-  $files = @($Tests | ForEach-Object { "test/$($_ -replace '_test(\.dart)?$','')_test.dart" })
+  # "test\x_test.dart", "x_test.dart" and "x" all name the same file.
+  $files = @($Tests | ForEach-Object { "test/$(($_ -replace '^test[\\/]','') -replace '_test(\.dart)?$','')_test.dart" })
   foreach ($f in $files) { if (-not (Test-Path -LiteralPath $f)) { Write-Host "No such test file: $f" -ForegroundColor Red; exit 1 } }
   { flutter test --concurrency=1 @files }.GetNewClosure()
 } else {

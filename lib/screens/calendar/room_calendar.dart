@@ -78,6 +78,12 @@ String calText(BuildContext context, String key) {
       'Bạn không còn quyền xem lịch này.',
     ],
     'retry': ['Retry', 'Thử lại'],
+    // Client's design (2026-10-11).
+    'pageTitle': ['Booking management', 'Quản lý đặt phòng'],
+    'propertyLabel': ['Property', 'Cơ sở'],
+    'pickProperty': ['Choose property', 'Chọn cơ sở'],
+    'addProperty': ['New property', 'Thêm cơ sở mới'],
+    'roomHead': ['Room', 'Phòng'],
     'needsTimeZone': [
       'Set this property\'s time zone first (Settings › Property).',
       'Cần đặt múi giờ cho tòa nhà này trước (Cài đặt › Tòa nhà).',
@@ -405,6 +411,17 @@ class RoomCalendar extends StatefulWidget {
 
   /// First month shown (tests); defaults to this month.
   final DateTime? initialMonth;
+
+  /// The old tools row (Today, Day/Month, legend, refresh, building settings
+  /// and the create buttons). Hidden since the client's design (2026-10-11):
+  /// the code stays until each one gets its own place (CALENDAR_HIDDEN.md).
+  /// Null: [debugShowTools].
+  final bool? showTools;
+
+  /// The tools row when [showTools] is null: off in the app; on in the tests
+  /// (test/flutter_test_config.dart), which still open every form from it.
+  @visibleForTesting
+  static bool debugShowTools = false;
   const RoomCalendar({
     super.key,
     required this.organizationId,
@@ -412,6 +429,7 @@ class RoomCalendar extends StatefulWidget {
     required this.service,
     this.access,
     this.initialMonth,
+    this.showTools,
   });
   @override
   State<RoomCalendar> createState() => _RoomCalendarState();
@@ -910,10 +928,10 @@ class _RoomCalendarState extends State<RoomCalendar> {
   }
 
   double _rowH(BuildContext context) {
-    // Thin bars like the month pills, rows just tall enough for them
-    // (2026-10-05, Tom): a 24 px bar with 3 px above and below.
+    // Client's design (2026-10-11): 48 px rows; the bar keeps 8 px above
+    // and below (barPad in _grid).
     final scale = MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.3);
-    return 30.0 * scale;
+    return 48.0 * scale;
   }
 
   // ---- Layout ----
@@ -933,13 +951,14 @@ class _RoomCalendarState extends State<RoomCalendar> {
 
   @override
   Widget build(BuildContext context) {
-    // Short screens (phone landscape): the toolbar stays one scrolling line
+    // Short screens (phone landscape): the header stays one scrolling line
     // so the days keep most of the height.
     return LayoutBuilder(
       builder: (context, box) => _layout(
         context,
         oneLine: box.maxHeight < 480,
         narrow: box.maxWidth < 600,
+        width: box.maxWidth,
       ),
     );
   }
@@ -948,18 +967,32 @@ class _RoomCalendarState extends State<RoomCalendar> {
     BuildContext context, {
     required bool oneLine,
     required bool narrow,
+    required double width,
   }) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    // The page's side margin (the client's design has the calendar as a
+    // card with room around it).
+    final margin = width >= 1200 ? 40.0 : (width >= 600 ? 24.0 : 12.0);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _toolbar(context, oneLine: oneLine, narrow: narrow),
+        _header(
+          context,
+          oneLine: oneLine,
+          narrow: narrow,
+          margin: margin,
+          width: width,
+        ),
+        if (widget.showTools ?? RoomCalendar.debugShowTools)
+          _toolbar(context, oneLine: oneLine, narrow: narrow),
         SizedBox(
           height: 3,
           child: _busy ? const LinearProgressIndicator() : null,
         ),
         if (_error != null)
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            padding: EdgeInsets.fromLTRB(margin, 8, margin, 0),
             child: WsNotice(
               c(_error!),
               action: TextButton(
@@ -968,17 +1001,208 @@ class _RoomCalendarState extends State<RoomCalendar> {
               ),
             ),
           ),
-        Expanded(child: _body(context)),
+        Expanded(
+          child: Padding(
+            // Phones: the calendar uses the whole width (every pixel counts
+            // there); wider screens: a card with room around it.
+            padding: narrow
+                ? const EdgeInsets.only(top: 8)
+                : EdgeInsets.fromLTRB(
+                    margin,
+                    oneLine ? 6 : 12,
+                    margin,
+                    oneLine ? 6 : 16,
+                  ),
+            // The calendar card: rounded, a soft shadow.
+            child: Container(
+              key: const ValueKey('calendar-card'),
+              clipBehavior: Clip.antiAlias,
+              decoration: narrow
+                  ? BoxDecoration(color: scheme.surfaceContainerLowest)
+                  : BoxDecoration(
+                      color: scheme.surfaceContainerLowest,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: scheme.outlineVariant.withValues(alpha: 0.5),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(
+                            alpha: theme.brightness == Brightness.dark
+                                ? 0.3
+                                : 0.06,
+                          ),
+                          blurRadius: 16,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+              child: _body(context),
+            ),
+          ),
+        ),
       ],
     );
   }
 
-  Widget _toolbar(
+  /// The client's header (2026-10-11): the page title at the left, the month
+  /// and its arrows in the middle, the property picker at the right, a line
+  /// below. Phones: title and picker, then the month on its own line.
+  Widget _header(
     BuildContext context, {
-    bool oneLine = false,
-    bool narrow = false,
+    required bool oneLine,
+    required bool narrow,
+    required double margin,
+    required double width,
   }) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final big = !narrow && !oneLine;
+    // Title, month and picker on one line only when all three fit
+    // (2026-10-12: at 800 px the title was cut to "Quản lý đặt phò…").
+    final oneRow = big && width >= 1000;
+    Widget title({required bool flexible}) {
+      final text = Text(
+        c('pageTitle'),
+        key: const ValueKey('calendar-title'),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style:
+            (big ? theme.textTheme.headlineSmall : theme.textTheme.titleMedium)
+                ?.copyWith(
+                  fontWeight: FontWeight.w500,
+                  color: scheme.onSurface,
+                ),
+      );
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.event_available_outlined,
+            color: scheme.primary,
+            size: big ? 28 : 22,
+          ),
+          SizedBox(width: big ? 12 : 8),
+          if (flexible) Flexible(child: text) else text,
+        ],
+      );
+    }
+
+    final month = ConstrainedBox(
+      constraints: const BoxConstraints(minWidth: 120),
+      child: _monthLabel(
+        context,
+        narrow: narrow,
+        style:
+            (big ? theme.textTheme.headlineSmall : theme.textTheme.titleMedium)
+                ?.copyWith(fontWeight: FontWeight.w700),
+      ),
+    );
+    final nav = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          key: const ValueKey('calendar-prev'),
+          tooltip: c('prev'),
+          onPressed: () => _goMonth(-1),
+          icon: Icon(Icons.chevron_left, size: big ? 30 : 24),
+        ),
+        SizedBox(width: big ? 12 : 4),
+        // The one-line (scrolling) header and the wide one (the middle of a
+        // Row) give it unbounded width: no Flexible there.
+        if (oneLine || oneRow)
+          month
+        else
+          Flexible(
+            child: FittedBox(fit: BoxFit.scaleDown, child: month),
+          ),
+        SizedBox(width: big ? 12 : 4),
+        IconButton(
+          key: const ValueKey('calendar-next'),
+          tooltip: c('next'),
+          onPressed: () => _goMonth(1),
+          icon: Icon(Icons.chevron_right, size: big ? 30 : 24),
+        ),
+      ],
+    );
+    final picker = _buildingPicker(
+      context,
+      maxWidth: oneLine ? 260 : (big ? 420 : 240),
+    );
+    final Widget content;
+    if (oneLine) {
+      content = SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            title(flexible: false),
+            const SizedBox(width: 20),
+            nav,
+            if (picker != null) ...[const SizedBox(width: 20), picker],
+          ],
+        ),
+      );
+    } else if (oneRow) {
+      // The month stays in the middle whatever the title and picker widths.
+      content = Row(
+        children: [
+          Expanded(
+            child: Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: title(flexible: true),
+            ),
+          ),
+          nav,
+          Expanded(
+            child: Align(
+              alignment: AlignmentDirectional.centerEnd,
+              child: picker ?? const SizedBox.shrink(),
+            ),
+          ),
+        ],
+      );
+    } else {
+      content = Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(child: title(flexible: true)),
+              if (picker != null) ...[
+                const SizedBox(width: 8),
+                Flexible(child: picker),
+              ],
+            ],
+          ),
+          const SizedBox(height: 4),
+          Center(child: nav),
+        ],
+      );
+    }
+    // Like the workspace bars: keeps its size; very large text is capped here.
+    return MediaQuery.withClampedTextScaling(
+      maxScaleFactor: 1.3,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(margin, oneLine ? 6 : 12, margin, 0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            content,
+            SizedBox(height: oneLine ? 6 : 10),
+            Divider(height: 1, color: scheme.outlineVariant),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The month(s) on screen, e.g. "Tháng 10, 2026"; both months when the
+  /// screen shows the end of one and the start of the next.
+  Widget _monthLabel(
+    BuildContext context, {
+    required bool narrow,
+    TextStyle? style,
+  }) {
     final vi = AppTranslations.of(context).locale.languageCode == 'vi';
     const en = [
       'January',
@@ -995,13 +1219,11 @@ class _RoomCalendarState extends State<RoomCalendar> {
       'December',
     ];
     // Phones: the short form, so it stays readable at large text sizes.
-    // The month at the left of the screen, updated while scrolling.
     String one(DateTime m) => narrow
         ? '${_two(m.month)}/${m.year}'
         : vi
         ? 'Tháng ${m.month}, ${m.year}'
         : '${en[m.month - 1]} ${m.year}';
-    // Two months on screen: both, e.g. "Tháng 10 – 11, 2026".
     String label(DateTime a, DateTime b) {
       if (a == b) return one(a);
       if (a.year != b.year) return '${one(a)} – ${one(b)}';
@@ -1012,52 +1234,251 @@ class _RoomCalendarState extends State<RoomCalendar> {
           : '${en[a.month - 1]} – ${en[b.month - 1]} ${a.year}';
     }
 
-    final month = ConstrainedBox(
-      constraints: const BoxConstraints(minWidth: 120),
-      child: ListenableBuilder(
-        listenable: _hBody,
-        builder: (context, _) => Text(
-          _monthMode
-              ? one(_monthShown ?? _monthFocus)
-              : label(_shown, _shownLast),
-          key: const ValueKey('calendar-month'),
-          textAlign: TextAlign.center,
-          maxLines: 1,
-          style: theme.textTheme.titleMedium,
-        ),
+    return ListenableBuilder(
+      listenable: _hBody,
+      builder: (context, _) => Text(
+        _monthMode
+            ? one(_monthShown ?? _monthFocus)
+            : label(_shown, _shownLast),
+        key: const ValueKey('calendar-month'),
+        textAlign: TextAlign.center,
+        maxLines: 1,
+        style: style,
       ),
     );
-    final nav = Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        OutlinedButton(
-          key: const ValueKey('calendar-today'),
-          onPressed: _busy && !_loaded ? null : _goToday,
-          child: Text(c('today')),
+  }
+
+  /// The property menu is open (its box gets the strong border).
+  bool _pickerOpen = false;
+
+  static const _newPropertyValue = '\u0000new';
+
+  /// The client's property picker (2026-10-11): a box with the property's
+  /// icon, a small "CƠ SỞ" label and its name. Its menu lists every property
+  /// (the shown one ticked) and "Thêm cơ sở mới" for those who may create.
+  /// Nothing to choose and nothing to create: the box without an arrow.
+  Widget? _buildingPicker(BuildContext context, {required double maxWidth}) {
+    final current = _current;
+    if (current == null) return null;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final canCreate =
+        widget.access?.allBuildings == true &&
+        widget.access!.allows(TeamPermission.manageProperty);
+    // The shown property is always a choice (a list from before it was
+    // created, or a device copy, may not have it yet).
+    final pickable = _choices.any((b) => b.id == current.id)
+        ? _choices
+        : [..._choices, (id: current.id, name: current.name)];
+    final menu = pickable.length > 1 || canCreate;
+    final card = Container(
+      key: ValueKey(
+        menu ? 'calendar-building-${current.id}' : 'calendar-building-box',
+      ),
+      padding: EdgeInsetsDirectional.fromSTEB(8, 6, menu ? 8 : 14, 6),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLowest,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          width: 1.5,
+          color: _pickerOpen ? scheme.primary : scheme.outlineVariant,
         ),
-        const SizedBox(width: 4),
-        IconButton(
-          key: const ValueKey('calendar-prev'),
-          visualDensity: VisualDensity.compact,
-          tooltip: c('prev'),
-          onPressed: () => _goMonth(-1),
-          icon: const Icon(Icons.chevron_left),
-        ),
-        // In the one-line (scrolling) toolbar the width is unbounded: no Flexible.
-        if (oneLine)
-          month
-        else
-          Flexible(
-            child: FittedBox(fit: BoxFit.scaleDown, child: month),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: scheme.primary.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              Icons.apartment_outlined,
+              size: 20,
+              color: scheme.primary,
+            ),
           ),
-        IconButton(
-          key: const ValueKey('calendar-next'),
-          visualDensity: VisualDensity.compact,
-          tooltip: c('next'),
-          onPressed: () => _goMonth(1),
-          icon: const Icon(Icons.chevron_right),
-        ),
-      ],
+          const SizedBox(width: 10),
+          Flexible(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  c('propertyLabel').toUpperCase(),
+                  maxLines: 1,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                // The whole name on one line (no "…"): the box is as wide as
+                // it needs up to its limit; past that the end fades.
+                Text(
+                  current.name,
+                  key: const ValueKey('calendar-building-name'),
+                  maxLines: 1,
+                  softWrap: false,
+                  overflow: TextOverflow.fade,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (menu) ...[
+            const SizedBox(width: 12),
+            Icon(Icons.keyboard_arrow_down, color: scheme.onSurfaceVariant),
+          ],
+        ],
+      ),
+    );
+    final boxed = ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxWidth),
+      child: card,
+    );
+    if (!menu) return boxed;
+    final heading = theme.textTheme.labelSmall?.copyWith(
+      color: scheme.onSurfaceVariant,
+      fontWeight: FontWeight.w700,
+      letterSpacing: 0.8,
+    );
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxWidth),
+      child: PopupMenuButton<String>(
+        tooltip: c('pickProperty'),
+        position: PopupMenuPosition.under,
+        offset: const Offset(0, 8),
+        constraints: const BoxConstraints(minWidth: 300, maxWidth: 380),
+        color: scheme.surfaceContainerLowest,
+        surfaceTintColor: Colors.transparent,
+        elevation: 8,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        onOpened: () => setState(() => _pickerOpen = true),
+        onCanceled: () => setState(() => _pickerOpen = false),
+        onSelected: (v) {
+          setState(() => _pickerOpen = false);
+          if (v == _newPropertyValue) {
+            _newBuilding();
+          } else {
+            _pickProperty(v);
+          }
+        },
+        itemBuilder: (_) => [
+          PopupMenuItem<String>(
+            enabled: false,
+            height: 36,
+            child: Text(c('pickProperty').toUpperCase(), style: heading),
+          ),
+          for (final b in pickable)
+            PopupMenuItem<String>(
+              key: ValueKey('calendar-pick-${b.id}'),
+              value: b.id,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: _pickRow(context, b.name, b.id == current.id),
+            ),
+          if (canCreate) ...[
+            const PopupMenuDivider(),
+            PopupMenuItem<String>(
+              key: const ValueKey('calendar-new-building'),
+              value: _newPropertyValue,
+              child: Row(
+                children: [
+                  Icon(Icons.add, color: scheme.primary),
+                  const SizedBox(width: 12),
+                  Flexible(
+                    child: Text(
+                      c('addProperty'),
+                      maxLines: 1,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        color: scheme.primary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+        child: card,
+      ),
+    );
+  }
+
+  /// One property in the picker's menu; the shown one is tinted and ticked.
+  Widget _pickRow(BuildContext context, String name, bool chosen) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final color = chosen ? scheme.primary : scheme.onSurface;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: chosen
+          ? BoxDecoration(
+              color: scheme.primary.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(8),
+            )
+          : null,
+      child: Row(
+        children: [
+          Icon(
+            Icons.apartment_outlined,
+            size: 20,
+            color: chosen ? scheme.primary : scheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              name,
+              style: theme.textTheme.bodyLarge?.copyWith(
+                color: color,
+                fontWeight: chosen ? FontWeight.w600 : null,
+              ),
+            ),
+          ),
+          if (chosen) ...[
+            const SizedBox(width: 8),
+            Icon(Icons.check, size: 20, color: scheme.primary),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// Shows another property.
+  void _pickProperty(String id) {
+    final current = _current;
+    if (current != null && id == current.id) return;
+    setState(() {
+      _property = id;
+      _scrollToToday = true;
+    });
+    // Scale (2026-10-10): each property loads on its own; the device copy
+    // (or the one loaded ahead) shows first.
+    if (_properties.any((p) => p.id == id)) {
+      _afterLayout();
+    } else {
+      _load();
+    }
+  }
+
+  Widget _toolbar(
+    BuildContext context, {
+    bool oneLine = false,
+    bool narrow = false,
+  }) {
+    final theme = Theme.of(context);
+    final vi = AppTranslations.of(context).locale.languageCode == 'vi';
+    // The month and its arrows are in the header; this row only has
+    // "Today" (hidden with the rest of the row since 2026-10-11).
+    final nav = OutlinedButton(
+      key: const ValueKey('calendar-today'),
+      onPressed: _busy && !_loaded ? null : _goToday,
+      child: Text(c('today')),
     );
     // Phones: legend and reload share one "…" menu to leave room for the month.
     final menu = PopupMenuButton<String>(
@@ -1120,99 +1541,11 @@ class _RoomCalendarState extends State<RoomCalendar> {
     // One building at a time: its name, or a picker when there are several,
     // then its settings gear (2026-10-04, Tom: moved here from the grid).
     final current = _current;
-    double nameWidth(String name) {
-      final painter = TextPainter(
-        text: TextSpan(text: name, style: theme.textTheme.titleSmall),
-        textDirection: Directionality.of(context),
-        textScaler: MediaQuery.textScalerOf(context).clamp(maxScaleFactor: 1.3),
-        maxLines: 1,
-      )..layout();
-      return painter.width.ceilToDouble() + 112;
-    }
-
-    final pickerWidth = current == null ? 240.0 : nameWidth(current.name);
-    // The shown property is always a choice (a list from before it was
-    // created, or a device copy, may not have it yet).
-    final pickable = current == null || _choices.any((b) => b.id == current.id)
-        ? _choices
-        : [..._choices, (id: current.id, name: current.name)];
-    final Widget? buildingName = current == null
-        ? null
-        : pickable.length < 2
-        // One building (2026-10-09, Tom: the label was too small): the same
-        // outlined box as the picker, without the arrow (nothing to choose).
-        ? SizedBox(
-            width: pickerWidth - 40,
-            child: InputDecorator(
-              key: const ValueKey('calendar-building-box'),
-              decoration: const InputDecoration(
-                contentPadding: EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
-                prefixIcon: Icon(Icons.apartment_outlined, size: 18),
-              ),
-              child: Text(
-                current.name,
-                key: const ValueKey('calendar-building-name'),
-                style: theme.textTheme.titleSmall,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          )
-        : SizedBox(
-            width: pickerWidth,
-            child: DropdownButtonFormField<String>(
-              key: ValueKey('calendar-building-${current.id}'),
-              initialValue: current.id,
-              isExpanded: true,
-              isDense: false,
-              itemHeight: null,
-              selectedItemBuilder: (_) => [
-                for (final _ in pickable) Text(current.name),
-              ],
-              style: theme.textTheme.titleSmall,
-              decoration: const InputDecoration(
-                contentPadding: EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
-                prefixIcon: Icon(Icons.apartment_outlined, size: 18),
-              ),
-              items: [
-                for (final p in pickable)
-                  DropdownMenuItem<String>(
-                    value: p.id,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: Text(p.name),
-                    ),
-                  ),
-              ],
-              onChanged: (v) {
-                if (v != null && v != current.id) {
-                  setState(() {
-                    _property = v;
-                    _scrollToToday = true;
-                  });
-                  // Scale (2026-10-10): each property loads on its own;
-                  // the device copy (or the one loaded ahead) shows first.
-                  if (_properties.any((p) => p.id == v)) {
-                    _afterLayout();
-                  } else {
-                    _load();
-                  }
-                }
-              },
-            ),
-          );
     final Widget? building = current == null
         ? null
         : Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Flexible(child: buildingName!),
               if (current.needsTimeZone)
                 Tooltip(
                   message: c('needsTimeZone'),
@@ -1315,8 +1648,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
         ),
     ];
     final availableWidth = MediaQuery.sizeOf(context).width;
-    final compactActions =
-        availableWidth < pickerWidth + 64 + buttons.length * 48 + 32;
+    final compactActions = availableWidth < 64 + 120 + buttons.length * 48 + 32;
     final actionWidgets = compactActions && buttons.isNotEmpty
         ? <Widget>[
             PopupMenuButton<int>(
@@ -1344,9 +1676,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
             ),
           ]
         : buttons;
-    final buildingWidth = _choices.length < 2 && current != null
-        ? nameWidth(current.name) + 48
-        : pickerWidth + 48;
+    const buildingWidth = 96.0;
     final propertyActions = Row(
       children: [
         Expanded(child: building ?? const SizedBox.shrink()),
@@ -1373,7 +1703,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
                     child: Row(
                       children: [
                         if (building != null) ...[
-                          // Name (or picker) and the settings gear.
+                          // The settings gear.
                           ConstrainedBox(
                             constraints: BoxConstraints(
                               maxWidth: buildingWidth,
@@ -1527,21 +1857,15 @@ class _RoomCalendarState extends State<RoomCalendar> {
     const dayW = calHourW * 24;
     _lastDayW = dayW; // for "Today" scrolling
     _lastViewW = constraints.maxWidth - roomW; // for the month label
-    // The day header has the date and a small hour line (6 · 12 · 18).
-    final headH = 43.0 * scale;
+    // The client's day header (2026-10-11): "T5 - 8/10/2026", and under it
+    // the hours 00 02 … 22, one for every 2 hours. Short screens: lower.
+    final headH = (constraints.maxHeight < 320 ? 52.0 : 72.0) * scale;
+    final headBg = scheme.surfaceContainerLow;
     final gridW = dayW * _days;
     final today = _today;
     final todayCol =
         today == null || today.isBefore(_month) || !today.isBefore(_monthEnd)
         ? null
-        : today.difference(_month).inDays;
-    // Days before today are grey, like the month view (2026-10-05, Tom).
-    final pastDays = today == null
-        ? 0
-        : today.isBefore(_month)
-        ? 0
-        : !today.isBefore(_monthEnd)
-        ? _days
         : today.difference(_month).inDays;
 
     // The current time: a red line across the dates and the rooms.
@@ -1554,7 +1878,8 @@ class _RoomCalendarState extends State<RoomCalendar> {
     // Each room's stays, placed in lanes. Only stays that overlap each other
     // (should not happen) get a lane of their own; the row grows for them
     // so every bar keeps its full height (2026-10-05, Tom).
-    final barH = rowH - 6;
+    final barPad = 8.0 * rowH / 48;
+    final barH = rowH - 2 * barPad;
     List<(CalBar, double, double, int)> place(CalProperty p, CalRoom room) {
       final placed = <(CalBar, double, double)>[];
       for (final b in p.bars.where((b) => b.roomId == room.id)) {
@@ -1626,7 +1951,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
       final p = row.p;
       for (final (b, left, right, lane)
           in placedIn[room.id] ?? const <(CalBar, double, double, int)>[]) {
-        final top = row.top + 3 + lane * (barH + 2);
+        final top = row.top + barPad + lane * (barH + 2);
         spots.add((
           p: p,
           room: room,
@@ -1700,20 +2025,15 @@ class _RoomCalendarState extends State<RoomCalendar> {
               },
               child: CustomPaint(
                 painter: _GridPainter(
-                  month: _month,
                   days: _days,
                   dayW: dayW,
                   todayCol: todayCol,
-                  pastDays: pastDays,
-                  pastFill: theme.brightness == Brightness.dark
-                      ? scheme.surfaceContainerLowest
-                      : const Color(0xFFDDE1DD),
                   rows: [
                     for (final r in rows)
                       (r.top, r.height, r.band, r.room?.blocked == true),
                   ],
-                  line: scheme.outlineVariant,
-                  strong: scheme.outline.withValues(alpha: 0.6),
+                  line: scheme.outlineVariant.withValues(alpha: 0.6),
+                  dayLine: calDayLine(context),
                   band: scheme.primary.withValues(alpha: 0.06),
                   blockedFill: wsToneColor(
                     context,
@@ -1772,36 +2092,29 @@ class _RoomCalendarState extends State<RoomCalendar> {
     final weekdays = vi
         ? const ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN']
         : const ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    final header = SizedBox(
-      width: gridW,
-      height: headH,
-      child: Stack(
-        children: [
-          Row(
-            children: [
-              for (var i = 0; i < _days; i++)
-                _dayCell(
-                  context,
-                  DateTime.utc(_month.year, _month.month, 1 + i),
-                  weekdays,
-                  dayW,
-                  headH,
-                  i == todayCol,
-                ),
-            ],
-          ),
-          if (nowX != null)
-            Positioned(
-              key: const ValueKey('calendar-now-head'),
-              left: nowX - 4,
-              width: 8,
-              top: headH - 15,
-              bottom: 0,
-              child: IgnorePointer(
-                child: CustomPaint(painter: _NowMarkPainter(nowColor)),
+    // The 2 hours holding the current time: their hour is in red.
+    final nowSlot = nowX == null || todayCol == null
+        ? null
+        : ((nowX / dayW - todayCol) * 12).floor().clamp(0, 11);
+    final header = ColoredBox(
+      color: headBg,
+      child: SizedBox(
+        width: gridW,
+        height: headH,
+        child: Row(
+          children: [
+            for (var i = 0; i < _days; i++)
+              _dayCell(
+                context,
+                DateTime.utc(_month.year, _month.month, 1 + i),
+                weekdays,
+                dayW,
+                headH,
+                i == todayCol,
+                i == todayCol ? nowSlot : null,
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
     final labels = SizedBox(
@@ -1842,13 +2155,22 @@ class _RoomCalendarState extends State<RoomCalendar> {
             Row(
               children: [
                 Container(
+                  key: const ValueKey('calendar-room-head'),
                   width: roomW,
                   height: headH,
+                  padding: const EdgeInsetsDirectional.only(start: 16),
+                  alignment: AlignmentDirectional.centerStart,
                   decoration: BoxDecoration(
+                    color: headBg,
                     border: Border(
                       right: BorderSide(color: scheme.outlineVariant),
                       bottom: BorderSide(color: scheme.outlineVariant),
                     ),
+                  ),
+                  child: Text(
+                    c('roomHead'),
+                    maxLines: 1,
+                    style: _roomHeadStyle(context),
                   ),
                 ),
                 Expanded(
@@ -2169,17 +2491,17 @@ class _RoomCalendarState extends State<RoomCalendar> {
     double dayW,
     double h,
     bool today,
+    int? nowSlot,
   ) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final weekend = day.weekday >= DateTime.saturday;
-    final style = theme.textTheme.labelSmall?.copyWith(
-      color: today
-          ? scheme.onPrimary
-          : (weekend ? scheme.primary : scheme.onSurfaceVariant),
-      fontWeight: today ? FontWeight.w700 : FontWeight.w500,
-      height: 1.1,
+    final hourStyle = TextStyle(
+      fontSize: 11.5,
+      height: 1,
+      fontWeight: FontWeight.w500,
+      color: scheme.onSurfaceVariant,
     );
+    final hourH = h < 60 ? 20.0 : 26.0;
     return Container(
       key: ValueKey(
         today ? 'calendar-today-column' : 'calendar-day-${calYmd(day)}',
@@ -2187,12 +2509,10 @@ class _RoomCalendarState extends State<RoomCalendar> {
       width: dayW,
       height: h,
       decoration: BoxDecoration(
-        // No column is shaded (2026-10-04, Tom): not weekends, not today;
-        // today is marked by its date pill and the red now line.
+        // A green line between days (client's design, 2026-10-11); no
+        // column is shaded, today included.
         border: Border(
-          right: BorderSide(
-            color: scheme.outlineVariant.withValues(alpha: 0.6),
-          ),
+          right: BorderSide(color: calDayLine(context)),
           bottom: BorderSide(color: scheme.outlineVariant),
         ),
       ),
@@ -2200,69 +2520,81 @@ class _RoomCalendarState extends State<RoomCalendar> {
         children: [
           Expanded(
             child: Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
-                decoration: today
-                    ? BoxDecoration(
-                        color: scheme.primary,
-                        borderRadius: BorderRadius.circular(6),
-                      )
-                    : null,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6),
                 child: FittedBox(
                   fit: BoxFit.scaleDown,
                   child: Text(
-                    // The first of a month also names the month (several are loaded).
-                    day.day == 1
-                        ? '${weekdays[day.weekday - 1]}, 1/${day.month}'
-                        : '${weekdays[day.weekday - 1]}, ${day.day}',
+                    // "T5 - 8/10/2026": the full date, so the month and year
+                    // are clear wherever the screen is scrolled.
+                    '${weekdays[day.weekday - 1]} - ${day.day}/${day.month}/${day.year}',
                     textAlign: TextAlign.center,
                     maxLines: 1,
-                    style: style,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: scheme.onSurface,
+                    ),
                   ),
                 ),
               ),
             ),
           ),
-          // The day's 24 hours (2026-10-04, Tom): a small ruler with a tick
-          // for every hour, longer ticks and numbers at 6, 12 and 18 (the
-          // light lines across the rows sit at those hours too).
+          // The hours, one label for every 2 hours, in the middle of them.
           SizedBox(
-            height: 15,
-            width: dayW,
-            child: CustomPaint(
-              painter: _HourRulerPainter(
-                scheme.onSurfaceVariant.withValues(alpha: 0.75),
-              ),
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  for (final hour in calHourMarks(dayW))
-                    Positioned(
-                      left: dayW * hour / 24 - 10,
-                      width: 20,
-                      top: 0,
-                      height: 9,
-                      child: Center(
-                        child: Text(
-                          '$hour',
-                          maxLines: 1,
-                          style: TextStyle(
-                            fontSize: 8.5,
-                            height: 1,
-                            color: scheme.onSurfaceVariant.withValues(
-                              alpha: 0.75,
-                            ),
-                          ),
-                        ),
-                      ),
+            height: hourH,
+            child: Row(
+              children: [
+                for (var slot = 0; slot < 12; slot++)
+                  Expanded(
+                    child: Center(
+                      child: slot == nowSlot
+                          ? Container(
+                              key: const ValueKey('calendar-now-head'),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                                vertical: 3,
+                              ),
+                              decoration: BoxDecoration(
+                                color: wsToneColor(context, WsTone.bad),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                _two(slot * 2),
+                                maxLines: 1,
+                                style: hourStyle.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            )
+                          : Text(_two(slot * 2), maxLines: 1, style: hourStyle),
                     ),
-                ],
-              ),
+                  ),
+              ],
             ),
           ),
         ],
       ),
     );
+  }
+
+  /// "Phòng" above the room names.
+  TextStyle? _roomHeadStyle(BuildContext context) => Theme.of(
+    context,
+  ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700);
+
+  /// A room's name in the room column (two smaller lines when long).
+  TextStyle? _roomNameStyle(BuildContext context, String name) {
+    final theme = Theme.of(context);
+    return name.length > 8
+        ? theme.textTheme.labelSmall?.copyWith(
+            fontWeight: FontWeight.w700,
+            height: 1.15,
+          )
+        : theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w700,
+            fontSize: 15,
+          );
   }
 
   /// The room column's width: the longest room name (one line up to 8
@@ -2273,29 +2605,30 @@ class _RoomCalendarState extends State<RoomCalendar> {
     List<(CalProperty, CalRoom?)> rooms,
     bool wide,
   ) {
-    final theme = Theme.of(context);
     final scaler = MediaQuery.textScalerOf(context);
-    final max = (wide ? 110.0 : 80.0) * math.min(scaler.scale(1), 1.3);
-    var need = 0.0;
-    for (final (_, room) in rooms) {
-      if (room == null) continue;
-      final long = room.number.length > 8;
-      final style = long
-          ? theme.textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w700)
-          : theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700);
+    final max = (wide ? 140.0 : 96.0) * math.min(scaler.scale(1), 1.3);
+    double width(String text, TextStyle? style) {
       final tp = TextPainter(
-        text: TextSpan(text: room.number, style: style),
+        text: TextSpan(text: text, style: style),
         textDirection: TextDirection.ltr,
         textScaler: scaler,
         maxLines: 1,
       )..layout();
-      var w = tp.width + 16 + 1;
+      final w = tp.width;
       tp.dispose();
+      return w;
+    }
+
+    // At least "Phòng" with its padding.
+    var need = width(c('roomHead'), _roomHeadStyle(context)) + 32 + 1;
+    for (final (_, room) in rooms) {
+      if (room == null) continue;
+      var w = width(room.number, _roomNameStyle(context, room.number)) + 32 + 1;
       if (room.problems.isNotEmpty || room.blocked) w += 18;
       if (room.needsCleaning) w += 18;
       need = math.max(need, w);
     }
-    return need.clamp(44.0, max).ceilToDouble();
+    return need.clamp(64.0, max).ceilToDouble();
   }
 
   Widget _roomLabel(BuildContext context, CalProperty p, CalRoom? room) {
@@ -2314,14 +2647,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   // Long room names get two smaller lines.
-                  style: room.number.length > 8
-                      ? theme.textTheme.labelSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          height: 1.15,
-                        )
-                      : theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+                  style: _roomNameStyle(context, room.number),
                 ),
               ),
               if (hasProblem) ...[
@@ -2342,7 +2668,9 @@ class _RoomCalendarState extends State<RoomCalendar> {
           );
     return Container(
       decoration: BoxDecoration(
-        color: hasProblem ? bad.withValues(alpha: 0.06) : scheme.surface,
+        color: hasProblem
+            ? bad.withValues(alpha: 0.06)
+            : scheme.surfaceContainerLow,
         border: Border(
           right: BorderSide(color: scheme.outlineVariant),
           bottom: BorderSide(color: scheme.outlineVariant),
@@ -2367,7 +2695,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
                     ? _openRoomPage(p, room)
                     : _openRoom(p, room),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Align(
                     alignment: AlignmentDirectional.centerStart,
                     child: content,
@@ -3829,64 +4157,9 @@ class _PointerPainter extends CustomPainter {
   bool shouldRepaint(_PointerPainter old) => old.color != color || old.to != to;
 }
 
-/// The top of the "now" line in the date header: a small triangle and line.
-class _NowMarkPainter extends CustomPainter {
-  final Color color;
-  _NowMarkPainter(this.color);
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = color;
-    final mid = size.width / 2;
-    canvas.drawPath(
-      Path()
-        ..moveTo(0, 0)
-        ..lineTo(size.width, 0)
-        ..lineTo(mid, 6)
-        ..close(),
-      paint,
-    );
-    canvas.drawRect(Rect.fromLTWH(mid - 1, 4, 2, size.height - 4), paint);
-  }
-
-  @override
-  bool shouldRepaint(_NowMarkPainter old) => old.color != color;
-}
-
 /// Pixels for one hour on the timeline (2026-10-04, Tom): a 1-hour stay is
 /// as wide as the shortest bar the calendar draws.
 const calHourW = 18.0;
-
-/// The hours named under a date (and drawn as light lines across the rooms):
-/// every 2 hours on very wide days, every 3 on wide days, else 6 · 12 · 18.
-List<int> calHourMarks(double dayW) {
-  final step = dayW >= 200 ? 2 : (dayW >= 110 ? 3 : 6);
-  return [for (var h = step; h < 24; h += step) h];
-}
-
-/// A tick for every hour of a day under its date; 6, 12 and 18 are longer.
-class _HourRulerPainter extends CustomPainter {
-  final Color color;
-  _HourRulerPainter(this.color);
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = 0.8;
-    final named = calHourMarks(size.width);
-    for (var h = 1; h < 24; h++) {
-      final x = size.width * h / 24;
-      final long = named.contains(h);
-      canvas.drawLine(
-        Offset(x, size.height - (long ? 5 : 2.5)),
-        Offset(x, size.height),
-        paint..color = color.withValues(alpha: long ? 1 : 0.6),
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(_HourRulerPainter old) => old.color != color;
-}
 
 class _TickPainter extends CustomPainter {
   final List<double> ticks;
@@ -3914,26 +4187,29 @@ class _TickPainter extends CustomPainter {
       old.ticks.length != ticks.length || old.color != color;
 }
 
+/// The line between days (client's design, 2026-10-11): green.
+Color calDayLine(BuildContext context) =>
+    Theme.of(context).brightness == Brightness.dark
+    ? const Color(0xFF3F7A45)
+    : const Color(0xFF8FCB93);
+
+/// The rooms' grid (client's design, 2026-10-11): white, a light line every
+/// 2 hours, a green line between days, no lines between rooms.
 class _GridPainter extends CustomPainter {
-  final DateTime month;
   final int days;
   final int? todayCol;
-  final int pastDays;
   final double dayW;
 
   /// (top, height, property band, closed by a problem) per row.
   final List<(double, double, bool, bool)> rows;
-  final Color line, strong, band, blockedFill, pastFill;
+  final Color line, dayLine, band, blockedFill;
   _GridPainter({
-    required this.month,
     required this.days,
     required this.dayW,
     required this.todayCol,
-    required this.pastDays,
-    required this.pastFill,
     required this.rows,
     required this.line,
-    required this.strong,
+    required this.dayLine,
     required this.band,
     required this.blockedFill,
   });
@@ -3941,18 +4217,7 @@ class _GridPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final fill = Paint();
-    if (pastDays > 0)
-      canvas.drawRect(
-        Rect.fromLTWH(0, 0, pastDays * dayW, size.height),
-        fill..color = pastFill,
-      );
     final from = (todayCol ?? 0) * dayW;
-    final thin = Paint()
-      ..color = line
-      ..strokeWidth = 1;
-    final bold = Paint()
-      ..color = strong
-      ..strokeWidth = 1;
     for (final (top, height, isBand, blocked) in rows) {
       if (isBand)
         canvas.drawRect(
@@ -3965,52 +4230,34 @@ class _GridPainter extends CustomPainter {
           Rect.fromLTWH(from, top, size.width - from, height),
           fill..color = blockedFill,
         );
-      canvas.drawLine(
-        Offset(0, top + height - 0.5),
-        Offset(size.width, top + height - 0.5),
-        isBand ? bold : thin,
-      );
     }
-    for (var i = 1; i <= days; i++) {
-      final x = i * dayW - 0.5;
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), thin);
-    }
-    // Faint hour lines at the hours named in the header.
     final hours = Paint()
-      ..color = line.withValues(alpha: 0.35)
-      ..strokeWidth = 0.6;
+      ..color = line
+      ..strokeWidth = 1;
     for (var i = 0; i < days; i++) {
-      for (final h in calHourMarks(dayW)) {
-        final x = (i + h / 24) * dayW;
+      for (var slot = 1; slot < 12; slot++) {
+        final x = (i + slot / 12) * dayW - 0.5;
         canvas.drawLine(Offset(x, 0), Offset(x, size.height), hours);
       }
     }
-    // A clear line where each month starts.
-    final monthLine = Paint()
-      ..color = strong
-      ..strokeWidth = 2;
-    for (var i = 1; i < days; i++) {
-      if (DateTime.utc(month.year, month.month, 1 + i).day == 1) {
-        canvas.drawLine(
-          Offset(i * dayW, 0),
-          Offset(i * dayW, size.height),
-          monthLine,
-        );
-      }
+    final between = Paint()
+      ..color = dayLine
+      ..strokeWidth = 1;
+    for (var i = 1; i <= days; i++) {
+      final x = i * dayW - 0.5;
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), between);
     }
   }
 
   @override
   bool shouldRepaint(_GridPainter old) =>
-      old.month != month ||
       old.days != days ||
       old.dayW != dayW ||
       old.todayCol != todayCol ||
-      old.pastDays != pastDays ||
-      old.pastFill != pastFill ||
       old.rows.length != rows.length ||
       old.rows.join(',') != rows.join(',') ||
-      old.line != line;
+      old.line != line ||
+      old.dayLine != dayLine;
 }
 
 /// An organization page (booking, tenant, problems…) opened over the calendar.

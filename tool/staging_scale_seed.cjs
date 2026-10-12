@@ -115,11 +115,28 @@ async function main(){
   }else{
    const counts={};
    const collections=(await db.listCollections()).map(c=>c.id).filter(c=>!['organizations','owners','purgedOrganizations'].includes(c));
-   const writer=db.bulkWriter();
+   console.log('Finding the records…');
    const found=await collectOrganization(db,ORG,collections,{fields:['organizationId','orgId'],onCrossLink:doc=>{throw Error('Unexpected cross-organization record: '+doc.ref.path);}});
-   for(const [c,list] of found)for(const doc of list.values()){await db.recursiveDelete(doc.ref,writer);counts[c]=(counts[c]??0)+1;}
-   await db.recursiveDelete(db.doc('organizations/'+ORG),writer);
+   const docs=[];for(const [c,list] of found)for(const doc of list.values())docs.push([c,doc]);
+   console.log(`Deleting ${docs.length} records…`);
+   // Fast (2026-10-12, Tom: "the delete command is stucking"): one
+   // recursiveDelete per record waited for a round trip to Singapore each
+   // time (about 30 minutes for 5,300 records). Now 32 at a time: a record
+   // with subcollections (none from this tool) gets them deleted first, then
+   // every record goes into one bulk delete. Safe to stop and run again.
+   const writer=db.bulkWriter();
+   let next=0,done=0;
+   await Promise.all(Array.from({length:32},async()=>{
+    while(next<docs.length){
+     const [c,doc]=docs[next++];
+     for(const sub of await doc.ref.listCollections())await db.recursiveDelete(sub);
+     writer.delete(doc.ref);
+     counts[c]=(counts[c]??0)+1;
+     if(++done%500===0)console.log(`  ${done} / ${docs.length}`);
+    }
+   }));
    await writer.close();
+   await db.recursiveDelete(db.doc('organizations/'+ORG));
    console.log(JSON.stringify({deleted:ORG,counts}));
   }
  }finally{await deleteApp(app);await db.terminate();}
