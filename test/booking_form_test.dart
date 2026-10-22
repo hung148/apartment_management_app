@@ -56,8 +56,15 @@ void main() {
       await tapKey(tester, 'booking-add-surcharge');
       await enter(tester, 'ops-surcharge-0', 'Extra bed');
       await enter(tester, 'ops-surchargeAmount-0', '150000');
-      await press(tester, 'Review calculation');
-      expect(find.text('1,150,000 VND'), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('booking-quote')),
+          matching: find.text('1,150,000 VND'),
+        ),
+        findsOneWidget,
+      );
       await press(tester, 'Confirm and save');
       final b = s.operationalBookings.single;
       expect(b['totalPrice'], 1150000);
@@ -67,7 +74,15 @@ void main() {
       expect((b['surcharges'] as List).single['label'], 'Extra bed');
       // The detail view shows the stay in anh Hưng's words.
       expect(find.text('Anh'), findsWidgets);
-      expect(find.textContaining('Extra bed'), findsOneWidget);
+      expect(
+        tester
+            .widget<TextFormField>(
+              find.byKey(const ValueKey('ops-surcharge-0')),
+            )
+            .controller!
+            .text,
+        'Extra bed',
+      );
     },
   );
 
@@ -96,8 +111,12 @@ void main() {
     await enter(tester, 'ops-endLocal', '2026-10-10 11:00');
     await tapKey(tester, 'booking-add-surcharge');
     await enter(tester, 'ops-surchargeAmount-0', '50000');
-    await press(tester, 'Review calculation');
-    expect(find.byKey(const ValueKey('booking-form-message')), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('booking-calculation-message')),
+      findsOneWidget,
+    );
     expect(s.operationalBookings, isEmpty);
   });
 
@@ -139,6 +158,22 @@ void main() {
     return s;
   }
 
+  testWidgets('payment calculates automatically with only main tenant name', (
+    tester,
+  ) async {
+    final s = await openNew(tester);
+    expect(find.byKey(const ValueKey('booking-custom-nights')), findsNothing);
+    expect(find.text('Review calculation'), findsNothing);
+    await enter(tester, 'ops-guest', 'Name only');
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('booking-payment')), findsOneWidget);
+    expect(find.byKey(const ValueKey('booking-quote')), findsOneWidget);
+    await press(tester, 'Confirm and save');
+    expect(s.operationalBookings.single['guestName'], 'Name only');
+    expect(s.operationalBookings.single['guestPhone'], isEmpty);
+  });
+
   String text(WidgetTester tester, String key) =>
       tester.widget<TextFormField>(find.byKey(ValueKey(key))).controller!.text;
 
@@ -152,9 +187,9 @@ void main() {
       );
       addTearDown(OrganizationMoney.shared.clear);
       final s = await openNew(tester, nightlyPrice: 500001);
-      await tapKey(tester, 'booking-custom-nights');
       await enter(tester, 'ops-nightsField', '3');
-      await press(tester, 'Review calculation');
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
       await press(tester, 'Confirm and save');
       expect(s.operationalBookings.single['totalPrice'], 60);
       expect(s.operationalBookings.single['currency'], 'USD');
@@ -173,25 +208,32 @@ void main() {
       );
       expect(find.byKey(const ValueKey('booking-pricing-daily')), findsNothing);
       expect(text(tester, 'ops-nightsField'), '2');
-      expect(text(tester, 'ops-unitPrice'), '500,000');
+      expect(text(tester, 'ops-night-0'), '500,000');
       await enter(tester, 'ops-nightsField', '3');
       await tester.pumpAndSettle();
       expect(text(tester, 'ops-endLocal'), '2026-10-13 12:00');
+      // The estimate under the price, and the payment card's room line
+      // ("×", 2026-10-14) both show it.
       expect(
-        find.textContaining('3 nights × 500,000 VND = 1,500,000 VND'),
+        find.descendant(
+          of: find.byKey(const ValueKey('booking-estimate')),
+          matching: find.textContaining('3 nights = 1,500,000 VND'),
+          matchRoot: true,
+        ),
         findsOneWidget,
       );
       await enter(tester, 'ops-endLocal', '2026-10-11 11:00');
       await tester.pumpAndSettle();
       expect(text(tester, 'ops-nightsField'), '1');
-      await enter(tester, 'ops-unitPrice', '450000');
+      await enter(tester, 'ops-night-0', '450000');
       await enter(tester, 'ops-nightsField', '2');
       await tester.pumpAndSettle();
       expect(text(tester, 'ops-endLocal'), '2026-10-12 11:00');
-      await press(tester, 'Review calculation');
-      expect(find.text('900,000 VND'), findsWidgets);
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
+      expect(find.text('950,000 VND'), findsWidgets);
       await press(tester, 'Confirm and save');
-      expect(s.operationalBookings.single['totalPrice'], 900000);
+      expect(s.operationalBookings.single['totalPrice'], 950000);
       expect(tester.takeException(), isNull);
     },
   );
@@ -210,8 +252,23 @@ void main() {
     );
     await enter(tester, 'ops-unitPrice', '80000');
     await tester.pumpAndSettle();
-    expect(find.textContaining('= 200,000 VND'), findsOneWidget);
-    await press(tester, 'Review calculation');
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('booking-estimate')),
+        matching: find.textContaining('= 200,000 VND'),
+        matchRoot: true,
+      ),
+      findsOneWidget,
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('booking-quote')),
+        matching: find.text('80,000 VND × 2.5 hours = 200,000 VND'),
+      ),
+      findsOneWidget,
+    );
     await press(tester, 'Confirm and save');
     final b = s.operationalBookings.single;
     expect(
@@ -224,15 +281,15 @@ void main() {
     'without "Đổi giá" the price box shows the room price and cannot be changed',
     (tester) async {
       await openNew(tester, role: 'receptionist');
-      final box = tester.widget<TextFormField>(
-        find.byKey(const ValueKey('ops-unitPrice')),
+      final box = tester.widget<TextField>(
+        find.descendant(
+          of: find.byKey(const ValueKey('ops-night-0')),
+          matching: find.byType(TextField),
+        ),
       );
-      expect(box.enabled, isFalse);
-      expect(text(tester, 'ops-unitPrice'), '500,000');
-      expect(
-        find.text('Room price. Changing it needs "Change prices".'),
-        findsOneWidget,
-      );
+      expect(box.readOnly, isTrue);
+      expect(text(tester, 'ops-night-0'), '500,000');
+
       expect(find.byKey(const ValueKey('booking-custom-nights')), findsNothing);
     },
   );
@@ -270,7 +327,7 @@ void main() {
     hold = Completer<void>();
     await press(tester, 'New booking');
     expect(find.byKey(const ValueKey('ops-guest')), findsOneWidget);
-    expect(text(tester, 'ops-unitPrice'), '500,000');
+    expect(find.byKey(const ValueKey('ops-nightsField')), findsOneWidget);
     hold?.complete();
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('ops-guest')), findsOneWidget);
@@ -337,27 +394,29 @@ void main() {
     'saved prices: saved, tapped, removed; the room price is always a chip',
     (tester) async {
       final s = await openNew(tester);
-      final save = find.byKey(const ValueKey('booking-save-price'));
+      final save = find.byKey(const ValueKey('booking-save-night-prices'));
       // The room's own price is a chip (no ×) and is already in the box.
-      final own = find.byKey(const ValueKey('booking-saved-price-500000'));
+      final own = find.byKey(const ValueKey('booking-all-nights-price-500000'));
       expect(tester.widget<InputChip>(own).onDeleted, isNull);
       expect(tester.widget<ActionChip>(save).onPressed, isNull);
-      await enter(tester, 'ops-unitPrice', '650000');
+      await enter(tester, 'ops-night-0', '650000');
       await tester.pumpAndSettle();
-      await tapKey(tester, 'booking-save-price');
+      await tapKey(tester, 'booking-save-night-prices');
       expect(s.buildingPriceLists['riverside'], [650000]);
-      final chip = find.byKey(const ValueKey('booking-saved-price-650000'));
+      final chip = find.byKey(
+        const ValueKey('booking-all-nights-price-650000'),
+      );
       expect(chip, findsOneWidget);
       expect(tester.widget<ActionChip>(save).onPressed, isNull);
       // Another price typed, then the saved one tapped.
-      await enter(tester, 'ops-unitPrice', '480000');
+      await enter(tester, 'ops-night-0', '480000');
       await tester.pumpAndSettle();
-      await tapKey(tester, 'booking-saved-price-650000');
-      expect(text(tester, 'ops-unitPrice'), '650,000');
+      await tapKey(tester, 'booking-all-nights-price-650000');
+      expect(text(tester, 'ops-night-0'), '650,000');
       expect(tester.widget<InputChip>(chip).selected, isTrue);
-      await press(tester, 'Review calculation');
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
       expect(find.text('1,300,000 VND'), findsWidgets);
-      await press(tester, 'Edit');
       // Removed with its ×.
       await reveal(tester, chip);
       await tester.tap(
@@ -379,20 +438,22 @@ void main() {
     tester,
   ) async {
     final s = await openNew(tester);
-    await enter(tester, 'ops-unitPrice', '650000');
+    await enter(tester, 'ops-night-0', '650000');
     await tester.pumpAndSettle();
-    await tapKey(tester, 'booking-save-price');
+    await tapKey(tester, 'booking-save-night-prices');
     await press(tester, 'Cancel');
     await press(tester, 'New booking');
     await tester.pumpAndSettle();
     expect(
-      find.byKey(const ValueKey('booking-saved-price-650000')),
+      find.byKey(const ValueKey('booking-all-nights-price-650000')),
       findsOneWidget,
     );
     // The other room of the building (no price of its own) shows it too.
-    await tapKey(tester, 'booking-room-room-101');
+    await tapKey(tester, 'booking-room');
+    await tester.tap(find.byKey(const ValueKey('booking-room-room-101')));
+    await tester.pumpAndSettle();
     expect(
-      find.byKey(const ValueKey('booking-saved-price-650000')),
+      find.byKey(const ValueKey('booking-all-nights-price-650000')),
       findsOneWidget,
     );
     expect(s.buildingPriceLists.keys, ['riverside']);
@@ -428,7 +489,6 @@ void main() {
       final s = await openNew(tester, saved: [450000, 650000]);
       await enter(tester, 'ops-endLocal', '2026-10-13 12:00');
       await tester.pumpAndSettle();
-      await tapKey(tester, 'booking-custom-nights');
       // Every night at once.
       await tapKey(tester, 'booking-all-nights-price-450000');
       for (var i = 0; i < 3; i++) {
@@ -460,7 +520,8 @@ void main() {
         540000,
         650000,
       ]);
-      await press(tester, 'Review calculation');
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
       await press(tester, 'Confirm and save');
       expect(
         s.operationalBookings.single['totalPrice'],
@@ -474,26 +535,36 @@ void main() {
     'saved prices: without "Đổi giá" prices are picked, not typed; nothing is saved',
     (tester) async {
       final s = await openNew(tester, role: 'receptionist', saved: [450000]);
-      expect(find.byKey(const ValueKey('booking-save-price')), findsNothing);
-      final chip = find.byKey(const ValueKey('booking-saved-price-450000'));
+      expect(
+        find.byKey(const ValueKey('booking-save-night-prices')),
+        findsNothing,
+      );
+      final chip = find.byKey(
+        const ValueKey('booking-all-nights-price-450000'),
+      );
       expect(tester.widget<InputChip>(chip).onDeleted, isNull);
       expect(
         tester
-            .widget<TextFormField>(find.byKey(const ValueKey('ops-unitPrice')))
-            .enabled,
-        isFalse,
+            .widget<TextField>(
+              find.descendant(
+                of: find.byKey(const ValueKey('ops-night-0')),
+                matching: find.byType(TextField),
+              ),
+            )
+            .readOnly,
+        isTrue,
       );
-      await tapKey(tester, 'booking-saved-price-450000');
-      expect(text(tester, 'ops-unitPrice'), '450,000');
+      await tapKey(tester, 'booking-all-nights-price-450000');
+      expect(text(tester, 'ops-night-0'), '450,000');
       // Each night too, from the list only.
-      await tapKey(tester, 'booking-custom-nights');
       await tapKey(tester, 'booking-night-menu-1');
       await tester.tap(
         find.byKey(const ValueKey('booking-night-1-price-500000')),
       );
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('booking-night-1-save')), findsNothing);
-      await press(tester, 'Review calculation');
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
       await press(tester, 'Confirm and save');
       expect(s.operationalBookings.single['totalPrice'], 450000 + 500000);
       expect(tester.takeException(), isNull);
@@ -507,50 +578,70 @@ void main() {
       tester,
       saved: [for (var i = 1; i <= 12; i++) i * 100000],
     );
-    await enter(tester, 'ops-unitPrice', '950000');
+    await enter(tester, 'ops-night-0', '950000');
     await tester.pumpAndSettle();
-    await tapKey(tester, 'booking-save-price');
+    await tapKey(tester, 'booking-save-night-prices');
     expect(
       find.text('This building already has 12 saved prices. Remove one first.'),
       findsOneWidget,
     );
     expect(s.buildingPriceLists['riverside'], hasLength(12));
-    expect(text(tester, 'ops-unitPrice'), '950,000');
+    expect(text(tester, 'ops-night-0'), '950,000');
   });
 
-  // Fix 5 (2026-10-09, Tom): an agreed room price with "Đổi giá" and a reason;
-  // the booking keeps the calculated price and who changed it.
+  // 2026-10-14 (Tom): the agreed total has no switch. The box is empty with
+  // the calculated total in grey; the reason box appears once it differs.
   testWidgets(
-    'agreed price: needs a reason; saved with the calculated price; kept by an edit without "Đổi giá"',
+    'agreed total: typed straight in, needs a reason, kept by an edit without "Đổi giá"',
     (tester) async {
       final s = await openNew(tester);
-      expect(find.byKey(const ValueKey('ops-agreedPrice')), findsNothing);
-      await tapKey(tester, 'booking-agreed');
-      // Starts from the calculated room price: 2 nights × 500,000.
-      expect(text(tester, 'ops-agreedPrice'), '1,000,000');
+      expect(find.byKey(const ValueKey('booking-agreed')), findsNothing);
+      expect(text(tester, 'ops-agreedPrice'), '');
+      expect(find.byKey(const ValueKey('ops-agreedReason')), findsNothing);
+      // The calculated total as the grey hint: 2 nights × 500,000.
       expect(
-        find.text('Calculated: 1,000,000 VND. Surcharges are added on top.'),
+        tester
+            .widget<TextField>(
+              find.descendant(
+                of: find.byKey(const ValueKey('ops-agreedPrice')),
+                matching: find.byType(TextField),
+              ),
+            )
+            .decoration
+            ?.hintText,
+        '1,000,000 VND',
+      );
+      expect(find.textContaining('Calculated:'), findsNothing);
+      await enter(tester, 'ops-agreedPrice', '900000');
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
+      // No reason: not checked, nothing saved; a plain prompt, not an error.
+      expect(find.byKey(const ValueKey('booking-quote')), findsNothing);
+      expect(
+        find.text('Enter the agreed total and the reason.'),
         findsOneWidget,
       );
-      await enter(tester, 'ops-agreedPrice', '900000');
-      await press(tester, 'Review calculation');
-      // No reason: not checked, nothing saved.
-      expect(find.byKey(const ValueKey('booking-quote')), findsNothing);
-      expect(find.text('Enter a valid value.'), findsWidgets);
       await enter(tester, 'ops-agreedReason', 'Regular guest');
-      await press(tester, 'Review calculation');
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
       final quote = find.byKey(const ValueKey('booking-quote'));
       expect(
-        find.descendant(of: quote, matching: find.text('Agreed room price')),
+        find.descendant(
+          of: quote,
+          matching: find.text('500,000 VND × 2 nights = 1,000,000 VND'),
+        ),
         findsOneWidget,
       );
-      expect(
-        find.descendant(of: quote, matching: find.text('1,000,000 VND')),
-        findsOneWidget,
-        reason: 'the calculated price',
+      final struck = tester.widget<Text>(
+        find.byKey(const ValueKey('booking-quote-calculated')),
       );
+      expect(struck.data, '1,000,000 VND');
+      expect(struck.style?.decoration, TextDecoration.lineThrough);
       expect(
-        find.descendant(of: quote, matching: find.text('Regular guest')),
+        find.descendant(
+          of: quote,
+          matching: find.text('900,000 VND (Regular guest)'),
+        ),
         findsOneWidget,
       );
       await press(tester, 'Confirm and save');
@@ -564,16 +655,15 @@ void main() {
         ],
         [900000, 1000000, 'Regular guest'],
       );
-      // The details say who changed it and why.
       expect(find.text('Changed by'), findsOneWidget);
-      expect(find.text('Preview owner'), findsOneWidget);
       // A receptionist edits the booking: the agreed price stays as it is.
       s.workspaceRole = 'receptionist';
-      await press(tester, 'Edit');
-      expect(find.byKey(const ValueKey('booking-agreed')), findsNothing);
+      await press(tester, 'Cancel');
+      expect(find.byKey(const ValueKey('ops-agreedPrice')), findsNothing);
       expect(find.byKey(const ValueKey('booking-agreed-kept')), findsOneWidget);
       await enter(tester, 'ops-guest', 'Anh Tuan');
-      await press(tester, 'Review calculation');
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
       await press(tester, 'Confirm and save');
       b = s.operationalBookings.single;
       expect(b['guestName'], 'Anh Tuan');
@@ -583,25 +673,23 @@ void main() {
     },
   );
 
-  testWidgets('agreed price: switched off goes back to the calculated price', (
+  testWidgets('agreed total: emptied goes back to the calculated price', (
     tester,
   ) async {
     final s = await openNew(tester);
-    await tapKey(tester, 'booking-agreed');
     await enter(tester, 'ops-agreedPrice', '800000');
     await enter(tester, 'ops-agreedReason', 'Long stay');
-    await press(tester, 'Review calculation');
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
     await press(tester, 'Confirm and save');
     expect(s.operationalBookings.single['totalPrice'], 800000);
-    await press(tester, 'Edit');
-    final agreed = tester.widget<SwitchListTile>(
-      find.byKey(const ValueKey('booking-agreed')),
-    );
-    expect(agreed.value, isTrue);
+    expect(find.byKey(const ValueKey('ops-guest')), findsOneWidget);
     expect(text(tester, 'ops-agreedPrice'), '800,000');
     expect(text(tester, 'ops-agreedReason'), 'Long stay');
-    await tapKey(tester, 'booking-agreed');
-    await press(tester, 'Review calculation');
+    await enter(tester, 'ops-agreedPrice', '');
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('ops-agreedReason')), findsNothing);
     await press(tester, 'Confirm and save');
     final b = s.operationalBookings.single;
     expect(b['totalPrice'], 1000000);
@@ -609,42 +697,57 @@ void main() {
     expect(find.text('Changed by'), findsNothing);
   });
 
-  testWidgets('agreed price: not offered without "Đổi giá"', (tester) async {
+  testWidgets('agreed total: not offered without "Đổi giá"', (tester) async {
     await openNew(tester, role: 'receptionist');
-    expect(find.byKey(const ValueKey('booking-agreed')), findsNothing);
     expect(find.byKey(const ValueKey('ops-agreedPrice')), findsNothing);
   });
 
-  // 2026-10-04: no custom total; the deposit says how and when it was paid and
-  // is taken off the total.
+  // 2026-10-14 (Tom): the deposit row sits at the top of Thanh toán: Ngày cọc,
+  // Tiền cọc, Ghi chú and "Đã đặt cọc". Ticked = paid (taken off the total);
+  // not ticked = only the deposit asked for.
   testWidgets(
-    'no custom total; a deposit by transfer on a day is taken off the total and saved as a payment',
+    'deposit row: an amount alone is asked for; ticked it is paid by transfer on a day and locked',
     (tester) async {
       final s = await openNew(tester);
-      for (final gone in [
-        'ops-overridePrice',
-        'ops-overrideReason',
+      final payment = find.byKey(const ValueKey('booking-payment'));
+      for (final key in [
+        'ops-depositDate',
+        'ops-depositAmount',
         'ops-depositNote',
+        'booking-deposit-paid',
       ]) {
-        expect(find.byKey(ValueKey(gone)), findsNothing, reason: gone);
+        expect(
+          find.descendant(of: payment, matching: find.byKey(ValueKey(key))),
+          findsOneWidget,
+          reason: key,
+        );
       }
-      // How and when show up once there is an amount.
-      expect(find.byKey(const ValueKey('booking-deposit-cash')), findsNothing);
+      expect(find.text('Transfer date (YYYY-MM-DD)'), findsNothing);
+      // Not ticked: no way of paying is asked, nothing taken off.
       await enter(tester, 'ops-depositAmount', '300000');
+      await tester.pump(const Duration(milliseconds: 500));
       await tester.pumpAndSettle();
-      expect(text(tester, 'ops-depositDate'), '2026-10-04');
+      expect(find.byKey(const ValueKey('booking-deposit-cash')), findsNothing);
+      expect(
+        find.byKey(const ValueKey('booking-quote-remaining')),
+        findsNothing,
+      );
+      await tapKey(tester, 'booking-deposit-paid');
       await tapKey(tester, 'booking-deposit-bankTransfer');
-      expect(find.text('Transfer date (YYYY-MM-DD)'), findsOneWidget);
+      await enter(tester, 'ops-depositNote', 'Qua Zalo');
       // Not a day in the future.
       await enter(tester, 'ops-depositDate', '2026-10-05');
-      await press(tester, 'Review calculation');
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
+      await press(tester, 'Confirm and save');
       await reveal(tester, find.byKey(const ValueKey('ops-depositDate')));
       expect(
         find.text('Enter a day up to today (YYYY-MM-DD).'),
         findsOneWidget,
       );
       await enter(tester, 'ops-depositDate', '2026-10-03');
-      await press(tester, 'Review calculation');
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
       // 2 nights × 500,000 = 1,000,000; minus the 300,000 deposit = 700,000.
       await reveal(
         tester,
@@ -655,56 +758,145 @@ void main() {
       await press(tester, 'Confirm and save');
       final b = s.operationalBookings.single;
       expect([b['totalPrice'], b['paidAmount']], [1000000, 300000]);
+      expect(b['depositNote'], 'Qua Zalo');
       expect(b['depositPayment'], {
         'amount': 300000,
         'paymentMethod': 'bankTransfer',
         'paidOn': '2026-10-03',
       });
-      expect(
-        find.text('300,000 VND · Bank transfer · 2026-10-03'),
-        findsOneWidget,
+      expect(find.text('300,000'), findsOneWidget);
+      // Editing shows the deposit ticked and locked; it is not taken again.
+      expect(find.byKey(const ValueKey('ops-guest')), findsOneWidget);
+      await reveal(tester, find.byKey(const ValueKey('booking-deposit-paid')));
+      final box = tester.widget<Checkbox>(
+        find.descendant(
+          of: find.byKey(const ValueKey('booking-deposit-paid')),
+          matching: find.byType(Checkbox),
+        ),
       );
-      expect(find.text('700,000 VND'), findsOneWidget);
-      // Editing shows the deposit but does not take another one.
-      final edit = find.byIcon(Icons.edit_outlined);
-      await reveal(tester, edit);
-      await tester.tap(edit);
-      await tester.pumpAndSettle();
-      await reveal(
-        tester,
-        find.byKey(const ValueKey('booking-deposit-recorded')),
-      );
-      expect(
-        find.text('Deposit received: 300,000 VND · Bank transfer · 2026-10-03'),
-        findsOneWidget,
-      );
-      expect(find.byKey(const ValueKey('ops-depositAmount')), findsNothing);
+      expect([box.value, box.onChanged], [true, null]);
+      expect(text(tester, 'ops-depositAmount'), '300,000');
+      expect(text(tester, 'ops-depositDate'), '2026-10-03');
+      await press(tester, 'Confirm and save');
+      expect(s.operationalBookings.single['paidAmount'], 300000);
       expect(tester.takeException(), isNull);
     },
   );
 
-  testWidgets('a deposit larger than the total is caught at the price check', (
-    tester,
-  ) async {
-    final s = await openNew(tester);
-    await enter(tester, 'ops-depositAmount', '1000001');
-    await press(tester, 'Review calculation');
-    expect(find.text('The deposit is more than the total.'), findsOneWidget);
-    expect(find.byKey(const ValueKey('booking-quote')), findsNothing);
-    expect(s.operationalBookings, isEmpty);
-    // All of it up front is fine; cash is the default.
-    await enter(tester, 'ops-depositAmount', '1000000');
-    await press(tester, 'Review calculation');
-    await press(tester, 'Confirm and save');
-    expect(
-      s.operationalBookings.single['depositPayment']['paymentMethod'],
-      'cash',
-    );
-    expect(s.operationalBookings.single['paidAmount'], 1000000);
-  });
+  testWidgets(
+    'deposit row: ticked needs an amount, and not more than the total',
+    (tester) async {
+      final s = await openNew(tester);
+      await tapKey(tester, 'booking-deposit-paid');
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
+      await press(tester, 'Confirm and save');
+      expect(s.operationalBookings, isEmpty);
+      await enter(tester, 'ops-depositAmount', '1000001');
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
+      expect(find.text('The deposit is more than the total.'), findsOneWidget);
+      expect(find.byKey(const ValueKey('booking-quote')), findsNothing);
+      // All of it up front is fine; cash is the default.
+      await enter(tester, 'ops-depositAmount', '1000000');
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
+      await press(tester, 'Confirm and save');
+      expect(
+        s.operationalBookings.single['depositPayment']['paymentMethod'],
+        'cash',
+      );
+      expect(s.operationalBookings.single['paidAmount'], 1000000);
+    },
+  );
+
+  // 2026-10-14 (Tom): a payment with the booking: day, amount, note.
+  testWidgets(
+    'payment row: part of the total on a day with a note; listed on the booking and in the next edit',
+    (tester) async {
+      final s = await openNew(tester);
+      await enter(tester, 'ops-payAmount', '1000001');
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Deposit and payments are more than the total.'),
+        findsOneWidget,
+      );
+      await enter(tester, 'ops-payAmount', '400000');
+      await enter(tester, 'ops-payDate', '2026-10-03');
+      await enter(tester, 'ops-payNote', 'Paid ahead');
+      await tapKey(tester, 'booking-pay-bankTransfer');
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
+      await press(tester, 'Confirm and save');
+      final b = s.operationalBookings.single;
+      expect(b['paidAmount'], 400000);
+      expect(b['rentPayments'], [
+        {
+          'amount': 400000,
+          'paymentMethod': 'bankTransfer',
+          'paidOn': '2026-10-03',
+          'note': 'Paid ahead',
+        },
+      ]);
+      expect(
+        find.text('Paid 400,000 VND · 2026-10-03 · Bank transfer · Paid ahead'),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('ops-guest')), findsOneWidget);
+      await reveal(tester, find.byKey(const ValueKey('ops-payAmount')));
+      expect(
+        find.text('Paid 400,000 VND · 2026-10-03 · Bank transfer · Paid ahead'),
+        findsOneWidget,
+      );
+      expect(text(tester, 'ops-payAmount'), '');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  // 2026-10-14 (Tom): the stay status is chosen by staff and never by the
+  // clock; check-out only changes the status.
+  testWidgets(
+    'status: chosen in the form, checked out without taking money, and set back by editing',
+    (tester) async {
+      final s = await openNew(tester);
+      final notIn = tester.widget<ChoiceChip>(
+        find.byKey(const ValueKey('booking-stay-notCheckedIn')),
+      );
+      expect(notIn.selected, isTrue);
+      await tapKey(tester, 'booking-stay-checkedIn');
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
+      await press(tester, 'Confirm and save');
+      expect(s.operationalBookings.single['status'], 'checkedIn');
+      expect(find.text('Staying'), findsWidgets);
+      await enter(tester, 'booking-checkout-reason', 'Guest left');
+      await tapKey(tester, 'booking-checkout');
+      var b = s.operationalBookings.single;
+      expect(b['status'], 'checkedOut');
+      expect(b['paidAmount'], 0);
+      // Still editable: back to staying.
+      expect(find.byKey(const ValueKey('ops-guest')), findsOneWidget);
+      expect(
+        tester
+            .widget<ChoiceChip>(
+              find.byKey(const ValueKey('booking-stay-checkedOut')),
+            )
+            .selected,
+        isTrue,
+      );
+      await tapKey(tester, 'booking-stay-checkedIn');
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
+      await press(tester, 'Confirm and save');
+      b = s.operationalBookings.single;
+      expect(b['status'], 'checkedIn');
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
-    'Vietnamese: hours read "3 giờ", the deposit reads "Tiền cọc" with Tiền mặt / Chuyển khoản / Thẻ',
+    'Vietnamese: hours read "3 giờ"; Thanh toán reads Ngày cọc, Tiền cọc, Ghi chú, Đã đặt cọc',
     (tester) async {
       final s = store()..previewToday = '2026-10-04';
       s.rooms.last.addAll({
@@ -733,14 +925,23 @@ void main() {
         findsOneWidget,
       );
       expect(find.textContaining('số giờ'), findsNothing);
+      for (final label in [
+        'Trạng thái',
+        'Chưa check in',
+        'Đang ở',
+        'Đã check out',
+        'Ngày cọc',
+        'Đã đặt cọc',
+        'Ngày thanh toán',
+        'Tổng tiền thỏa thuận',
+      ]) {
+        expect(find.text(label), findsWidgets, reason: label);
+      }
       await enter(tester, 'ops-depositAmount', '100000');
-      await tester.pumpAndSettle();
+      await tapKey(tester, 'booking-deposit-paid');
       for (final label in ['Tiền mặt', 'Chuyển khoản', 'Thẻ']) {
         expect(find.text(label), findsOneWidget, reason: label);
       }
-      expect(find.text('Ngày trả cọc (YYYY-MM-DD)'), findsOneWidget);
-      await tapKey(tester, 'booking-deposit-bankTransfer');
-      expect(find.text('Ngày chuyển khoản (YYYY-MM-DD)'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -762,15 +963,29 @@ void main() {
         tester,
         find.byKey(const ValueKey('booking-surcharge-1-total')),
       );
-      expect(find.text('50,000 VND × 3 guests = 150,000 VND'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('booking-surcharge-1-total')),
+          matchRoot: true,
+          matching: find.text('50,000 VND × 3 guests = 150,000 VND'),
+        ),
+        findsOneWidget,
+      );
       expect(
         find.byKey(const ValueKey('booking-surcharge-0-total')),
         findsNothing,
       );
-      await press(tester, 'Review calculation');
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
       // 2 nights × 500,000 + 100,000 + 150,000.
       await reveal(tester, find.byKey(const ValueKey('booking-quote')));
-      expect(find.text('1,250,000 VND'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('booking-quote')),
+          matching: find.text('1,250,000 VND'),
+        ),
+        findsOneWidget,
+      );
       await press(tester, 'Confirm and save');
       final b = s.operationalBookings.single;
       expect(b['totalPrice'], 1250000);
@@ -781,12 +996,16 @@ void main() {
         'unitAmount': 50000,
         'count': 3,
       });
-      expect(find.text('50,000 VND × 3 guests = 150,000 VND'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('booking-surcharge-1-total')),
+          matching: find.text('50,000 VND × 3 guests = 150,000 VND'),
+          matchRoot: true,
+        ),
+        findsOneWidget,
+      );
       // Editing keeps the line per person, at the price for one guest.
-      final edit = find.byIcon(Icons.edit_outlined);
-      await reveal(tester, edit);
-      await tester.tap(edit);
-      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('ops-guest')), findsOneWidget);
       expect(text(tester, 'ops-surchargeAmount-1'), '50,000');
       final chip = tester.widget<ChoiceChip>(
         find.byKey(const ValueKey('booking-surcharge-1-person')),
@@ -864,7 +1083,8 @@ void main() {
       await enter(tester, 'ops-guest', 'Anh');
       await enter(tester, 'ops-startLocal', '2026-10-10 14:00');
       await enter(tester, 'ops-endLocal', '2026-10-12 12:00');
-      await press(tester, 'Review calculation');
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
       await press(tester, 'Confirm and save');
       final section = find.byKey(const ValueKey('room-problems'));
       await reveal(tester, section);
@@ -902,7 +1122,7 @@ void main() {
   // the booking card, "Collect" in the money section, confirming in "…", and
   // only the usual next step (check in / check out) stays at the end.
   testWidgets(
-    'a booking keeps one button at the end; the rest sit in their sections',
+    'saved booking stays in its form with ordered actions and room problems',
     (tester) async {
       final s = store();
       // Hourly, like the collect test, so the booking has an amount to collect.
@@ -917,7 +1137,11 @@ void main() {
           organizationId: 'preview',
           buildingId: 'riverside',
           accountId: 'owner',
-          service: s.service,
+          service: TeamService(
+            transport: (name, data) async => name == 'technicalProblems'
+                ? {'records': [], 'canReport': true}
+                : s.call(name, data),
+          ),
           onBack: () {},
         ),
         size: const Size(1440, 1000),
@@ -926,22 +1150,18 @@ void main() {
       await enter(tester, 'ops-guest', 'Guest family');
       await enter(tester, 'ops-startLocal', '2026-10-01 09:00');
       await enter(tester, 'ops-endLocal', '2026-10-01 11:00');
-      await press(tester, 'Review calculation');
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
       await press(tester, 'Confirm and save');
       for (final gone in ['Collect booking payment', 'Confirm booking']) {
         expect(find.text(gone), findsNothing, reason: gone);
       }
-      expect(find.byKey(const ValueKey('booking-edit')), findsOneWidget);
-      expect(find.byKey(const ValueKey('booking-collect')), findsOneWidget);
-      expect(find.widgetWithText(FilledButton, 'Check in'), findsOneWidget);
-      // Confirming is in the "…" menu.
-      await tapKey(tester, 'booking-more');
-      expect(find.text('Confirm booking'), findsOneWidget);
-      await tester.tapAt(const Offset(5, 5));
-      await tester.pumpAndSettle();
-      // "Edit" on the card opens the form.
-      await tapKey(tester, 'booking-edit');
+      expect(find.byKey(const ValueKey('booking-edit')), findsNothing);
       expect(find.byKey(const ValueKey('ops-guest')), findsOneWidget);
+      expect(find.byKey(const ValueKey('booking-checkout')), findsOneWidget);
+      expect(find.byKey(const ValueKey('booking-cancel')), findsOneWidget);
+      expect(find.byKey(const ValueKey('booking-refund-rent')), findsOneWidget);
+      expect(find.byKey(const ValueKey('room-problems')), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );

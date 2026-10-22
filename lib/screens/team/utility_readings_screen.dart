@@ -466,13 +466,13 @@ class _UtilityReadingsScreenState extends State<UtilityReadingsScreen> {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           Text(
-                            '${source == 'propertyTariffs' ? tr('Property price', 'Giá tòa nhà') : tr('Room price', 'Giá phòng')} · ${rate['effectiveDate']}',
+                            '${source == 'propertyTariffs' ? tr('Property price', 'Giá cơ sở') : tr('Room price', 'Giá phòng')} · ${rate['effectiveDate']}',
                           ),
                           if (rate['tariff'] == null)
                             Text(
                               tr(
                                 'Use property default',
-                                'Dùng giá mặc định của tòa nhà',
+                                'Dùng giá mặc định của cơ sở',
                               ),
                             )
                           else

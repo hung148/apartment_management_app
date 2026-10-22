@@ -203,7 +203,7 @@ class _RoomBatchGeneratorState extends State<_RoomBatchGenerator> {
                           number: true,
                           validate: (v) {
                             final n = int.tryParse(v ?? '');
-                            return n == null || n < 1 || n > 50
+                            return n == null || n < 1 || n > 200
                                 ? t['rooms_count_invalid']
                                 : null;
                           },
@@ -217,9 +217,9 @@ class _RoomBatchGeneratorState extends State<_RoomBatchGenerator> {
                                 floors = int.tryParse(_floors.text);
                             return n == null ||
                                     n < 1 ||
-                                    n > 50 ||
+                                    n > 200 ||
                                     floors == null ||
-                                    n * floors > 50 - widget.existing.length
+                                    n * floors > 200 - widget.existing.length
                                 ? t['rooms_count_invalid']
                                 : null;
                           },
@@ -242,7 +242,7 @@ class _RoomBatchGeneratorState extends State<_RoomBatchGenerator> {
                             final n = int.tryParse(v ?? '');
                             return n == null ||
                                     n < 1 ||
-                                    n > 50 - widget.existing.length
+                                    n > 200 - widget.existing.length
                                 ? t['rooms_count_invalid']
                                 : null;
                           },

@@ -29,6 +29,25 @@ const setup=()=>{
 const stay={roomId:'r1',startLocal:'2026-10-10 14:00',endLocal:'2026-10-12 12:00',occurrence:'first',pricingType:'nightly'};
 const save=(extra={})=>({action:'save',bookingId:'k1',operationId:'op1',roomRevision:'0:0',guestName:'Anh',guestPhone:'0901',notes:'',depositMinor:200000,...stay,...extra});
 
+test('only the main guest name is required; other guest details can be completed later',async()=>{
+  const {db,call}=setup();
+  await call('owner',save({guestPhone:'',guests:[{id:'g1',name:'',idNumber:'1234'}]}));
+  assert.equal(db.store.get('bookings/k1').guestPhone,'');
+  assert.equal(db.store.get('bookings/k1').guests[0].name,'');
+  assert.equal(db.store.get('bookings/k1').guests[0].idNumber,'1234');
+  await call('owner',save({guestPhone:'',guests:[{id:'g1',name:'',idNumber:'1234'}]}));
+  assert.equal([...db.store.keys()].filter(k=>k.startsWith('bookings/')).length,1);
+  await call('owner',save({operationId:'later',revision:'0:0',guestPhone:'0901',guests:[{id:'g1',name:'Completed later',idNumber:'1234'}]}));
+  assert.equal(db.store.get('bookings/k1').guests[0].name,'Completed later');
+});
+
+test('optional guest details retain main-name and size validation',async()=>{
+  for(const extra of [{guestName:''},{guests:[{id:'g1',name:'a'.repeat(101)}]},{guests:[{id:'g1',name:'',idNumber:'a'.repeat(31)}]}]) {
+    const {call}=setup();
+    await assert.rejects(call('owner',save(extra)),e=>e.code==='invalid-argument');
+  }
+});
+
 test('nights follow property-local dates, not 24-hour blocks',()=>{
   const z='Asia/Ho_Chi_Minh',at=s=>Date.parse(s);
   assert.equal(nightCount(at('2026-10-10T07:00:00Z'),at('2026-10-12T05:00:00Z'),z),2);

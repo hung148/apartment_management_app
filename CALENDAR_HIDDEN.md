@@ -14,16 +14,18 @@ shows the old tools row again (the tests keep it on through
 | 2 | **Ngày / Tháng** switch | No | The whole month view (Airbnb-style weeks). |
 | 3 | **Chú thích** (legend ⓘ) | No | The meaning of the bar colours and status circles. |
 | 4 | **Tải lại** (refresh ⟳) | Partly | The calendar still reloads after every save and when opened; there is no manual reload. |
-| 5 | **Building settings ⚙**: Thông tin, Hợp đồng thuê, Mặc định tòa nhà, Phí dịch vụ | **No** | Editing the building, its lease template, its defaults (layout) and its service fees. |
 | 6 | **Tạo phòng** (new room) | **No** | Adding rooms. Tapping a room name opens only that room. |
-| 7 | **Sự cố** (all problems of the building) | Partly | Tapping a day → "Báo sự cố" still reports one; the building's problem list is gone. |
-| 8 | **Dọn phòng** (cleaning tasks) | Partly | Tapping a day → assign cleaning still works; the list of cleaning tasks is gone. |
+| 7 | **Sự cố / Báo sự cố** | Partly | 2026-10-12: removed from the empty-cell rental chooser at Tom's request. Needs a new navigation location later; existing room problem details remain. |
+| 8 | **Dọn phòng / Giao dọn phòng** | Partly | 2026-10-12: removed from the empty-cell rental chooser at Tom's request. Needs a new navigation location later; existing cleaning bars still open their task list. |
 | 9 | **Đặt phòng** (new stay) | Yes | Tapping a day in a room's row still offers a short or long stay. |
 | 10 | Missing time zone warning ⚠ next to the building | Partly | Tapping a day says the time zone is missing, but nothing warns beforehand. |
 | 11 | Phone menus (⋯ actions, legend and reload) | No | Same items as above. |
 
-**Most urgent:** 5 (building settings) and 6 (new room), since they cannot be
-reached at all, then 1 (Today) and 7–8 (problem and cleaning lists).
+**Most urgent:** 6 (new room), then 1 (Today) and 7–8 (problem and cleaning lists).
+
+Building settings restored 2026-10-13: the selected property appears above the
+scrolling alternatives with an edit icon. It opens Details, Lease, Building
+defaults and Service fees according to the existing permissions.
 
 ## Looks that changed (earlier choices the picture replaces)
 
@@ -42,4 +44,6 @@ reached at all, then 1 (Today) and 7–8 (problem and cleaning lists).
 - The picture says **"Cơ sở"**; the rest of the app says **"Tòa nhà"** (for
   example the empty calendar's "Tạo tòa nhà" and the building forms). Choose
   one word.
-- "Thêm cơ sở mới" in the property menu opens the same form as "Tạo tòa nhà".
+- The tooltip-only + beside "Chọn cơ sở" opens the same form as "Tạo tòa nhà".
+- Empty calendar cells open a centered rental-choice dialog with a close icon,
+  no cancel footer; selected room/date/time pass into the authorized rental form.

@@ -289,7 +289,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
       'period' => x.tr('Period invoice', 'Hóa đơn kỳ'),
       'settlement' => x.tr('Move-out settlement', 'Quyết toán trả phòng'),
       'tenantRent' => x.tr('Rent', 'Tiền thuê'),
-      'buildingRent' => x.tr('Property rent', 'Thuê tòa nhà'),
+      'buildingRent' => x.tr('Property rent', 'Thuê cơ sở'),
       'service' => '${calc?['feeName'] ?? x.tr('Service fee', 'Phí dịch vụ')}',
       'utility' => utilityName(
         x,

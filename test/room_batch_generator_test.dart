@@ -26,6 +26,17 @@ Future<void> generate(
   String price = '5000000',
 }) async {
   final tr = AppTranslations(Locale(language));
+  if (find.byKey(const ValueKey('setup-generate')).evaluate().isNotEmpty) {
+    await enter(t, 'setup-prefix', prefix);
+    await enter(t, 'setup-first-floor', '${int.parse(start) ~/ 100}');
+    await enter(t, 'setup-count', count);
+    if (price.isNotEmpty) await enter(t, 'setup-roomPrice', price);
+    final button = find.byKey(const ValueKey('setup-generate'));
+    await reveal(t, button);
+    await t.tap(button);
+    await t.pumpAndSettle();
+    return;
+  }
   final button = find.byKey(const ValueKey('rooms-generate'));
   await reveal(t, button);
   await t.tap(button);
@@ -138,37 +149,42 @@ void main() {
       expect(find.byKey(const ValueKey('rooms_prefix')), findsOneWidget);
     },
   );
-  testWidgets('direct generator waits for authorized preparation and opens after retry', (t) async {
-    final store = TeamPreviewStore(); bool unavailable = true;
-    final service = TeamService(transport: (name, data) async {
-      if (data['action'] == 'prepareBulk' && unavailable) throw StateError('Offline');
-      return store.call(name, data);
-    });
-    await mountReview(t, room.create(service));
-    await press(t, 'Generate rooms');
-    expect(find.byKey(const ValueKey('rooms_prefix')), findsNothing);
-    expect(find.byKey(const ValueKey('rooms-generate')), findsNothing);
-    unavailable = false;
-    await press(t, AppTranslations(const Locale('en'))['room_edit_reload']);
-    expect(find.byKey(const ValueKey('rooms_prefix')), findsOneWidget);
-    expect(t.takeException(), isNull);
-  });
+  testWidgets(
+    'direct generator waits for authorized preparation and opens after retry',
+    (t) async {
+      final store = TeamPreviewStore();
+      bool unavailable = true;
+      final service = TeamService(
+        transport: (name, data) async {
+          if (data['action'] == 'prepareBulk' && unavailable)
+            throw StateError('Offline');
+          return store.call(name, data);
+        },
+      );
+      await mountReview(t, room.create(service));
+      await press(t, 'Generate rooms');
+      expect(find.byKey(const ValueKey('rooms_prefix')), findsNothing);
+      expect(find.byKey(const ValueKey('rooms-generate')), findsNothing);
+      unavailable = false;
+      await press(t, AppTranslations(const Locale('en'))['room_edit_reload']);
+      expect(find.byKey(const ValueKey('rooms_prefix')), findsOneWidget);
+      expect(t.takeException(), isNull);
+    },
+  );
   testWidgets(
     'generator rejects over-limit and duplicate batches without changing list',
     (t) async {
       final store = TeamPreviewStore();
       await mountReview(t, property.create(store.service));
-      await generate(t, count: '51');
+      await generate(t, count: '201');
       expect(
         find.text(AppTranslations(const Locale('en'))['rooms_count_invalid']),
         findsOneWidget,
       );
-      await enter(t, 'rooms_count', '2');
-      await press(t, 'Add to room list');
+      await enter(t, 'setup-count', '2');
+      await press(t, 'Generate rooms');
       await generate(t, count: '2');
       expect(find.text('Use a different room name.'), findsOneWidget);
-      await t.tap(find.byTooltip(AppTranslations(const Locale('en'))['close']));
-      await t.pumpAndSettle();
       expect(find.byKey(const ValueKey('initial-room-name-2')), findsNothing);
     },
   );
@@ -178,17 +194,10 @@ void main() {
       final store = TeamPreviewStore();
       await mountReview(t, property.create(store.service));
       await property.fill(t);
-      final b = find.byKey(const ValueKey('rooms-generate'));
-      await reveal(t, b);
-      await t.tap(b);
-      await t.pumpAndSettle();
-      await t.ensureVisible(find.byKey(const ValueKey('rooms-by-floor')));
-      await t.tap(find.byKey(const ValueKey('rooms-by-floor')));
-      await t.pumpAndSettle();
-      await enter(t, 'rooms_floors', '2');
-      await enter(t, 'rooms_per_floor', '3');
-      await enter(t, 'batch-roomPrice', '5000000');
-      await press(t, 'Add to room list');
+      await enter(t, 'setup-floors', '2');
+      await enter(t, 'setup-count', '3');
+      await enter(t, 'setup-roomPrice', '5000000');
+      await press(t, 'Generate rooms');
       await press(t, 'Create property');
       final rows = store.rooms
           .where((r) => r['buildingId'] == 'new-property')
@@ -228,7 +237,7 @@ void main() {
       await t.pumpAndSettle();
       await enter(t, 'rooms_first_floor', '0');
       await enter(t, 'rooms_floors', '2');
-      await enter(t, 'rooms_per_floor', '26');
+      await enter(t, 'rooms_per_floor', '101');
       await press(t, 'Add to room list');
       expect(
         find.text(AppTranslations(const Locale('en'))['rooms_count_invalid']),
@@ -259,12 +268,8 @@ void main() {
         brightness: brightness,
       );
       await openNewBuilding(t);
-      final b = find.byKey(const ValueKey('rooms-generate'));
-      await reveal(t, b);
-      await t.tap(b);
-      await t.pumpAndSettle();
-      await enter(t, 'rooms_prefix', 'P');
-      await enter(t, 'rooms_count', '2');
+      await enter(t, 'setup-prefix', 'P');
+      await enter(t, 'setup-count', '2');
       await t.runAsync(() async {
         final im = await t
             .renderObject<RenderRepaintBoundary>(
@@ -280,7 +285,7 @@ void main() {
         ).writeAsBytes(bytes!.buffer.asUint8List());
         im.dispose();
       });
-      await press(t, AppTranslations(const Locale('vi'))['rooms_add_list']);
+      await press(t, AppTranslations(const Locale('vi'))['rooms_generate']);
       expect(find.byKey(const ValueKey('initial-room-name-1')), findsOneWidget);
       expect(t.takeException(), isNull);
       await closeCalendarDialog(t);
@@ -344,22 +349,15 @@ void main() {
             scale: scale,
           );
           await property.fill(t);
-          final b = find.byKey(const ValueKey('rooms-generate'));
-          await reveal(t, b);
-          await t.tap(b);
-          await t.pumpAndSettle();
-          await enter(t, 'rooms_prefix', 'Tầng-A-');
-          await t.ensureVisible(find.byKey(const ValueKey('rooms-by-floor')));
-          await t.tap(find.byKey(const ValueKey('rooms-by-floor')));
-          await t.pumpAndSettle();
-          await enter(t, 'rooms_floors', '3');
-          await enter(t, 'rooms_per_floor', '1');
-          await enter(t, 'batch-roomPrice', '12500000');
+          await enter(t, 'setup-prefix', 'Tầng-A-');
+          await enter(t, 'setup-floors', '3');
+          await enter(t, 'setup-count', '1');
+          await enter(t, 'setup-roomPrice', '12500000');
           final tr = AppTranslations(Locale(lang));
           for (final key in [
             'rooms_first_floor',
             'rooms_shared_prices',
-            'rooms_generate_hint',
+            'building_rooms_review_hint',
           ]) {
             expect(
               (t.renderObject(find.text(tr[key])) as RenderParagraph)
@@ -367,7 +365,7 @@ void main() {
               isFalse,
             );
           }
-          final add = find.widgetWithText(FilledButton, tr['rooms_add_list']);
+          final add = find.byKey(const ValueKey('setup-generate'));
           await reveal(t, add);
           expect(add.hitTestable(), findsOneWidget);
           expect(t.takeException(), isNull);

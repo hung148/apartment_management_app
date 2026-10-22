@@ -8,6 +8,248 @@ build next, decisions, design notes) and [tool/STAGING.md](tool/STAGING.md).
 
 ## What to do next (read this first)
 
+Room picker (2026-10-22, on staging, live-checked):
+- Short-stay form, long-stay form and lease "Chuyển phòng" show ONE room box
+  (lib/screens/team/room_picker.dart: RoomPickerField + showRoomPicker) sized
+  to the room name; tapping it opens "Chọn phòng" (sorted by number, current
+  room ticked, greyed rooms with the reason, search over 8 rooms, "Xem thêm").
+- Long stay: switching rooms re-prepares the form, replaces the suggested rent
+  (unless typed) and clears the move-in meter reading + photo (Tom).
+- Calendar dialogs titled "Phòng X · …" follow the room picked (RoomTitleScope).
+- CalendarPageDialog keeps its page across the 640 px phone/desktop switch
+  (GlobalKey), so a half-filled form is no longer reset by resizing.
+- Tests: test/room_picker_test.dart (+ updated tenant_lease, booking_form,
+  lease_page). 95 targeted passed. Live: QA room flow 2026-10-15, VI desktop +
+  375 px; nothing saved. "Chuyển phòng" not live-checked (no lease in that
+  building). Full suite not rerun.
+- Tip: the browser pane must be visible (Claude window not minimized or fully
+  covered) or screenshots fail / draw cropped; reload after showing it.
+
+
+Hourly pricing templates (2026-10-16, deployed to staging):
+- User confirmed additive successive-hour prices and repeating the final rate.
+  Short-stay form now supports custom hourly rows plus create/select/delete
+  property templates. Saved bookings snapshot prices, surviving template deletion.
+- Server checks saveRoomPrices for template writes, overridePrices for custom
+  schedules, and allows staff to select an approved same-currency template.
+  Optional hourPrices keeps older flat/nightly records working.
+- Final server478 passed; full Flutter1052 passed with one new-test compilation
+  failure then fixed; final hourly/booking/payment43 passed. EN/VI phone,
+  landscape/desktop100/130/200% passed; light phone200/dark desktop renders
+  inspected. Template names use wrapping rows after chip clipping was found.
+- Real emulator concurrent template/save retries and post-delete extension pass.
+  Analyzer no errors (existing warnings/style notices). Firestore map-order retry
+  regression reproduced and fixed with retained test.
+- Backend release2026-10-16t20-39-16-806z and staging hosting deployed. Live
+  template create/select and server quotes2h500000/4h700000 verified, phone
+  screenshot inspected. QA template retained; existing booking left unchanged.
+  Delete/snapshot persistence verified locally/emulator, not live. Responsive
+  dialog rebuild resets unsaved draft when crossing desktop/phone breakpoint.
+  Checklist/evidence: docs/hourly-templates-2026-10-16.md.
+
+
+Calendar label/opacity follow-up (completed2026-10-16):
+- User resumed paused full bubble names, opaque bars, topmost current-time line,
+  and wrapping property title. Implemented in room_calendar.dart; on phones
+  property selector gets a full-width row, bubble end time sits below name.
+- Full regression1042 passed/9 failed: short embedded viewport overflows.
+  Fixed compact calendars with vertical scrolling; all previous failures passed
+  in affected suites (109 passes). Final calendar41 including viewport reachability
+  passes. Light/dark, phone200%, desktop and embedded-landscape renders inspected.
+- Final release .dart_tool/calendar-opaque-final.txt passed analyzer/calendar41/server473
+  gates; Wasm build and staging hosting deployed, backend unchanged/skipped.
+- Live original QA fixture verified: full bubble name, two-line property name,
+  opaque paid/unpaid fills, red current-time line on top crossing the bar.
+  Screenshot .dart_tool/calendar-labels-live.png. Checklist/evidence and limits:
+  docs/calendar-label-opacity-2026-10-15.md. No data changed for this check.
+
+Building details and rooms (2026-10-15):
+- Defaults merged into calendar Details; create/edit share uniform or custom
+  floor setup, prefix/type/area, shared prices and editable new-room drafts.
+  Details+defaults+new rooms save atomically; existing rooms remain unchanged.
+- Edit now lists existing inventory via the paginated authorized room endpoint.
+  Live staging confirmed the list and merged tabs in the synthetic calendar org.
+- Full Flutter1047/server471 passed before follow-ups; existing-list focused31
+  passed. Lower-usage follow-up raises batches to200 and removes target reads
+  via atomic create preconditions. Emulator3 includes200-room rollback/success;
+  Flutter200-room generation/save passes. Final gate completed: targeted100,
+  server473, analyzer gate, backend and hosting deploy succeeded; log in
+  .dart_tool/rooms-usage-release.txt.
+- Live final staging: created QA room flow 2026-10-15 with QA101/QA102,
+  reopened saved defaults/inventory, added QA103 from Edit and verified list
+  refresh. Synthetic fixture retained; production untouched.
+- Scenario/evidence: docs/building-room-setup-2026-10-15.md; live screenshot
+  .dart_tool/building-rooms-live.jpg. Physical-device accessibility unverified.
+
+
+Direct short-stay form (2026-10-15, in progress):
+- Approved: payment edit icon per row (tooltip only), room problems in form,
+  checkout/cancel/booking-refund below Payment, no intermediate detail page.
+- Implemented in booking_workspace_screen.dart and payment_corrections.dart;
+  server projection now includes rent payment IDs. Draft guest/notes survive
+  correction/commands. Read-only, collection-only and cancelled states covered.
+- Initial direct-form release completed: full Flutter1021/server465 passed,
+  backend release2026-10-15t15-46-10-530z and hosting deployed.
+- Follow-up: user wants the action fields permanently expanded, and technical
+  problems above checkout/cancel/refund. Implemented isolated reason fields,
+  refund amount/account, local validation and existing journal/revision path.
+- Checklist: docs/booking-direct-form-2026-10-15.md. All60 targeted tests passed;
+  final gate in .dart_tool/inline-deploy-final.txt:9 inline tests/server465 pass,
+  analyze no errors, Wasm build and hosting release completed.
+  Actual-font phone200%/desktop100% inline action renders inspected.
+- Browser booking access recovered after refresh; exact receipt edit/save and
+  balance update verified live. QA amount restored150,000; QA correction note
+  retained. New inline-section visual check in progress. Calendar visual request
+  remains paused.
+
+Recorded-payment corrections (2026-10-14, in progress):
+- User paused calendar full-name bubbles/opaque bars/wrapped property-title work
+  to prioritize editing an existing payment's amount/date/note in short and long
+  stays. No calendar edits made for that paused request.
+- New payment_corrections server module via mutateStandalonePayment; shared
+  PaymentCorrectionsButton on saved booking/lease. Delta balances, revision
+  checks, idempotent retries, before/after history. Scenario checklist and
+  verification: docs/payment-corrections-2026-10-14.md.
+- Full server465 and real-emulator concurrent correction test passed. Flutter
+  full regression had two test failures subsequently fixed; targeted32 passed.
+  Deployed successfully (.dart_tool/payment-corrections-deploy.txt). Live check
+  continues with the direct-form follow-up above.
+
+Live verification follow-up (2026-10-14):
+- User reports Chrome and in-app pane recovered; in-app reload and authenticated
+  booking writes now succeeded without auth/security changes. Earlier 401 root
+  cause remains unconfirmed; exchangeRecaptcha returned 200 (token not shared).
+- Created synthetic QA payment status 2026-10-14 in QA101, October16–17.
+  Total500,000; deposit100,000 plus payment150,000; remaining250,000 VND.
+  Dates/notes persisted. Check-in, checkout, edit/reopen to Staying, and final
+  checkout succeeded without altering money or duplicating payment. Retained
+  checked-out fixture. Screenshot .dart_tool/booking-staging-verified.png.
+- Payment section order/no agreed-price toggle and unpaid-vs-paid deposit preview
+  checked live. Full scenario matrix and remaining limits are in the feature doc.
+
+Chrome account-access investigation (2026-10-14, recovered; cause unresolved):
+- User reports normal Chrome AND Incognito fail while Edge works. Do not assume
+  cache/extensions, and do not claim the Firestore console warning is the cause.
+- Sanitized Cloud Run logs reproduce HTTP401 with auth VALID / app MISSING on
+  Chrome requests, including 2026-10-15T01:21:03Z. Working requests have App Check
+  VALID. Failure occurs before the account handler, not an organization-role denial.
+- Compared source ZIPs 2026-10-14t06-01-38-789z vs 2026-10-15t00-58-07-841z:
+  only booking_workspace.js and calendar.js differ. Auth/account handler and
+  server App Check enforcement source unchanged. Client-side cause remains open.
+- Need failed browser exchangeRecaptchaEnterpriseToken response to distinguish
+  reCAPTCHA rejection/throttle from blocked transport/provider initialization.
+  Asked user for sanitized Network status/response, never headers/tokens.
+- No speculative code/security changes or rollback made. Do not disable App Check
+  or lower thresholds as a workaround. Diagnostic logs in .dart_tool/account-request-diagnosis.txt.
+
+Short-stay status/payment continuation 2026-10-14:
+- Continued the existing implementation: staff-set stay status, deposit at the top
+  of Payment with date/amount/note/paid tick, dated partial payments with notes,
+  agreed total without a toggle immediately before totals. Long stays unchanged.
+- Reproduced/fixed the deposit note/checkbox overflow at 320px/200% text. Actual-font
+  populated EN/VI phone/desktop renders inspected. Reproduced/fixed totals omitting
+  the pending payment from remaining balance; retained regression assertion.
+- Full Flutter 1,008 passed before the final balance-card fix; full server456,
+  focused calendar/status24, real Firestore booking14 passed. After the final fix,
+  targeted booking/payment/workflow44 passed and updated totals visually inspected;
+  see docs/booking-status-payment-2026-10-14.md for scenarios and evidence.
+- Staging backend + Wasm Hosting deployed October14 (LA), release
+  2026-10-15t00-58-07-841z. Release gate44 Flutter/458 server passed; all4 functions
+  ACTIVE, indexesREADY, unauthenticated boundary denied. Synthetic staging
+  access-control13 passed with cleanup. Production unchanged.
+- Live browser reload reaches account access failure; refresh repeats it and
+  console reports Firestore unreachable. Screenshot .dart_tool/booking-staging-access-blocked.png.
+  Live booking deposit/payment/status flow remains unverified; retry with working
+  browser connectivity. See scenario notes for exact verification limits.
+
+Calendar/payment/property fixes 2026-10-14 (Tom):
+- Calendar: today's hour labels are the same as every day's; "now" is a red
+  dot on the header where the red line starts (the old red hour badge hid the
+  labels beside it). Date row and room column use `calHeadTint` (light tint of
+  the theme colour, dark-mode aware).
+- Short-stay Payment: no red "fill in every price line" on open. Red only for
+  half-filled/invalid price or surcharge lines; otherwise a muted prompt. A
+  nightly-only room opened on a same-day calendar slot starts as 1 night
+  (check-out next day 12:00). Room line reads "300,000 VND × 2 đêm = …".
+- Agreed price = the whole total (server `booking_workspace.js` + preview):
+  surcharges are inside it; `calculatedMinor`/`calculatedTotal` = full
+  calculated total. Quote card: calculated total crossed out, agreed total,
+  "Giá thỏa thuận: <lý do>" under it. Staging bookings saved with the old
+  meaning (agreed room price + surcharges) total differently on next edit.
+  Long stay unchanged (no agreed toggle there; amount per period already).
+- Property info: address optional (server too), timezone/cost explanations
+  removed, buttons "Xóa" then "Lưu" on one row. Every Vietnamese "tòa nhà" in
+  the app UI now says "cơ sở" (sheet import tab/column names and messages
+  about them left as "Tòa nhà" on purpose — they match the sheet format).
+- Server booking/calendar/property unit tests: 80 passed. Flutter tests not
+  run yet: run all (`staging_all.ps1` without -Tests; translations changed).
+
+Booking form simplification 2026-10-13:
+- Short stay requires only the main guest name among tenant details; nightly
+  amounts are directly editable. Payment below Staff and source calculates
+  automatically; no Review calculation button. Stale replies cannot replace
+  newer totals; Save waits for a current quote. Price/collection rights retained.
+- Long stay exposes its existing recurring agreed period amount without a toggle,
+  in Payment below staff. Automatic estimate separates recurring fees, once-only
+  fees and deposit. Price reason/permission rules remain. Payment label spacing
+  and enlarged-phone total wrapping fixed after actual-font visual review.
+- Tom explicitly deferred 7 PM/night-start settings and early-arrival charges.
+  Keep their current rules unchanged. Scope/scenarios/evidence:
+  [booking Payment notes](docs/booking-payment-2026-10-13.md).
+- Server450 and booking emulator13 passed. Full Flutter: 1000 passed, one
+  outdated error selector failed; corrected selector and tenant-lease suite6
+  then passed. Production analyzer no errors/warnings (four brace infos).
+- Wasm build and staging backend/Hosting deployed. Backend verification all4
+  active, unauthenticated denied, indexesREADY. Final live UI check blocked by
+  repeated in-app browser attachment timeouts. Retry live Payment verification.
+
+Wider timeline follow-up 2026-10-13:
+- Tom chose six days on desktop. Below 700px calendar width, two-hour cells are
+  at least 28px and scroll horizontally. Room width unchanged. Narrow lease-bubble
+  labels now truncate instead of overflowing/shrinking. Full Flutter 994 passed.
+  See [six-day verification notes](docs/calendar-six-days-2026-10-13.md).
+- Wasm staging release deployed; live desktop/phone layout and horizontal scrolling
+  verified. Browser logs show main.dart.mjs and no warnings/errors during that check.
+
+Readable calendar/picker 2026-10-13:
+- Hour labels stay at 12px or larger by reducing label density; booking slots
+  remain two hours and the visible day range is unchanged. Hover labels widened.
+- Selected property stays above the scrolling alternatives with a permission-aware
+  edit icon opening the existing building pages. Building settings removed from
+  CALENDAR_HIDDEN.md. Full sequential Flutter suite: 993 passed. See
+  [scenario and verification notes](docs/calendar-readable-picker-2026-10-13.md).
+- Wasm staging release deployed and live phone/landscape timeline, property edit
+  navigation and scrolling verified. No live building edits saved.
+
+Calendar picker/rental dialog 2026-10-12:
+- Property creation is a tooltip-only + beside the picker heading; long property
+  lists scroll within the viewport. Empty cells show a centered short/long rental
+  chooser with close icon and no cancel footer. Selected two-hour slot passes to
+  the short-stay form. Report/cleaning navigation deferred in CALENDAR_HIDDEN.md.
+- Full Flutter991 pass; responsive tests cover EN/VI, 100/130/200%, both scopes,
+  narrow phone/landscape/desktop and 60 properties. See
+  [verification notes](docs/calendar-picker-dialog-2026-10-12.md).
+- Final Wasm staging Hosting deployment completed 2026-10-13. Menu + semantics
+  corrected and targeted tests passed after the full suite. Final live interaction
+  verification remains blocked by App Check/reCAPTCHA workspace access failure;
+  retry the menu and rental chooser when staging access recovers.
+
+Calendar spacing continuation 2026-10-12:
+- Compact follow-up: regular room rows 36→30 px and date/hour header 72→48 px;
+  24 px stay bars retained. Full Flutter989 pass, including the four previously
+  failing enlarged-text landscape workspace cases. Actual-font renders reviewed.
+  Wasm staging Hosting release deployed; populated desktop and short landscape,
+  month navigation and property switching checked live without browser errors.
+- Hosting deployed to staging with --wasm and automatic JavaScript fallback;
+  live Wasm desktop/phone calendar inspected. Deployment examples corrected to
+  match CLIENT_ROADMAP W3. Production unchanged; Safari/Firefox not live-tested.
+- Desktop calendar/header gutters are 12 px; the timeline retains approximately
+  seven visible days, with 5 px between rendered two-hour labels. Vietnamese
+  desktop month headings omit “Tháng”, including ranges across a year boundary.
+- Existing uncommitted compact rows, filler rows and hover behavior are preserved.
+- Scenario checklist, visual review and validation evidence are in
+  [calendar spacing notes](docs/calendar-spacing-2026-10-12.md).
+
 Performance continuation 2026-10-09:
 - Request limiter reads membership and candidate token-bucket snapshots together
   inside the same transaction, removing one serial database wait on org requests.
@@ -1639,3 +1881,4 @@ billing account has at most 3 Cloud Scheduler jobs; check the count first).
 Ideas not done: load Excel/PDF/chart code only when used (smaller first
 download); own service worker; staff use the Android app (installed = no
 download).
+

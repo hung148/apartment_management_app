@@ -129,9 +129,15 @@ void main() {
             );
         expect(scroll, isNotEmpty);
         expect(
-          scroll
-              .map((e) => (e.renderObject as RenderBox).size.width)
-              .reduce((a, b) => a > b ? a : b),
+          entry.$1 == 'calendar'
+              // The timeline scrolls beside the fixed room column. Measure
+              // the whole card when checking whether the page fills the window.
+              ? tester
+                    .getSize(find.byKey(const ValueKey('calendar-card')))
+                    .width
+              : scroll
+                    .map((e) => (e.renderObject as RenderBox).size.width)
+                    .reduce((a, b) => a > b ? a : b),
           greaterThan(1300),
           reason: '${entry.$1}/${entry.$2}',
         );

@@ -39,6 +39,38 @@ beforeEach(async()=>{
 const call=(data,uid='owner')=>handler({auth:{uid,token:{email:`${uid}@example.com`,email_verified:true}},data:{organizationId:'org',...data}});
 const invitation={action:'invite',operationId:'invite',staffId:'staff',email:'new@example.com',access:{role:'receptionist',buildingScope:'selected',buildingIds:['a']}};
 
+test('receipt corrections serialize simultaneous edits and exact retries',async()=>{
+ const api=createPaymentHandler({db,Timestamp,HttpsError:class extends Error{constructor(code,message){super(message);this.code=code;}}});
+ await db.doc('buildings/a').update({timeZone:'Asia/Ho_Chi_Minh'});
+ await db.doc('tenants/t').set({organizationId:'org',buildingId:'a'});
+ await db.doc('payments/p').set({organizationId:'org',buildingId:'a',tenantId:'t',currency:'VND',amount:1000,totalMinor:1000,paidAmount:300,status:'partial'});
+ await db.doc('paymentOperations/receipt').set({organizationId:'org',paymentId:'p',action:'collect',amountMinor:300,createdAt:Timestamp.fromMillis(Date.parse('2026-01-01'))});
+ const run=d=>api({auth:{uid:'owner'},data:{organizationId:'org',buildingId:'a',tenantId:'t',...d}});
+ const r=(await run({action:'receipts'})).records[0];
+ const input={action:'correctReceipt',operationId:'same',paymentId:'p',receiptId:r.receiptId,revision:r.revision,amountMinor:250,paidOn:'2026-01-02',note:'Corrected'};
+ const repeated=await Promise.all([run(input),run(input)]);assert.deepEqual(repeated[0],repeated[1]);
+ assert.equal((await db.doc('payments/p').get()).data().paidAmount,250);
+ const fresh=(await run({action:'receipts'})).records[0];
+ const racing=await Promise.allSettled([run({...input,operationId:'a',revision:fresh.revision,amountMinor:200}),run({...input,operationId:'b',revision:fresh.revision,amountMinor:225})]);
+ assert.equal(racing.filter(r=>r.status==='fulfilled').length,1);
+ assert.equal(racing.find(r=>r.status==='rejected').reason.code,'aborted');
+});
+
+test('booking receipt correction updates ledger and booking together',async()=>{
+ const api=createPaymentHandler({db,Timestamp,HttpsError:class extends Error{constructor(code,message){super(message);this.code=code;}}});
+ await db.doc('buildings/a').update({timeZone:'Asia/Ho_Chi_Minh'});
+ await db.doc('rooms/r').set({organizationId:'org',buildingId:'a'});
+ await db.doc('bookings/k').set({organizationId:'org',roomId:'r',totalPrice:1000,paidAmount:300,currency:'VND',rentPayments:[{paymentId:'p',amount:300,paidOn:'2026-01-01',note:'Original'}]});
+ await db.doc('payments/p').set({organizationId:'org',buildingId:'a',bookingId:'k',currency:'VND',amount:300,paidAmount:300,status:'paid',paidAt:Timestamp.fromMillis(Date.parse('2026-01-01'))});
+ const run=d=>api({auth:{uid:'owner'},data:{organizationId:'org',buildingId:'a',bookingId:'k',...d}});
+ const r=(await run({action:'receipts'})).records[0];
+ const input={action:'correctReceipt',operationId:'fix',paymentId:'p',receiptId:r.receiptId,revision:r.revision,amountMinor:250,paidOn:'2026-01-02',note:'Corrected'};
+ await Promise.all([run(input),run(input)]);
+ const b=(await db.doc('bookings/k').get()).data(),p=(await db.doc('payments/p').get()).data();
+ assert.equal(b.paidAmount,250);assert.equal(p.paidAmount,250);assert.equal(b.rentPayments[0].note,'Corrected');
+ assert.equal((await db.collection('payments').get()).size,1);
+});
+
 test('future tenant rent schedules preserve invoices, enforce price permission, immutable history and server dates',async()=>{
  const {createTenantRentHandler,rentForDate}=require('../tenant_rent'),Stamp=Timestamp;let now=Date.parse('2026-09-27T00:00:00Z');
  const api=createTenantRentHandler({db,Timestamp:{now:()=>Stamp.fromMillis(now)},HttpsError:class extends Error{constructor(code,message){super(message);this.code=code;}}});
@@ -527,7 +559,7 @@ test('property creation requires organization-wide management, validates inputs 
     await setMember(role,role,{buildingScope:'all'});
     await assert.rejects(run(command,role),e=>e.code==='permission-denied');
   }
-  for(const patch of [{name:''},{address:' '},{name:'x'.repeat(161)},{address:'x'.repeat(501)},{timeZone:null},{timeZone:'Bad/Zone'},{currency:'EUR'},{createdAt:123},{createdBy:'forged'},{revision:'1:0'}])await assert.rejects(run({...command,...patch}),e=>e.code==='invalid-argument');
+  for(const patch of [{name:''},{name:'x'.repeat(161)},{address:'x'.repeat(501)},{timeZone:null},{timeZone:'Bad/Zone'},{currency:'EUR'},{createdAt:123},{createdBy:'forged'},{revision:'1:0'}])await assert.rejects(run({...command,...patch}),e=>e.code==='invalid-argument');
   await assert.rejects(run({...command,organizationId:'foreign'}),e=>e.code==='permission-denied');
   const result=await run(command);assert.deepEqual(await run(command),result);
   await assert.rejects(run({...command,name:'Changed intent'}),e=>e.code==='already-exists');
@@ -1437,11 +1469,36 @@ test('booking workspace calculates receptionist prices, replays exact operations
  const run=(data,uid='reception')=>api({auth:{uid},data:{organizationId:'org',buildingId:'a',...data}}),fields={roomId:'r',startLocal:'2026-10-01 09:00',endLocal:'2026-10-01 11:30',occurrence:'first',pricingType:'hourly'};
  const q=(await run({action:'quote',...fields})).record;assert.equal(q.totalMinor,2500);
  await assert.rejects(run({action:'quote',...fields,overrideMinor:100,overrideReason:'Discount'}),e=>e.code==='permission-denied');assert.equal((await run({action:'quote',...fields,overrideMinor:100,overrideReason:'Discount'},'owner')).record.totalMinor,100);
- const create={action:'save',...fields,bookingId:'workspace-booking',operationId:'book-create',revision:null,roomRevision:q.roomRevision,guestName:'Guest',guestPhone:'123',notes:'Private note',depositMinor:1000};await run(create);await run(create);assert.equal((await db.collection('bookings').get()).size,1);
+ const create={action:'save',...fields,bookingId:'workspace-booking',operationId:'book-create',revision:null,roomRevision:q.roomRevision,guestName:'Guest',guestPhone:'',guests:[{id:'later',name:'',idNumber:null}],notes:'Private note',depositMinor:1000};await run(create);await run(create);assert.equal((await db.collection('bookings').get()).size,1);
+ assert.equal((await db.doc('bookings/workspace-booking').get()).data().guests[0].name,'');
  await assert.rejects(run({...create,guestName:'Other'}),e=>e.code==='failed-precondition');
  let r=(await run({action:'read',bookingId:create.bookingId})).record;const pay={action:'command',bookingId:create.bookingId,operationId:'pay',revision:r.revision,command:'payment',amountMinor:500,paymentMethod:'cash',status:null,reason:'Receipt'};await run(pay);await run(pay);r=(await run({action:'read',bookingId:create.bookingId})).record;assert.equal(r.paidAmount,5);
  await assert.rejects(run({...pay,operationId:'refund',revision:r.revision,command:'refundRent'}),e=>e.code==='permission-denied');await run({...pay,operationId:'refund',revision:r.revision,command:'refundRent'},'owner');r=(await run({action:'read',bookingId:create.bookingId})).record;assert.equal(r.paidAmount,0);assert.equal(r.depositRefundedAmount,0);
  await setMember('reception','receptionist',{buildingIds:['b']});await assert.rejects(run(pay),e=>e.code==='permission-denied');
+});
+
+test('booking combined payments serialize retries and manual status edits preserve the ledger',async()=>{
+ const {createBookingWorkspaceHandler}=require('../booking_workspace');
+ await db.doc('buildings/a').update({timeZone:'Asia/Ho_Chi_Minh'});
+ await db.doc('rooms/r').set({organizationId:'org',buildingId:'a',currency:'VND',nightlyPrice:500000});
+ const api=createBookingWorkspaceHandler({db,Timestamp,HttpsError:class extends Error{constructor(code,message){super(message);this.code=code;}},calendar});
+ const run=data=>api({auth:{uid:'owner'},data:{organizationId:'org',buildingId:'a',...data}});
+ const fields={roomId:'r',startLocal:'2026-10-10 14:00',endLocal:'2026-10-12 12:00',pricingType:'nightly'};
+ const quote=(await run({action:'quote',...fields})).record;
+ const save={action:'save',...fields,bookingId:'combined',operationId:'combined-create',roomRevision:quote.roomRevision,guestName:'Guest',guestPhone:'',notes:'',depositMinor:200000,stayStatus:'checkedIn',deposit:{amountMinor:200000,method:'cash',paidOn:'2026-10-10'},payment:{amountMinor:300000,method:'bankTransfer',paidOn:'2026-10-10',note:'Partial'}};
+ const result=await Promise.all([run(save),run(save)]);
+ assert.deepEqual(result[0],result[1]);
+ assert.equal((await db.collection('payments').get()).size,2);
+ assert.equal((await db.doc('bookings/combined').get()).data().paidAmount,500000);
+ for(const stayStatus of ['checkedOut','checkedIn']){
+  const record=(await run({action:'read',bookingId:'combined'})).record;
+  const q=(await run({action:'quote',...fields,bookingId:'combined'})).record;
+  await run({...save,operationId:stayStatus,revision:record.revision,roomRevision:q.roomRevision,deposit:undefined,payment:undefined,stayStatus});
+ }
+ const final=(await db.doc('bookings/combined').get()).data();
+ assert.equal(final.status,'checkedIn');assert.equal(final.paidAmount,500000);
+ assert.equal(final.rentPayments.length,1);
+ assert.equal((await db.collection('payments').get()).size,2);
 });
 
 test('converted booking serializes duplicate saves and retains original currency on edit',async()=>{

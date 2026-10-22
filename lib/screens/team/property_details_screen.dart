@@ -9,6 +9,8 @@ import '../../utils/app_number.dart';
 import '../../utils/money_conversion.dart';
 import '../../services/organization_money.dart';
 import 'property_initial_rooms.dart';
+import 'building_room_setup.dart';
+import 'building_existing_rooms.dart';
 import '../../widgets/time_zone_picker.dart';
 
 class PropertyDetailsScreen extends StatefulWidget {
@@ -39,6 +41,7 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
   final _zone = TextEditingController();
   final _cost = TextEditingController();
   final _rooms = <InitialRoomDraft>[];
+  final _roomPlan = BuildingRoomPlan();
   bool _canSetRoomPrices = false;
   void _clearRooms() {
     for (final room in _rooms) {
@@ -57,7 +60,7 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
   bool get _deleting => _pending?['action'] == 'delete';
   MoneyForm _money = MoneyForm(null);
   String get _inputCurrency => _money.currency(_currency);
-  String _currency = 'VND';
+  String _currency = 'VND', _roomCurrency = 'VND';
   bool get _creating => widget.create && !_created;
   @override
   void initState() {
@@ -84,6 +87,7 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
 
   @override
   void dispose() {
+    _roomPlan.dispose();
     _name.dispose();
     _address.dispose();
     _zone.dispose();
@@ -120,7 +124,9 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
         _address.text = row['address'] as String;
         _zone.text = row['timeZone'] as String? ?? '';
         _currency = row['currency'] as String? ?? 'VND';
+        _roomCurrency = row['roomCurrency'] as String? ?? _currency;
         _canSetRoomPrices = row['canSetRoomPrices'] == true;
+        _roomPlan.load(row['layout'] as Map?);
         _money = MoneyForm(
           OrganizationMoney.shared.forOrganization(widget.organizationId),
         );
@@ -175,7 +181,9 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
       'exploitationCostMinor': _cost.text.trim().isEmpty
           ? null
           : _money.parse(_cost, _currency),
-      if (_creating) 'rooms': _rooms.map((r) => r.toMap(_currency)).toList(),
+      'rooms': _rooms.map((r) => r.toMap(_roomCurrency)).toList(),
+      if (_rooms.isNotEmpty) 'roomCurrency': _roomCurrency,
+      'layout': _roomPlan.toMap(),
     });
     final generation = _generation;
     setState(() {
@@ -250,6 +258,8 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
                 ? error.message
                 : error.message == 'property_timezone_in_use'
                 ? 'property_timezone_in_use'
+                : error.code == 'already-exists'
+                ? 'property_room_duplicate'
                 : 'property_rejected';
           }
         }
@@ -267,197 +277,237 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
         alignment: Alignment.topCenter,
         child: ConstrainedBox(
           constraints: WorkspacePageScope.constraints(context, 720),
-          child: ListView(
+          child: SingleChildScrollView(
             padding: const EdgeInsets.all(16),
-            children: [
-              // In a dialog its title bar names the page and closes it.
-              if (!inDialog) ...[
-                TextButton(
-                  onPressed: _saving || _pending != null ? null : widget.onBack,
-                  child: Text(t['workspace_title']),
-                ),
-                Text(
-                  t[_creating ? 'property_create' : 'property_details'],
-                  style: Theme.of(context).textTheme.headlineSmall,
-                ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // In a dialog its title bar names the page and closes it.
+                if (!inDialog) ...[
+                  TextButton(
+                    onPressed: _saving || _pending != null
+                        ? null
+                        : widget.onBack,
+                    child: Text(t['workspace_title']),
+                  ),
+                  Text(
+                    t[_creating ? 'property_create' : 'property_details'],
+                    style: Theme.of(context).textTheme.headlineSmall,
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                if (_loading || _saving) const LinearProgressIndicator(),
                 const SizedBox(height: 16),
-              ],
-              if (_loading || _saving) const LinearProgressIndicator(),
-              if (_message != null)
-                Semantics(liveRegion: true, child: Text(t[_message!])),
-              const SizedBox(height: 16),
-              if (_revision != null || _message == 'property_conflict')
-                Form(
-                  key: _form,
-                  autovalidateMode: AutovalidateMode.onUserInteraction,
-                  child: Column(
-                    children: [
-                      TextFormField(
-                        key: const ValueKey('property-name'),
-                        controller: _name,
-                        enabled: !locked,
-                        readOnly: _revision == null,
-                        maxLength: 160,
-                        minLines: 1,
-                        maxLines: null,
-                        decoration: InputDecoration(
-                          labelText: t['property_name'],
-                        ),
-                        validator: (v) => v == null || v.trim().isEmpty
-                            ? t['property_required']
-                            : null,
-                      ),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        key: const ValueKey('property-address'),
-                        controller: _address,
-                        enabled: !locked,
-                        readOnly: _revision == null,
-                        maxLength: 500,
-                        minLines: 2,
-                        maxLines: null,
-                        decoration: InputDecoration(
-                          labelText: t['property_address'],
-                        ),
-                        validator: (v) => v == null || v.trim().isEmpty
-                            ? t['property_required']
-                            : null,
-                      ),
-                      const SizedBox(height: 16),
-                      if (_revision != null)
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            TextFormField(
-                              key: const ValueKey('property-timezone'),
-                              controller: _zone,
-                              validator: (v) =>
-                                  _creating && (v == null || v.trim().isEmpty)
-                                  ? t['property_required']
-                                  : null,
-                              enabled: !locked,
-                              maxLength: 100,
-                              minLines: 1,
-                              maxLines: null,
-                              decoration: InputDecoration(
-                                labelText: t['property_timezone'],
-                                suffixIcon: IconButton(
-                                  key: const ValueKey(
-                                    'property-timezone-choose',
-                                  ),
-                                  tooltip: t['timezone_choose'],
-                                  icon: const Icon(Icons.arrow_drop_down),
-                                  onPressed: locked
-                                      ? null
-                                      : () async {
-                                          final generation = _generation;
-                                          final zone = await chooseTimeZone(
-                                            context,
-                                            _zone.text.trim(),
-                                          );
-                                          if (mounted &&
-                                              generation == _generation &&
-                                              zone != null) {
-                                            setState(() => _zone.text = zone);
-                                          }
-                                        },
-                                ),
-                              ),
-                            ),
-                            Text(
-                              t[_creating
-                                  ? 'property_create_timezone_hint'
-                                  : 'property_timezone_hint'],
-                            ),
-                            const SizedBox(height: 16),
-                          ],
-                        ),
-                      if (_creating && _revision != null) ...[
-                        Text('${t['organization_currency']}: $_currency'),
-                        const SizedBox(height: 8),
-                        Text(t['organization_currency_inherited']),
-                        const SizedBox(height: 16),
-                      ],
-                      Text(
-                        '${t['property_exploitation_cost']} ($_inputCurrency)',
-                      ),
-                      const SizedBox(height: 8),
-                      Semantics(
-                        label:
-                            '${t['property_exploitation_cost']} ($_inputCurrency)',
-                        child: TextFormField(
-                          key: const ValueKey('property-exploitation-cost'),
-                          controller: _cost,
+                if (_revision != null || _message == 'property_conflict')
+                  Form(
+                    key: _form,
+                    autovalidateMode: AutovalidateMode.onUserInteraction,
+                    child: Column(
+                      children: [
+                        TextFormField(
+                          key: const ValueKey('property-name'),
+                          controller: _name,
                           enabled: !locked,
                           readOnly: _revision == null,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
+                          maxLength: 160,
+                          minLines: 1,
+                          maxLines: null,
+                          decoration: InputDecoration(
+                            labelText: t['property_name'],
                           ),
-                          inputFormatters: appMoneyInput(_inputCurrency),
-                          decoration: InputDecoration(errorMaxLines: 4),
                           validator: (v) => v == null || v.trim().isEmpty
-                              ? null
-                              : _money.parse(_cost, _currency) == null
-                              ? t['property_invalid_amount']
+                              ? t['property_required']
                               : null,
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        t['property_cost_hint'],
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      const SizedBox(height: 24),
-                      if (_creating)
-                        PropertyInitialRooms(
-                          rooms: _rooms,
-                          currency: _currency,
-                          locked: locked,
+                        const SizedBox(height: 16),
+                        TextFormField(
+                          key: const ValueKey('property-address'),
+                          controller: _address,
+                          enabled: !locked,
+                          readOnly: _revision == null,
+                          maxLength: 500,
+                          minLines: 2,
+                          maxLines: null,
+                          // Optional (2026-10-14, Tom).
+                          decoration: InputDecoration(
+                            labelText: t['property_address'],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        if (_revision != null)
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              TextFormField(
+                                key: const ValueKey('property-timezone'),
+                                controller: _zone,
+                                validator: (v) =>
+                                    _creating && (v == null || v.trim().isEmpty)
+                                    ? t['property_required']
+                                    : null,
+                                enabled: !locked,
+                                maxLength: 100,
+                                minLines: 1,
+                                maxLines: null,
+                                decoration: InputDecoration(
+                                  labelText: t['property_timezone'],
+                                  suffixIcon: IconButton(
+                                    key: const ValueKey(
+                                      'property-timezone-choose',
+                                    ),
+                                    tooltip: t['timezone_choose'],
+                                    icon: const Icon(Icons.arrow_drop_down),
+                                    onPressed: locked
+                                        ? null
+                                        : () async {
+                                            final generation = _generation;
+                                            final zone = await chooseTimeZone(
+                                              context,
+                                              _zone.text.trim(),
+                                            );
+                                            if (mounted &&
+                                                generation == _generation &&
+                                                zone != null) {
+                                              setState(() => _zone.text = zone);
+                                            }
+                                          },
+                                  ),
+                                ),
+                              ),
+                              // No long explanation under it (2026-10-14, Tom).
+                              const SizedBox(height: 16),
+                            ],
+                          ),
+                        if (_creating && _revision != null) ...[
+                          Text('${t['organization_currency']}: $_currency'),
+                          const SizedBox(height: 8),
+                          Text(t['organization_currency_inherited']),
+                          const SizedBox(height: 16),
+                        ],
+                        Semantics(
+                          label:
+                              '${t['property_exploitation_cost']} ($_inputCurrency)',
+                          child: TextFormField(
+                            key: const ValueKey('property-exploitation-cost'),
+                            controller: _cost,
+                            enabled: !locked,
+                            readOnly: _revision == null,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            inputFormatters: appMoneyInput(_inputCurrency),
+                            decoration: InputDecoration(
+                              labelText:
+                                  '${t['property_exploitation_cost']} ($_inputCurrency)',
+                              errorMaxLines: 4,
+                            ),
+                            validator: (v) => v == null || v.trim().isEmpty
+                                ? null
+                                : _money.parse(_cost, _currency) == null
+                                ? t['property_invalid_amount']
+                                : null,
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        if (!_creating && _revision != null)
+                          BuildingExistingRooms(
+                            key: ValueKey(
+                              'existing-${widget.buildingId}-$_generation',
+                            ),
+                            organizationId: widget.organizationId,
+                            buildingId: widget.buildingId,
+                            service: widget.service,
+                          ),
+                        BuildingRoomSetup(
+                          plan: _roomPlan,
+                          locked: locked || _revision == null,
                           canSetPrices: _canSetRoomPrices,
+                          currency: _roomCurrency,
+                          rooms: _rooms,
                           onGenerate: (rows) =>
                               setState(() => _rooms.addAll(rows)),
-                          onAdd: () =>
-                              setState(() => _rooms.add(InitialRoomDraft())),
+                        ),
+                        PropertyInitialRooms(
+                          title: t['building_rooms_to_add'],
+                          hint: t['building_rooms_to_add_hint'],
+                          rooms: _rooms,
+                          currency: _roomCurrency,
+                          locked: locked || _revision == null,
+                          canSetPrices: _canSetRoomPrices,
+                          onAdd: () => setState(
+                            () => _rooms.add(
+                              InitialRoomDraft()
+                                ..type.text = _roomPlan.type.text
+                                ..area.text = _roomPlan.area.text,
+                            ),
+                          ),
                           onRemove: (room) => setState(() {
                             _rooms.remove(room);
                             room.dispose();
                           }),
                         ),
-                      if (_revision != null)
-                        WsActions(
-                          children: [
-                            FilledButton(
-                              onPressed:
-                                  _loading ||
-                                      _saving ||
-                                      _deleting ||
-                                      _confirmDelete
-                                  ? null
-                                  : _save,
-                              child: Text(
-                                t[_pending == null
-                                    ? (_creating
-                                          ? 'property_create'
-                                          : 'property_save')
-                                    : 'property_retry'],
+                        // Delete and Save side by side, Delete first
+                        // (2026-10-14, Tom); confirming a delete replaces them.
+                        if (_revision != null && !_confirmDelete && !_deleting)
+                          WsActions(
+                            children: [
+                              if (widget.canDelete && !_creating && !_deleted)
+                                OutlinedButton(
+                                  key: const ValueKey('property-delete'),
+                                  onPressed: locked
+                                      ? null
+                                      : () => setState(
+                                          () => _confirmDelete = true,
+                                        ),
+                                  child: Text(t['property_delete']),
+                                ),
+                              FilledButton(
+                                onPressed:
+                                    _loading ||
+                                        _saving ||
+                                        _deleting ||
+                                        _confirmDelete
+                                    ? null
+                                    : _save,
+                                child: Text(
+                                  t[_pending == null
+                                      ? (_creating
+                                            ? 'property_create'
+                                            : 'property_save')
+                                      : 'property_retry'],
+                                ),
                               ),
-                            ),
-                          ],
-                        ),
-                    ],
+                            ],
+                          ),
+                      ],
+                    ),
                   ),
-                ),
-              if (widget.canDelete &&
-                  !_creating &&
-                  !_deleted &&
-                  _revision != null) ...[
-                const SizedBox(height: 24),
-                if (_confirmDelete || _deleting) ...[
+                if (_message != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Semantics(
+                      liveRegion: true,
+                      child: Text(t[_message!]),
+                    ),
+                  ),
+                if (widget.canDelete &&
+                    !_creating &&
+                    !_deleted &&
+                    _revision != null &&
+                    (_confirmDelete || _deleting)) ...[
+                  const SizedBox(height: 16),
                   Text(_savedName),
                   Text(t['property_delete_hint']),
                   const SizedBox(height: 12),
                   WsActions(
                     children: [
+                      if (!_deleting)
+                        OutlinedButton(
+                          onPressed: _saving
+                              ? null
+                              : () => setState(() => _confirmDelete = false),
+                          child: Text(t['property_delete_cancel']),
+                        ),
                       FilledButton(
                         onPressed: _saving ? null : _delete,
                         child: Text(
@@ -468,41 +518,21 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
                       ),
                     ],
                   ),
-                  if (!_deleting)
-                    WsActions(
-                      children: [
-                        OutlinedButton(
-                          onPressed: _saving
-                              ? null
-                              : () => setState(() => _confirmDelete = false),
-                          child: Text(t['property_delete_cancel']),
-                        ),
-                      ],
-                    ),
-                ] else
+                ],
+                const SizedBox(height: 16),
+                // In a dialog: only when the details could not be loaded.
+                if (!_deleted &&
+                    (!inDialog || (_revision == null && !_loading)))
                   WsActions(
                     children: [
                       OutlinedButton(
-                        onPressed: locked
-                            ? null
-                            : () => setState(() => _confirmDelete = true),
-                        child: Text(t['property_delete']),
+                        onPressed: locked ? null : () => _load(),
+                        child: Text(t['property_reload']),
                       ),
                     ],
                   ),
               ],
-              const SizedBox(height: 16),
-              // In a dialog: only when the details could not be loaded.
-              if (!_deleted && (!inDialog || (_revision == null && !_loading)))
-                WsActions(
-                  children: [
-                    OutlinedButton(
-                      onPressed: locked ? null : () => _load(),
-                      child: Text(t['property_reload']),
-                    ),
-                  ],
-                ),
-            ],
+            ),
           ),
         ),
       ),

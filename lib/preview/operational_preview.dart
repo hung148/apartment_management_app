@@ -337,6 +337,26 @@ extension OperationalPreview on TeamPreviewStore {
     }
     // Saved nightly prices (2026-10-09, Tom): owner, administrator and
     // manager may add and remove them, like the server's template.
+    if (d['action'] == 'hourTemplates') {
+      if (!manager) reject();
+      final list = buildingHourTemplates.putIfAbsent(
+        b['id'] as String,
+        () => [],
+      );
+      if (d['remove'] == true) {
+        list.removeWhere((t) => t['id'] == d['templateId']);
+      } else if (!list.any((t) => t['id'] == d['templateId'])) {
+        list.add({
+          'id': d['templateId'],
+          'name': d['name'],
+          'currency': b['currency'] ?? 'VND',
+          'hourPricesMinor': List<int>.from(d['hourPricesMinor'] as List),
+        });
+      }
+      return {
+        'hourTemplates': list.map((v) => Map<String, dynamic>.from(v)).toList(),
+      };
+    }
     if (d['action'] == 'prices') {
       if (!manager) reject();
       final many = d['pricesMinor'];
@@ -370,6 +390,8 @@ extension OperationalPreview on TeamPreviewStore {
     }
     if (d['action'] == 'rooms') {
       return {
+        'hourTemplates': buildingHourTemplates[b['id']] ?? [],
+        'priceListCurrency': b['currency'] ?? 'VND',
         'canPrice': manager && priceOverride,
         'canSavePrices': manager,
         'canCollect': book,
@@ -438,7 +460,42 @@ extension OperationalPreview on TeamPreviewStore {
                   room['${d['pricingType']}Price'],
                   currency as String,
                 );
-      if (rate == null) {
+      final current = d['bookingId'] == null
+          ? null
+          : operationalBookings
+                .where((v) => v['id'] == d['bookingId'])
+                .firstOrNull;
+      final storedHours = current?['pricingType'] == 'hourly'
+          ? (current?['hourPrices'] as List?)
+                ?.map((v) => ((v as num) * scale).round())
+                .toList()
+          : null;
+      final hoursList =
+          (d['hourPricesMinor'] as List?)?.cast<int>() ??
+          (d['pricingType'] == 'hourly' &&
+                  !d.containsKey('hourPricesMinor') &&
+                  hourlyMinor == null
+              ? storedHours
+              : null);
+      if (hoursList != null) {
+        if (d['pricingType'] != 'hourly' ||
+            hourlyMinor != null ||
+            hoursList.isEmpty ||
+            hoursList.length > 168 ||
+            hoursList.any((v) => v <= 0 || v > 1000000000000))
+          reject();
+        final matchesSaved = (buildingHourTemplates[b['id']] ?? []).any(
+          (t) =>
+              t['currency'] == currency &&
+              jsonEncode(t['hourPricesMinor']) == jsonEncode(hoursList),
+        );
+        if (!(manager && priceOverride) &&
+            jsonEncode(storedHours) != jsonEncode(hoursList) &&
+            !matchesSaved)
+          reject();
+      }
+
+      if (rate == null && hoursList == null) {
         throw FirebaseFunctionsException(
           code: 'failed-precondition',
           message: 'Rate',
@@ -462,9 +519,21 @@ extension OperationalPreview on TeamPreviewStore {
         };
         if (custom.isEmpty || !custom.every(ok.contains)) reject();
       }
-      final calculatedAmount = custom != null
+      int tierTotal(List<int> prices) {
+        var remaining = end.difference(start).inMinutes / 60, total = 0.0;
+        for (final price in prices) {
+          final h = remaining.clamp(0.0, 1.0);
+          total += h * price;
+          remaining -= h;
+        }
+        return (total + remaining * prices.last).round();
+      }
+
+      final calculatedAmount = hoursList != null
+          ? tierTotal(hoursList)
+          : custom != null
           ? custom.fold<int>(0, (a, b) => a + b)
-          : (rate *
+          : (rate! *
                     scale *
                     (d['pricingType'] == 'hourly'
                         ? end.difference(start).inMinutes / 60
@@ -483,11 +552,6 @@ extension OperationalPreview on TeamPreviewStore {
       final surchargesMinor = surcharges.fold<int>(0, (a, s) => a + line(s));
       // An agreed room price (Fix 5, 2026-10-09), like the server: needs
       // "Đổi giá" and a reason; left out of an edit it is kept; null removes it.
-      final current = d['bookingId'] == null
-          ? null
-          : operationalBookings
-                .where((v) => v['id'] == d['bookingId'])
-                .firstOrNull;
       final had = current?['priceOverride'] as Map?;
       final canPriceHere = manager && priceOverride;
       final why = '${d['overrideReason'] ?? ''}'.trim();
@@ -500,19 +564,29 @@ extension OperationalPreview on TeamPreviewStore {
           !canPriceHere) {
         reject();
       }
-      final agreedMinor =
+      var agreedMinor =
           d['overrideMinor'] as int? ??
           (!d.containsKey('overrideMinor') && had != null
               ? ((had['total'] as num) * scale).round()
               : null);
-      final base = agreedMinor ?? calculatedAmount;
-      final amount = base + surchargesMinor;
+      // The agreed price is the whole total (2026-10-14, Tom), like the server.
+      final calculatedTotal = calculatedAmount + surchargesMinor;
+      // The same as the calculated total is no price change (2026-10-14).
+      var overrideMinor = d['overrideMinor'] as int?;
+      var removeAgreed =
+          d.containsKey('overrideMinor') && overrideMinor == null;
+      if (overrideMinor != null && overrideMinor == calculatedTotal) {
+        overrideMinor = null;
+        agreedMinor = null;
+        removeAgreed = had != null;
+      }
+      final amount = agreedMinor ?? calculatedTotal;
       final quote = {
         'totalMinor': amount,
-        'baseMinor': base,
+        'baseMinor': calculatedAmount,
         'surchargesMinor': surchargesMinor,
         if (agreedMinor != null) ...{
-          'calculatedMinor': calculatedAmount,
+          'calculatedMinor': calculatedTotal,
           'agreedMinor': agreedMinor,
           'agreedReason': d['overrideMinor'] != null ? why : had?['reason'],
         },
@@ -527,7 +601,13 @@ extension OperationalPreview on TeamPreviewStore {
               'totalMinor': line(s),
             },
         ],
-        if (d['pricingType'] == 'nightly') 'nights': nights,
+        if (d['pricingType'] == 'nightly') ...{
+          'nights': nights,
+          'nightPricesMinor':
+              custom ?? List<int>.filled(nights, (rate! * scale).round()),
+        },
+        if (hoursList != null) 'hourPricesMinor': hoursList,
+        if (hourlyMinor != null) 'hourlyPriceMinor': hourlyMinor,
         'pricingType': d['pricingType'],
         'currency': currency,
         'roomRevision': room['revision'],
@@ -538,13 +618,14 @@ extension OperationalPreview on TeamPreviewStore {
       if (d['action'] == 'quote') return {'record': quote};
       Map<String, dynamic> row;
       if (d['revision'] == null) {
-        if (operationalBookings.any(
-          (v) =>
-              v['roomId'] == room['id'] &&
-              ['pending', 'confirmed', 'checkedIn'].contains(v['status']) &&
-              DateTime.parse(v['endTime'] as String).isAfter(start) &&
-              DateTime.parse(v['startTime'] as String).isBefore(end),
-        )) {
+        if (d['stayStatus'] != 'checkedOut' &&
+            operationalBookings.any(
+              (v) =>
+                  v['roomId'] == room['id'] &&
+                  ['pending', 'confirmed', 'checkedIn'].contains(v['status']) &&
+                  DateTime.parse(v['endTime'] as String).isAfter(start) &&
+                  DateTime.parse(v['startTime'] as String).isBefore(end),
+            )) {
           throw FirebaseFunctionsException(
             code: 'already-exists',
             message: 'Overlap',
@@ -599,18 +680,19 @@ extension OperationalPreview on TeamPreviewStore {
               },
             },
         ],
+        'hourPrices': hoursList?.map((v) => v / scale).toList(),
         'hourlyPrice': hourlyMinor == null ? null : hourlyMinor / scale,
         'nightPrices': custom?.map((v) => v / scale).toList(),
       });
-      if (d['overrideMinor'] != null) {
+      if (overrideMinor != null) {
         row['priceOverride'] = {
-          'total': (d['overrideMinor'] as int) / scale,
-          'calculatedTotal': calculatedAmount / scale,
+          'total': overrideMinor / scale,
+          'calculatedTotal': calculatedTotal / scale,
           'reason': why,
           'byName': 'Preview $workspaceRole',
           'at': '${previewToday}T00:00:00.000Z',
         };
-      } else if (d.containsKey('overrideMinor') && had != null) {
+      } else if (removeAgreed && had != null) {
         row['priceOverride'] = null;
       }
       // A deposit taken with the booking (2026-10-04) is a payment toward the total.
@@ -636,6 +718,44 @@ extension OperationalPreview on TeamPreviewStore {
           'paymentMethod': deposit['method'],
           'paidOn': deposit['paidOn'],
         };
+      }
+      // A payment with the booking: day, amount, note (2026-10-14), like
+      // the server.
+      final pay = d['payment'] as Map?;
+      if (pay != null) {
+        final paid = ((row['paidAmount'] as num) * scale).round();
+        if (!book) reject();
+        if ((pay['amountMinor'] as int) + paid > amount) {
+          throw FirebaseFunctionsException(
+            code: 'invalid-argument',
+            message: 'booking_payment_too_large',
+          );
+        }
+        if ((pay['paidOn'] as String).compareTo(previewToday) > 0) {
+          throw FirebaseFunctionsException(
+            code: 'invalid-argument',
+            message: 'booking_payment_date',
+          );
+        }
+        row['paidAmount'] = (paid + (pay['amountMinor'] as int)) / scale;
+        row['rentPayments'] = [
+          ...((row['rentPayments'] as List?) ?? const []),
+          {
+            'amount': (pay['amountMinor'] as int) / scale,
+            'paymentMethod': pay['method'],
+            'paidOn': pay['paidOn'],
+            'note': '${pay['note'] ?? ''}'.trim(),
+          },
+        ];
+      }
+      // The stay status chosen by staff (2026-10-14).
+      switch (d['stayStatus']) {
+        case 'checkedIn' || 'checkedOut':
+          row['status'] = d['stayStatus'];
+        case 'notCheckedIn':
+          if (!['pending', 'confirmed'].contains(row['status'])) {
+            row['status'] = 'pending';
+          }
       }
       changed(row);
       return completed[key] = {'id': row['id']};

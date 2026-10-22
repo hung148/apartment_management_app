@@ -472,6 +472,15 @@ class TeamService {
     return loading.then(_copy);
   }
 
+  void keepBookingHourTemplates(
+    String organizationId,
+    String buildingId,
+    List<Map<String, dynamic>> templates,
+  ) {
+    final kept = _bookingOptions[_optionsKey(organizationId, buildingId)];
+    if (kept != null) kept['hourTemplates'] = jsonDecode(jsonEncode(templates));
+  }
+
   /// Loads the options ahead (the calendar, when it shows a building), so
   /// even the first "Đặt phòng" opens at once. Failures are ignored here.
   void prefetchBookingOptions(String organizationId, String buildingId) {

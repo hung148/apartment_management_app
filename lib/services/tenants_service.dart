@@ -948,8 +948,8 @@ class TenantService {
           moveInDate: tenant.moveInDate,
           moveOutDate: now,
           monthlyRent: tenant.monthlyRent,
-          moveOutReason: 'Toà nhà bị xoá',
-          notes: 'Tự động chuyển trạng thái do xóa toà nhà',
+          moveOutReason: 'Cơ sở bị xoá',
+          notes: 'Tự động chuyển trạng thái do xóa cơ sở',
         );
 
         // Update previous rentals list
@@ -965,8 +965,8 @@ class TenantService {
           'previousRentals': previousRentals.map((r) => r.toMap()).toList(),
           'contractStatus': ContractStatus.terminated.name,
           'contractTerminationDate': Timestamp.fromDate(now),
-          'contractTerminationReason': 'Toà nhà bị xoá',
-          'notes': 'Tự động chuyển trạng thái do xóa toà nhà',
+          'contractTerminationReason': 'Cơ sở bị xoá',
+          'notes': 'Tự động chuyển trạng thái do xóa cơ sở',
         });
       }
       

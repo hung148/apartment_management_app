@@ -82,7 +82,7 @@ void main() {
         ),
       );
       await enter(tester, 'property-timezone', 'Asia/Ho_Chi_Minh');
-      await press(tester, 'Save property details');
+      await press(tester, 'Save');
       expect(store.buildings.first['timeZone'], 'Asia/Ho_Chi_Minh');
       await mountReview(tester, directory(store.service));
       final button = find.byKey(const ValueKey('settings-room-room-101'));

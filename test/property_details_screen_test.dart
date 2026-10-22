@@ -10,7 +10,7 @@ import 'package:phan_mem_quan_ly_can_ho/services/team_service.dart';
 import 'package:phan_mem_quan_ly_can_ho/utils/localizations/app_localizations.dart';
 import 'support/calendar_nav.dart';
 import 'team_review_test.dart' show mountReview;
-import 'staff_editor_test.dart' show press, reveal;
+import 'room_rates_test.dart' show press, reveal;
 
 Widget page(TeamService service, {String building = 'riverside'}) =>
     PropertyDetailsScreen(
@@ -51,7 +51,7 @@ void main() {
       'America/New_York',
     );
     await enter(tester, 'property-timezone', 'Asia/Singapore');
-    await press(tester, 'Save property details');
+    await press(tester, 'Save');
     expect(store.buildings.first['timeZone'], 'Asia/Singapore');
   });
 
@@ -88,12 +88,14 @@ void main() {
       );
       await openBuildingPage(tester, 'property');
       await enter(tester, 'property-name', '');
-      await press(tester, 'Save property details');
+      await press(tester, 'Save');
       expect(find.text('Enter a value.'), findsOneWidget);
       await enter(tester, 'property-name', 'Riverside updated');
-      await enter(tester, 'property-address', '25 Nguyễn Văn Thoại, Đà Nẵng');
-      await press(tester, 'Save property details');
+      // The address is optional (2026-10-14, Tom).
+      await enter(tester, 'property-address', '');
+      await press(tester, 'Save');
       expect(store.buildings.first['name'], 'Riverside updated');
+      expect(store.buildings.first['address'], '');
       expect(find.text('Property details saved.'), findsOneWidget);
       // In the dialog its X goes back to the calendar.
       await closeCalendarDialog(tester);
@@ -132,7 +134,7 @@ void main() {
       );
       await mountReview(tester, page(service));
       await enter(tester, 'property-name', 'Updated');
-      await press(tester, 'Save property details');
+      await press(tester, 'Save');
       expect(
         tester
             .widget<TextFormField>(find.byKey(const ValueKey('property-name')))
@@ -142,13 +144,13 @@ void main() {
       await press(tester, 'Retry the same change');
       expect(sent[0], sent[1]);
       error = 'aborted';
-      await press(tester, 'Save property details');
+      await press(tester, 'Save');
       expect(find.textContaining('Copy any edits'), findsOneWidget);
-      expect(find.text('Save property details'), findsNothing);
+      expect(find.text('Save'), findsNothing);
       error = null;
       await press(tester, 'Reload property details');
       error = 'permission-denied';
-      await press(tester, 'Save property details');
+      await press(tester, 'Save');
       expect(find.byKey(const ValueKey('property-name')), findsNothing);
       expect(find.text('Updated'), findsNothing);
     },
@@ -164,8 +166,8 @@ void main() {
             : store.call(name, data),
       );
       await mountReview(tester, page(service));
-      await reveal(tester, find.text('Save property details'));
-      await tester.tap(find.text('Save property details'));
+      await reveal(tester, find.text('Save'));
+      await tester.tap(find.text('Save'));
       await tester.pump();
       await mountReview(tester, page(service, building: 'garden'));
       expect(find.text('Garden Homestay'), findsOneWidget);
@@ -175,9 +177,7 @@ void main() {
       expect(find.text('Property details saved.'), findsNothing);
       expect(
         tester
-            .widget<FilledButton>(
-              find.widgetWithText(FilledButton, 'Save property details'),
-            )
+            .widget<FilledButton>(find.widgetWithText(FilledButton, 'Save'))
             .onPressed,
         isNotNull,
       );

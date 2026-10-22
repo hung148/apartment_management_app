@@ -33,7 +33,7 @@ class InitialRoomDraft {
 class PropertyInitialRooms extends StatelessWidget {
   final List<InitialRoomDraft> rooms;
   final String currency;
-  final String? title;
+  final String? title, hint;
   final bool locked, canSetPrices;
   final VoidCallback onAdd;
   final void Function(List<InitialRoomDraft>)? onGenerate;
@@ -43,6 +43,7 @@ class PropertyInitialRooms extends StatelessWidget {
     required this.rooms,
     required this.currency,
     this.title,
+    this.hint,
     required this.locked,
     required this.canSetPrices,
     required this.onAdd,
@@ -60,7 +61,7 @@ class PropertyInitialRooms extends StatelessWidget {
           style: Theme.of(context).textTheme.titleMedium,
         ),
         const SizedBox(height: 8),
-        Text(t['property_initial_rooms_hint']),
+        Text(hint ?? t['property_initial_rooms_hint']),
         if (!canSetPrices) ...[
           const SizedBox(height: 8),
           Text(t['property_rooms_no_prices']),
@@ -197,7 +198,7 @@ class PropertyInitialRooms extends StatelessWidget {
             if (onGenerate != null)
               OutlinedButton.icon(
                 key: const ValueKey('rooms-generate'),
-                onPressed: locked || rooms.length >= 50
+                onPressed: locked || rooms.length >= 200
                     ? null
                     : () async {
                         final rows = await generateRoomBatch(
@@ -220,7 +221,7 @@ class PropertyInitialRooms extends StatelessWidget {
               ),
             OutlinedButton.icon(
               key: const ValueKey('property-add-room'),
-              onPressed: locked || rooms.length >= 50 ? null : onAdd,
+              onPressed: locked || rooms.length >= 200 ? null : onAdd,
               icon: const Icon(Icons.add),
               label: Text(t['property_add_room']),
             ),

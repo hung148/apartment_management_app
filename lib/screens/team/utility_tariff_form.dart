@@ -91,7 +91,7 @@ class _UtilityTariffFormState extends State<UtilityTariffForm> {
                 label: Text(
                   scope == 'room'
                       ? tr('Room', 'Phòng')
-                      : tr('Property', 'Tòa nhà'),
+                      : tr('Property', 'Cơ sở'),
                 ),
                 onSelected: widget.locked
                     ? null
@@ -118,7 +118,7 @@ class _UtilityTariffFormState extends State<UtilityTariffForm> {
             contentPadding: EdgeInsets.zero,
             value: _default,
             title: Text(
-              tr('Use property default', 'Dùng giá mặc định của tòa nhà'),
+              tr('Use property default', 'Dùng giá mặc định của cơ sở'),
             ),
             onChanged: widget.locked
                 ? null

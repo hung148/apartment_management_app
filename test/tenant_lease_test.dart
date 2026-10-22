@@ -23,9 +23,22 @@ Widget page(TeamService s, {String building = 'riverside'}) =>
       service: s,
       onBack: () {},
     );
+/// Opens the room list from the room box and picks [id] ("Xem thêm" until
+/// it is listed).
 Future<void> room(WidgetTester tester, String id) async {
+  final box = find.byKey(const ValueKey('lease-room'));
+  await reveal(tester, box);
+  await tester.tap(box);
+  await tester.pumpAndSettle();
   final f = find.byKey(ValueKey('lease-room-$id'));
-  await reveal(tester, f);
+  final more = find.byKey(const ValueKey('lease-room:more'));
+  while (f.evaluate().isEmpty && more.evaluate().isNotEmpty) {
+    await tester.ensureVisible(more);
+    await tester.tap(more);
+    await tester.pumpAndSettle();
+  }
+  await tester.ensureVisible(f);
+  await tester.pumpAndSettle();
   await tester.tap(f);
   await tester.pumpAndSettle();
 }
@@ -131,8 +144,7 @@ void main() {
         find.text(AppTranslations(const Locale('en'))['lease_form_occupied']),
         findsOneWidget,
       );
-      // The form stays; the room is changed from its header.
-      await press(tester, 'Change room');
+      // The form stays; the room is changed from its room box.
       await room(tester, 'room-102');
       await press(tester, 'Create tenant and lease');
       expect(s.tenants.length, 3);
@@ -229,10 +241,6 @@ void main() {
         },
       );
       await mountReview(tester, page(service));
-      await press(
-        tester,
-        AppTranslations(const Locale('en'))['tenant_contacts_more'],
-      );
       await room(tester, 'r26');
       await fill(tester);
       error = 'aborted';
@@ -301,9 +309,13 @@ void main() {
               // by the check (2026-10-05).
               await enter(tester, 'lease-rent', '0');
               await press(tester, t['lease_form_save']);
-              await reveal(tester, find.text(t['lease_form_invalid_rent']));
+              final rentError = find.descendant(
+                of: find.byKey(const ValueKey('lease-rent')),
+                matching: find.text(t['lease_form_invalid_rent']),
+              );
+              await reveal(tester, rentError);
               expect(
-                find.text(t['lease_form_invalid_rent']).hitTestable(),
+                rentError.hitTestable(),
                 findsOneWidget,
               );
               expect(tester.takeException(), isNull);

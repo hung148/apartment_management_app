@@ -80,15 +80,14 @@ void main() {
     await enter(tester, 'lease-end', '2027-09-27');
     // Off: the usual day and amount are explained, no fields.
     expect(find.byKey(const ValueKey('lease-dueDay')), findsNothing);
-    expect(find.byKey(const ValueKey('lease-periodAmount')), findsNothing);
+    expect(find.byKey(const ValueKey('lease-periodAmount')), findsOneWidget);
     expect(
       find.text('Due on day 27 of each month (the move-in day).'),
       findsOneWidget,
     );
     await tapKey(tester, 'lease-period-3');
-    expect(find.textContaining('Each period: 4,500,000 VND'), findsOneWidget);
+    expect(find.text('Calculated: 4,500,000 VND (rent × 3).'), findsOneWidget);
     // On: the amount starts from rent × months and can be changed.
-    await tapKey(tester, 'lease-own-amount');
     expect(
       tester
           .widget<TextFormField>(
@@ -134,6 +133,6 @@ void main() {
     await fill(tester);
     await tapKey(tester, 'lease-period-3');
     expect(find.byKey(const ValueKey('lease-own-amount')), findsNothing);
-    expect(find.textContaining('Each period: 4,500,000 VND'), findsOneWidget);
+    expect(find.text('Calculated: 4,500,000 VND (rent × 3).'), findsOneWidget);
   });
 }

@@ -16,12 +16,16 @@ powershell -ExecutionPolicy Bypass -File tool\staging_all.ps1
 
 ```powershell
 flutter test --concurrency=1
-flutter build web --release --output=build/staging-web --dart-define-from-file=config/app_check.staging.json
+flutter build web --release --wasm --output=build/staging-web --dart-define-from-file=config/app_check.staging.json
 node functions/node_modules/firebase-tools/lib/bin/firebase.js deploy --only hosting --config firebase.staging.json --project apartment-management-staging
 ```
 
 The default Firebase alias and normal build/web directory remain separate.
 Staging supports web only. An unknown APP_ENV fails closed.
+
+Wasm is the default (CLIENT_ROADMAP W3, 2026-10-10). The build includes
+JavaScript fallback, selected automatically by Flutter's loader when Wasm is
+unsupported. Keep the browser-aware preload logic in `web/index.html`.
 
 ## Backend evidence
 

@@ -12,8 +12,16 @@ function localDate(instant,zone){const p=Object.fromEntries(new Intl.DateTimeFor
 function nightCount(start,end,zone){if(!validZone(zone)||!Number.isFinite(start)||!Number.isFinite(end)||end<=start)return 0;return Math.round((localDate(end,zone)-localDate(start,zone))/86400000);}
 // options.zone: property time zone (needed for 'nightly'). options.nightPricesMinor: one price per night (custom prices).
 // options.hourlyPriceMinor (2026-10-03): price per hour; hours × price, never switched to a day price.
-function bookingPrice(room,start,end,mode='hourly',{zone,nightPricesMinor,hourlyPriceMinor}={}){
+function bookingPrice(room,start,end,mode='hourly',{zone,nightPricesMinor,hourlyPriceMinor,hourPricesMinor}={}){
  const scale=room.currency==='USD'?100:1,duration=end-start;if(!Number.isFinite(duration)||duration<=0||duration>366*86400000)throw Error('booking_invalid_dates');
+ if(hourPricesMinor!=null){
+  if(mode!=='hourly'||!Array.isArray(hourPricesMinor)||!hourPricesMinor.length||hourPricesMinor.length>168||hourPricesMinor.some(v=>!Number.isSafeInteger(v)||v<=0||v>1e12))throw Error('booking_invalid_amount');
+  let remaining=duration/3600000,total=0;
+  for(const rate of hourPricesMinor){const hours=Math.min(1,remaining);total+=rate*hours;remaining-=hours;if(remaining<=0)break;}
+  if(remaining>0)total+=remaining*hourPricesMinor.at(-1);
+  const totalMinor=Math.round(total);if(!Number.isSafeInteger(totalMinor)||totalMinor<=0||totalMinor>1e12)throw Error('booking_invalid_amount');
+  return {totalMinor,pricingType:'hourly',currency:room.currency??'VND',hourPricesMinor:[...hourPricesMinor]};
+ }
  if(mode==='nightly'){
   const nights=nightCount(start,end,zone);if(nights<1||nights>366)throw Error('booking_invalid_dates');
   let list=nightPricesMinor;

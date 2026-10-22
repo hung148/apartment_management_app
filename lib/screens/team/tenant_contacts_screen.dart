@@ -7,6 +7,7 @@ import '../../utils/app_number.dart';
 import '../../utils/localizations/app_localizations.dart';
 import 'tenant_lease_screen.dart';
 import 'lease_actions.dart';
+import 'payment_corrections.dart';
 import '../calendar/room_calendar.dart' show CalendarPageDialog;
 import 'period_invoice_form.dart';
 import 'move_out_settlement_form.dart';
@@ -649,6 +650,14 @@ class _TenantContactsScreenState extends State<TenantContactsScreen> {
                 service: widget.service,
               ),
               WsInfo(w('Payment', 'Thu tiền'), period),
+              if (!locked && r['canBill'] == true)
+                PaymentCorrectionsButton(
+                  service: widget.service,
+                  organizationId: widget.organizationId,
+                  buildingId: widget.buildingId,
+                  tenantId: id,
+                  onSaved: () => _read(id),
+                ),
               WsInfo(
                 w('Deposit', 'Tiền cọc'),
                 [

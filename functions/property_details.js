@@ -4,13 +4,43 @@ const {allows}=require('./team_access');
 const {organizationCurrency}=require('./organization_currency');
 const {validZone}=require('./booking_settings');
 const {retainDeletedRecord}=require('./deleted_records');
+// Optional combined form payload; old clients retain their existing defaults.
+const layoutFields=['floors','roomPrefix','roomType','roomArea','floorRoomCounts'];
+function validLayout(v) {
+  if (!v || typeof v !== 'object' || Array.isArray(v) ||
+      !Object.keys(v).every(k => [...layoutFields, 'floorDefaults', 'uniformRooms'].includes(k)) ||
+      !layoutFields.every(k => Object.hasOwn(v, k))) return false;
+  if (!Number.isInteger(v.floors) || v.floors < 1 || v.floors > 200 ||
+      typeof v.roomPrefix !== 'string' || v.roomPrefix.length > 20 ||
+      typeof v.roomType !== 'string' || v.roomType.length > 160 ||
+      !Number.isFinite(v.roomArea) || v.roomArea < 0 || v.roomArea > 100000 ||
+      !Array.isArray(v.floorRoomCounts) || v.floorRoomCounts.length !== v.floors ||
+      !v.floorRoomCounts.every(n => Number.isInteger(n) && n >= 0 && n <= 500) ||
+      v.floorRoomCounts.reduce((a, b) => a + b, 0) > 10000) return false;
+  if (Object.hasOwn(v, 'uniformRooms') && typeof v.uniformRooms !== 'boolean') return false;
+  if (Object.hasOwn(v, 'floorDefaults') &&
+      (!Array.isArray(v.floorDefaults) || v.floorDefaults.length !== v.floors ||
+       !v.floorDefaults.every(f => f && Object.keys(f).length === 2 &&
+         typeof f.roomType === 'string' && f.roomType.length <= 160 &&
+         Number.isFinite(f.roomArea) && f.roomArea >= 0 && f.roomArea <= 100000))) return false;
+  return true;
+}
+const layoutOf = b => ({
+  ...('uniformRooms' in b ? {uniformRooms: b.uniformRooms} : {}),
+  ...('floorDefaults' in b ? {floorDefaults: b.floorDefaults} : {}),
+  floors: b.floors ?? 1,
+  roomPrefix: b.roomPrefix ?? '',
+  roomType: b.roomType ?? '',
+  roomArea: b.roomArea ?? 0,
+  floorRoomCounts: b.floorRoomCounts ?? Array(b.floors ?? 1).fill(0),
+});
 const id=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(v);
 const revision=doc=>`${doc.updateTime.seconds}:${doc.updateTime.nanoseconds}`;
 const priceFields=['roomPrice','nightlyPrice','hourlyPrice'];
 const validAmount=v=>Number.isSafeInteger(v)&&v>=0&&v<=1e12;
 const normalized=v=>v.trim().normalize('NFKC').toLowerCase();
 function validInitialRooms(rooms){
-  if(!Array.isArray(rooms)||rooms.length>50)return false;
+  if(!Array.isArray(rooms)||rooms.length>200)return false;
   const names=new Set();
   return rooms.every(r=>{
     if(!r||typeof r!=='object'||Array.isArray(r)||Object.keys(r).length!==4||
@@ -30,12 +60,14 @@ function createPropertyDetailsHandler({db,Timestamp,HttpsError}) {
     if(!uid)fail('unauthenticated');
     const deleting=d.action==='delete';
     const creating=d.action==='create',preparing=d.action==='prepareCreate',editing=d.action==='update'||creating;
-    const keys=['action','organizationId','buildingId',...(deleting?['operationId','revision']:[]),...(editing?['operationId',...(!creating?['revision']:[]),'name','address',...(Object.hasOwn(d,'timeZone')?['timeZone']:[]),...(Object.hasOwn(d,'exploitationCostMinor')?['exploitationCostMinor']:[]),...(creating?['currency',...(Object.hasOwn(d,'rooms')?['rooms']:[])]:[])]:[])];
+    const keys=['action','organizationId','buildingId',...(deleting?['operationId','revision']:[]),...(editing?['operationId',...(!creating?['revision']:[]),'name','address',...(Object.hasOwn(d,'timeZone')?['timeZone']:[]),...(Object.hasOwn(d,'exploitationCostMinor')?['exploitationCostMinor']:[]),...(creating?['currency']:[]),...(Object.hasOwn(d,'rooms')?['rooms']:[]),...(Object.hasOwn(d,'layout')?['layout']:[]),...(Object.hasOwn(d,'roomCurrency')?['roomCurrency']:[])]:[])];
     if(editing&&Object.hasOwn(d,'exploitationCostMinor')&&d.exploitationCostMinor!==null&&!validAmount(d.exploitationCostMinor))fail('invalid-argument');
-    if(creating&&Object.hasOwn(d,'rooms')&&!validInitialRooms(d.rooms))fail('invalid-argument');
+    if(editing&&Object.hasOwn(d,'rooms')&&!validInitialRooms(d.rooms))fail('invalid-argument');
+    if(editing&&Object.hasOwn(d,'roomCurrency')&&!['VND','USD'].includes(d.roomCurrency))fail('invalid-argument');
+    if(editing&&Object.hasOwn(d,'layout')&&!validLayout(d.layout))fail('invalid-argument');
     if(Object.hasOwn(d,'timeZone')&&d.timeZone!==null&&!validZone(d.timeZone))fail('invalid-argument');
     if(!['read','update','prepareCreate','create','delete'].includes(d.action)||!id(d.organizationId)||!id(d.buildingId)||Object.keys(d).some(k=>!keys.includes(k)))fail('invalid-argument');
-    if(editing&&(!id(d.operationId)||(!creating&&(typeof d.revision!=='string'||!/^\d+:\d+$/.test(d.revision)))||typeof d.name!=='string'||!d.name.trim()||d.name.length>160||typeof d.address!=='string'||!d.address.trim()||d.address.length>500))fail('invalid-argument');
+    if(editing&&(!id(d.operationId)||(!creating&&(typeof d.revision!=='string'||!/^\d+:\d+$/.test(d.revision)))||typeof d.name!=='string'||!d.name.trim()||d.name.length>160||typeof d.address!=='string'||d.address.length>500))fail('invalid-argument');
     if(deleting&&(!id(d.operationId)||typeof d.revision!=='string'||!/^\d+:\d+$/.test(d.revision)))fail('invalid-argument');
     if(creating&&(!validZone(d.timeZone)||!['VND','USD'].includes(d.currency)))fail('invalid-argument');
     return db.runTransaction(async tx=>{
@@ -44,11 +76,11 @@ function createPropertyDetailsHandler({db,Timestamp,HttpsError}) {
       if(!org.exists||org.data().accessVersion!==2||!allows(member.data(),deleting?'deleteBuildings':'manageProperty',{organizationId:d.organizationId,userId:uid,buildingId:d.buildingId}))fail('permission-denied');
       if((creating||preparing)&&member.data().buildingScope!=='all')fail('permission-denied');
       const canSetRoomPrices=allows(member.data(),'overridePrices',{organizationId:d.organizationId,userId:uid,buildingId:d.buildingId});
-      if(creating&&(d.rooms??[]).some(r=>priceFields.some(k=>r.ratesMinor[k]!==null))&&!canSetRoomPrices)fail('permission-denied');
-      if(preparing)return {record:{id:d.buildingId,name:'',address:'',timeZone:'Asia/Ho_Chi_Minh',currency:organizationCurrency(org.data()),exploitationCostMinor:null,canSetRoomPrices,revision:'new'}};
+      if(editing&&(d.rooms??[]).some(r=>priceFields.some(k=>r.ratesMinor[k]!==null))&&!canSetRoomPrices)fail('permission-denied');
+      if(preparing)return {record:{id:d.buildingId,name:'',address:'',timeZone:'Asia/Ho_Chi_Minh',currency:organizationCurrency(org.data()),exploitationCostMinor:null,canSetRoomPrices,roomCurrency:organizationCurrency(org.data()),layout:layoutOf({}),revision:'new'}};
       const ref=db.doc(`buildings/${d.buildingId}`),doc=await tx.get(ref),old=doc.data();
       if(!creating&&!deleting&&(!old||old.organizationId!==d.organizationId))fail('not-found');
-      if(!editing&&!deleting)return {record:{id:doc.id,name:old.name??'',address:old.address??'',timeZone:old.timeZone??null,currency:old.currency??'VND',exploitationCostMinor:old.exploitationCostMinor??null,revision:revision(doc)}};
+      if(!editing&&!deleting)return {record:{id:doc.id,name:old.name??'',address:old.address??'',timeZone:old.timeZone??null,currency:old.currency??'VND',exploitationCostMinor:old.exploitationCostMinor??null,canSetRoomPrices,roomCurrency:org.data().displayCurrency??old.currency??'VND',layout:layoutOf(old),revision:revision(doc)}};
       const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
       const key=hash(['propertyDetails',d.organizationId,uid,d.operationId]);
       const operation=db.doc(`propertyOperations/${key}`),prior=await tx.get(operation);
@@ -86,23 +118,31 @@ function createPropertyDetailsHandler({db,Timestamp,HttpsError}) {
         if(!['VND','USD'].includes(creating?d.currency:old.currency??'VND'))fail('failed-precondition');
         patch.exploitationCostMinor=d.exploitationCostMinor;
       }
-      const initialRooms=creating?(d.rooms??[]):[];
+      if(Object.hasOwn(d,'layout'))Object.assign(patch,d.layout,{roomType:d.layout.roomType.trim()});
+      const initialRooms=d.rooms??[];
+      if(!creating&&initialRooms.length){
+        const peers=await tx.get(db.collection('rooms').where('organizationId','==',d.organizationId).where('buildingId','==',d.buildingId));
+        const taken=new Set(peers.docs.map(r=>normalized(String(r.data().roomNumber??''))));
+        if(initialRooms.some(r=>taken.has(normalized(r.roomNumber))))fail('already-exists');
+      }
+      const roomCurrency=d.roomCurrency??(creating?d.currency:old.currency??'VND');
+      if(initialRooms.length&&roomCurrency!==(org.data().displayCurrency??(creating?d.currency:old.currency??'VND')))fail('aborted');
+      if(initialRooms.length&&!['VND','USD'].includes(roomCurrency))fail('failed-precondition');
       const roomRefs=initialRooms.map((_,index)=>db.doc(`rooms/${hash(['propertyRoom',d.organizationId,d.buildingId,d.operationId,index])}`));
-      // Read every target before writing; a collision must never overwrite data.
-      for(const roomRef of roomRefs)if((await tx.get(roomRef)).exists)fail('already-exists');
+      // create() preconditions reject collisions atomically without one read per new room.
       if(creating) {
         patch.currency=d.currency;
         tx.create(ref,{...patch,organizationId:d.organizationId,createdAt:now,createdBy:uid,updatedAt:now,updatedBy:uid});
-        for(const [index,r] of initialRooms.entries()){
-          const room={roomNumber:r.roomNumber.trim(),roomType:r.roomType.trim(),area:r.area??0,currency:d.currency,rentalMode:'both',...Object.fromEntries(priceFields.map(k=>[k,r.ratesMinor[k]===null?null:r.ratesMinor[k]/(d.currency==='USD'?100:1)]))};
+      } else tx.update(ref,{...patch,updatedAt:now,updatedBy:uid});
+      for(const [index,r] of initialRooms.entries()){
+          const room={roomNumber:r.roomNumber.trim(),roomType:r.roomType.trim(),area:r.area??0,currency:roomCurrency,rentalMode:'both',...Object.fromEntries(priceFields.map(k=>[k,r.ratesMinor[k]===null?null:r.ratesMinor[k]/(roomCurrency==='USD'?100:1)]))};
           tx.create(roomRefs[index],{...room,organizationId:d.organizationId,buildingId:d.buildingId,createdAt:now,createdBy:uid,updatedAt:now,updatedBy:uid});
           tx.create(db.doc(`teamActivity/${key}_room_${index}`),{organizationId:d.organizationId,actorId:uid,action:'room_created',targetId:roomRefs[index].id,createdAt:now,before:null,after:{buildingId:d.buildingId,...room}});
         }
-      } else tx.update(ref,{...patch,updatedAt:now,updatedBy:uid});
       tx.create(operation,{organizationId:d.organizationId,actorId:uid,fingerprint,result,createdAt:now});
-      tx.create(db.doc(`teamActivity/${key}`),{organizationId:d.organizationId,actorId:uid,action:creating?'property_created':'property_details_updated',targetId:d.buildingId,createdAt:now,before:creating?null:{name:old.name??'',address:old.address??'',timeZone:old.timeZone??null,exploitationCostMinor:old.exploitationCostMinor??null,currency:old.currency??'VND'},after:patch});
+      tx.create(db.doc(`teamActivity/${key}`),{organizationId:d.organizationId,actorId:uid,action:creating?'property_created':'property_details_updated',targetId:d.buildingId,createdAt:now,before:creating?null:{...(d.layout?layoutOf(old):{}),name:old.name??'',address:old.address??'',timeZone:old.timeZone??null,exploitationCostMinor:old.exploitationCostMinor??null,currency:old.currency??'VND'},after:patch});
       return result;
-    });
+    }).catch(error=>{if(error.code===6)fail('already-exists');throw error;});
   };
 }
 module.exports={createPropertyDetailsHandler,validInitialRooms};

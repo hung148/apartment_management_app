@@ -537,7 +537,7 @@ class _PeriodInvoiceFormState extends State<PeriodInvoiceForm> {
                 WsNotice(
                   x.tr(
                     'No leases in this property yet.',
-                    'Tòa nhà chưa có hợp đồng.',
+                    'Cơ sở chưa có hợp đồng.',
                   ),
                   tone: WsTone.info,
                 ),

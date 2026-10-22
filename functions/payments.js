@@ -7,10 +7,12 @@ const {readReferenceRates,convertMinor}=require('./reference_rates');
 // V2 only. Amounts in commands are integer minor units (VND dong, USD cents).
 // Invoice creation/editing and booking payments have separate workflows.
 function createPaymentHandler({db, Timestamp, HttpsError}) {
+  const correct = require('./payment_corrections').createReceiptHandler({db, Timestamp, HttpsError});
   const fail = (code, message) => { throw new HttpsError(code, message); };
   const id = value => typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
   const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
   return async request => {
+    if (['receipts','correctReceipt'].includes(request.data?.action)) return correct(request);
     const uid = request.auth?.uid;
     if (!uid) fail('unauthenticated', 'payment_sign_in_required');
     const input = request.data;

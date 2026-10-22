@@ -41,7 +41,15 @@ function fakeDb(seed={}){
       }});
     return make({filters:[],order:null,max:Infinity,after:null});
   }
-  function apply(writes){for(const [m,r,v] of writes){
+  function apply(writes){
+    // Firestore commits atomically: check all existence preconditions first.
+    const present=new Set(store.keys());
+    for(const [m,r] of writes){
+      if(m==='create'&&present.has(r.path))throw new CodeError('already-exists','create');
+      if(m==='update'&&!present.has(r.path))throw new CodeError('not-found','update');
+      if(m==='delete')present.delete(r.path);else present.add(r.path);
+    }
+    for(const [m,r,v] of writes){
     if(m==='create'&&store.has(r.path))throw new CodeError('already-exists','create');
     if(m==='update'&&!store.has(r.path))throw new CodeError('not-found','update');
     if(m==='delete'){store.delete(r.path);continue;}

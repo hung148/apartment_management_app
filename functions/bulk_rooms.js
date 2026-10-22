@@ -38,7 +38,7 @@ function createBulkRoomsHandler({db,Timestamp,HttpsError}) {
       const names=new Set(peers.docs.map(p=>normalized(p.data().roomNumber)));
       if(d.rooms.some(r=>names.has(normalized(r.roomNumber))))fail('already-exists');
       const refs=d.rooms.map((_,index)=>db.doc(`rooms/${hash(['bulkRoom',d.organizationId,uid,d.operationId,index])}`));
-      for(const ref of refs)if((await tx.get(ref)).exists)fail('already-exists');
+      // create() preconditions reject collisions atomically without target reads.
       const now=Timestamp.now(),result={roomIds:refs.map(r=>r.id)};
       for(const [index,r] of d.rooms.entries()){
         const data={organizationId:d.organizationId,buildingId:d.buildingId,roomNumber:r.roomNumber.trim(),roomType:r.roomType.trim(),area:r.area??0,currency,rentalMode:'both',
@@ -50,7 +50,7 @@ function createBulkRoomsHandler({db,Timestamp,HttpsError}) {
       tx.update(building.ref,{roomInventoryUpdatedAt:now});
       tx.create(operation,{organizationId:d.organizationId,actorId:uid,fingerprint,result,createdAt:now});
       return result;
-    });
+    }).catch(error=>{if(error.code===6)throw new HttpsError('already-exists','room_already-exists');throw error;});
   };
 }
 module.exports={createBulkRoomsHandler};

@@ -132,7 +132,7 @@ class _ServiceFeesScreenState extends State<ServiceFeesScreen> {
           title: x.tr('Service fees', 'Phí dịch vụ'),
           help: x.tr(
             'Defaults for every room in this property. Room-only prices are set from the room list.',
-            'Áp dụng cho mọi phòng của tòa nhà. Giá riêng từng phòng đặt trong danh sách phòng.',
+            'Áp dụng cho mọi phòng của cơ sở. Giá riêng từng phòng đặt trong danh sách phòng.',
           ),
           actions: [
             if (canPrice)

@@ -73,7 +73,7 @@ void main() {
       final id = store.buildings.single['id'] as String;
       await openBuildingPage(tester, 'property', buildingId: id);
       await enter(tester, 'property-name', 'Riverside renamed');
-      await press(tester, 'Save property details');
+      await press(tester, 'Save');
       expect(store.buildings.single['name'], 'Riverside renamed');
       // No reload or "back" in the dialog: its X closes it.
       expect(

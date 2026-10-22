@@ -8,6 +8,7 @@ import '../../utils/money_conversion.dart';
 import '../../utils/app_number.dart';
 import '../../utils/localizations/app_localizations.dart';
 import 'property_contract_screen.dart' show contractDate;
+import 'room_picker.dart';
 import 'ws_ui.dart';
 
 /// Lease page actions (2026-10-04, Tom): the short forms that used to be
@@ -66,8 +67,7 @@ String leaseActionText(BuildContext context, String key) {
     'moveTitle': ['Move to another room', 'Chuyển sang phòng khác'],
     'moveRoom': ['Move room', 'Chuyển phòng'],
     'room': ['New room', 'Phòng mới'],
-    'building': ['Building', 'Tòa nhà'],
-    'roomNumber': ['Room {n}', 'Phòng {n}'],
+    'building': ['Building', 'Cơ sở'],
     'liveWith': ['Lives with', 'Ở cùng'],
     'moveDate': ['Moved on (YYYY-MM-DD)', 'Ngày chuyển (YYYY-MM-DD)'],
     'noRooms': [
@@ -438,6 +438,14 @@ class _LifecycleDialogState extends State<_LifecycleDialog> {
   }
 
   bool get _roommate => _record?['isMainTenant'] == false;
+
+  /// The chosen destination's room number (null = none chosen yet).
+  String? get _roomLabel {
+    final number = _rooms
+        .where((v) => v['id'] == _room)
+        .firstOrNull?['roomNumber'];
+    return number == null ? null : '$number';
+  }
   List<Map> get _mains =>
       ((_rooms.where((v) => v['id'] == _room).firstOrNull?['mainTenants']
                   as List?) ??
@@ -573,29 +581,43 @@ class _LifecycleDialogState extends State<_LifecycleDialog> {
                       // A new building starts with no room chosen.
                       key: ValueKey('lease-change-rooms-$_building'),
                       padding: const EdgeInsets.only(bottom: WsSpace.sm),
-                      child: DropdownButtonFormField<String>(
-                        key: const ValueKey('lease-change-room'),
-                        initialValue: _room,
-                        isExpanded: true,
-                        decoration: InputDecoration(labelText: lt('room')),
-                        items: [
-                          for (final v in _rooms)
-                            DropdownMenuItem(
-                              value: v['id'] as String,
-                              child: Text(
-                                lt(
-                                  'roomNumber',
-                                ).replaceAll('{n}', '${v['roomNumber']}'),
-                              ),
-                            ),
-                        ],
-                        onChanged: locked
-                            ? null
-                            : (v) => setState(() {
-                                _room = v;
-                                _main = null;
-                              }),
-                        validator: (v) => v == null ? lt('required') : null,
+                      // 2026-10-22 (Tom): the same room box and list as
+                      // the booking and lease forms (search for big buildings).
+                      child: FormField<String>(
+                        validator: (_) => _room == null ? lt('required') : null,
+                        builder: (field) => RoomPickerField(
+                          fieldKey: 'lease-change-room',
+                          label: lt('room'),
+                          value: _roomLabel,
+                          errorText: field.errorText,
+                          onPick: locked
+                              ? null
+                              : () async {
+                                  final id = await showRoomPicker(
+                                    context,
+                                    keyPrefix: 'lease-change-room',
+                                    selectedId: _room,
+                                    rooms: [
+                                      for (final v in _rooms)
+                                        RoomChoice(
+                                          v['id'] as String,
+                                          '${v['roomNumber']}',
+                                        ),
+                                    ],
+                                  );
+                                  if (!mounted ||
+                                      id == null ||
+                                      id == _room ||
+                                      !_rooms.any((v) => v['id'] == id)) {
+                                    return;
+                                  }
+                                  setState(() {
+                                    _room = id;
+                                    _main = null;
+                                  });
+                                  field.didChange(id);
+                                },
+                        ),
                       ),
                     ),
                   // Someone who lives with a main tenant moves in with another.

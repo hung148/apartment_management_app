@@ -17,7 +17,6 @@ import '../team/booking_workspace_screen.dart';
 import '../team/housekeeping_screen.dart';
 import '../team/property_contract_screen.dart';
 import '../team/property_details_screen.dart';
-import '../team/property_layout_screen.dart';
 import '../team/room_directory.dart';
 import '../team/service_fees_screen.dart';
 import '../team/technical_problems_screen.dart';
@@ -34,7 +33,7 @@ String calText(BuildContext context, String key) {
     'today': ['Today', 'Hôm nay'],
     'modeDay': ['Day', 'Ngày'],
     'modeMonth': ['Month', 'Tháng'],
-    'newBuilding': ['New building', 'Tạo tòa nhà'],
+    'newBuilding': ['New building', 'Tạo cơ sở'],
     'newStay': ['Book', 'Đặt phòng'],
     'cleaning': ['Cleaning', 'Dọn phòng'],
     'assignCleaning': ['Assign cleaning', 'Giao dọn phòng'],
@@ -49,12 +48,12 @@ String calText(BuildContext context, String key) {
     'newRoom': ['New room', 'Tạo phòng'],
     'firstBuilding': [
       'Create your first building to start the calendar.',
-      'Tạo tòa nhà đầu tiên để bắt đầu dùng lịch.',
+      'Tạo cơ sở đầu tiên để bắt đầu dùng lịch.',
     ],
     'prev': ['Previous month', 'Tháng trước'],
     'next': ['Next month', 'Tháng sau'],
-    'allProperties': ['All properties', 'Tất cả tòa nhà'],
-    'property': ['Property', 'Tòa nhà'],
+    'allProperties': ['All properties', 'Tất cả cơ sở'],
+    'property': ['Property', 'Cơ sở'],
     'filterAll': ['All rooms', 'Tất cả phòng'],
     'filterFree': ['Free today', 'Trống hôm nay'],
     'filterTaken': ['Occupied today', 'Có khách hôm nay'],
@@ -65,7 +64,7 @@ String calText(BuildContext context, String key) {
     'expand': ['Bigger rows', 'Mở rộng'],
     'noProperties': [
       'There is no property you can see on the calendar.',
-      'Chưa có tòa nhà nào bạn được xem lịch.',
+      'Chưa có cơ sở nào bạn được xem lịch.',
     ],
     'noRooms': ['No rooms yet', 'Chưa có phòng'],
     'noMatch': ['No room matches this filter.', 'Không có phòng phù hợp.'],
@@ -83,10 +82,22 @@ String calText(BuildContext context, String key) {
     'propertyLabel': ['Property', 'Cơ sở'],
     'pickProperty': ['Choose property', 'Chọn cơ sở'],
     'addProperty': ['New property', 'Thêm cơ sở mới'],
+    'rentalTitle': ['Choose rental type', 'Chọn hình thức thuê'],
+    'rentalPrompt': [
+      'How would you like to book {room}?',
+      'Bạn muốn đặt {room} theo hình thức nào?',
+    ],
+    'rentalShort': ['Short-term stay', 'Thuê ngắn hạn'],
+    'rentalLong': ['Long-term stay', 'Thuê dài hạn'],
+    'rentalShortHint': ['By the hour or day', 'Theo giờ hoặc theo ngày'],
+    'rentalLongHint': [
+      'By the month or several months',
+      'Theo tháng hoặc nhiều tháng',
+    ],
     'roomHead': ['Room', 'Phòng'],
     'needsTimeZone': [
       'Set this property\'s time zone first (Settings › Property).',
-      'Cần đặt múi giờ cho tòa nhà này trước (Cài đặt › Tòa nhà).',
+      'Cần đặt múi giờ cho cơ sở này trước (Cài đặt › Cơ sở).',
     ],
     'shortStay': ['Short stay', 'Ngắn ngày'],
     'longStay': ['Long-term lease', 'Thuê dài hạn'],
@@ -470,6 +481,25 @@ class _RoomCalendarState extends State<RoomCalendar> {
 
   void _clearHover() => _hover.value = null;
 
+  /// Empty rows added under the last room while scrolling down (2026-10-12,
+  /// Tom: the calendar scrolls down without end, like the dates sideways).
+  int _moreRows = 0;
+
+  /// Near the bottom: a screen's worth of empty rows more (up to a limit,
+  /// so the page stays light).
+  void _moreBelow() {
+    if (!_vBody.hasClients || _vBody.positions.length != 1) return;
+    final p = _vBody.position;
+    if (p.maxScrollExtent <= 0 ||
+        p.pixels < p.maxScrollExtent - 300 ||
+        _moreRows >= 600) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _moreRows < 600) setState(() => _moreRows += 30);
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -488,6 +518,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
     // next mouse move.
     _hBody.addListener(_clearHover);
     _vBody.addListener(_clearHover);
+    _vBody.addListener(_moreBelow);
     _load();
   }
 
@@ -864,7 +895,9 @@ class _RoomCalendarState extends State<RoomCalendar> {
                 now.day == today.day
             ? now
             : start.add(const Duration(hours: 9));
-        target = _x(at, _lastDayW) - _lastViewW / 4;
+        // A day before now on screen (a quarter of the view when that is
+        // less: phones).
+        target = _x(at, _lastDayW) - math.min(_lastViewW / 4, _lastDayW);
       } else if (_jumpTo != null) {
         target = _jumpTo!.difference(_month).inDays * _lastDayW;
       }
@@ -939,10 +972,9 @@ class _RoomCalendarState extends State<RoomCalendar> {
   }
 
   double _rowH(BuildContext context) {
-    // Client's design (2026-10-11): 48 px rows; the bar keeps 8 px above
-    // and below (barPad in _grid).
+    // Compact rows retain 24 px stay bars with 3 px above and below.
     final scale = MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.3);
-    return 48.0 * scale;
+    return 30.0 * scale;
   }
 
   // ---- Layout ----
@@ -965,12 +997,24 @@ class _RoomCalendarState extends State<RoomCalendar> {
     // Short screens (phone landscape): the header stays one scrolling line
     // so the days keep most of the height.
     return LayoutBuilder(
-      builder: (context, box) => _layout(
-        context,
-        oneLine: box.maxHeight < 480,
-        narrow: box.maxWidth < 600,
-        width: box.maxWidth,
-      ),
+      builder: (context, box) {
+        final content = _layout(
+          context,
+          oneLine: box.maxHeight < 480,
+          narrow: box.maxWidth < 600,
+          width: box.maxWidth,
+        );
+        // Embedded landscape screens can leave less space than the wrapped
+        // header and date row need. Keep the whole calendar reachable by
+        // scrolling rather than squeezing the grid to a negative height.
+        if (box.maxHeight < 320) {
+          return SingleChildScrollView(
+            key: const ValueKey('calendar-compact-scroll'),
+            child: SizedBox(height: 320, child: content),
+          );
+        }
+        return content;
+      },
     );
   }
 
@@ -982,9 +1026,9 @@ class _RoomCalendarState extends State<RoomCalendar> {
   }) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    // The page's side margin (the client's design has the calendar as a
-    // card with room around it).
-    final margin = width >= 1200 ? 40.0 : (width >= 600 ? 24.0 : 12.0);
+    // Keep a small card gutter so the seven visible days get the window's
+    // width, including more breathing room for their two-hour labels.
+    const margin = 12.0;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1016,8 +1060,8 @@ class _RoomCalendarState extends State<RoomCalendar> {
           child: Padding(
             // Phones: the calendar uses the whole width (every pixel counts
             // there); wider screens: a card with room around it. The card
-            // ends at the last room (2026-10-12, Tom: no empty space below);
-            // with more rooms than fit it fills the height and scrolls.
+            // always fills the height (2026-10-12, Tom: a fixed size); under
+            // the last room the grid goes on with empty rows.
             padding: narrow
                 ? const EdgeInsets.only(top: 8)
                 : EdgeInsets.fromLTRB(
@@ -1030,7 +1074,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Flexible(
+                Expanded(
                   child: Container(
                     key: const ValueKey('calendar-card'),
                     clipBehavior: Clip.antiAlias,
@@ -1149,7 +1193,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
     );
     final picker = _buildingPicker(
       context,
-      maxWidth: oneLine ? 260 : (big ? 420 : 240),
+      maxWidth: oneLine ? 260 : (big ? 420 : width - 2 * margin),
     );
     final Widget content;
     if (oneLine) {
@@ -1187,21 +1231,25 @@ class _RoomCalendarState extends State<RoomCalendar> {
       content = Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Expanded(child: title(flexible: true)),
-              if (picker != null) ...[
-                const SizedBox(width: 8),
-                // At the right edge, like the one-line header.
-                Flexible(
-                  child: Align(
-                    alignment: AlignmentDirectional.centerEnd,
-                    child: picker,
+          if (width < 600) ...[
+            title(flexible: true),
+            if (picker != null) ...[const SizedBox(height: 8), picker],
+          ] else
+            Row(
+              children: [
+                Expanded(child: title(flexible: true)),
+                if (picker != null) ...[
+                  const SizedBox(width: 8),
+                  // At the right edge, like the one-line header.
+                  Flexible(
+                    child: Align(
+                      alignment: AlignmentDirectional.centerEnd,
+                      child: picker,
+                    ),
                   ),
-                ),
+                ],
               ],
-            ],
-          ),
+            ),
           const SizedBox(height: 4),
           Center(child: nav),
         ],
@@ -1224,7 +1272,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
     );
   }
 
-  /// The month(s) on screen, e.g. "Tháng 10, 2026"; both months when the
+  /// The month(s) on screen, e.g. "10, 2026"; both months when the
   /// screen shows the end of one and the start of the next.
   Widget _monthLabel(
     BuildContext context, {
@@ -1250,7 +1298,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
     String one(DateTime m) => narrow
         ? '${_two(m.month)}/${m.year}'
         : vi
-        ? 'Tháng ${m.month}, ${m.year}'
+        ? '${m.month}, ${m.year}'
         : '${en[m.month - 1]} ${m.year}';
     String label(DateTime a, DateTime b) {
       if (a == b) return one(a);
@@ -1258,7 +1306,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
       return narrow
           ? '${_two(a.month)}–${_two(b.month)}/${a.year}'
           : vi
-          ? 'Tháng ${a.month} – ${b.month}, ${a.year}'
+          ? '${a.month} – ${b.month}, ${a.year}'
           : '${en[a.month - 1]} – ${en[b.month - 1]} ${a.year}';
     }
 
@@ -1280,6 +1328,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
   bool _pickerOpen = false;
 
   static const _newPropertyValue = '\u0000new';
+  static const _editPropertyValue = '\u0000edit';
 
   /// The client's property picker (2026-10-11): a box with the property's
   /// icon, a small "CƠ SỞ" label and its name. Its menu lists every property
@@ -1298,7 +1347,8 @@ class _RoomCalendarState extends State<RoomCalendar> {
     final pickable = _choices.any((b) => b.id == current.id)
         ? _choices
         : [..._choices, (id: current.id, name: current.name)];
-    final menu = pickable.length > 1 || canCreate;
+    final canEdit = _buildingPages(current).isNotEmpty;
+    final menu = pickable.length > 1 || canCreate || canEdit;
     final card = Container(
       key: ValueKey(
         menu ? 'calendar-building-${current.id}' : 'calendar-building-box',
@@ -1343,14 +1393,11 @@ class _RoomCalendarState extends State<RoomCalendar> {
                   ),
                 ),
                 const SizedBox(height: 2),
-                // The whole name on one line (no "…"): the box is as wide as
-                // it needs up to its limit; past that the end fades.
+                // Keep the complete property name visible at the width available.
                 Text(
                   current.name,
                   key: const ValueKey('calendar-building-name'),
-                  maxLines: 1,
-                  softWrap: false,
-                  overflow: TextOverflow.fade,
+                  softWrap: true,
                   style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
@@ -1381,7 +1428,16 @@ class _RoomCalendarState extends State<RoomCalendar> {
         tooltip: c('pickProperty'),
         position: PopupMenuPosition.under,
         offset: const Offset(0, 8),
-        constraints: const BoxConstraints(minWidth: 300, maxWidth: 380),
+        constraints: BoxConstraints(
+          minWidth: math.min(300, MediaQuery.sizeOf(context).width - 24),
+          maxWidth: math.min(380, MediaQuery.sizeOf(context).width - 24),
+          maxHeight: math.max(
+            48,
+            MediaQuery.sizeOf(context).height -
+                MediaQuery.paddingOf(context).vertical -
+                24,
+          ),
+        ),
         color: scheme.surfaceContainerLowest,
         surfaceTintColor: Colors.transparent,
         elevation: 8,
@@ -1392,46 +1448,99 @@ class _RoomCalendarState extends State<RoomCalendar> {
           setState(() => _pickerOpen = false);
           if (v == _newPropertyValue) {
             _newBuilding();
+          } else if (v == _editPropertyValue) {
+            _openBuilding(current);
           } else {
             _pickProperty(v);
           }
         },
-        itemBuilder: (_) => [
-          PopupMenuItem<String>(
-            enabled: false,
-            height: 36,
-            child: Text(c('pickProperty').toUpperCase(), style: heading),
-          ),
-          for (final b in pickable)
-            PopupMenuItem<String>(
-              key: ValueKey('calendar-pick-${b.id}'),
-              value: b.id,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: _pickRow(context, b.name, b.id == current.id),
-            ),
-          if (canCreate) ...[
-            const PopupMenuDivider(),
-            PopupMenuItem<String>(
-              key: const ValueKey('calendar-new-building'),
-              value: _newPropertyValue,
-              child: Row(
+        itemBuilder: (menuContext) => [
+          _CalendarPropertyMenuHeading(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: math.max(
+                  160,
+                  MediaQuery.sizeOf(context).height -
+                      MediaQuery.paddingOf(context).vertical -
+                      56,
+                ),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.add, color: scheme.primary),
-                  const SizedBox(width: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          c('pickProperty').toUpperCase(),
+                          style: heading,
+                        ),
+                      ),
+                      if (canCreate)
+                        IconButton(
+                          key: const ValueKey('calendar-new-building'),
+                          tooltip: c('addProperty'),
+                          icon: const Icon(Icons.add),
+                          onPressed: () =>
+                              Navigator.pop(menuContext, _newPropertyValue),
+                        ),
+                    ],
+                  ),
+                  Container(
+                    key: const ValueKey('calendar-current-building'),
+                    decoration: BoxDecoration(
+                      color: scheme.primary.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(child: _pickRow(context, current.name, false)),
+                        if (canEdit)
+                          IconButton(
+                            key: const ValueKey('calendar-edit-building'),
+                            tooltip:
+                                AppTranslations.of(
+                                      context,
+                                    ).locale.languageCode ==
+                                    'vi'
+                                ? 'Chỉnh sửa cơ sở'
+                                : 'Edit property',
+                            icon: const Icon(Icons.edit_outlined),
+                            onPressed: () =>
+                                Navigator.pop(menuContext, _editPropertyValue),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
                   Flexible(
-                    child: Text(
-                      c('addProperty'),
-                      maxLines: 1,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        color: scheme.primary,
-                        fontWeight: FontWeight.w700,
+                    child: SingleChildScrollView(
+                      key: const ValueKey('calendar-property-options'),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          for (final b in pickable)
+                            if (b.id != current.id)
+                              PopupMenuItem<String>(
+                                key: ValueKey('calendar-pick-${b.id}'),
+                                value: b.id,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                ),
+                                child: _pickRow(
+                                  context,
+                                  b.name,
+                                  b.id == current.id,
+                                ),
+                              ),
+                        ],
                       ),
                     ),
                   ),
                 ],
               ),
             ),
-          ],
+          ),
         ],
         child: card,
       ),
@@ -1877,18 +1986,23 @@ class _RoomCalendarState extends State<RoomCalendar> {
     // (2026-10-05, Tom: "too much waste space"), within limits; a long name
     // goes on two smaller lines.
     final roomW = _roomColumnWidth(context, rooms, wide);
-    // 18 px an hour on every screen (2026-10-04, Tom: "at least it should be
-    // able to show a bar for 1 hour"): a 1-hour stay is drawn at its real
-    // length, as wide as the shortest bar (18 px). A day is 432 px: about
-    // 1.6 days on an 800 px window, 3 on 1440 px, most of a day on a phone.
-    // The loaded months scroll sideways.
-    const dayW = calHourW * 24;
+    // Six days on desktop (2026-10-13, Tom). Narrow windows prioritize
+    // 28px two-hour cells and scroll horizontally instead of squeezing them.
+    final viewW = constraints.maxWidth - roomW;
+    final dayW = (viewW / 6)
+        .clamp(wide ? calMinDayW : 28.0 * 12, calHourW * 24)
+        .floorToDouble();
     _lastDayW = dayW; // for "Today" scrolling
-    _lastViewW = constraints.maxWidth - roomW; // for the month label
+    _lastViewW = viewW; // for the month label
+    // The hours under a date: every 2 hours (calSlotHours), the labels
+    // thin out on narrow days; the grid's light lines, the hover cell and the
+    // hover cell use the same slots.
+    final step = calSlotHours(dayW);
+    final slots = 24 ~/ step;
     // The client's day header (2026-10-11): "T5 - 8/10/2026", and under it
-    // the hours 00 02 … 22, one for every 2 hours. Short screens: lower.
-    final headH = (constraints.maxHeight < 320 ? 52.0 : 72.0) * scale;
-    final headBg = scheme.surfaceContainerLow;
+    // the hours 00 02 … 22, one for every 2 hours. Keep both bands compact.
+    final headH = 48.0 * scale;
+    final headBg = calHeadTint(context);
     final gridW = dayW * _days;
     final today = _today;
     final todayCol =
@@ -1906,7 +2020,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
     // Each room's stays, placed in lanes. Only stays that overlap each other
     // (should not happen) get a lane of their own; the row grows for them
     // so every bar keeps its full height (2026-10-05, Tom).
-    final barPad = 8.0 * rowH / 48;
+    final barPad = 3.0 * scale;
     final barH = rowH - 2 * barPad;
     List<(CalBar, double, double, int)> place(CalProperty p, CalRoom room) {
       final placed = <(CalBar, double, double)>[];
@@ -1958,6 +2072,30 @@ class _RoomCalendarState extends State<RoomCalendar> {
       y += height;
     }
     final gridH = y;
+    // Empty rows under the last room fill the card (2026-10-12, Tom: no
+    // white space; the calendar keeps a fixed size whatever the number of
+    // rooms). They have the lines but no room; hover works on them too.
+    final bodySpace = constraints.maxHeight.isFinite
+        ? constraints.maxHeight - headH
+        : 0.0;
+    // Enough to fill the card, a screen more to scroll into, and more again
+    // each time the scroll nears the bottom (_moreBelow).
+    final screenRows = bodySpace > 0 ? (bodySpace / rowH).ceil() : 0;
+    final fillCount =
+        math.max(0, ((bodySpace - gridH) / rowH).ceil()) +
+        screenRows +
+        _moreRows;
+    final fillers = <double>[
+      for (var i = 0; i < fillCount; i++) gridH + i * rowH,
+    ];
+    final fillH = fillers.isEmpty ? gridH : fillers.last + rowH;
+    // Every row the mouse can highlight: the rooms, then the empty rows
+    // (2026-10-12, Tom: hover works the same on both).
+    final hoverRows = <({double top, double height, String? name})>[
+      for (final r in rows)
+        (top: r.top, height: r.height, name: r.room?.number),
+      for (final top in fillers) (top: top, height: rowH, name: null),
+    ];
 
     final bars = <Widget>[];
     // Every bar's place, for the edge bubbles (2026-10-04, Tom).
@@ -2024,7 +2162,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
       if (s.bar.type != 'cleaning') continue;
       bottomRoom = math.max(bottomRoom, s.top + s.height + below - gridH);
     }
-    final slotW = dayW / 12;
+    final slotW = dayW / slots;
     // The app's own slate, strong (2026-10-12, Tom: blue did not fit the
     // theme, a light tint did not stand out): a dark cell, solid room and
     // hour, light grey bands.
@@ -2032,13 +2170,11 @@ class _RoomCalendarState extends State<RoomCalendar> {
     final hoverFill = accent.withValues(alpha: 0.55);
     void hoverAt(Offset at) {
       (int, int)? cell;
-      if (at.dy < gridH && at.dx >= 0 && at.dx < gridW) {
-        for (var i = 0; i < rows.length; i++) {
-          final r = rows[i];
+      if (at.dx >= 0 && at.dx < gridW) {
+        for (var i = 0; i < hoverRows.length; i++) {
+          final r = hoverRows[i];
           if (at.dy >= r.top && at.dy < r.top + r.height) {
-            if (!r.band && r.room != null) {
-              cell = (i, (at.dx / slotW).floor());
-            }
+            cell = (i, (at.dx / slotW).floor());
             break;
           }
         }
@@ -2053,7 +2189,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
           child: ValueListenableBuilder<(int, int)?>(
             valueListenable: _hover,
             builder: (context, cell, _) =>
-                cell == null || cell.$1 >= rows.length
+                cell == null || cell.$1 >= hoverRows.length
                 ? const SizedBox.shrink()
                 : Stack(children: draw(cell)),
           ),
@@ -2068,7 +2204,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
       onExit: (_) => _clearHover(),
       child: SizedBox(
         width: gridW,
-        height: gridH + bottomRoom,
+        height: math.max(fillH, gridH + bottomRoom),
         child: Stack(
           children: [
             Positioned.fill(
@@ -2086,7 +2222,14 @@ class _RoomCalendarState extends State<RoomCalendar> {
                         _openCell(
                           row.p,
                           room,
-                          DateTime.utc(_month.year, _month.month, 1 + day),
+                          DateTime.utc(
+                            _month.year,
+                            _month.month,
+                            1 + day,
+                            ((d.localPosition.dx % dayW) / dayW * 24 / step)
+                                    .floor() *
+                                step,
+                          ),
                         );
                       }
                       return;
@@ -2097,10 +2240,12 @@ class _RoomCalendarState extends State<RoomCalendar> {
                   painter: _GridPainter(
                     days: _days,
                     dayW: dayW,
+                    slots: slots,
                     todayCol: todayCol,
                     rows: [
                       for (final r in rows)
                         (r.top, r.height, r.band, r.room?.blocked == true),
+                      for (final top in fillers) (top, rowH, false, false),
                     ],
                     line: scheme.outlineVariant.withValues(alpha: 0.6),
                     rowLine: scheme.outlineVariant,
@@ -2138,8 +2283,8 @@ class _RoomCalendarState extends State<RoomCalendar> {
                     key: const ValueKey('calendar-hover-row'),
                     left: 0,
                     right: 0,
-                    top: rows[cell.$1].top,
-                    height: rows[cell.$1].height,
+                    top: hoverRows[cell.$1].top,
+                    height: hoverRows[cell.$1].height,
                     child: ColoredBox(color: band),
                   ),
                   Positioned(
@@ -2147,15 +2292,15 @@ class _RoomCalendarState extends State<RoomCalendar> {
                     left: cell.$2 * slotW,
                     width: slotW,
                     top: 0,
-                    height: gridH,
+                    height: math.max(fillH, gridH),
                     child: ColoredBox(color: band),
                   ),
                   Positioned(
                     key: const ValueKey('calendar-hover-cell'),
                     left: cell.$2 * slotW,
-                    top: rows[cell.$1].top,
+                    top: hoverRows[cell.$1].top,
                     width: slotW,
-                    height: rows[cell.$1].height,
+                    height: hoverRows[cell.$1].height,
                     child: DecoratedBox(
                       decoration: BoxDecoration(
                         color: hoverFill,
@@ -2167,18 +2312,6 @@ class _RoomCalendarState extends State<RoomCalendar> {
                 ],
               ),
             ),
-            // The now line under the bars (2026-10-04, Tom: it ran through a
-            // name): full red in empty cells, faint through a bar's colour,
-            // never over a name or an end label (they sit on light boxes).
-            if (nowX != null)
-              Positioned(
-                key: const ValueKey('calendar-now-line'),
-                left: nowX - 1,
-                width: 2,
-                top: 0,
-                bottom: 0,
-                child: IgnorePointer(child: ColoredBox(color: nowColor)),
-              ),
             ...bars,
             // A bar cut by the screen edge with only a sliver left shows a
             // bubble next to that sliver: name and status (2026-10-04, Tom).
@@ -2189,10 +2322,22 @@ class _RoomCalendarState extends State<RoomCalendar> {
                   spots,
                   constraints.maxWidth - roomW,
                   gridW,
-                  gridH,
+                  // Down into the empty rows too: a stay in the last room can
+                  // put its bubble below it.
+                  math.max(fillH, gridH),
                 ),
               ),
             ),
+            // Always above bars and bubbles, without intercepting taps.
+            if (nowX != null)
+              Positioned(
+                key: const ValueKey('calendar-now-line'),
+                left: nowX - 1,
+                width: 2,
+                top: 0,
+                bottom: 0,
+                child: IgnorePointer(child: ColoredBox(color: nowColor)),
+              ),
           ],
         ),
       ),
@@ -2202,11 +2347,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
     final weekdays = vi
         ? const ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN']
         : const ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    // The 2 hours holding the current time: their hour is in red.
-    final nowSlot = nowX == null || todayCol == null
-        ? null
-        : ((nowX / dayW - todayCol) * 12).floor().clamp(0, 11);
-    final hourH = headH < 60 ? 20.0 : 26.0; // as in _dayCell
+    final hourH = headH * 20 / 48; // as in _dayCell
     final header = ColoredBox(
       color: headBg,
       child: SizedBox(
@@ -2224,10 +2365,29 @@ class _RoomCalendarState extends State<RoomCalendar> {
                     dayW,
                     headH,
                     i == todayCol,
-                    i == todayCol ? nowSlot : null,
+                    step,
                   ),
               ],
             ),
+            // Now: a red dot where the now line starts (2026-10-14, Tom). The
+            // hour labels stay the same on every day; a red hour badge used
+            // to hide the labels on both sides of it on today's column.
+            if (nowX != null)
+              Positioned(
+                key: const ValueKey('calendar-now-head'),
+                left: nowX - 4,
+                width: 8,
+                bottom: 0,
+                height: 8,
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: nowColor,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+              ),
             // The hovered cell's day (light) and hour (solid, white text),
             // over the labels.
             Positioned.fill(
@@ -2235,7 +2395,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
                 (cell) => [
                   Positioned(
                     key: const ValueKey('calendar-hover-day'),
-                    left: (cell.$2 ~/ 12) * dayW,
+                    left: (cell.$2 ~/ slots) * dayW,
                     width: dayW - 1,
                     top: 0,
                     height: headH - hourH,
@@ -2243,8 +2403,11 @@ class _RoomCalendarState extends State<RoomCalendar> {
                   ),
                   Positioned(
                     key: const ValueKey('calendar-hover-time'),
-                    left: cell.$2 * slotW + 2,
-                    width: slotW - 4,
+                    left: ((cell.$2 + .5) * slotW - 15 * scale).clamp(
+                      0.0,
+                      gridW - 30 * scale,
+                    ),
+                    width: 30 * scale,
                     top: headH - hourH + 1,
                     height: hourH - 3,
                     child: DecoratedBox(
@@ -2253,14 +2416,20 @@ class _RoomCalendarState extends State<RoomCalendar> {
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Center(
-                        child: Text(
-                          _two((cell.$2 % 12) * 2),
-                          maxLines: 1,
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            height: 1,
-                            fontWeight: FontWeight.w700,
-                            color: onAccent,
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 2),
+                            child: Text(
+                              _two((cell.$2 % slots) * step),
+                              maxLines: 1,
+                              style: TextStyle(
+                                fontSize: 12,
+                                height: 1,
+                                fontWeight: FontWeight.w700,
+                                color: onAccent,
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -2275,7 +2444,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
     );
     final labels = SizedBox(
       width: roomW,
-      height: gridH + bottomRoom,
+      height: math.max(fillH, gridH + bottomRoom),
       child: Stack(
         children: [
           for (final row in rows)
@@ -2286,6 +2455,23 @@ class _RoomCalendarState extends State<RoomCalendar> {
               height: row.height,
               child: _roomLabel(context, row.p, row.room),
             ),
+          // The empty rows' room cells: no name.
+          for (final top in fillers)
+            Positioned(
+              left: 0,
+              top: top,
+              width: roomW,
+              height: rowH,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: calHeadTint(context),
+                  border: Border(
+                    right: BorderSide(color: scheme.outlineVariant),
+                    bottom: BorderSide(color: scheme.outlineVariant),
+                  ),
+                ),
+              ),
+            ),
           // The hovered cell's room: solid, its name in white.
           Positioned.fill(
             child: hovered(
@@ -2293,9 +2479,9 @@ class _RoomCalendarState extends State<RoomCalendar> {
                 Positioned(
                   key: const ValueKey('calendar-hover-room'),
                   left: 0,
-                  top: rows[cell.$1].top,
+                  top: hoverRows[cell.$1].top,
                   width: roomW - 1,
-                  height: rows[cell.$1].height - 1,
+                  height: hoverRows[cell.$1].height - 1,
                   child: ColoredBox(
                     color: accent,
                     child: Padding(
@@ -2303,12 +2489,12 @@ class _RoomCalendarState extends State<RoomCalendar> {
                       child: Align(
                         alignment: AlignmentDirectional.centerStart,
                         child: Text(
-                          rows[cell.$1].room?.number ?? '',
+                          hoverRows[cell.$1].name ?? '',
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: _roomNameStyle(
                             context,
-                            rows[cell.$1].room?.number ?? '',
+                            hoverRows[cell.$1].name ?? '',
                           )?.copyWith(color: onAccent),
                         ),
                       ),
@@ -2325,13 +2511,11 @@ class _RoomCalendarState extends State<RoomCalendar> {
     final drag = ScrollConfiguration.of(
       context,
     ).copyWith(dragDevices: PointerDeviceKind.values.toSet());
-    // As tall as the rooms need (the card ends at the last room), at most
-    // the space there is.
-    final contentH = headH + gridH + bottomRoom;
+    // The whole card (the empty rows fill what the rooms do not).
     return SizedBox(
       height: constraints.maxHeight.isFinite
-          ? math.min(constraints.maxHeight, contentH)
-          : contentH,
+          ? constraints.maxHeight
+          : headH + math.max(fillH, gridH + bottomRoom),
       child: NotificationListener<ScrollEndNotification>(
         // A drag or fling that ended near either end of the loaded months.
         onNotification: (n) {
@@ -2435,7 +2619,6 @@ class _RoomCalendarState extends State<RoomCalendar> {
     // The whole name: the bubble may take most of the screen's width; only
     // a name longer than that is drawn smaller (never cut).
     final maxW = math.max(120.0, viewW - 40), gap = _bubbleGap;
-    final bodyH = CalEdgeBubble.heightFor(context);
     // Text a bubble must keep off, in grid pixels.
     final blocked = <Rect>[];
     // Each bar's name zone: its place in [blocked] and the room it may move
@@ -2538,15 +2721,28 @@ class _RoomCalendarState extends State<RoomCalendar> {
         maxW,
         CalEdgeBubble.widthFor(context, s.bar, end: w.end, status: w.sliver),
       );
+      double height(double width) => CalEdgeBubble.wrappedHeightFor(
+        context,
+        s.bar,
+        width,
+        end: w.end,
+        status: w.sliver,
+      );
+      final bodyH = height(need);
       final cy = s.top + s.height / 2;
       final cx = (w.visLeft + w.visRight) / 2;
       Rect beside(AxisDirection d, double width) => d == AxisDirection.left
-          ? Rect.fromLTWH(w.visRight + gap, cy - bodyH / 2, width, bodyH)
+          ? Rect.fromLTWH(
+              w.visRight + gap,
+              cy - height(width) / 2,
+              width,
+              height(width),
+            )
           : Rect.fromLTWH(
               w.visLeft - gap - width,
-              cy - bodyH / 2,
+              cy - height(width) / 2,
               width,
-              bodyH,
+              height(width),
             );
       Rect upDown(AxisDirection d) {
         final h = bodyH + CalEdgeBubble.tip;
@@ -2687,17 +2883,17 @@ class _RoomCalendarState extends State<RoomCalendar> {
     double dayW,
     double h,
     bool today,
-    int? nowSlot,
+    int step,
   ) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final hourStyle = TextStyle(
-      fontSize: 11.5,
+      fontSize: 12,
       height: 1,
       fontWeight: FontWeight.w500,
       color: scheme.onSurfaceVariant,
     );
-    final hourH = h < 60 ? 20.0 : 26.0;
+    final hourH = h * 20 / 48;
     return Container(
       key: ValueKey(
         today ? 'calendar-today-column' : 'calendar-day-${calYmd(day)}',
@@ -2735,38 +2931,38 @@ class _RoomCalendarState extends State<RoomCalendar> {
               ),
             ),
           ),
-          // The hours, one label for every 2 hours, in the middle of them.
+          // Keep readable type; reduce label density without changing booking slots.
           SizedBox(
             height: hourH,
-            child: Row(
-              children: [
-                for (var slot = 0; slot < 12; slot++)
-                  Expanded(
-                    child: Center(
-                      child: slot == nowSlot
-                          ? Container(
-                              key: const ValueKey('calendar-now-head'),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 4,
-                                vertical: 3,
-                              ),
-                              decoration: BoxDecoration(
-                                color: wsToneColor(context, WsTone.bad),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                _two(slot * 2),
-                                maxLines: 1,
-                                style: hourStyle.copyWith(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            )
-                          : Text(_two(slot * 2), maxLines: 1, style: hourStyle),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final scale = MediaQuery.textScalerOf(context).scale(12) / 12;
+                final slotWidth = dayW / (24 ~/ step);
+                final stride = (30 * scale / slotWidth).ceil().clamp(1, 6);
+                final labelWidth = 26 * scale;
+                Widget label(int slot) => Positioned(
+                  left: ((slot + .5) * slotWidth - labelWidth / 2).clamp(
+                    0.0,
+                    math.max(0.0, dayW - labelWidth),
+                  ),
+                  width: labelWidth,
+                  top: 0,
+                  bottom: 0,
+                  child: Center(
+                    child: Text(
+                      _two(slot * step),
+                      maxLines: 1,
+                      style: hourStyle,
                     ),
                   ),
-              ],
+                );
+                return Stack(
+                  children: [
+                    for (var slot = 0; slot < 24 ~/ step; slot += stride)
+                      label(slot),
+                  ],
+                );
+              },
             ),
           ),
         ],
@@ -2864,9 +3060,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
           );
     return Container(
       decoration: BoxDecoration(
-        color: hasProblem
-            ? bad.withValues(alpha: 0.06)
-            : scheme.surfaceContainerLow,
+        color: hasProblem ? bad.withValues(alpha: 0.06) : calHeadTint(context),
         border: Border(
           right: BorderSide(color: scheme.outlineVariant),
           bottom: BorderSide(color: scheme.outlineVariant),
@@ -2914,6 +3108,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
     String title,
     Widget Function(VoidCallback close) build, {
     List<Widget> Function(VoidCallback close)? actions,
+    String Function(String roomNumber)? roomTitle,
   }) async {
     final navigator = Navigator.of(context, rootNavigator: true);
     final route = DialogRoute<void>(
@@ -2921,7 +3116,12 @@ class _RoomCalendarState extends State<RoomCalendar> {
       barrierDismissible: false,
       themes: InheritedTheme.capture(from: context, to: navigator.context),
       builder: (_) =>
-          CalendarPageDialog(title: title, build: build, actions: actions),
+          CalendarPageDialog(
+            title: title,
+            build: build,
+            actions: actions,
+            roomTitle: roomTitle,
+          ),
     );
     _dialogs.add(route);
     final writes = ServerWrites.count;
@@ -2984,16 +3184,6 @@ class _RoomCalendarState extends State<RoomCalendar> {
           'contract',
           vi ? 'Hợp đồng thuê' : 'Lease',
           (close) => PropertyContractScreen(
-            organizationId: widget.organizationId,
-            buildingId: p.id,
-            service: widget.service,
-          ),
-        ),
-      if (manage)
-        (
-          'layout',
-          vi ? 'Mặc định tòa nhà' : 'Building defaults',
-          (close) => PropertyLayoutScreen(
             organizationId: widget.organizationId,
             buildingId: p.id,
             service: widget.service,
@@ -3115,8 +3305,11 @@ class _RoomCalendarState extends State<RoomCalendar> {
     );
   }
 
-  String _roomTitle(CalRoom room, [String? more]) {
-    final r = c('room').replaceAll('{n}', room.number);
+  String _roomTitle(CalRoom room, [String? more]) =>
+      _numberTitle(room.number, more);
+
+  String _numberTitle(String number, [String? more]) {
+    final r = c('room').replaceAll('{n}', number);
     return more == null || more.isEmpty ? r : '$r · $more';
   }
 
@@ -3161,6 +3354,8 @@ class _RoomCalendarState extends State<RoomCalendar> {
     final next = day.add(const Duration(days: 1));
     _page(
       _roomTitle(room, c('newShort')),
+      // Another room picked in the form renames the dialog (2026-10-22).
+      roomTitle: (n) => _numberTitle(n, c('newShort')),
       (close) => BookingWorkspaceScreen(
         organizationId: widget.organizationId,
         buildingId: p.id,
@@ -3169,7 +3364,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
         onClose: close,
         startNew: true,
         initialRoomId: room.id,
-        initialStart: '${calYmd(day)} 14:00',
+        initialStart: '${calYmd(day)} ${_two(day.hour)}:${_two(day.minute)}',
         initialEnd: '${calYmd(next)} 12:00',
       ),
     );
@@ -3246,6 +3441,7 @@ class _RoomCalendarState extends State<RoomCalendar> {
   void _newLong(CalProperty p, CalRoom room, DateTime day) {
     _page(
       _roomTitle(room, c('newLong')),
+      roomTitle: (n) => _numberTitle(n, c('newLong')),
       (close) => TenantLeaseScreen(
         organizationId: widget.organizationId,
         buildingId: p.id,
@@ -3306,77 +3502,173 @@ class _RoomCalendarState extends State<RoomCalendar> {
     }
     final canShort = room.shortStay && p.canCreateBookings;
     final canLong = room.monthly && p.canLease;
-    if (!canShort && !canLong && !p.canReportProblems && !p.canAssignCleaning) {
+    if (!canShort && !canLong) {
       _say('noAction');
       return;
     }
-    final vi = AppTranslations.of(context).locale.languageCode == 'vi';
-    final weekdays = vi
-        ? const [
-            'Thứ 2',
-            'Thứ 3',
-            'Thứ 4',
-            'Thứ 5',
-            'Thứ 6',
-            'Thứ 7',
-            'Chủ nhật',
-          ]
-        : const ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    final when =
-        '${weekdays[day.weekday - 1]} ${_two(day.day)}/${_two(day.month)}';
-    final choice = await showModalBottomSheet<String>(
+    final choice = await showDialog<String>(
       context: context,
-      showDragHandle: true,
-      builder: (sheet) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-              child: Text(
-                '${_roomTitle(room)} · $when',
-                style: Theme.of(sheet).textTheme.titleMedium,
-              ),
+      builder: (dialog) => Dialog(
+        key: const ValueKey('calendar-rental-dialog'),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 640),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        c('newStay').toUpperCase(),
+                        style: Theme.of(dialog).textTheme.labelLarge?.copyWith(
+                          color: Theme.of(dialog).colorScheme.primary,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      key: const ValueKey('calendar-rental-close'),
+                      tooltip: c('close'),
+                      onPressed: () => Navigator.pop(dialog),
+                      icon: const Icon(Icons.close),
+                    ),
+                  ],
+                ),
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          c('rentalTitle'),
+                          style: Theme.of(dialog).textTheme.headlineSmall,
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          c(
+                            'rentalPrompt',
+                          ).replaceAll('{room}', _roomTitle(room)),
+                        ),
+                        const SizedBox(height: 16),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Theme.of(
+                              dialog,
+                            ).colorScheme.surfaceContainerLow,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Wrap(
+                            spacing: 20,
+                            runSpacing: 8,
+                            children: [
+                              Text(
+                                _roomTitle(room),
+                                style: Theme.of(dialog).textTheme.titleSmall,
+                              ),
+                              Text(
+                                '${_two(day.hour)}:${_two(day.minute)} · ${day.day}/${day.month}/${day.year}',
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (room.blocked)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 12),
+                            child: WsNotice(
+                              c('roomBlocked'),
+                              tone: WsTone.warning,
+                            ),
+                          ),
+                        const SizedBox(height: 20),
+                        LayoutBuilder(
+                          builder: (context, box) {
+                            final sideBySide =
+                                box.maxWidth >= 500 &&
+                                MediaQuery.textScalerOf(context).scale(1) <=
+                                    1.3;
+                            Widget option(bool short) => SizedBox(
+                              width: sideBySide
+                                  ? (box.maxWidth - 12) / 2
+                                  : box.maxWidth,
+                              child: OutlinedButton(
+                                key: ValueKey(
+                                  short
+                                      ? 'calendar-new-short'
+                                      : 'calendar-new-long',
+                                ),
+                                onPressed: room.blocked
+                                    ? null
+                                    : () => Navigator.pop(
+                                        dialog,
+                                        short ? 'short' : 'long',
+                                      ),
+                                style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.all(20),
+                                  alignment: AlignmentDirectional.centerStart,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Icon(
+                                      short
+                                          ? Icons.schedule_outlined
+                                          : Icons.calendar_month_outlined,
+                                      size: 32,
+                                    ),
+                                    const SizedBox(height: 20),
+                                    Text(
+                                      c(short ? 'rentalShort' : 'rentalLong'),
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.titleMedium,
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            c(
+                                              short
+                                                  ? 'rentalShortHint'
+                                                  : 'rentalLongHint',
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        const Icon(
+                                          Icons.arrow_forward,
+                                          size: 20,
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                            return Wrap(
+                              spacing: 12,
+                              runSpacing: 12,
+                              children: [
+                                if (canShort) option(true),
+                                if (canLong) option(false),
+                              ],
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
-            if (room.blocked)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: WsNotice(c('roomBlocked'), tone: WsTone.warning),
-              ),
-            if (canShort)
-              ListTile(
-                key: const ValueKey('calendar-new-short'),
-                enabled: !room.blocked,
-                leading: const Icon(Icons.nights_stay_outlined),
-                title: Text(c('newShort')),
-                onTap: () => Navigator.pop(sheet, 'short'),
-              ),
-            if (canLong)
-              ListTile(
-                key: const ValueKey('calendar-new-long'),
-                enabled: !room.blocked,
-                leading: const Icon(Icons.home_work_outlined),
-                title: Text(c('newLong')),
-                onTap: () => Navigator.pop(sheet, 'long'),
-              ),
-            if (p.canReportProblems)
-              ListTile(
-                key: const ValueKey('calendar-report'),
-                leading: const Icon(Icons.build_outlined),
-                title: Text(c('report')),
-                onTap: () => Navigator.pop(sheet, 'report'),
-              ),
-            // Assign a cleaning for that day, 12:00–14:00 (between check-out
-            // and check-in) to start with (2026-10-05, Tom).
-            if (p.canAssignCleaning)
-              ListTile(
-                key: const ValueKey('calendar-new-cleaning'),
-                leading: const Icon(Icons.cleaning_services_outlined),
-                title: Text(c('assignCleaning')),
-                onTap: () => Navigator.pop(sheet, 'clean'),
-              ),
-          ],
+          ),
         ),
       ),
     );
@@ -3386,15 +3678,6 @@ class _RoomCalendarState extends State<RoomCalendar> {
         _newShort(p, room, day);
       case 'long':
         _newLong(p, room, day);
-      case 'report':
-        _problems(p, room, report: true);
-      case 'clean':
-        _cleaning(
-          p,
-          roomId: room.id,
-          start: '${calYmd(day)} 12:00',
-          end: '${calYmd(day)} 14:00',
-        );
     }
   }
 
@@ -3552,6 +3835,28 @@ class _RoomCalendarState extends State<RoomCalendar> {
   }
 }
 
+/// A heading with its own accessible action, not a disabled menu item.
+class _CalendarPropertyMenuHeading extends PopupMenuEntry<String> {
+  const _CalendarPropertyMenuHeading({required this.child});
+  final Widget child;
+  @override
+  double get height => 48;
+  @override
+  bool represents(String? value) => false;
+  @override
+  State<_CalendarPropertyMenuHeading> createState() =>
+      _CalendarPropertyMenuHeadingState();
+}
+
+class _CalendarPropertyMenuHeadingState
+    extends State<_CalendarPropertyMenuHeading> {
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 16),
+    child: widget.child,
+  );
+}
+
 /// A bar's place in the grid, for the name bubbles.
 typedef _Spot = ({
   CalProperty p,
@@ -3625,8 +3930,12 @@ class CalBarTile extends StatelessWidget {
     final theme = Theme.of(context);
     final color = calKindColor(context, bar);
     final stop = _paidStop();
-    final solid = color.withValues(alpha: calPaidAlpha),
-        tint = color.withValues(alpha: calDueAlpha);
+    final surface = theme.colorScheme.surface.withValues(alpha: 1);
+    final solid = Color.alphaBlend(
+          color.withValues(alpha: calPaidAlpha),
+          surface,
+        ),
+        tint = Color.alphaBlend(color.withValues(alpha: calDueAlpha), surface);
     final ink = theme.brightness == Brightness.dark
         ? Colors.white
         : const Color(0xFF16202C);
@@ -4187,9 +4496,35 @@ class CalEdgeBubble extends StatelessWidget {
     fontWeight: FontWeight.w700,
   );
 
-  /// The narrowest bubble still worth showing: a few letters of the name
-  /// (shrunk at most to about 70%) and the status circle.
+  /// Minimum placement width; names wrap rather than truncate.
   static const minWidth = 56.0;
+
+  static double wrappedHeightFor(
+    BuildContext context,
+    CalBar bar,
+    double width, {
+    String? end,
+    bool status = false,
+  }) {
+    final endHeight = end == null
+        ? 0.0
+        : (TextPainter(
+                text: TextSpan(text: end, style: _endStyle),
+                textDirection: TextDirection.ltr,
+                textScaler: MediaQuery.textScalerOf(context),
+              )..layout(maxWidth: math.max(1, width - 22.4))).height +
+              2;
+    final painter = TextPainter(
+      text: TextSpan(text: calBarName(context, bar), style: _style),
+      textDirection: TextDirection.ltr,
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout(maxWidth: math.max(1, width - 22.4 - (status ? 13 : 0)));
+    // Reserve a line for font fallback/rounding when a bubble moves between
+    // widths while the timeline scrolls.
+    return math.max(heightFor(context), painter.height + 8.4) +
+        endHeight +
+        heightFor(context);
+  }
 
   /// The width the bubble needs for the whole name: pointer, border,
   /// padding, the name, the gap and the status circle.
@@ -4243,38 +4578,37 @@ class CalEdgeBubble extends StatelessWidget {
           ),
         ],
       ),
-      child: Row(
+      child: Column(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Flexible(
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Text(
-                name,
-                maxLines: 1,
-                softWrap: false,
-                style: _style.copyWith(color: ink),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text(
+                  name,
+                  softWrap: true,
+                  style: _style.copyWith(color: ink),
+                ),
               ),
-            ),
+              if (status) ...[
+                const SizedBox(width: 4),
+                Container(
+                  key: const ValueKey('calendar-bubble-status'),
+                  width: 9,
+                  height: 9,
+                  decoration: calStatusDecoration(calStayStatus(bar)),
+                ),
+              ],
+            ],
           ),
           if (end != null) ...[
-            const SizedBox(width: 5),
+            const SizedBox(height: 2),
             Text(
               end!,
               key: const ValueKey('calendar-bubble-end'),
-              maxLines: 1,
-              softWrap: false,
               style: _endStyle.copyWith(color: ink.withValues(alpha: 0.75)),
-            ),
-          ],
-          if (status) ...[
-            const SizedBox(width: 4),
-            Container(
-              key: const ValueKey('calendar-bubble-status'),
-              width: 9,
-              height: 9,
-              decoration: calStatusDecoration(calStayStatus(bar)),
             ),
           ],
         ],
@@ -4353,9 +4687,17 @@ class _PointerPainter extends CustomPainter {
   bool shouldRepaint(_PointerPainter old) => old.color != color || old.to != to;
 }
 
-/// Pixels for one hour on the timeline (2026-10-04, Tom): a 1-hour stay is
-/// as wide as the shortest bar the calendar draws.
+/// The most pixels for one hour (2026-10-04, Tom): a day is at most 432 px
+/// wide. Since 2026-10-13 a desktop day is a sixth of the screen within
+/// [calMinDayW] and this.
 const calHourW = 18.0;
+
+/// Desktop minimum day width. Narrow windows use a 336px day instead.
+const calMinDayW = 160.0;
+
+/// The hours of one slot under a date: always 2 (2026-10-12, Tom: every
+/// 2 hours on every screen; label density adapts independently).
+int calSlotHours(double dayW) => 2;
 
 class _TickPainter extends CustomPainter {
   final List<double> ticks;
@@ -4383,6 +4725,18 @@ class _TickPainter extends CustomPainter {
       old.ticks.length != ticks.length || old.color != color;
 }
 
+/// The date row and the room column (2026-10-14, Tom: follow the theme): a
+/// light tint of the chosen theme colour over the surface, so it changes
+/// with slate/teal/… and with dark mode.
+Color calHeadTint(BuildContext context) {
+  final scheme = Theme.of(context).colorScheme;
+  final dark = Theme.of(context).brightness == Brightness.dark;
+  return Color.alphaBlend(
+    scheme.primary.withValues(alpha: dark ? 0.16 : 0.09),
+    scheme.surface,
+  );
+}
+
 /// The line between days (client's design, 2026-10-11): green.
 Color calDayLine(BuildContext context) =>
     Theme.of(context).brightness == Brightness.dark
@@ -4392,7 +4746,7 @@ Color calDayLine(BuildContext context) =>
 /// The rooms' grid (client's design, 2026-10-11): white, a light line every
 /// 2 hours, a green line between days, a line under every room.
 class _GridPainter extends CustomPainter {
-  final int days;
+  final int days, slots;
   final int? todayCol;
   final double dayW;
 
@@ -4402,6 +4756,7 @@ class _GridPainter extends CustomPainter {
   _GridPainter({
     required this.days,
     required this.dayW,
+    required this.slots,
     required this.todayCol,
     required this.rows,
     required this.line,
@@ -4443,8 +4798,8 @@ class _GridPainter extends CustomPainter {
       ..color = line
       ..strokeWidth = 1;
     for (var i = 0; i < days; i++) {
-      for (var slot = 1; slot < 12; slot++) {
-        final x = (i + slot / 12) * dayW - 0.5;
+      for (var slot = 1; slot < slots; slot++) {
+        final x = (i + slot / slots) * dayW - 0.5;
         canvas.drawLine(Offset(x, 0), Offset(x, bottom), hours);
       }
     }
@@ -4461,6 +4816,7 @@ class _GridPainter extends CustomPainter {
   bool shouldRepaint(_GridPainter old) =>
       old.days != days ||
       old.dayW != dayW ||
+      old.slots != slots ||
       old.todayCol != todayCol ||
       old.rows.length != rows.length ||
       old.rows.join(',') != rows.join(',') ||
@@ -4478,11 +4834,16 @@ class CalendarPageDialog extends StatefulWidget {
 
   /// Extra buttons next to the close button.
   final List<Widget> Function(VoidCallback close)? actions;
+
+  /// The title for another room picked inside the page (null: the title
+  /// does not name a room and stays as it is).
+  final String Function(String roomNumber)? roomTitle;
   const CalendarPageDialog({
     super.key,
     required this.title,
     required this.build,
     this.actions,
+    this.roomTitle,
   });
   @override
   State<CalendarPageDialog> createState() => _CalendarPageDialogState();
@@ -4491,6 +4852,12 @@ class CalendarPageDialog extends StatefulWidget {
 class _CalendarPageDialogState extends State<CalendarPageDialog> {
   final _steps = BackSteps();
   bool _closed = false;
+  String? _title;
+
+  /// Keeps the page (and what was typed in it) when the window crosses the
+  /// phone / desktop width: the frame changes, the page is moved, not rebuilt
+  /// (2026-10-22, Tom: resizing reset an open booking form).
+  final _pageKey = GlobalKey(debugLabel: 'calendar-page');
 
   @override
   void dispose() {
@@ -4525,7 +4892,7 @@ class _CalendarPageDialogState extends State<CalendarPageDialog> {
                 children: [
                   Expanded(
                     child: Text(
-                      widget.title,
+                      _title ?? widget.title,
                       key: const ValueKey('calendar-dialog-title'),
                       style: theme.textTheme.titleMedium,
                     ),
@@ -4542,13 +4909,26 @@ class _CalendarPageDialogState extends State<CalendarPageDialog> {
             ),
           ),
           const Divider(height: 1),
-          Expanded(child: DialogPageScope(child: widget.build(_close))),
+          Expanded(
+            child: RoomTitleScope(
+              onRoom: (number) {
+                final title = widget.roomTitle?.call(number);
+                if (mounted && title != null && title != (_title ?? widget.title)) {
+                  setState(() => _title = title);
+                }
+              },
+              child: DialogPageScope(child: widget.build(_close)),
+            ),
+          ),
         ],
       ),
     );
-    final scoped = BackStepsScope(
-      steps: _steps,
-      child: SafeArea(child: page),
+    final scoped = KeyedSubtree(
+      key: _pageKey,
+      child: BackStepsScope(
+        steps: _steps,
+        child: SafeArea(child: page),
+      ),
     );
     if (!wide) return Dialog.fullscreen(child: scoped);
     return Dialog(

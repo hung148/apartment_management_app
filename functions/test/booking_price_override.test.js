@@ -1,5 +1,6 @@
 // Fix 5 (2026-10-09, Tom): the room price of a short stay can be changed when it is negotiated up or down. It needs
 // "Đổi giá" and a reason; the booking keeps the agreed price, the calculated one, the reason and who changed it.
+// 2026-10-14 (Tom): the agreed price is the whole total (room price + surcharges), not the room price alone.
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {createBookingWorkspaceHandler}=require('../booking_workspace');
@@ -26,7 +27,7 @@ const save=(call,data)=>call({action:'save',bookingId:'k1',roomRevision:'0:0',gu
 test('a changed price needs "Đổi giá" and a reason, and keeps the calculated price, the reason and who',async()=>{
   const {db,owner,rec}=setup();
   const q=(await owner({action:'quote',...stay,surcharges:extra,overrideMinor:900000,overrideReason:'  Khách quen  '})).record;
-  assert.deepEqual([q.calculatedMinor,q.agreedMinor,q.agreedReason,q.baseMinor,q.totalMinor],[1000000,900000,'Khách quen',900000,1000000]);
+  assert.deepEqual([q.calculatedMinor,q.agreedMinor,q.agreedReason,q.baseMinor,q.surchargesMinor,q.totalMinor],[1100000,900000,'Khách quen',1000000,100000,900000]);
   // Without a change the quote says nothing about an agreed price.
   const plainQuote=(await owner({action:'quote',...stay})).record;
   assert.equal(plainQuote.agreedMinor,undefined);assert.equal(plainQuote.totalMinor,1000000);
@@ -37,16 +38,16 @@ test('a changed price needs "Đổi giá" and a reason, and keeps the calculated
   assert.equal(db.store.get('bookings/k1'),undefined);
   await save(owner,{operationId:'o1',overrideMinor:900000,overrideReason:'  Khách quen  '});
   const b=db.store.get('bookings/k1');
-  // The agreed room price plus the surcharge.
-  assert.equal(b.totalPrice,1000000);
+  // The agreed price is the total; the surcharge is inside it.
+  assert.equal(b.totalPrice,900000);
   const {at,...o}=b.priceOverride;
-  assert.deepEqual(o,{total:900000,calculatedTotal:1000000,reason:'Khách quen',byId:'owner',byName:'Chị Hà'});
+  assert.deepEqual(o,{total:900000,calculatedTotal:1100000,reason:'Khách quen',byId:'owner',byName:'Chị Hà'});
   assert.equal(typeof at.toMillis,'function');
   // The operation record keeps who and why as well.
   const op=[...db.store.entries()].find(([k])=>k.startsWith('bookingOperations/'))[1];
   assert.deepEqual([op.actorId,op.priceOverrideReason],['owner','  Khách quen  ']);
   const read=(await owner({action:'read',bookingId:'k1'})).record;
-  assert.deepEqual([read.priceOverride.total,read.priceOverride.calculatedTotal,read.priceOverride.reason,read.priceOverride.byName],[900000,1000000,'Khách quen','Chị Hà']);
+  assert.deepEqual([read.priceOverride.total,read.priceOverride.calculatedTotal,read.priceOverride.reason,read.priceOverride.byName],[900000,1100000,'Khách quen','Chị Hà']);
   assert.equal(typeof read.priceOverride.at,'string');
 });
 
@@ -58,18 +59,18 @@ test('an edit that leaves the price out keeps the agreed price; only "Đổi gi�
   // The receptionist changes the guest's name and a night more: the agreed price stays, by the owner.
   const longer={endLocal:'2026-12-13 12:00'};
   const q=(await rec({action:'quote',...stay,...longer,bookingId:'k1',surcharges:extra})).record;
-  assert.deepEqual([q.calculatedMinor,q.agreedMinor,q.agreedReason,q.totalMinor],[1500000,900000,'Khách quen',1000000]);
+  assert.deepEqual([q.calculatedMinor,q.agreedMinor,q.agreedReason,q.totalMinor],[1600000,900000,'Khách quen',900000]);
   await save(rec,{operationId:'r1',revision:await revision(),guestName:'Anh Tuấn',...longer});
   let b=db.store.get('bookings/k1');
-  assert.equal(b.guestName,'Anh Tuấn');assert.equal(b.totalPrice,1000000);assert.deepEqual(b.priceOverride,first);
+  assert.equal(b.guestName,'Anh Tuấn');assert.equal(b.totalPrice,900000);assert.deepEqual(b.priceOverride,first);
   // The receptionist may not change it, nor go back to the calculated price.
   await assert.rejects(save(rec,{operationId:'r2',revision:await revision(),...longer,overrideMinor:800000,overrideReason:'x'}),e=>e.code==='permission-denied');
   await assert.rejects(save(rec,{operationId:'r3',revision:await revision(),...longer,overrideMinor:null}),e=>e.code==='permission-denied');
   // The owner changes it again: a new reason, a new calculated price.
   await save(owner,{operationId:'o2',revision:await revision(),...longer,overrideMinor:1200000,overrideReason:'Thêm một đêm'});
   b=db.store.get('bookings/k1');
-  assert.equal(b.totalPrice,1300000);
-  assert.deepEqual([b.priceOverride.total,b.priceOverride.calculatedTotal,b.priceOverride.reason],[1200000,1500000,'Thêm một đêm']);
+  assert.equal(b.totalPrice,1200000);
+  assert.deepEqual([b.priceOverride.total,b.priceOverride.calculatedTotal,b.priceOverride.reason],[1200000,1600000,'Thêm một đêm']);
   // And back to the calculated price.
   await save(owner,{operationId:'o3',revision:await revision(),...longer,overrideMinor:null});
   b=db.store.get('bookings/k1');
@@ -78,6 +79,22 @@ test('an edit that leaves the price out keeps the agreed price; only "Đổi gi�
   // null on a booking without an agreed price changes nothing, for anyone.
   await save(rec,{operationId:'r4',revision:await revision(),...longer,overrideMinor:null});
   assert.equal(db.store.get('bookings/k1').totalPrice,1600000);
+});
+
+// 2026-10-14 (Tom): an "agreed" total equal to the calculated one is no price change.
+test('an agreed total equal to the calculated total stores nothing and removes an older one',async()=>{
+  const {db,owner}=setup();
+  const q=(await owner({action:'quote',...stay,surcharges:extra,overrideMinor:1100000,overrideReason:'x'})).record;
+  assert.deepEqual([q.agreedMinor,q.calculatedMinor,q.totalMinor],[undefined,undefined,1100000]);
+  await save(owner,{operationId:'o1',overrideMinor:1100000,overrideReason:'x'});
+  let b=db.store.get('bookings/k1');
+  assert.equal(b.totalPrice,1100000);assert.equal(b.priceOverride,undefined);
+  const revision=async()=>(await owner({action:'read',bookingId:'k1'})).record.revision;
+  await save(owner,{operationId:'o2',revision:await revision(),overrideMinor:900000,overrideReason:'Khách quen'});
+  assert.equal(db.store.get('bookings/k1').priceOverride.total,900000);
+  await save(owner,{operationId:'o3',revision:await revision(),overrideMinor:1100000,overrideReason:'Khách quen'});
+  b=db.store.get('bookings/k1');
+  assert.equal(b.totalPrice,1100000);assert.equal(b.priceOverride,null);
 });
 
 test('an agreed price cannot be written around the bookings workspace',async()=>{

@@ -15,11 +15,12 @@ import 'room_booking_settings_test.dart' show enter;
 
 void main() {
   testWidgets(
-    'booking payment sends entered currency with exact original balance',
+    'booking form payment sends entered currency and conversion snapshot',
     (tester) async {
       SharedPreferences.setMockInitialValues({});
       final s = store();
-      final room = s.rooms.last;
+      final room = s.rooms.last
+        ..addAll({'dailyPrice': 500001, 'currency': 'VND'});
       s.operationalBookings.add({
         'id': 'converted',
         'revision': '1:0',
@@ -37,6 +38,7 @@ void main() {
         'depositRefundedAmount': 0,
         'status': 'pending',
         'pricingType': 'nightly',
+        'nightPrices': [500001],
         'startLocal': '2026-10-10 14:00',
         'endLocal': '2026-10-11 12:00',
         'startTime': '2026-10-10T07:00:00Z',
@@ -56,8 +58,8 @@ void main() {
       Map<String, dynamic>? sent;
       final service = TeamService(
         transport: (name, data) async {
-          if (name == 'bookingWorkspace' && data['action'] == 'command')
-            sent = Map.of(data);
+          if (name == 'bookingWorkspace' && data['action'] == 'save')
+            sent = Map<String, dynamic>.from(data['payment'] as Map);
           return s.call(name, data);
         },
       );
@@ -73,10 +75,12 @@ void main() {
           onClose: () {},
         ),
       );
-      await press(tester, 'Collect');
-      await enter(tester, 'ops-reason', 'Full balance');
+      await enter(tester, 'ops-payAmount', '20');
+      await enter(tester, 'ops-payNote', 'Payment in dollars');
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
       await press(tester, 'Confirm and save');
-      expect(sent?['amountMinor'], 500001);
+      expect(sent?['amountMinor'], 500000);
       expect(sent?['inputCurrency'], 'USD');
       expect(sent?['inputAmountMinor'], 2000);
       expect(sent?['ratesId'], ratesId);
@@ -192,13 +196,14 @@ void main() {
       await enter(tester, 'ops-guest', 'Guest family');
       await enter(tester, 'ops-startLocal', '2026-10-01 09:00');
       await enter(tester, 'ops-endLocal', '2026-10-01 11:00');
-      await press(tester, 'Review calculation');
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
       await press(tester, 'Confirm and save');
       expect(s.operationalBookings.single['totalPrice'], 200000);
-      // 2026-10-04: "Collect" sits in the money section.
-      await press(tester, 'Collect');
-      await enter(tester, 'ops-reason', 'Receipt');
-      await enter(tester, 'ops-amount', '50000');
+      await enter(tester, 'ops-payAmount', '50000');
+      await enter(tester, 'ops-payNote', 'Receipt');
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
       await press(tester, 'Confirm and save');
       expect(s.operationalBookings.single['paidAmount'], 50000);
     },

@@ -10,7 +10,6 @@ import 'package:phan_mem_quan_ly_can_ho/services/app_functions.dart';
 import 'package:phan_mem_quan_ly_can_ho/preview/team_preview_store.dart';
 import 'package:phan_mem_quan_ly_can_ho/models/team_access.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/team/property_details_screen.dart';
-import 'package:phan_mem_quan_ly_can_ho/screens/team/property_layout_screen.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/team/room_directory.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/calendar/month_calendar.dart';
 import 'package:phan_mem_quan_ly_can_ho/screens/calendar/room_calendar.dart';
@@ -320,6 +319,7 @@ Future<void> mountCalendar(
   String language = 'en',
   Size size = const Size(1440, 1000),
   double scale = 1,
+  Brightness brightness = Brightness.light,
   TeamAccess? access,
   // The old tools row is hidden in the app since the client's design
   // (2026-10-11); tests show it (flutter_test_config.dart) to keep checking
@@ -339,6 +339,7 @@ Future<void> mountCalendar(
   language: language,
   size: size,
   scale: scale,
+  brightness: brightness,
 );
 
 Finder bar(String id) => find.byKey(ValueKey('calendar-bar-$id'));
@@ -444,14 +445,19 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('T5 - 1/10/2026'), findsOneWidget);
-    // Now is 09:00: the 08 hour (08–10) is the red one.
-    expect(
-      find.descendant(
-        of: find.byKey(const ValueKey('calendar-now-head')),
-        matching: find.text('08'),
-      ),
-      findsOneWidget,
-    );
+    // Now is 09:00: a red dot marks it, and today's hour labels are the
+    // same as every other day's (2026-10-14, Tom: a red hour badge hid the
+    // labels next to it, so today looked different).
+    expect(find.byKey(const ValueKey('calendar-now-head')), findsOneWidget);
+    List<String> hours(String key) => find
+        .descendant(of: find.byKey(ValueKey(key)), matching: find.byType(Text))
+        .evaluate()
+        .map((e) => (e.widget as Text).data ?? '')
+        .where((s) => RegExp(r'^\d\d$').hasMatch(s))
+        .toList();
+    final todayHours = hours('calendar-today-column');
+    expect(todayHours, isNotEmpty);
+    expect(todayHours, hours('calendar-day-2026-10-03'));
     // The menu: its heading, every property (the shown one ticked) and
     // "Thêm cơ sở mới", which opens the new property form.
     await tester.tap(box);
@@ -459,13 +465,40 @@ void main() {
     expect(find.text('CHỌN CƠ SỞ'), findsOneWidget);
     expect(
       find.descendant(
-        of: find.byKey(const ValueKey('calendar-pick-riverside')),
-        matching: find.byIcon(Icons.check),
+        of: find.byKey(const ValueKey('calendar-current-building')),
+        matching: find.byIcon(Icons.edit_outlined),
       ),
       findsOneWidget,
     );
+    expect(find.byKey(const ValueKey('calendar-pick-riverside')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('calendar-edit-building')));
+    await tester.pumpAndSettle();
+    final details = tester.widget<PropertyDetailsScreen>(
+      find.byType(PropertyDetailsScreen),
+    );
+    expect(details.create, isFalse);
+    expect(details.buildingId, 'riverside');
+    for (final page in ['property', 'contract', 'fees']) {
+      expect(find.byKey(ValueKey('building-page-$page')), findsOneWidget);
+    }
+    await tester.tap(find.byKey(const ValueKey('calendar-dialog-close')));
+    await tester.pumpAndSettle();
+    await tester.tap(box);
+    await tester.pumpAndSettle();
     expect(find.text('Garden Homestay'), findsOneWidget);
-    expect(find.text('Thêm cơ sở mới'), findsOneWidget);
+    expect(find.text('Thêm cơ sở mới'), findsNothing);
+    expect(find.byTooltip('Thêm cơ sở mới'), findsOneWidget);
+    final semantics = tester.ensureSemantics();
+    final addNode = tester.getSemantics(
+      find.byKey(const ValueKey('calendar-new-building')),
+    );
+    expect(addNode.hasFlag(ui.SemanticsFlag.isButton), isTrue);
+    expect(addNode.hasFlag(ui.SemanticsFlag.isEnabled), isTrue);
+    expect(
+      addNode.getSemanticsData().hasAction(ui.SemanticsAction.tap),
+      isTrue,
+    );
+    semantics.dispose();
     await tester.tap(find.byKey(const ValueKey('calendar-new-building')));
     await tester.pumpAndSettle();
     expect(
@@ -487,96 +520,147 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  // 2026-10-12 (Tom): the card ends at the last room; hovering a cell
-  // highlights it, its room and its hour.
-  testWidgets(
-    'the card ends at the last room; hover highlights cell, room, hour',
-    (tester) async {
-      await mountCalendar(tester, calendarService(Calls()), showTools: false);
-      await tester.pumpAndSettle();
-      final card = tester.getRect(find.byKey(const ValueKey('calendar-card')));
-      final last = tester.getRect(
-        find.byKey(const ValueKey('calendar-room-r104')),
-      );
-      // Only the border, or room for a cleaning bubble, below the last room.
-      expect(card.bottom - last.bottom, inInclusiveRange(0, 80));
-      expect(card.bottom, lessThan(700));
+  // 2026-10-12 (Tom): the card keeps its size, empty rows fill it under the
+  // last room; hovering any cell highlights it, its room and its hour.
+  testWidgets('empty rows fill the card; hover highlights cell, room, hour', (
+    tester,
+  ) async {
+    await mountCalendar(tester, calendarService(Calls()), showTools: false);
+    await tester.pumpAndSettle();
+    final card = tester.getRect(find.byKey(const ValueKey('calendar-card')));
+    final last = tester.getRect(
+      find.byKey(const ValueKey('calendar-room-r104')),
+    );
+    // The card fills the height (1000 px screen); empty rows under the
+    // last room, not white space.
+    expect(card.bottom, greaterThan(900));
+    expect(card.bottom - last.bottom, greaterThan(300));
 
-      final mouse = await tester.createGesture(
-        kind: ui.PointerDeviceKind.mouse,
+    final mouse = await tester.createGesture(kind: ui.PointerDeviceKind.mouse);
+    await mouse.addPointer(location: Offset.zero);
+    addTearDown(mouse.removePointer);
+    final room = tester.getRect(
+      find.byKey(const ValueKey('calendar-room-r102')),
+    );
+    final today = tester.getRect(
+      find.byKey(const ValueKey('calendar-today-column')),
+    );
+    // 13:00 today in room 102's row: the slot from 12:00.
+    await mouse.moveTo(
+      Offset(today.left + today.width * 13 / 24, room.center.dy),
+    );
+    await tester.pump();
+    final cell = tester.getRect(
+      find.byKey(const ValueKey('calendar-hover-cell')),
+    );
+    expect(cell.top, closeTo(room.top, 1));
+    expect(cell.height, closeTo(room.height, 1));
+    expect(cell.left, closeTo(today.left + today.width / 2, 1));
+    expect(
+      cell.width,
+      closeTo(today.width * calSlotHours(today.width) / 24, 1),
+    );
+    // Its hour in the header, its room in the room column.
+    final hour = tester.getRect(
+      find.byKey(const ValueKey('calendar-hover-time')),
+    );
+    expect(hour.center.dx, closeTo(cell.center.dx, 1));
+    // The hour shows on the solid pill; bands lead along the row and down
+    // the column; the day is tinted.
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('calendar-hover-time')),
+        matching: find.text('12'),
+      ),
+      findsOneWidget,
+    );
+    final row = tester.getRect(
+      find.byKey(const ValueKey('calendar-hover-row')),
+    );
+    expect(row.top, closeTo(room.top, 1));
+    expect(row.width, greaterThan(today.width * 3));
+    final column = tester.getRect(
+      find.byKey(const ValueKey('calendar-hover-column')),
+    );
+    expect(column.left, closeTo(cell.left, 1));
+    // Down through the empty rows too.
+    expect(column.bottom, greaterThan(last.bottom + 300));
+    expect(column.height, greaterThan(room.height));
+    expect(
+      tester.getRect(find.byKey(const ValueKey('calendar-hover-day'))).left,
+      closeTo(today.left, 1),
+    );
+    expect(hour.bottom, lessThanOrEqualTo(today.bottom));
+    final label = tester.getRect(
+      find.byKey(const ValueKey('calendar-hover-room')),
+    );
+    expect(label.top, closeTo(room.top, 1));
+    expect(label.height, closeTo(room.height, 1));
+    // An empty row under the last room is hovered like a room's row.
+    await mouse.moveTo(
+      Offset(today.left + today.width * 13 / 24, last.bottom + 50),
+    );
+    await tester.pump();
+    expect(
+      tester.getRect(find.byKey(const ValueKey('calendar-hover-cell'))).top,
+      greaterThan(last.bottom - 1),
+    );
+    // Leaving the grid clears all three.
+    await mouse.moveTo(const Offset(2, 2));
+    await tester.pump();
+    for (final key in [
+      'calendar-hover-cell',
+      'calendar-hover-row',
+      'calendar-hover-column',
+      'calendar-hover-day',
+      'calendar-hover-time',
+      'calendar-hover-room',
+    ]) {
+      expect(find.byKey(ValueKey(key)), findsNothing, reason: key);
+    }
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('render selected property edit menu with actual fonts', (
+    tester,
+  ) async {
+    for (final shot in [
+      ('vi', const Size(390, 844), 1.0),
+      ('en', const Size(800, 360), 2.0),
+    ]) {
+      await mountCalendar(
+        tester,
+        calendarService(Calls()),
+        language: shot.$1,
+        size: shot.$2,
+        scale: shot.$3,
+        access: TeamAccess.fromMap(TeamPreviewStore.grant('owner')),
+        showTools: false,
       );
-      await mouse.addPointer(location: Offset.zero);
-      addTearDown(mouse.removePointer);
-      final room = tester.getRect(
-        find.byKey(const ValueKey('calendar-room-r102')),
+      await tester.tap(
+        find.byKey(const ValueKey('calendar-building-riverside')),
       );
-      final today = tester.getRect(
-        find.byKey(const ValueKey('calendar-today-column')),
-      );
-      // 13:00 today in room 102's row: the 12–14 cell.
-      await mouse.moveTo(
-        Offset(today.left + today.width * 13 / 24, room.center.dy),
-      );
-      await tester.pump();
-      final cell = tester.getRect(
-        find.byKey(const ValueKey('calendar-hover-cell')),
-      );
-      expect(cell.top, closeTo(room.top, 1));
-      expect(cell.height, closeTo(room.height, 1));
-      expect(cell.left, closeTo(today.left + today.width / 2, 1));
-      expect(cell.width, closeTo(today.width / 12, 1));
-      // Its hour in the header, its room in the room column.
-      final hour = tester.getRect(
-        find.byKey(const ValueKey('calendar-hover-time')),
-      );
-      expect(hour.center.dx, closeTo(cell.center.dx, 1));
-      // The hour shows on the solid pill; bands lead along the row and down
-      // the column; the day is tinted.
+      await tester.pumpAndSettle();
       expect(
-        find.descendant(
-          of: find.byKey(const ValueKey('calendar-hover-time')),
-          matching: find.text('12'),
-        ),
+        find.byKey(const ValueKey('calendar-edit-building')).hitTestable(),
         findsOneWidget,
       );
-      final row = tester.getRect(
-        find.byKey(const ValueKey('calendar-hover-row')),
-      );
-      expect(row.top, closeTo(room.top, 1));
-      expect(row.width, greaterThan(today.width * 3));
-      final column = tester.getRect(
-        find.byKey(const ValueKey('calendar-hover-column')),
-      );
-      expect(column.left, closeTo(cell.left, 1));
-      // From the first room down to the last one.
-      expect(column.bottom, closeTo(last.bottom, 1));
-      expect(column.height, greaterThan(room.height));
-      expect(
-        tester.getRect(find.byKey(const ValueKey('calendar-hover-day'))).left,
-        closeTo(today.left, 1),
-      );
-      expect(hour.bottom, lessThanOrEqualTo(today.bottom));
-      final label = tester.getRect(
-        find.byKey(const ValueKey('calendar-hover-room')),
-      );
-      expect(label.top, closeTo(room.top, 1));
-      expect(label.height, closeTo(room.height, 1));
-      // Leaving the grid clears all three.
-      await mouse.moveTo(const Offset(2, 2));
-      await tester.pump();
-      for (final key in [
-        'calendar-hover-cell',
-        'calendar-hover-row',
-        'calendar-hover-column',
-        'calendar-hover-day',
-        'calendar-hover-time',
-        'calendar-hover-room',
-      ]) {
-        expect(find.byKey(ValueKey(key)), findsNothing, reason: key);
-      }
       expect(tester.takeException(), isNull);
-    },
-  );
+      await tester.runAsync(() async {
+        final boundary = tester.renderObject<RenderRepaintBoundary>(
+          find.byKey(const ValueKey('capture')),
+        );
+        final image = await boundary.toImage();
+        final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+        await File(
+          '.dart_tool/calendar-spacing/property-edit-${shot.$1}.png',
+        ).writeAsBytes(bytes!.buffer.asUint8List());
+        image.dispose();
+      });
+      await tester.tapAt(const Offset(4, 4));
+      await tester.pumpAndSettle();
+    }
+  });
 
   testWidgets('client design fits phones, landscape and large text', (
     tester,
@@ -800,6 +884,20 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('calendar-building-b1')));
       await tester.pumpAndSettle();
       expect(find.text('Building 05'), findsWidgets);
+      final menuScroll = find.descendant(
+        of: find.byType(SingleChildScrollView).last,
+        matching: find.byType(Scrollable),
+      );
+      expect(menuScroll, findsOneWidget);
+      final menuRect = tester.getRect(find.byType(SingleChildScrollView).last);
+      expect(menuRect.top, greaterThanOrEqualTo(0));
+      expect(menuRect.bottom, lessThanOrEqualTo(1000));
+      final lastProperty = find.byKey(const ValueKey('calendar-pick-b60'));
+      await tester.ensureVisible(lastProperty);
+      await tester.pumpAndSettle();
+      expect(lastProperty.hitTestable(), findsOneWidget);
+      await tester.ensureVisible(find.text('Building 03').last);
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Building 03').last);
       await tester.pumpAndSettle();
       expect(
@@ -812,6 +910,49 @@ void main() {
       );
       expect(asked.where((a) => a['buildingId'] == 'b4'), hasLength(1));
       expect(tester.takeException(), isNull);
+      for (final size in [const Size(320, 740), const Size(800, 360)]) {
+        for (final language in ['en', 'vi']) {
+          await mountCalendar(
+            tester,
+            service,
+            size: size,
+            language: language,
+            scale: 2,
+            showTools: false,
+            access: TeamAccess.fromMap(TeamPreviewStore.grant('owner')),
+          );
+          await tester.tap(find.byKey(const ValueKey('calendar-building-b1')));
+          await tester.pumpAndSettle();
+          final scroll = find.byType(SingleChildScrollView).last;
+          final bounds = tester.getRect(scroll);
+          expect(bounds.left, greaterThanOrEqualTo(0));
+          expect(bounds.right, lessThanOrEqualTo(size.width));
+          expect(bounds.bottom, lessThanOrEqualTo(size.height));
+          expect(
+            find.byKey(const ValueKey('calendar-new-building')).hitTestable(),
+            findsOneWidget,
+          );
+          await tester.ensureVisible(
+            find.byKey(const ValueKey('calendar-pick-b60')),
+          );
+          await tester.pumpAndSettle();
+          expect(
+            find.byKey(const ValueKey('calendar-edit-building')).hitTestable(),
+            findsOneWidget,
+          );
+          expect(
+            find.byKey(const ValueKey('calendar-new-building')).hitTestable(),
+            findsOneWidget,
+          );
+          await tester.tap(find.byKey(const ValueKey('calendar-pick-b60')));
+          await tester.pumpAndSettle();
+          expect(
+            find.byKey(const ValueKey('calendar-building-b60')),
+            findsOneWidget,
+          );
+          expect(tester.takeException(), isNull);
+        }
+      }
     },
   );
   testWidgets(
@@ -846,6 +987,31 @@ void main() {
             );
             final reason = '$language $size $scale';
             expect(tester.takeException(), isNull, reason: reason);
+            for (final element in find.byType(CalEdgeBubble).evaluate()) {
+              final bubble = element.widget as CalEdgeBubble;
+              final name = find.descendant(
+                of: find.byWidget(bubble),
+                matching: find.text(calBarName(element, bubble.bar)),
+              );
+              final text = tester.widget<Text>(name);
+              expect(text.maxLines, isNull, reason: reason);
+              expect(
+                text.overflow,
+                isNot(TextOverflow.ellipsis),
+                reason: reason,
+              );
+              final paragraph = tester.renderObject<RenderParagraph>(name);
+              expect(paragraph.didExceedMaxLines, isFalse, reason: reason);
+              expect(
+                tester
+                    .getRect(find.byWidget(bubble))
+                    .contains(
+                      tester.getBottomRight(name) - const Offset(0.1, 0.1),
+                    ),
+                isTrue,
+                reason: reason,
+              );
+            }
             expect(
               find.byKey(const ValueKey('calendar-month')),
               findsOneWidget,
@@ -938,8 +1104,8 @@ void main() {
         tester.getSize(bar('booking:b2')).height,
         moreOrLessEquals(tester.getSize(bar('booking:b1')).height),
       );
-      // 48 px rows, 8 px above and below the bar (client's design).
-      expect(tester.getSize(bar('booking:b1')).height, 32);
+      // 30 px rows, 3 px above and below the unchanged 24 px bar.
+      expect(tester.getSize(bar('booking:b1')).height, 24);
       expect(
         tester.getSize(find.byKey(const ValueKey('calendar-room-r102'))).height,
         greaterThan(
@@ -1037,7 +1203,7 @@ void main() {
         find.byKey(const ValueKey('calendar-building-pages-riverside')),
       );
       await tester.pumpAndSettle();
-      for (final page in ['property', 'contract', 'layout', 'fees']) {
+      for (final page in ['property', 'contract', 'fees']) {
         expect(
           find.byKey(ValueKey('building-page-$page')),
           findsOneWidget,
@@ -1045,9 +1211,8 @@ void main() {
         );
       }
       expect(find.byType(PropertyDetailsScreen), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('building-page-layout')));
-      await tester.pumpAndSettle();
-      expect(find.byType(PropertyLayoutScreen), findsOneWidget);
+      expect(find.byKey(const ValueKey('building-page-layout')), findsNothing);
+      expect(find.byKey(const ValueKey('setup-floors')), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('calendar-dialog-close')));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
@@ -1067,6 +1232,20 @@ void main() {
       );
       expect(find.byKey(const ValueKey('calendar-new-building')), findsNothing);
       expect(find.byKey(const ValueKey('calendar-new-room')), findsNothing);
+      await tester.tap(
+        find.byKey(const ValueKey('calendar-building-riverside')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('calendar-edit-building')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('calendar-current-building')),
+        findsOneWidget,
+      );
+      await tester.tapAt(const Offset(4, 4));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('calendar-room-r102')));
       await tester.pumpAndSettle();
       expect(find.byType(RoomDirectory), findsNothing);
@@ -1236,7 +1415,7 @@ void main() {
       await tapDay(tester, 'r102', 12); // room 102, 12 October
       expect(find.byKey(const ValueKey('calendar-new-short')), findsOneWidget);
       expect(find.byKey(const ValueKey('calendar-new-long')), findsOneWidget);
-      expect(find.byKey(const ValueKey('calendar-report')), findsOneWidget);
+      expect(find.byKey(const ValueKey('calendar-report')), findsNothing);
       await tester.tap(find.byKey(const ValueKey('calendar-new-short')));
       await tester.pumpAndSettle();
       expect(find.byType(CalendarPageDialog), findsOneWidget);
@@ -1246,7 +1425,7 @@ void main() {
       final end = tester.widget<TextFormField>(
         find.byKey(const ValueKey('ops-endLocal')),
       );
-      expect(start.controller!.text, '2026-10-12 14:00');
+      expect(start.controller!.text, '2026-10-12 12:00');
       expect(end.controller!.text, '2026-10-13 12:00');
       expect(
         tester
@@ -1291,23 +1470,22 @@ void main() {
       );
       expect(
         tester
-            .widget<ListTile>(find.byKey(const ValueKey('calendar-new-short')))
-            .enabled,
-        isFalse,
+            .widget<OutlinedButton>(
+              find.byKey(const ValueKey('calendar-new-short')),
+            )
+            .onPressed,
+        isNull,
       );
       expect(
         tester
-            .widget<ListTile>(find.byKey(const ValueKey('calendar-new-long')))
-            .enabled,
-        isFalse,
+            .widget<OutlinedButton>(
+              find.byKey(const ValueKey('calendar-new-long')),
+            )
+            .onPressed,
+        isNull,
       );
-      await tester.tap(find.byKey(const ValueKey('calendar-report')));
-      await tester.pumpAndSettle();
-      final problems = tester.widget<TechnicalProblemsScreen>(
-        find.byType(TechnicalProblemsScreen),
-      );
-      expect(problems.reportRoomId, 'r103');
-      await tester.tap(find.byKey(const ValueKey('calendar-dialog-close')));
+      expect(find.byKey(const ValueKey('calendar-report')), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('calendar-rental-close')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('calendar-room-r103')));
       await tester.pumpAndSettle();
@@ -1709,11 +1887,24 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(
-      tester.getRect(hourly).bottom,
-      lessThanOrEqualTo(tester.getRect(bar('booking:b4')).top + 0.5),
-      reason: 'above the bar',
-    );
+    // Wherever it goes (a week on screen, 2026-10-12: above, below or
+    // beside), it never covers the text or status of the stays beside it;
+    // a plain stretch of their bars may be covered.
+    final h = tester.getRect(hourly);
+    for (final id in ['booking:b5', 'booking:b6']) {
+      for (final part in [
+        ...find.descendant(of: bar(id), matching: find.byType(Text)).evaluate(),
+        ...find
+            .descendant(
+              of: bar(id),
+              matching: find.byKey(const ValueKey('calendar-bar-status')),
+            )
+            .evaluate(),
+      ]) {
+        final r = tester.getRect(find.byWidget(part.widget));
+        expect(h.overlaps(r.deflate(0.5)), isFalse, reason: id);
+      }
+    }
     // No bubble covers any text of the stays around it: names, icon lines,
     // end times or status circles.
     final texts = <Rect>[
@@ -1819,6 +2010,72 @@ void main() {
   // 2026-10-04 (Tom): a red line at the property's current time, and the
   // toolbar names both months when the screen shows the end of one and the
   // start of the next.
+  testWidgets(
+    'short embedded calendar keeps wrapped header and grid reachable',
+    (tester) async {
+      await mountCalendar(
+        tester,
+        calendarService(Calls()),
+        size: const Size(812, 200),
+        scale: 2,
+        showTools: false,
+      );
+      final scroll = find.byKey(const ValueKey('calendar-compact-scroll'));
+      expect(scroll, findsOneWidget);
+      final title = find.byKey(const ValueKey('calendar-building-name'));
+      expect(title.hitTestable(), findsOneWidget);
+      await tester.drag(scroll, const Offset(0, -180));
+      await tester.pumpAndSettle();
+      expect(_gridFinder.hitTestable(), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.runAsync(() async {
+        final image = await tester
+            .renderObject<RenderRepaintBoundary>(
+              find.byKey(const ValueKey('capture')),
+            )
+            .toImage();
+        final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+        await Directory('.dart_tool/calendar-layout').create(recursive: true);
+        await File(
+          '.dart_tool/calendar-layout/embedded-landscape.png',
+        ).writeAsBytes(bytes!.buffer.asUint8List());
+        image.dispose();
+      });
+    },
+  );
+
+  testWidgets('dark calendar bars remain opaque with full bubble names', (
+    tester,
+  ) async {
+    await mountCalendar(
+      tester,
+      calendarService(Calls()),
+      brightness: Brightness.dark,
+      showTools: false,
+    );
+    for (final ink in tester.widgetList<Ink>(
+      find.descendant(of: find.byType(CalBarTile), matching: find.byType(Ink)),
+    )) {
+      final colors =
+          ((ink.decoration as BoxDecoration).gradient as LinearGradient).colors;
+      expect(colors.every((c) => c.a == 1), isTrue);
+      expect(colors.first, isNot(colors.last));
+    }
+    expect(tester.takeException(), isNull);
+    await tester.runAsync(() async {
+      final image = await tester
+          .renderObject<RenderRepaintBoundary>(
+            find.byKey(const ValueKey('capture')),
+          )
+          .toImage();
+      final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+      await File(
+        '.dart_tool/calendar-layout/dark.png',
+      ).writeAsBytes(bytes!.buffer.asUint8List());
+      image.dispose();
+    });
+  });
+
   testWidgets('a red now line; the label names both months on screen', (
     tester,
   ) async {
@@ -1832,17 +2089,42 @@ void main() {
     );
     final x = tester.getRect(line).center.dx;
     expect(x, closeTo(today.left + today.width * 9 / 24, 2));
-    // Drawn under the bars, so it never runs through a name (Tom).
+    // The red dot in the header sits on the line.
+    expect(
+      tester.getCenter(find.byKey(const ValueKey('calendar-now-head'))).dx,
+      closeTo(x, 1),
+    );
+    // Current time stays above bars and name bubbles.
     final layer = tester.widget<Stack>(
       find.ancestor(of: line, matching: find.byType(Stack)).first,
     );
     int at(bool Function(Widget) test) => layer.children.indexWhere(test);
     final lineAt = at((w) => w.key == const ValueKey('calendar-now-line'));
     final barAt = at((w) => w is Positioned && w.child is CalBarTile);
-    expect(barAt, greaterThan(lineAt));
-    // Opened at today: the now line a quarter of the way into the dates.
+    expect(lineAt, greaterThan(barAt));
+    expect(lineAt, layer.children.length - 1);
+    final title = tester.widget<Text>(
+      find.byKey(const ValueKey('calendar-building-name')),
+    );
+    expect(title.maxLines, isNull);
+    for (final ink in tester.widgetList<Ink>(
+      find.descendant(of: find.byType(CalBarTile), matching: find.byType(Ink)),
+    )) {
+      final gradient =
+          (ink.decoration as BoxDecoration).gradient as LinearGradient;
+      expect(gradient.colors.every((c) => c.a == 1), isTrue);
+    }
+    // Opened at today: a day before now on screen (a quarter of the view on
+    // narrow screens).
     final view = tester.getRect(_gridFinder);
-    expect(x, closeTo(view.left + view.width / 4, 3));
+    expect(
+      x,
+      closeTo(
+        view.left +
+            (view.width / 4 < today.width ? view.width / 4 : today.width),
+        3,
+      ),
+    );
     expect(find.text('October 2026'), findsOneWidget);
     final grid = tester
         .widget<SingleChildScrollView>(
@@ -1888,10 +2170,8 @@ void main() {
       final label = tester
           .widget<Text>(find.byKey(const ValueKey('calendar-month')))
           .data!;
-      // "Tháng 10, 2026", "Tháng 10 – 11, 2026" or "Tháng 12, 2026 – Tháng 1, 2027".
-      final first = int.parse(
-        RegExp(r'Tháng (\d{1,2})').firstMatch(label)![1]!,
-      );
+      // "10, 2026", "10 – 11, 2026" or "12, 2026 – 1, 2027".
+      final first = int.parse(RegExp(r'^(\d{1,2})').firstMatch(label)![1]!);
       final month = first < 9 ? first + 12 : first;
       expect(month, greaterThanOrEqualTo(last), reason: label);
       last = month;
@@ -1953,8 +2233,17 @@ void main() {
     await mountCalendar(tester, service);
     final clean = bar('cleaning:t1');
     expect(clean, findsOneWidget);
-    // Two hours at 18 px an hour.
-    expect(tester.getSize(clean).width, closeTo(36, 3));
+    // Two hours at the day's scale, at least the shortest bar (18 px).
+    final hours2 =
+        tester
+            .getSize(find.byKey(const ValueKey('calendar-today-column')))
+            .width *
+        2 /
+        24;
+    expect(
+      tester.getSize(clean).width,
+      closeTo((hours2 > 18 ? hours2 : 18) - 2, 3),
+    );
     expect(
       find.byKey(const ValueKey('calendar-room-dirty-r104')),
       findsOneWidget,
@@ -2086,11 +2375,16 @@ void main() {
     // The bubble reaches into the guest's bar, over where its name begins.
     expect(b.overlaps(g), isTrue);
     expect(b.left, lessThan(g.left + 60));
-    // The bar keeps its place: it starts at 12:00, an hour (18 px) before
-    // the cleaning.
+    // The bar keeps its place: it starts at 12:00, an hour before the
+    // cleaning.
+    final hour =
+        tester
+            .getSize(find.byKey(const ValueKey('calendar-today-column')))
+            .width /
+        24;
     expect(
       g.left,
-      moreOrLessEquals(tester.getRect(clean).left - 18, epsilon: 2),
+      moreOrLessEquals(tester.getRect(clean).left - hour, epsilon: 2),
     );
     final name = find.descendant(
       of: guest,
@@ -2179,19 +2473,21 @@ void main() {
   // 2026-10-04 (Tom): 18 px an hour, so a 1-hour stay is a real bar (it was
   // about 5 days on a screen), and a second view shows whole months like
   // Airbnb, every room.
-  testWidgets('days are 18 px an hour; the hour marks are every 2 hours', (
-    tester,
-  ) async {
+  testWidgets('six days on screen; the hour marks fit the day', (tester) async {
     await mountCalendar(tester, calendarService(Calls()));
     final grid = tester.getRect(_gridFinder);
     final day = tester.getSize(
       find.byKey(const ValueKey('calendar-today-column')),
     );
-    // 18 px an hour (Tom: a 1-hour stay shows as a real bar).
-    expect(day.width, 432);
-    expect(grid.width / day.width, inInclusiveRange(2.7, 3.3));
+    // About 6 days on screen (2026-10-13, Tom), at most
+    // 18 px an hour.
+    expect(day.width, lessThanOrEqualTo(432));
+    expect(grid.width / day.width, inInclusiveRange(5.9, 6.2));
     // The 3-hour stay (13:00–16:00) is drawn at its real length.
-    expect(tester.getSize(bar('booking:b4')).width, closeTo(54, 3));
+    expect(
+      tester.getSize(bar('booking:b4')).width,
+      closeTo(day.width * 3 / 24, 3),
+    );
     // No column is shaded, not a weekend and not today (Tom).
     BoxDecoration? fill(String key) =>
         tester.widget<Container>(find.byKey(ValueKey(key))).decoration
@@ -2201,15 +2497,23 @@ void main() {
     expect(fill('calendar-today-column')?.color, isNull);
     // Today is still marked by its red hour and the now line.
     expect(find.byKey(const ValueKey('calendar-now-line')), findsOneWidget);
-    // Every 2 hours named under the date: 00 02 … 22 (client's design).
+    // Label density adapts while booking slots remain two hours.
     final today = find.byKey(const ValueKey('calendar-today-column'));
-    for (final h in ['00', '02', '12', '22']) {
-      expect(
-        find.descendant(of: today, matching: find.text(h)),
-        findsOneWidget,
-        reason: h,
-      );
-    }
+    expect(calSlotHours(day.width), 2);
+    expect(
+      find.descendant(of: today, matching: find.text('00')),
+      findsOneWidget,
+    );
+    final labels = tester.widgetList<Text>(
+      find.descendant(
+        of: today,
+        matching: find.byWidgetPredicate(
+          (w) => w is Text && RegExp(r'^\d{2}$').hasMatch(w.data ?? ''),
+        ),
+      ),
+    );
+    expect(labels.length, greaterThanOrEqualTo(3));
+    expect(labels.every((t) => t.style!.fontSize! >= 12), isTrue);
     // One line like the month pills, no phone icon, rounder (2026-10-05, Tom):
     // the "+1" (one person living with them) sits on the bar's middle line.
     expect(find.byIcon(Icons.phone_outlined), findsNothing);
@@ -2228,8 +2532,9 @@ void main() {
     final phoneDay = tester.getSize(
       find.byKey(const ValueKey('calendar-today-column')),
     );
-    expect(phoneDay.width, 432);
-    expect(phone.width, lessThan(phoneDay.width));
+    // Phones prioritize 28px two-hour cells and scroll for more days.
+    expect(phoneDay.width / 12, greaterThanOrEqualTo(28));
+    expect(phone.width / phoneDay.width, inInclusiveRange(0.5, 1.5));
     expect(tester.takeException(), isNull);
   });
 

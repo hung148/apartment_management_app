@@ -69,6 +69,7 @@ class TeamPreviewStore {
   /// Saved nightly prices per building, in minor units (2026-10-09, Tom: one
   /// list for all rooms of a building). A building without a list shows
   /// [defaultNightPrices] until the list is first changed, like the server.
+  final buildingHourTemplates = <String, List<Map<String, dynamic>>>{};
   final buildingPriceLists = <String, List<int>>{};
   List<int> defaultNightPrices = const [];
   List<int> nightPricesOf(String buildingId) =>
@@ -623,8 +624,7 @@ class TeamPreviewStore {
             ],
           'records': rooms
               .where(
-                (v) =>
-                    v['id'] != tenant['roomId'] && v['buildingId'] == target,
+                (v) => v['id'] != tenant['roomId'] && v['buildingId'] == target,
               )
               .map(
                 (v) => {
@@ -1669,6 +1669,7 @@ class TeamPreviewStore {
             'currency': organizationCurrency,
             'revision': 'new',
             'canSetRoomPrices': true,
+            'roomCurrency': organizationCurrency,
             'exploitationCostMinor': null,
           },
         };
@@ -1690,6 +1691,7 @@ class TeamPreviewStore {
           'currency': d['currency'],
           'exploitationCostMinor': d['exploitationCostMinor'],
           'revision': '1:0',
+          ...?d['layout'] as Map<String, dynamic>?,
         });
         for (final (index, room) in ((d['rooms'] as List?) ?? []).indexed) {
           final r = Map<String, dynamic>.from(room as Map);
@@ -1737,6 +1739,17 @@ class TeamPreviewStore {
             'currency': row['currency'] ?? 'VND',
             'exploitationCostMinor': row['exploitationCostMinor'],
             'revision': row['revision'] ?? '1:0',
+            'canSetRoomPrices': true,
+            'roomCurrency': organizationCurrency,
+            'layout': {
+              'uniformRooms': row['uniformRooms'],
+              'floorDefaults': row['floorDefaults'],
+              'floors': row['floors'] ?? 1,
+              'roomPrefix': row['roomPrefix'] ?? '',
+              'roomType': row['roomType'] ?? '',
+              'roomArea': row['roomArea'] ?? 0,
+              'floorRoomCounts': row['floorRoomCounts'] ?? [0],
+            },
           },
         };
       }
@@ -1744,6 +1757,19 @@ class TeamPreviewStore {
       if (completed.containsKey(key)) return completed[key]!;
       if (d['revision'] != (row['revision'] ?? '1:0')) {
         throw FirebaseFunctionsException(code: 'aborted', message: 'Changed');
+      }
+      final drafts = (d['rooms'] as List?) ?? [];
+      final taken = rooms
+          .where((r) => r['buildingId'] == row['id'])
+          .map((r) => '${r['roomNumber']}'.trim().toLowerCase())
+          .toSet();
+      if (drafts.any(
+        (r) => taken.contains('${r['roomNumber']}'.trim().toLowerCase()),
+      )) {
+        throw FirebaseFunctionsException(
+          code: 'already-exists',
+          message: 'Duplicate room',
+        );
       }
       if (d.containsKey('timeZone')) {
         if (d['timeZone'] != row['timeZone'] &&
@@ -1763,6 +1789,27 @@ class TeamPreviewStore {
       }
       if (d.containsKey('exploitationCostMinor'))
         row['exploitationCostMinor'] = d['exploitationCostMinor'];
+      if (d['layout'] != null)
+        row.addAll(Map<String, dynamic>.from(d['layout'] as Map));
+      for (final (index, r) in drafts.indexed) {
+        rooms.add({
+          'id': '${d['operationId']}-room-$index',
+          'organizationId': 'preview',
+          'buildingId': row['id'],
+          'roomNumber': r['roomNumber'],
+          'roomType': r['roomType'],
+          'area': r['area'] ?? 0,
+          'currency': d['roomCurrency'] ?? row['currency'] ?? 'VND',
+          'rentalMode': 'both',
+          for (final k in ['roomPrice', 'nightlyPrice', 'hourlyPrice'])
+            k: r['ratesMinor'][k] == null
+                ? null
+                : (r['ratesMinor'][k] as num) /
+                      ((d['roomCurrency'] ?? row['currency']) == 'USD'
+                          ? 100
+                          : 1),
+        });
+      }
       row['name'] = d['name'];
       row['address'] = d['address'];
       row['revision'] =

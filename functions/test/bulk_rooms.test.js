@@ -24,7 +24,7 @@ test('bulk rooms inherit currency, commit once and reject changed retry',async()
  await assert.rejects(run({...d,rooms:[room('X')]}),e=>e.code==='failed-precondition');
 });
 test('existing normalized names and invalid batches produce no partial writes',async()=>{
- for(const rows of [[],Array.from({length:51},(_,i)=>room('P'+i)),[room('P001'),room('ｐ００１')],[{...room('P3'),area:-1}]]){
+ for(const rows of [[],Array.from({length:201},(_,i)=>room('P'+i)),[room('P001'),room('ｐ００１')],[{...room('P3'),area:-1}]]){
   const {db,run}=fixture();await assert.rejects(run({...command(),rooms:rows}),e=>e.code==='invalid-argument');assert.equal(db.store.size,3);
  }
  const {db,run}=fixture();db.store.set('rooms/old',{organizationId:'org',buildingId:'b',roomNumber:' ｐ００２ '});
@@ -42,6 +42,6 @@ test('bulk authorization rechecks scope, status, v2, foreign building and price 
 });
 test('legacy currency defaults to VND and maximum batch is supported',async()=>{
  const {db,run}=fixture();delete db.store.get('buildings/b').currency;
- const result=await run({...command(),rooms:Array.from({length:50},(_,i)=>room('N'+i))});
- assert.equal(result.roomIds.length,50);assert.equal(db.store.get('rooms/'+result.roomIds[0]).roomPrice,120099);
+ const result=await run({...command(),rooms:Array.from({length:200},(_,i)=>room('N'+i))});
+ assert.equal(result.roomIds.length,200);assert.equal(db.store.get('rooms/'+result.roomIds[0]).roomPrice,120099);
 });

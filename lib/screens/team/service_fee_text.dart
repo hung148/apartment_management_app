@@ -142,7 +142,7 @@ class FeeText {
       case 'service_currency_mismatch':
         return tr(
           "The tenant's currency differs from the property's.",
-          'Tiền tệ của khách khác với tiền tệ của tòa nhà.',
+          'Tiền tệ của khách khác với tiền tệ của cơ sở.',
         );
       case 'invoice_backdate_owner_required':
         return tr(
@@ -172,7 +172,7 @@ class FeeText {
       case 'service_fee_limit':
         return tr(
           'A property can have at most 30 fees.',
-          'Mỗi tòa nhà có tối đa 30 loại phí.',
+          'Mỗi cơ sở có tối đa 30 loại phí.',
         );
       case 'service_fee_history_limit':
         return tr(

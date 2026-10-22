@@ -40,6 +40,22 @@ class DialogPageScope extends InheritedWidget {
   bool updateShouldNotify(DialogPageScope oldWidget) => false;
 }
 
+/// A dialog whose title names a room (the calendar's "Phòng QA102 · Đặt
+/// phòng ngắn ngày", 2026-10-22): a form that lets the user pick another
+/// room reports the new room number, and the dialog renames itself.
+class RoomTitleScope extends InheritedWidget {
+  final ValueChanged<String> onRoom;
+  const RoomTitleScope({super.key, required this.onRoom, required super.child});
+
+  /// Tells the dialog (if any) that the form now shows room [number].
+  static void report(BuildContext context, String number) => context
+      .getInheritedWidgetOfExactType<RoomTitleScope>()
+      ?.onRoom(number);
+
+  @override
+  bool updateShouldNotify(RoomTitleScope oldWidget) => false;
+}
+
 /// A page shown under a chip in a dialog (the calendar's room dialog,
 /// 2026-10-05): the chips switch pages, so the page has no "back" link.
 class PageTabScope extends InheritedWidget {

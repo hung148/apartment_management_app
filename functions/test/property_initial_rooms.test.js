@@ -23,10 +23,10 @@ test('all optional data, old clients and legacy missing cost survive updates',as
  await run({...edit,operationId:'clear',exploitationCostMinor:null});assert.equal(db.store.get('buildings/new').exploitationCostMinor,null);
 });
 test('invalid rooms and money leave no building, rooms or audit writes',async()=>{
- for(const patch of [{exploitationCostMinor:-1},{exploitationCostMinor:1.2},{exploitationCostMinor:1e12+1},{rooms:[room(),room(' １０１ ')]},{rooms:[room(),{...room('102'),area:0}]},{rooms:[{...room(),ratesMinor:{roomPrice:0,nightlyPrice:null,hourlyPrice:null}}]},{rooms:Array.from({length:51},(_,i)=>room(String(i)))},{rooms:[{...room(),createdBy:'forged'}]}]){
+ for(const patch of [{exploitationCostMinor:-1},{exploitationCostMinor:1.2},{exploitationCostMinor:1e12+1},{rooms:[room(),room(' １０１ ')]},{rooms:[room(),{...room('102'),area:0}]},{rooms:[{...room(),ratesMinor:{roomPrice:0,nightlyPrice:null,hourlyPrice:null}}]},{rooms:Array.from({length:201},(_,i)=>room(String(i)))},{rooms:[{...room(),createdBy:'forged'}]}]){
   const {db,run}=fixture();await assert.rejects(run({...command(),...patch}),e=>e.code==='invalid-argument');assert.equal(db.store.size,2);
  }
- assert.ok(validInitialRooms([]));assert.ok(validInitialRooms(Array.from({length:50},(_,i)=>room(String(i)))));
+ assert.ok(validInitialRooms([]));assert.ok(validInitialRooms(Array.from({length:200},(_,i)=>room(String(i)))));
 });
 test('room price permission cannot be bypassed by building creation; revoked access blocks retries',async()=>{
  const {db,run}=fixture();const member=db.store.get('memberships/owner_org');member.role='manager';member.permissionOverrides={overridePrices:false};
@@ -42,6 +42,6 @@ test('deterministic room collision refuses all writes and preserves foreign data
  await assert.rejects(run(d),e=>e.code==='already-exists');assert.equal(db.store.size,3);assert.equal(db.store.get(`rooms/${id}`).roomNumber,'Keep');
 });
 test('maximum list is bounded and VND preserves whole amounts',async()=>{
- const {db,run}=fixture();db.store.get('organizations/org').displayCurrency='VND';await run({...command(),currency:'VND',rooms:Array.from({length:50},(_,i)=>room(String(i)))});
- const rooms=[...db.store].filter(([k])=>k.startsWith('rooms/'));assert.equal(rooms.length,50);assert.equal(rooms[0][1].roomPrice,125099);
+ const {db,run}=fixture();db.store.get('organizations/org').displayCurrency='VND';await run({...command(),currency:'VND',rooms:Array.from({length:200},(_,i)=>room(String(i)))});
+ const rooms=[...db.store].filter(([k])=>k.startsWith('rooms/'));assert.equal(rooms.length,200);assert.equal(rooms[0][1].roomPrice,125099);
 });

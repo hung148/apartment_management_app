@@ -35,11 +35,11 @@ String opsText(BuildContext context, String key) {
 
     'invoices': [
       'Invoices and building expenses',
-      'Hóa đơn và chi phí thuê tòa nhà',
+      'Hóa đơn và chi phí thuê cơ sở',
     ],
     'propertyLayout': [
       'Property layout and room defaults',
-      'Sơ đồ tòa nhà và mặc định phòng',
+      'Sơ đồ cơ sở và mặc định phòng',
     ],
     'bookings': ['Manage bookings', 'Quản lý đặt phòng'],
     'back': ['Back', 'Quay lại'],
@@ -56,7 +56,7 @@ String opsText(BuildContext context, String key) {
     'roomRequired': ['Choose a room.', 'Hãy chọn phòng.'],
     'noShortStayRooms': [
       'No room in this property takes short-stay bookings yet. In the room\'s pricing, set the rental mode to hourly/daily (or both) and enter a price.',
-      'Tòa nhà này chưa có phòng nào nhận đặt ngắn hạn. Trong giá phòng, chọn kiểu cho thuê theo giờ/ngày (hoặc cả hai) và nhập giá.',
+      'Cơ sở này chưa có phòng nào nhận đặt ngắn hạn. Trong giá phòng, chọn kiểu cho thuê theo giờ/ngày (hoặc cả hai) và nhập giá.',
     ],
     'rateMissing': [
       'This room has no price for this pricing type. Set the room rates first, or choose another pricing type.',
@@ -65,7 +65,7 @@ String opsText(BuildContext context, String key) {
     'badAmount': ['The amount is not valid.', 'Số tiền không hợp lệ.'],
     'noCreatePermission': [
       'Your role does not allow adding bookings in this property.',
-      'Vai trò của bạn không được thêm đặt phòng ở tòa nhà này.',
+      'Vai trò của bạn không được thêm đặt phòng ở cơ sở này.',
     ],
     'roomUnavailable': [
       'This room cannot take short-stay bookings (check its rental mode), or it was removed.',
@@ -73,7 +73,7 @@ String opsText(BuildContext context, String key) {
     ],
     'timezoneMissing': [
       'This property has no timezone yet. Set it in the property details first.',
-      'Tòa nhà chưa có múi giờ. Hãy cài múi giờ trong thông tin tòa nhà trước.',
+      'Cơ sở chưa có múi giờ. Hãy cài múi giờ trong thông tin cơ sở trước.',
     ],
     'periodExists': [
       'Rent or a fee is already billed for some of these days.',
@@ -102,7 +102,7 @@ String opsText(BuildContext context, String key) {
     'income': ['Income', 'Thu'],
     'expense': ['Expense', 'Chi'],
     'tenantRent': ['Tenant rent', 'Tiền thuê của khách'],
-    'buildingRent': ['Whole-building rent', 'Thuê nguyên tòa nhà'],
+    'buildingRent': ['Whole-building rent', 'Thuê nguyên cơ sở'],
     'tenant': ['Tenant', 'Người thuê'],
     'start': ['Period start (YYYY-MM-DD)', 'Bắt đầu kỳ (YYYY-MM-DD)'],
     'end': [
@@ -131,7 +131,7 @@ String opsText(BuildContext context, String key) {
     'cancel': ['Cancel', 'Hủy'],
     'layoutHelp': [
       'These settings describe the building and suggest values for new rooms. Existing rooms, prices and bookings are unchanged. Enter one room count per floor, separated by commas.',
-      'Các cài đặt mô tả tòa nhà và gợi ý giá trị cho phòng mới. Phòng, giá và đặt phòng hiện có không thay đổi. Nhập số phòng từng tầng, ngăn cách bằng dấu phẩy.',
+      'Các cài đặt mô tả cơ sở và gợi ý giá trị cho phòng mới. Phòng, giá và đặt phòng hiện có không thay đổi. Nhập số phòng từng tầng, ngăn cách bằng dấu phẩy.',
     ],
     'floors': ['Number of floors', 'Số tầng'],
     'roomPrefix': ['Room prefix', 'Tiền tố phòng'],
@@ -164,6 +164,8 @@ String opsText(BuildContext context, String key) {
     ],
     'confirmed': ['Confirm booking', 'Xác nhận đặt phòng'],
     'checkedIn': ['Check in', 'Nhận phòng'],
+    // Only the status (2026-10-14, Tom); money is taken separately.
+    'checkedOut': ['Check out', 'Trả phòng'],
     'cancelled': ['Cancel booking', 'Hủy đặt phòng'],
     'noShow': ['Mark no-show', 'Đánh dấu không đến'],
     'occurrence': [
@@ -174,7 +176,7 @@ String opsText(BuildContext context, String key) {
     'second': ['Second occurrence', 'Lần thứ hai'],
     'bookingHelp': [
       'Enter times in the displayed property timezone. Rates are calculated by the server. Hourly prices use elapsed hours; daily and overnight prices charge each started 24-hour block. A configured daily threshold switches hourly pricing to daily.',
-      'Nhập giờ theo múi giờ tòa nhà hiển thị. Máy chủ tính giá. Giá giờ theo thời lượng thực tế; giá ngày và qua đêm tính mỗi chu kỳ 24 giờ đã bắt đầu. Ngưỡng ngày đã cài đặt chuyển giá giờ sang giá ngày.',
+      'Nhập giờ theo múi giờ cơ sở hiển thị. Máy chủ tính giá. Giá giờ theo thời lượng thực tế; giá ngày và qua đêm tính mỗi chu kỳ 24 giờ đã bắt đầu. Ngưỡng ngày đã cài đặt chuyển giá giờ sang giá ngày.',
     ],
     'reviewWarning': [
       'Review this action before confirming. Financial and history records are retained.',

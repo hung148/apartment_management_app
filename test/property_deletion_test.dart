@@ -29,10 +29,15 @@ void main() {
     (tester) async {
       final store = TeamPreviewStore();
       await mountReview(tester, page(store.service));
-      await press(tester, 'Delete empty property');
+      // "Delete" then "Save" on one line, left to right (2026-10-14, Tom).
+      final delete = tester.getRect(find.widgetWithText(OutlinedButton, 'Delete'));
+      final save = tester.getRect(find.widgetWithText(FilledButton, 'Save'));
+      expect(delete.right, lessThan(save.left));
+      expect(delete.center.dy, closeTo(save.center.dy, 1));
+      await press(tester, 'Delete');
       await press(tester, 'Keep property');
       expect(store.buildings.any((p) => p['id'] == 'garden'), isTrue);
-      await press(tester, 'Delete empty property');
+      await press(tester, 'Delete');
       await press(tester, 'Confirm deletion');
       expect(store.buildings.any((p) => p['id'] == 'garden'), isFalse);
       expect(find.byKey(const ValueKey('property-name')), findsNothing);
@@ -47,7 +52,7 @@ void main() {
   ) async {
     final store = TeamPreviewStore();
     await mountReview(tester, page(store.service, id: 'riverside'));
-    await press(tester, 'Delete empty property');
+    await press(tester, 'Delete');
     await press(tester, 'Confirm deletion');
     await reveal(tester, find.textContaining('historical records'));
     expect(find.textContaining('historical records'), findsOneWidget);
@@ -58,7 +63,7 @@ void main() {
       RoleWorkspace(organizationId: 'preview', service: store.service),
     );
     await openBuildingPage(tester, 'property');
-    expect(find.text('Delete empty property'), findsNothing);
+    expect(find.text('Delete'), findsNothing);
   });
   testWidgets(
     'lost deletion reply retries identically and revocation clears the form',
@@ -86,7 +91,7 @@ void main() {
         },
       );
       await mountReview(tester, page(service));
-      await press(tester, 'Delete empty property');
+      await press(tester, 'Delete');
       await press(tester, 'Confirm deletion');
       await press(tester, 'Retry the same deletion');
       expect(sent.length, 2);
@@ -96,7 +101,7 @@ void main() {
         1,
       );
       await mountReview(tester, page(service, id: 'riverside'));
-      await press(tester, 'Delete empty property');
+      await press(tester, 'Delete');
       denied = true;
       await press(tester, 'Confirm deletion');
       expect(find.byKey(const ValueKey('property-name')), findsNothing);
@@ -123,12 +128,12 @@ void main() {
         },
       );
       await mountReview(tester, page(service));
-      await press(tester, 'Delete empty property');
+      await press(tester, 'Delete');
       await press(tester, 'Confirm deletion');
-      expect(find.text('Delete empty property'), findsNothing);
+      expect(find.text('Delete'), findsNothing);
       await press(tester, 'Reload property details');
       stale = false;
-      await press(tester, 'Delete empty property');
+      await press(tester, 'Delete');
       await reveal(tester, find.text('Confirm deletion'));
       await tester.tap(find.text('Confirm deletion'));
       await tester.pump();

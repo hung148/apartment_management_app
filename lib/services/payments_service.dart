@@ -306,8 +306,8 @@ class PaymentService {
         billingEndDate: endDate,
         description: description ??
             (startDate != null && endDate != null
-                ? 'Tiền thuê tòa nhà từ ${_formatDate(startDate)} đến ${_formatDate(endDate)}'
-                : 'Tiền thuê tòa nhà'),
+                ? 'Tiền thuê cơ sở từ ${_formatDate(startDate)} đến ${_formatDate(endDate)}'
+                : 'Tiền thuê cơ sở'),
         createdAt: DateTime.now(),
       );
 

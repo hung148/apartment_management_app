@@ -8,11 +8,11 @@ Build and publish from the repository root:
 
 ```powershell
 flutter test test/web_startup_test.dart --platform chrome --concurrency=1
-flutter build web --release
+flutter build web --release --wasm
 firebase deploy --only hosting --project apartment-management-app-776b9
 ```
 
-Always run `flutter build web --release` right before the deploy: `tool\local.ps1`
+Always run `flutter build web --release --wasm` right before the deploy: `tool\local.ps1`
 (local testing) leaves a LOCAL build in `build/web` that talks only to the emulators
 on this computer, and it must never be uploaded. Staging uses `build/staging-web`.
 

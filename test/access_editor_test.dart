@@ -176,7 +176,7 @@ void main() {
       expect(find.byKey(const ValueKey('access-overrides-retired')), findsOneWidget);
       final field = find.byKey(const ValueKey('access-scope-all'));
       await reveal(tester, field);
-      const text = 'Tất cả tòa nhà, kể cả tòa nhà thêm sau này';
+      const text = 'Tất cả cơ sở, kể cả cơ sở thêm sau này';
       final label = find.descendant(of: field, matching: find.text(text));
       final paragraph = tester.renderObject<RenderParagraph>(label);
       final boxes = paragraph.getBoxesForSelection(

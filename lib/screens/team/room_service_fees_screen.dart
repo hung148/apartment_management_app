@@ -187,7 +187,7 @@ class _RoomServiceFeesScreenState extends State<RoomServiceFeesScreen> {
               : x.tr('Service fees · Room $room', 'Phí dịch vụ · Phòng $room'),
           help: x.tr(
             'Fees come from the property. A room price or "off" here applies to this room only.',
-            'Phí lấy từ cài đặt tòa nhà. Giá riêng hoặc "không thu" ở đây chỉ áp dụng cho phòng này.',
+            'Phí lấy từ cài đặt cơ sở. Giá riêng hoặc "không thu" ở đây chỉ áp dụng cho phòng này.',
           ),
           actions: [
             if (widget.onBuildingFees != null)
@@ -195,7 +195,7 @@ class _RoomServiceFeesScreenState extends State<RoomServiceFeesScreen> {
                 key: const ValueKey('room-fees-building'),
                 onPressed: widget.onBuildingFees,
                 icon: const Icon(Icons.apartment_outlined, size: 18),
-                label: Text(x.tr('Building fees', 'Phí tòa nhà')),
+                label: Text(x.tr('Building fees', 'Phí cơ sở')),
               ),
           ],
         ),

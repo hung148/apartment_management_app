@@ -261,7 +261,7 @@ class _TechnicalProblemsScreenState extends State<TechnicalProblemsScreen> {
       case 'problem_block_needs_manager':
         return x.tr(
           'Only a property manager can stop renting the room.',
-          'Chỉ quản lý tòa nhà mới được tạm ngừng cho thuê phòng.',
+          'Chỉ quản lý cơ sở mới được tạm ngừng cho thuê phòng.',
         );
       case 'problem_changed':
         return x.tr(
@@ -1006,7 +1006,7 @@ class _TechnicalProblemsScreenState extends State<TechnicalProblemsScreen> {
                 subtitle: Text(
                   x.tr(
                     "Shown with the property's invoices and expenses.",
-                    'Hiện cùng hóa đơn và chi phí của tòa nhà.',
+                    'Hiện cùng hóa đơn và chi phí của cơ sở.',
                   ),
                 ),
               ),

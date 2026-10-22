@@ -177,6 +177,22 @@ test('booking bar: local times, platform, payment dot and paid share',async()=>{
  assert.equal(k2.problem,true,'open problem on the room');
 });
 
+test('short-stay status stays staff-selected before, during and after its dates',async()=>{
+ const previous=Ts.clock;
+ try {
+  for(const day of ['2026-09-30','2026-10-02','2026-10-20']){
+   Ts.clock=Date.parse(`${day}T03:00:00Z`);
+   const data=seed();
+   data['bookings/k2'].status='pending';
+   data['bookings/k4']={...data['bookings/k1'],status:'checkedOut'};
+   const result=await call(fakeDb(data));
+   assert.equal(bar(result,'booking:k1').status,'staying');
+   assert.equal(bar(result,'booking:k2').status,'upcoming');
+   assert.equal(bar(result,'booking:k4').status,'out');
+  }
+ } finally {Ts.clock=previous;}
+});
+
 test('lease bar: open-ended with planned end, paid until, roommates',async()=>{
  Ts.clock=Date.parse('2026-10-02T03:00:00Z');
  const r=await call(fakeDb(seed()));

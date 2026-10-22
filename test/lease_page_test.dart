@@ -97,7 +97,7 @@ void main() {
     await tester.tap(find.text('Riverside — Khu căn hộ phía Đông').last);
     await tester.pumpAndSettle();
     await tapKey(tester, 'lease-change-room');
-    await tester.tap(find.text('Room 102').last);
+    await tester.tap(find.byKey(const ValueKey('lease-change-room-room-102')));
     await tester.pumpAndSettle();
     await enter(tester, 'lease-change-reason', 'Bigger room');
     await tapKey(tester, 'lease-change-save');

@@ -54,14 +54,10 @@ void main() {
           t,
           find.byKey(const ValueKey('property-exploitation-cost')),
         );
-        final hint = find.text(
-          AppTranslations(const Locale('vi'))['property_cost_hint'],
-        );
-        expect(hint, findsOneWidget);
+        // No long explanation under the amount (2026-10-14, Tom).
         expect(
-          (t.renderObject(hint) as RenderParagraph).didExceedMaxLines,
-          isFalse,
-          reason: 'Full cost explanation must remain visible',
+          find.text(AppTranslations(const Locale('vi'))['property_cost_hint']),
+          findsNothing,
         );
         await t.runAsync(() async {
           final boundary = t.renderObject<RenderRepaintBoundary>(

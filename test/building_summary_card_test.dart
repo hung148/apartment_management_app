@@ -192,14 +192,14 @@ void main() {
         expect(tester.getRect(find.byType(BuildingSummaryCard)), cardRect);
       }
       for (final label in ['Chỉnh sửa', 'Quản lý phòng', 'Xoá']) {
-        await tester.tap(find.byTooltip('Thao tác tòa nhà'));
+        await tester.tap(find.byTooltip('Thao tác cơ sở'));
         await tester.pumpAndSettle();
         await tester.tap(find.text(label));
         await tester.pumpAndSettle();
       }
       expect([edits, manages, deletes], [1, 1, 1]);
       await pumpCard(tester, admin: false);
-      await tester.tap(find.byTooltip('Thao tác tòa nhà'));
+      await tester.tap(find.byTooltip('Thao tác cơ sở'));
       await tester.pumpAndSettle();
       expect(find.text('Chỉnh sửa'), findsNothing);
       expect(find.text('Xoá'), findsNothing);
@@ -323,7 +323,7 @@ void main() {
       }
     }
     await pumpCard(tester, value: rental, admin: false);
-    expect(find.byTooltip('Thao tác tòa nhà'), findsNothing);
+    expect(find.byTooltip('Thao tác cơ sở'), findsNothing);
     await tester.tap(find.text('Ngày đến hạn'));
     await tester.pumpAndSettle();
     expect(find.text('Nguyễn Văn Bình'), findsOneWidget);

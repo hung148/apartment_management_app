@@ -31,32 +31,35 @@ void main() {
     expect(Building.fromMap('b', legacy).exploitationCostMinor, isNull);
   });
 
-  testWidgets('existing USD cost reads, edits and clears without rooms input', (
-    t,
-  ) async {
-    final store = TeamPreviewStore();
-    store.buildings.first.addAll({
-      'currency': 'USD',
-      'exploitationCostMinor': 123456,
-    });
-    await mountReview(t, page(store.service));
-    expect(
-      t
-          .widget<TextFormField>(
-            find.byKey(const ValueKey('property-exploitation-cost')),
-          )
-          .controller!
-          .text,
-      '1,234.56',
-    );
-    expect(find.byKey(const ValueKey('property-add-room')), findsNothing);
-    await enter(t, 'property-exploitation-cost', '0');
-    await press(t, 'Save property details');
-    expect(store.buildings.first['exploitationCostMinor'], 0);
-    await enter(t, 'property-exploitation-cost', '');
-    await press(t, 'Save property details');
-    expect(store.buildings.first['exploitationCostMinor'], isNull);
-  });
+  testWidgets(
+    'existing USD cost reads, edits and clears without creating rooms',
+    (t) async {
+      final store = TeamPreviewStore();
+      store.buildings.first.addAll({
+        'currency': 'USD',
+        'exploitationCostMinor': 123456,
+      });
+      await mountReview(t, page(store.service));
+      expect(
+        t
+            .widget<TextFormField>(
+              find.byKey(const ValueKey('property-exploitation-cost')),
+            )
+            .controller!
+            .text,
+        '1,234.56',
+      );
+      final roomCount = store.rooms.length;
+      expect(find.byKey(const ValueKey('property-add-room')), findsOneWidget);
+      await enter(t, 'property-exploitation-cost', '0');
+      await press(t, 'Save');
+      expect(store.buildings.first['exploitationCostMinor'], 0);
+      await enter(t, 'property-exploitation-cost', '');
+      await press(t, 'Save');
+      expect(store.buildings.first['exploitationCostMinor'], isNull);
+      expect(store.rooms.length, roomCount);
+    },
+  );
 
   testWidgets(
     'new building inherits selected app currency and stores exact original cents',

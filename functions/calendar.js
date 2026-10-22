@@ -8,7 +8,7 @@ const {roomBlocked}=require('./technical_problems');
 const STATUSES = new Set([...ACTIVE, 'checkedOut', 'cancelled', 'noShow']);
 const METHODS = new Set(['cash', 'bankTransfer', 'momo', 'zalopay', 'creditCard', 'other']);
 const EDITABLE = ['guestName', 'guestPhone', 'guestIdNumber', 'numberOfGuests', 'startTime', 'endTime', 'totalPrice', 'depositAmount', 'notes', 'pricingType', 'source',
-  'guests', 'staffInChargeId', 'platform', 'contactChannel', 'depositNote', 'surcharges', 'nightPrices', 'hourlyPrice', 'priceOverride'];
+  'guests', 'staffInChargeId', 'platform', 'contactChannel', 'depositNote', 'surcharges', 'nightPrices', 'hourPrices', 'hourlyPrice', 'priceOverride'];
 const PRICING = ['hourly', 'daily', 'overnight', 'nightly'];
 // B2 booking details. Older bookings simply lack these fields.
 const PLATFORMS = new Set(['direct', 'airbnb', 'booking', 'agoda', 'traveloka', 'other']);
@@ -19,7 +19,7 @@ function validExtras(b, validMoney) {
   if (b.guests != null && (!Array.isArray(b.guests) || b.guests.length > 20 ||
       new Set(b.guests.map(g => g?.id)).size !== b.guests.length ||
       b.guests.some(g => !plainObject(g) || Object.keys(g).some(k => !['id','name','idNumber'].includes(k)) ||
-        !(typeof g.id === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(g.id)) || !shortText(g.name, 100) || !g.name.trim() ||
+        !(typeof g.id === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(g.id)) || !shortText(g.name, 100) ||
         (g.idNumber != null && !shortText(g.idNumber, 30))))) return false;
   if (b.guestIdNumber != null && !shortText(b.guestIdNumber, 30)) return false;
   if (b.numberOfGuests != null && (!Number.isSafeInteger(b.numberOfGuests) || b.numberOfGuests < 1 || b.numberOfGuests > 100)) return false;
@@ -35,6 +35,7 @@ function validExtras(b, validMoney) {
         (s.basis === 'person' && (!validMoney(s.unitAmount) || s.unitAmount <= 0 || !Number.isSafeInteger(s.count) || s.count < 1 || s.count > 100 ||
           Math.round(s.unitAmount * 100) * s.count !== Math.round(s.amount * 100)))))) return false;
   if (b.nightPrices != null && (!Array.isArray(b.nightPrices) || b.nightPrices.length > 366 || b.nightPrices.some(v => !validMoney(v) || v <= 0))) return false;
+  if (b.hourPrices != null && (!Array.isArray(b.hourPrices) || !b.hourPrices.length || b.hourPrices.length > 168 || b.hourPrices.some(v => !validMoney(v) || v <= 0))) return false;
   if (b.hourlyPrice != null && (!validMoney(b.hourlyPrice) || b.hourlyPrice <= 0)) return false;
   // An agreed price (Fix 5, 2026-10-09): the price, the calculated one, why and who.
   const o = b.priceOverride;
@@ -79,10 +80,16 @@ function createCalendarHandler({db, Timestamp, FieldValue, HttpsError}) {
     const serverQuote = context.serverQuote ?? null;
     const serverPriced = input.serverPricing === true || serverQuote !== null;
     // Surcharge lines and night prices must match the total, so only a server quote may write them.
-    if (!serverQuote && ('surcharges' in proposed || 'nightPrices' in proposed || 'hourlyPrice' in proposed || 'priceOverride' in proposed)) fail('invalid-argument', 'booking_invalid_request');
+    if (!serverQuote && ('surcharges' in proposed || 'nightPrices' in proposed || 'hourPrices' in proposed || 'hourlyPrice' in proposed || 'priceOverride' in proposed)) fail('invalid-argument', 'booking_invalid_request');
     // A deposit paid when the booking is made (2026-10-04) comes only from the bookings workspace, which checked it.
     const depositPayment = input.depositPayment == null ? null : decode(input.depositPayment);
     if (depositPayment && (!serverQuote || !['create','edit'].includes(action))) fail('invalid-argument', 'booking_invalid_request');
+    // 2026-10-14 (Tom): a payment recorded with the booking (date, amount, note), and the stay status chosen by staff
+    // (not by the clock). Both only from the bookings workspace.
+    const rentPayment = input.rentPayment == null ? null : decode(input.rentPayment);
+    if (rentPayment && (!serverQuote || !['create','edit'].includes(action))) fail('invalid-argument', 'booking_invalid_request');
+    const stayStatus = input.stayStatus ?? null;
+    if (stayStatus != null && (!serverQuote || !['create','edit'].includes(action) || !['notCheckedIn','checkedIn','checkedOut'].includes(stayStatus))) fail('invalid-argument', 'booking_invalid_request');
     const ref = db.collection('bookings').doc(bookingId);
     return db.runTransaction(async tx => {
       const existing = await tx.get(ref);
@@ -113,6 +120,7 @@ function createCalendarHandler({db, Timestamp, FieldValue, HttpsError}) {
             (old && action !== 'create' && !allows(actor,'readBookings',bookingScope)) ||
             (action === 'checkout' && !allows(actor,'collectPayments',scope)) ||
             (depositPayment && !allows(actor,'collectPayments',scope)) ||
+            (rentPayment && !allows(actor,'collectPayments',scope)) ||
             (action === 'edit' && !serverPriced && old && proposed.totalPrice !== undefined && proposed.totalPrice !== old.totalPrice && !allows(actor,'overridePrices',scope)) ||
             action === 'delete') fail('permission-denied','booking_access_denied');
         // Creating an arbitrary custom-priced booking also requires price authority
@@ -121,7 +129,7 @@ function createCalendarHandler({db, Timestamp, FieldValue, HttpsError}) {
       }
       let commandRef,commandFingerprint;
       if(v2&&id(operationId)){
-        const commandKey=createHash('sha256').update(JSON.stringify(['booking',orgId,context.auth.uid,operationId])).digest('hex');commandRef=db.doc(`bookingOperations/${commandKey}`);commandFingerprint=createHash('sha256').update(JSON.stringify(Object.fromEntries(Object.entries(input).filter(([key])=>key!=='propertyRevision').map(([key,value])=>key==='depositPayment'&&value?[key,{...value,paidAt:undefined}]:[key,value])))).digest('hex');// a deposit paid today is timed when the save arrives, so a retry has another time
+        const commandKey=createHash('sha256').update(JSON.stringify(['booking',orgId,context.auth.uid,operationId])).digest('hex');commandRef=db.doc(`bookingOperations/${commandKey}`);commandFingerprint=createHash('sha256').update(JSON.stringify(Object.fromEntries(Object.entries(input).filter(([key])=>key!=='propertyRevision').map(([key,value])=>(key==='depositPayment'||key==='rentPayment')&&value?[key,{...value,paidAt:undefined}]:[key,value])))).digest('hex');// a deposit paid today is timed when the save arrives, so a retry has another time
         const prior=await tx.get(commandRef);if(prior.exists){if(context.workspaceFingerprint?prior.data().workspaceFingerprint!==context.workspaceFingerprint:prior.data().fingerprint!==commandFingerprint)fail('failed-precondition','booking_operation_reused');return prior.data().result;}
       }
       if(v2&&input.propertyRevision){const property=await tx.get(db.doc(`buildings/${room.buildingId}`));if(!property.exists||property.data().organizationId!==orgId||input.propertyRevision!==`${property.updateTime.seconds}:${property.updateTime.nanoseconds}`)fail('aborted','booking_property_changed');}
@@ -147,9 +155,18 @@ function createCalendarHandler({db, Timestamp, FieldValue, HttpsError}) {
         createdAt: Timestamp.now(), createdBy: context.auth.uid,
       };
       const now = Timestamp.now();
-      let paymentRef, payment, originalInput;
+      let paymentRef, payment, originalInput, rentRef, rentDoc;
       if (action === 'create' || action === 'edit') {
-        if (old && !ACTIVE.has(old.status)) fail('failed-precondition','booking_invalid_transition');
+        // A checked-out stay can still be edited from the workspace (2026-10-14: staff set the status, and may set it back).
+        if (old && !ACTIVE.has(old.status) && !(serverQuote && old.status === 'checkedOut')) fail('failed-precondition','booking_invalid_transition');
+        if (stayStatus) {
+          const status = stayStatus === 'notCheckedIn' ? (['pending','confirmed'].includes(old?.status) ? old.status : 'pending') : stayStatus;
+          if (status !== old?.status) {
+            next.status = status;
+            if (status === 'checkedIn') { next.checkedInAt = Timestamp.now(); next.checkedInBy = context.auth.uid; }
+            if (status === 'checkedOut') { next.checkedOutAt = Timestamp.now(); next.checkedOutBy = context.auth.uid; }
+          }
+        } else if (old?.status === 'checkedOut') fail('failed-precondition','booking_invalid_transition');
         for (const key of EDITABLE) if (key in proposed) next[key] = proposed[key];
         next.pricingType ||= 'hourly'; next.source ||= 'walkIn';
         if (typeof next.guestName !== 'string' || !next.guestName.trim() || next.guestName.length > 100 ||
@@ -175,16 +192,18 @@ function createCalendarHandler({db, Timestamp, FieldValue, HttpsError}) {
         const bookings = await tx.get(db.collection('bookings').where('roomId','==',roomId));
         const tenants = await tx.get(db.collection('tenants').where('roomId','==',roomId));
         const buffer = Math.max(0, room.cleaningBufferMinutes || 0) * 60000;
+        // A stay marked checked out no longer holds the room.
+        const holds = ACTIVE.has(next.status);
         for (const doc of bookings.docs) {
           const b = doc.data();
-          if (doc.id !== bookingId && ACTIVE.has(b.status) && overlaps(start-buffer,end+buffer,ms(b.startTime),ms(b.endTime))) fail('already-exists','booking_conflict');
+          if (holds && doc.id !== bookingId && ACTIVE.has(b.status) && overlaps(start-buffer,end+buffer,ms(b.startTime),ms(b.endTime))) fail('already-exists','booking_conflict');
         }
-        for (const doc of tenants.docs) {
+        for (const doc of (holds ? tenants.docs : [])) {
           const t = doc.data();
           if ((['active','suspended'].includes(t.status)||t.moveOutDate) && overlaps(start,end,ms(t.occupancyStartDate??t.moveInDate),t.moveOutDate ? ms(t.moveOutDate) : Infinity)) fail('already-exists','booking_conflict');
         }
         const history=await tx.get(db.collection('leaseOccupancy').where('roomId','==',roomId));
-        if(history.docs.some(doc=>overlaps(start,end,ms(doc.data().start),ms(doc.data().end))))fail('already-exists','booking_conflict');
+        if(holds&&history.docs.some(doc=>overlaps(start,end,ms(doc.data().start),ms(doc.data().end))))fail('already-exists','booking_conflict');
         next.startTime = Timestamp.fromMillis(start); next.endTime = Timestamp.fromMillis(end);
         // The deposit is part of the total: it is recorded as a payment, dated the day it was paid.
         if (depositPayment) {
@@ -205,12 +224,34 @@ function createCalendarHandler({db, Timestamp, FieldValue, HttpsError}) {
             descriptionKey:'booking_deposit_payment', bookingDeposit:true,
           };
         }
+        // A payment recorded with the booking (2026-10-14, Tom): a day, an amount (part of what is owed is fine) and a note.
+        if (rentPayment) {
+          const rp = rentPayment;
+          if(rp.originalInput && rp.originalInput.currency !== (org.data().displayCurrency??bookingCurrency)) fail('failed-precondition','booking_currency_changed');
+          if (!v2 || !id(operationId) || !plainObject(rp) || Object.keys(rp).some(k => !['amount','paymentMethod','paidOn','paidAt','note','originalInput'].includes(k)) ||
+              !validMoney(rp.amount) || rp.amount <= 0 || !['cash','bankTransfer','creditCard'].includes(rp.paymentMethod) ||
+              typeof rp.paidOn !== 'string' || typeof rp.paidAt?.toMillis !== 'function' || (rp.note != null && !shortText(rp.note, 500))) fail('invalid-argument','booking_invalid_request');
+          if (cents(next.paidAmount)+cents(rp.amount) > cents(next.totalPrice)) fail('invalid-argument','booking_overpayment');
+          rentRef = db.collection('payments').doc(`booking_${bookingId}_${operationId}_payment`);
+          next.paidAmount = (cents(next.paidAmount)+cents(rp.amount))/100;
+          const note = typeof rp.note === 'string' ? rp.note.trim() : '';
+          next.rentPayments = [...(Array.isArray(old?.rentPayments) ? old.rentPayments : []),
+            {amount:rp.amount, paymentMethod:rp.paymentMethod, paidOn:rp.paidOn, note, paymentId:rentRef.id}].slice(-100);
+          rentDoc = {...(rp.originalInput?{originalInput:rp.originalInput}:{}),organizationId:orgId, buildingId:room.buildingId, roomId, tenantId:null,
+            tenantName:next.guestName, bookingId, type:'hourlyRent', status:'paid', amount:rp.amount,
+            paidAmount:rp.amount, currency:next.currency || 'VND', paymentMethod:rp.paymentMethod,
+            dueDate:next.endTime, paidAt:rp.paidAt, createdAt:now, billingStartDate:next.startTime, billingEndDate:next.endTime,
+            descriptionKey:'booking_payment', ...(note ? {notes:note} : {}),
+          };
+        }
       } else if (action === 'status') {
         const status = input.status;
-        const transitions = {pending:['confirmed','checkedIn','cancelled','noShow'], confirmed:['checkedIn','cancelled','noShow'], checkedIn:['cancelled']};
+        // 2026-10-14 (Tom): checking out only changes the status (money is taken separately).
+        const transitions = {pending:['confirmed','checkedIn','cancelled','noShow'], confirmed:['checkedIn','cancelled','noShow'], checkedIn:['checkedOut','cancelled']};
         if (!STATUSES.has(status) || !(transitions[old.status] || []).includes(status)) fail('failed-precondition','booking_invalid_transition');
         next.status = status;
         if (status === 'checkedIn') { next.checkedInAt = now; next.checkedInBy = context.auth.uid; }
+        if (status === 'checkedOut') { next.checkedOutAt = now; next.checkedOutBy = context.auth.uid; }
         if (status === 'cancelled') next.cancelReason = String(input.reason || '').slice(0,1000);
       } else if (['payment','deposit','refund','refundRent','checkout'].includes(action)) {
         if (action === 'checkout' && old.status === 'checkedOut') return {id: bookingId, paymentId: old.paymentId || null};
@@ -277,8 +318,9 @@ function createCalendarHandler({db, Timestamp, FieldValue, HttpsError}) {
       if (action === 'delete') tx.delete(ref);
       else tx.set(ref,{...next,updatedAt:now});
       if (payment) tx.create(paymentRef,payment);
+      if (rentDoc) tx.create(rentRef,rentDoc);
       if(v2) auditOperation(db,tx,{organizationId:orgId,actorId:context.auth.uid,action:`booking_${action}`,targetId:bookingId,old,next,createdAt:now});
-      const result={id:bookingId, ...(payment ? {paymentId:paymentRef.id} : {})};
+      const result={id:bookingId, ...(payment ? {paymentId:paymentRef.id} : {}), ...(rentDoc ? {rentPaymentId:rentRef.id} : {})};
       if(commandRef)tx.create(commandRef,{organizationId:orgId,actorId:context.auth.uid,createdAt:now,fingerprint:commandFingerprint,...(originalInput?{originalInput}:{}),...(context.workspaceFingerprint?{workspaceFingerprint:context.workspaceFingerprint}:{}),result,...(input.priceOverrideReason?{priceOverrideReason:input.priceOverrideReason}:{}),...(input.reason?{reason:input.reason}:{})});
       return result;
     });
