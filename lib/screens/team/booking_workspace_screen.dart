@@ -10,7 +10,7 @@ import 'package:uuid/uuid.dart';
 import '../../services/read_cache.dart';
 import '../../services/team_service.dart';
 import 'back_steps.dart';
-import 'payment_corrections.dart';
+import 'booking_payments.dart';
 import 'operational_widgets.dart';
 import 'room_problems_section.dart';
 import 'room_picker.dart';
@@ -147,8 +147,12 @@ String bookingText(BuildContext context, String key) {
     ],
     // The Thanh toán section (2026-10-14, Tom).
     'paymentTooLarge': [
-      'Deposit and payments are more than the total.',
-      'Tiền cọc và tiền đã trả lớn hơn tổng tiền.',
+      'The payments are more than the total. Change or remove a payment.',
+      'Các lần thanh toán lớn hơn tổng tiền. Sửa hoặc xóa một lần thanh toán.',
+    ],
+    'paymentProblem': [
+      'A payment in the list can\'t be saved (staff, account or way of paying changed). Edit it and try again.',
+      'Một lần thanh toán không lưu được (nhân viên, tài khoản hoặc cách thanh toán đã thay đổi). Sửa lại rồi thử lại.',
     ],
     'refundTooLarge': [
       'The refund is more than the amount paid.',
@@ -270,6 +274,11 @@ String bookingText(BuildContext context, String key) {
     'priceRows': [
       'Fill in every price line, or remove the empty ones.',
       'Hãy điền đủ từng dòng giá, hoặc xóa dòng trống.',
+    ],
+    // 2026-10-26: no flat price per hour; hourly bookings pick a template.
+    'hourTemplateNeeded': [
+      'Pick an hourly price template.',
+      'Hãy chọn một mẫu giá theo giờ.',
     ],
     'guestCountInvalid': ['Enter 1 to 100.', 'Nhập từ 1 đến 100.'],
   };
@@ -429,7 +438,17 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
   List<Map<String, dynamic>> _rows = [],
       _rooms = [],
       _staff = [],
-      _accounts = [];
+      _accounts = [],
+      // Short-stay payments (2026-10-24, Tom): the organization's own ways
+      // of paying, and the payments added to a new booking before its first
+      // save (saved with it).
+      _payMethods = [],
+      _drafts = [],
+      // A saved booking's payments as listed, for the totals card.
+      _paymentRows = [];
+  String? _myStaffId;
+  bool _canRefundOpt = false, _canEditPayments = false;
+  int _paymentsToken = 0;
   Map<String, dynamic>? _record, _quote, _pending;
   String? _cursor,
       _room,
@@ -445,8 +464,6 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
       _occurrence = 'first',
       _method = 'cash',
       _account = 'cash',
-      _depositMethod = 'cash',
-      _payMethod = 'cash',
           // The stay status staff choose (2026-10-14, Tom): notCheckedIn,
           // checkedIn (Đang ở) or checkedOut; never changed by the clock.
           _stay =
@@ -462,11 +479,7 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
       _savingPrice = false,
       _canCollect = false,
       _canReadIds = false,
-      _optionsLoaded = false,
       _customNights = true,
-          // "Đã đặt cọc" ticked in the form (2026-10-14, Tom).
-          _depositPaid =
-          false,
       _syncingNights = false,
           // Per night / per hour picked by hand (or a price typed): the dates
           // no longer change it (2026-10-05).
@@ -497,7 +510,9 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
   int get _scale => _currency == 'USD' ? 100 : 1;
 
   /// An agreed total is typed (2026-10-14, Tom: no switch; empty = none).
-  bool get _agreed => _fields['agreedPrice']!.text.trim().isNotEmpty;
+  /// 2026-10-24 (Tom): "Tổng tiền thỏa thuận" was removed from the form. An
+  /// agreed total already on a booking is kept (left out of every save).
+  bool get _agreed => false;
 
   @override
   void initState() {
@@ -516,7 +531,6 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
         old.service != widget.service) {
       _generation++;
       _pending = null;
-      _optionsLoaded = false;
       _leasing = false;
       _init();
     }
@@ -832,7 +846,13 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
             style: Theme.of(context).textTheme.titleSmall,
           ),
           if (templates.isEmpty)
-            Text(_ht('No templates yet.', 'Chưa có mẫu giá.')),
+            Text(
+              _ht(
+                'No templates yet. Add them under the building\'s prices.',
+                'Chưa có mẫu giá. Thêm mẫu ở mục Giá của cơ sở.',
+              ),
+              key: const ValueKey('hour-templates-none'),
+            ),
           for (final template in templates)
             ListTile(
               key: ValueKey('hour-template-${template['id']}'),
@@ -877,30 +897,15 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
                 TextButton(
                   key: const ValueKey('hour-custom'),
                   onPressed: enabled
-                      ? () => setState(
-                          () => _setHourPrices([
-                            _conversion.parse(
-                                  _fields['unitPrice']!,
-                                  _currency,
-                                ) ??
-                                _roomHourMinor ??
-                                0,
-                          ]),
-                        )
+                      ? () => setState(() {
+                          _setHourPrices([]);
+                          _hourPrices.add(TextEditingController());
+                          _pricingChosen = true;
+                        })
                       : null,
                   child: Text(_ht('Custom hours', 'Giá từng giờ')),
                 ),
-              if (custom)
-                TextButton(
-                  key: const ValueKey('hour-flat'),
-                  onPressed: enabled
-                      ? () => setState(() {
-                          _setHourPrices([]);
-                          _resetUnit();
-                        })
-                      : null,
-                  child: Text(_ht('Flat rate', 'Cùng giá')),
-                ),
+              // No "flat rate" any more (2026-10-26, Tom).
             ],
           ),
           if (custom) ...[
@@ -940,7 +945,7 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
                             final c = TextEditingController();
                             _conversion.set(
                               c,
-                              _hourValues?.last ?? _roomHourMinor ?? 0,
+                              _hourValues?.last ?? 0,
                               _currency,
                             );
                             _hourPrices.add(c);
@@ -999,18 +1004,26 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
     );
   }
 
-  int? get _roomHourMinor => _roomRate('hourlyPriceMinor');
+  /// An older booking with one price per hour (before 2026-10-26) keeps it
+  /// until a template or own hour prices are picked.
+  bool get _oldFlatHourly =>
+      _record?['pricingType'] == 'hourly' &&
+      _record?['hourlyPrice'] != null &&
+      _hourPrices.isEmpty;
 
-  /// The room's price for the chosen way of pricing (per night / per hour).
-  int? get _roomUnitMinor =>
-      _pricing == 'hourly' ? _roomHourMinor : _roomNightMinor;
+  /// The room's price for the chosen way of pricing. Per hour there is none
+  /// (2026-10-26): hourly bookings pick one of the building's templates.
+  int? get _roomUnitMinor => _pricing == 'hourly' ? null : _roomNightMinor;
 
   /// The way of pricing a new booking starts with (2026-10-05, Tom): the
   /// room's only price when it has one kind; otherwise by the dates — a stay
   /// that crosses a night (14:00 → next day 12:00) is per night, a same-day
   /// stay per hour. Per night when the dates are not filled in yet.
   String _autoPricing() {
-    final night = _roomNightMinor != null, hour = _roomHourMinor != null;
+    // Per night: the room's price or the building's saved night prices
+    // (every room may use those); per hour: the building's templates.
+    final night = _roomNightMinor != null || _savedNights.isNotEmpty,
+        hour = _hourTemplates.any((v) => v['currency'] == _currency);
     if (night != hour) return night ? 'nightly' : 'hourly';
     if (_nightCount != null) return 'nightly';
     if (_hours != null) return 'hourly';
@@ -1151,7 +1164,8 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
     final status = row['status'];
     final deposited =
         (row['depositPaidAmount'] as num? ?? 0) > 0 ||
-        row['depositPayment'] is Map;
+        (row['depositReceivedAmount'] as num? ?? 0) > 0 ||
+        row['depositReceivedAmount'] == null && row['depositPayment'] is Map;
     if (['pending', 'confirmed'].contains(status) && deposited) {
       return WsPill(bt('statusDeposited'), tone: WsTone.info);
     }
@@ -1389,7 +1403,10 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
     _canCollect = r['canCollect'] == true;
     _today = r['today'] as String? ?? _today;
     _canReadIds = r['canReadGuestIds'] == true;
-    _optionsLoaded = true;
+    _payMethods = list(r['paymentMethods']);
+    _myStaffId = r['myStaffId'] as String?;
+    _canRefundOpt = r['canRefund'] == true;
+    _canEditPayments = r['canEditPayments'] == true;
   }
 
   Future<void> _newBooking() async {
@@ -1506,33 +1523,11 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
             );
           }
         }
-        // The deposit row (2026-10-14, Tom): Ngày cọc, Tiền cọc, Ghi chú and
-        // "Đã đặt cọc". A recorded deposit shows its day and amount (locked);
-        // otherwise the deposit asked for, if any.
-        final recorded = r?['depositPayment'] is Map
-            ? Map<String, dynamic>.from(r!['depositPayment'] as Map)
-            : null;
-        _depositPaid = recorded != null;
-        final askedDeposit =
-            recorded?['amount'] as num? ??
-            ((r?['depositAmount'] as num? ?? 0) > 0
-                ? r!['depositAmount'] as num
-                : null);
-        _conversion.set(
-          _fields['depositAmount']!,
-          askedDeposit == null ? null : (askedDeposit * _scale).round(),
-          _currency,
-        );
-        _fields['depositDate']!.text = '${recorded?['paidOn'] ?? ''}'.isNotEmpty
-            ? '${recorded!['paidOn']}'
-            : _today;
-        _fields['depositNote']!.text = text('depositNote');
-        _depositMethod = '${recorded?['paymentMethod'] ?? 'cash'}';
-        // A new payment row each time; earlier ones are listed above it.
-        _fields['payAmount']!.clear();
-        _fields['payNote']!.clear();
-        _fields['payDate']!.text = _today;
-        _payMethod = 'cash';
+        // Payments (2026-10-24, Tom): a new booking's list starts empty; a
+        // saved booking's list is read again.
+        _drafts = [];
+        _paymentRows = [];
+        _paymentsToken++;
         _stay = switch (r?['status']) {
           'checkedIn' => 'checkedIn',
           'checkedOut' => 'checkedOut',
@@ -1683,14 +1678,13 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
         final prices = _hourValues;
         if (prices == null) return null;
         out['hourPricesMinor'] = prices;
-      } else if (_canPrice) {
+      } else if (_oldFlatHourly) {
+        // An older booking keeps its own price per hour (changing it needs
+        // "Đổi giá"; the box is locked without it).
         if (unit == null || unit <= 0) return null;
         out['hourlyPriceMinor'] = unit;
-      } else if (!(_record?['pricingType'] == 'hourly' &&
-              _record?['hourlyPrice'] != null) &&
-          _roomHourMinor != null) {
-        // Hours × the room's price (not the older switch to a day price).
-        out['hourlyPriceMinor'] = _roomHourMinor;
+      } else {
+        return null; // pick a template first ('hourTemplateNeeded')
       }
     }
     final charges = <Map<String, dynamic>>[];
@@ -1726,8 +1720,6 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
         out['overrideMinor'] = value;
         out['overrideReason'] = why;
       }
-    } else if (_canPrice && had != null) {
-      out['overrideMinor'] = null;
     }
     return out;
   }
@@ -1740,6 +1732,9 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
       return 'calculationWaiting';
     }
     if (_pricing == 'nightly' && _nightCount == null) return 'nightNeedsDay';
+    if (_pricing == 'hourly' && _hourPrices.isEmpty && !_oldFlatHourly) {
+      return 'hourTemplateNeeded';
+    }
     bool bad(TextEditingController c) =>
         c.text.trim().isNotEmpty && (_conversion.parse(c, _currency) ?? 0) <= 0;
     for (final row in _charges) {
@@ -1764,16 +1759,6 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
       }
     }
     return 'pricesWaiting';
-  }
-
-  /// The calculated total (room price and surcharges) the agreed price starts
-  /// from: the server's, or the form's own estimate before it answered.
-  int? _calculatedTotalMinor() {
-    final q = _quote;
-    if (q != null) {
-      return ((q['calculatedMinor'] ?? q['totalMinor']) as num?)?.round();
-    }
-    return _localTotalMinor();
   }
 
   /// The agreed box holds exactly the calculated total: not a price change.
@@ -1869,8 +1854,10 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
     final key = jsonEncode([
       _generation,
       input,
-      _newDepositMinor,
-      _newPaymentMinor,
+      [for (final d in _drafts) draftPayload(d)],
+      // Without a request, what is missing can still change (e.g. switching
+      // to per hour: "pick a template"), so the message must follow it.
+      if (input == null) _missingReason(),
     ]);
     if (key == _quoteInputKey) return;
     _quoteInputKey = key;
@@ -1906,16 +1893,14 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
       if (!current()) return;
       final quote = Map<String, dynamic>.from(r['record'] as Map);
       final paid = (((_record?['paidAmount'] as num?) ?? 0) * _scale).round();
-      if ((_newDepositMinor ?? 0) + paid >
-          ((quote['totalMinor'] as num?) ?? 0)) {
-        setState(() {
-          _quoting = false;
-          _calculationMessage = 'depositTooLarge';
-        });
-        return;
-      }
-      if ((_newDepositMinor ?? 0) + (_newPaymentMinor ?? 0) + paid >
-          ((quote['totalMinor'] as num?) ?? 0)) {
+      final total = ((quote['totalMinor'] as num?) ?? 0).round();
+      // Paid already (or payments added to this new booking) more than the
+      // new total: the price must stay at least that (2026-10-24).
+      if (paid > total ||
+          settleDrafts(
+            _drafts,
+            total,
+          ).any((d) => (d['recordedMinor'] as int) <= 0)) {
         setState(() {
           _quoting = false;
           _calculationMessage = 'paymentTooLarge';
@@ -1954,7 +1939,9 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
       'lease_property_timezone_required',
       'booking_night_prices_invalid',
       'booking_invalid_surcharge',
+      'booking_hour_template_required',
     ])) {
+      'booking_hour_template_required' => 'hourTemplateNeeded',
       'booking_currency_changed' => 'changedAgain',
       'booking_invalid_dates' || 'booking_invalid-argument' => 'badDates',
       'booking_night_prices_invalid' ||
@@ -1994,49 +1981,17 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
     'booking_outside_operating_hours': 'outsideHours',
     'booking_night_prices_invalid': 'priceRows',
     'booking_invalid_surcharge': 'priceRows',
+    'booking_hour_template_required': 'hourTemplateNeeded',
     'booking_invalid_dates': 'badDates',
     'booking_deposit_too_large': 'depositTooLarge',
     'booking_deposit_date': 'depositBadDate',
     'booking_payment_date': 'depositBadDate',
     'booking_payment_too_large': 'paymentTooLarge',
+    'booking_nothing_owed': 'paymentTooLarge',
+    'booking_payment_balance': 'paymentTooLarge',
+    'booking_method_invalid': 'paymentProblem',
     'booking_deposit_recorded': 'changedAgain',
   };
-
-  Future<void> _startCommand(String action, {String? status}) async {
-    if (!_optionsLoaded) {
-      setState(() => _busy = true);
-      try {
-        await _loadOptions();
-      } catch (_) {
-        // Without the account list, cash and plain transfer still work.
-      }
-      if (!mounted) return;
-    }
-    setState(() {
-      _busy = false;
-      _message = null;
-      _command = action;
-      _status = status;
-      _method = 'cash';
-      _account = 'cash';
-      _fields['reason']!.clear();
-      // Start from the amount still open; it can be changed.
-      final r = _record ?? const <String, dynamic>{};
-      num n(String k) => r[k] as num? ?? 0;
-      final open = switch (action) {
-        'payment' => n('totalPrice') - n('paidAmount'),
-        'deposit' => n('depositAmount') - n('depositPaidAmount'),
-        'refund' => n('depositPaidAmount') - n('depositRefundedAmount'),
-        'refundRent' => n('paidAmount'),
-        _ => 0,
-      };
-      _conversion.set(
-        _fields['amount']!,
-        open > 0 ? (open * _scale).round() : null,
-        _currency,
-      );
-    });
-  }
 
   Future<void> _save() async {
     if (_pending == null) {
@@ -2051,15 +2006,10 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
           setState(() => _message = 'priceRows');
           return;
         }
-        final deposit = _newDepositMinor, pay = _newPaymentMinor;
-        // Ticked without an amount: say so next to the buttons.
-        if (_depositPaid &&
-            _record?['depositPayment'] is! Map &&
-            deposit == null) {
-          setState(() => _message = 'depositNeeded');
-          return;
-        }
-        final asked = _askedDepositMinor;
+        // The deposit asked for (older bookings) is kept as it is; payments
+        // are the payment list's (2026-10-24, Tom).
+        final asked =
+            (((_record?['depositAmount'] as num?) ?? 0) * _scale).round();
         final idText = _fields['idNumber']!.text.trim();
         final count = _fields['guestCount']!.text.trim();
         _pending = {
@@ -2099,36 +2049,9 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
           'contactChannel': _channel,
           'notes': _fields['notes']!.text.trim(),
           'depositMinor': asked,
-          'depositNote': _fields['depositNote']!.text.trim(),
           'stayStatus': _stay,
-          if (pay != null)
-            'payment': {
-              'amountMinor': pay,
-              'inputCurrency': _inputCurrency,
-              'inputAmountMinor': appParseMoney(
-                _fields['payAmount']!.text,
-                _inputCurrency,
-              ),
-              if (_conversion.conversion?.snapshotId != null)
-                'ratesId': _conversion.conversion!.snapshotId,
-              'method': _payMethod,
-              'paidOn': _fields['payDate']!.text.trim(),
-              if (_fields['payNote']!.text.trim().isNotEmpty)
-                'note': _fields['payNote']!.text.trim(),
-            },
-          if (deposit != null)
-            'deposit': {
-              'amountMinor': deposit,
-              'inputCurrency': _inputCurrency,
-              'inputAmountMinor': appParseMoney(
-                _fields['depositAmount']!.text,
-                _inputCurrency,
-              ),
-              if (_conversion.conversion?.snapshotId != null)
-                'ratesId': _conversion.conversion!.snapshotId,
-              'method': _depositMethod,
-              'paidOn': _fields['depositDate']!.text.trim(),
-            },
+          if (_record == null && _drafts.isNotEmpty)
+            'receipts': [for (final d in _drafts) draftPayload(d)],
         };
       } else {
         final amount = _conversion.parse(_fields['amount']!, _currency);
@@ -2236,81 +2159,6 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
   int get _guestCount {
     final n = int.tryParse(_fields['guestCount']!.text.trim());
     return n != null && n >= 1 && n <= 100 ? n : 1 + _guests.length;
-  }
-
-  /// The deposit typed in the form (minor units), when "Đã đặt cọc" is
-  /// ticked and it can be recorded now.
-  int? get _newDepositMinor {
-    if (!_canCollect || !_depositPaid || _record?['depositPayment'] is Map) {
-      return null;
-    }
-    final text = _fields['depositAmount']!.text.trim();
-    if (text.isEmpty) return null;
-    final v = _conversion.parse(_fields['depositAmount']!, _currency);
-    return v == null || v <= 0 ? null : v;
-  }
-
-  /// The payment typed in the form's Thanh toán row (2026-10-14, Tom).
-  int? get _newPaymentMinor {
-    if (!_canCollect) return null;
-    final text = _fields['payAmount']!.text.trim();
-    if (text.isEmpty) return null;
-    final v = _conversion.parse(_fields['payAmount']!, _currency);
-    return v == null || v <= 0 ? null : v;
-  }
-
-  /// The deposit asked for: the amount in the deposit row (a recorded
-  /// deposit keeps what the booking asked).
-  int get _askedDepositMinor {
-    if (_record?['depositPayment'] is Map) {
-      return (((_record?['depositAmount'] as num?) ?? 0) * _scale).round();
-    }
-    final v = _conversion.parse(_fields['depositAmount']!, _currency);
-    return v == null || v <= 0 ? 0 : v;
-  }
-
-  String _payLabel(Object? method) => switch (method) {
-    'bankTransfer' => bt('payTransfer'),
-    'creditCard' => bt('payCard'),
-    _ => bt('payCash'),
-  };
-
-  /// "300,000 VND · Bank transfer · 2026-10-03".
-  String _depositInfo(Map<String, dynamic> d) =>
-      '${_money(d['amount'])} · ${_payLabel(d['paymentMethod'])}'
-      '${'${d['paidOn'] ?? ''}'.isEmpty ? '' : ' · ${d['paidOn']}'}';
-
-  /// A day up to today (property time), as YYYY-MM-DD.
-  String? _depositDateProblem(String v) {
-    final m = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$').firstMatch(v);
-    final d = m == null
-        ? null
-        : DateTime.utc(int.parse(m[1]!), int.parse(m[2]!), int.parse(m[3]!));
-    String two(int x) => x.toString().padLeft(2, '0');
-    final real =
-        d != null &&
-        '${d.year.toString().padLeft(4, '0')}-${two(d.month)}-${two(d.day)}' ==
-            v;
-    return real && (_today.isEmpty || v.compareTo(_today) <= 0)
-        ? null
-        : bt('depositBadDate');
-  }
-
-  Future<void> _pickDay(TextEditingController controller) async {
-    final today = DateTime.tryParse(_today) ?? DateTime.now();
-    final current = DateTime.tryParse(controller.text.trim());
-    final date = await showDatePicker(
-      context: context,
-      initialDate: current != null && !current.isAfter(today) ? current : today,
-      firstDate: DateTime(today.year - 1, today.month, today.day),
-      lastDate: today,
-    );
-    if (date == null || !mounted) return;
-    String two(int v) => v.toString().padLeft(2, '0');
-    setState(
-      () =>
-          controller.text = '${date.year}-${two(date.month)}-${two(date.day)}',
-    );
   }
 
   Future<void> _pickDateTime(TextEditingController controller) async {
@@ -2739,7 +2587,7 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
                   ),
                 ),
               if (!(_pricing == 'nightly' && _customNights) &&
-                  !(_pricing == 'hourly' && _hourPrices.isNotEmpty))
+                  !(_pricing == 'hourly' && !_oldFlatHourly))
                 _input(
                   'unitPrice',
                   bt(_pricing == 'hourly' ? 'pricePerHour' : 'pricePerNight'),
@@ -2931,30 +2779,39 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
         title: bt('paymentSection'),
         icon: Icons.payments_outlined,
         children: [
-          // 2026-10-14 (Tom): the deposit at the top, then a payment, then
-          // the agreed total, then the total.
-          ..._depositRow(context, money, moneyCheck),
-          const SizedBox(height: WsSpace.lg),
-          ..._paymentRow(context, money, moneyCheck),
-          if (_record != null &&
-              !_canEditRecord &&
-              _record!['canCollect'] == true &&
-              [
-                'pending',
-                'confirmed',
-                'checkedIn',
-                'checkedOut',
-              ].contains(_record!['status']) &&
-              (_record!['totalPrice'] as num? ?? 0) >
-                  (_record!['paidAmount'] as num? ?? 0))
-            TextButton.icon(
-              key: const ValueKey('booking-collect'),
-              onPressed: _locked ? null : () => _startCommand('payment'),
-              icon: const Icon(Icons.payments_outlined),
-              label: Text(bt('collectShort')),
+          // 2026-10-24 (Tom): the payments made so far and "Thêm lần thanh
+          // toán" (booking_payments.dart), then the total.
+          BookingPayments(
+            key: ValueKey('booking-payments-${_record?['id'] ?? 'new'}'),
+            service: widget.service,
+            organizationId: widget.organizationId,
+            buildingId: widget.buildingId,
+            bookingId: _record?['id'] as String?,
+            currency: _currency,
+            conversion: _conversion,
+            options: BookingPaymentOptions(
+              staff: _staff,
+              accounts: _accounts,
+              methods: _payMethods,
+              myStaffId: _myStaffId,
+              today: _today,
+              canCollect: _canCollect,
+              canRefund: _canRefundOpt,
+              canEdit: _canEditPayments,
             ),
-          const SizedBox(height: WsSpace.lg),
-          ..._agreedFields(context, money, moneyCheck),
+            totalMinor: (_quote?['totalMinor'] as num?)?.round(),
+            drafts: _drafts,
+            onDraftsChanged: (list) => setState(() {
+              _drafts = list;
+              _message = null;
+            }),
+            onSaved: _refreshPaymentRecord,
+            onMethodsChanged: (list) => setState(() => _payMethods = list),
+            reloadToken: _paymentsToken,
+            onRows: (rows) => setState(() => _paymentRows = rows),
+            enabled: !_locked,
+            bookingStatus: _record?['status'] as String?,
+          ),
           if (_agreedOn(_record) != null)
             WsInfo(bt('agreedBy'), '${_agreedOn(_record)!['byName'] ?? ''}'),
           const SizedBox(height: WsSpace.md),
@@ -3095,280 +2952,10 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
     ),
   );
 
-  /// "Tổng tiền thỏa thuận" (2026-10-14, Tom): no switch. Empty, or the same
-  /// as the calculated total, is no agreed price; the calculated total shows
-  /// in grey inside the box. The reason box appears once the amount differs.
-  /// Without "Đổi giá", an agreed price already on the booking is shown.
-  List<Widget> _agreedFields(
-    BuildContext context,
-    TextInputType money,
-    String? Function(String) moneyCheck,
-  ) {
-    final had = _agreedOn(_record);
-    if (!_canPrice) {
-      if (had == null) return const [];
-      return [
-        Text(
-          bt('agreedKept')
-              .replaceAll('{price}', _money(had['total'] as num))
-              .replaceAll('{reason}', '${had['reason'] ?? ''}'),
-          key: const ValueKey('booking-agreed-kept'),
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-      ];
-    }
-    final calculated = _calculatedTotalMinor();
-    final differs = _agreed && !_agreedIsCalculated;
-    final price = _input(
-      'agreedPrice',
-      bt('agreedPrice'),
-      labelAbove: true,
-      keyboard: money,
-      formatters: appMoneyInput(_inputCurrency),
-      check: moneyCheck,
-      hint: calculated == null ? null : _money(calculated / _scale),
-      onChanged: (_) => setState(() => _message = null),
-    );
-    if (!differs) return [price];
-    return [
-      WsFieldRow(
-        children: [
-          price,
-          _input(
-            'agreedReason',
-            bt('agreedReason'),
-            required: true,
-            maxLines: null,
-            check: (v) => v.length > 1000 ? opsText(context, 'required') : null,
-          ),
-        ],
-      ),
-    ];
-  }
-
   Widget _label(BuildContext context, String text) => Padding(
     padding: const EdgeInsets.only(bottom: WsSpace.sm),
     child: Text(text, style: Theme.of(context).textTheme.labelLarge),
   );
-
-  /// How a deposit or payment was paid: cash, transfer or card.
-  Widget _methodChips(
-    String prefix,
-    String group,
-    ValueChanged<String>? onSelect,
-  ) => Wrap(
-    spacing: WsSpace.sm,
-    runSpacing: WsSpace.sm,
-    children: [
-      for (final (method, label) in [
-        ('cash', bt('payCash')),
-        ('bankTransfer', bt('payTransfer')),
-        ('creditCard', bt('payCard')),
-      ])
-        _choice(
-          label,
-          method,
-          group,
-          onSelect,
-          key: ValueKey('$prefix-$method'),
-        ),
-    ],
-  );
-
-  /// The deposit row (2026-10-14, Tom): Ngày cọc · Tiền cọc, then Ghi chú
-  /// with "Đã đặt cọc" next to it. Ticked, the deposit is recorded as paid
-  /// (taken off the total; it needs "Thu tiền"); not ticked, the amount is
-  /// the deposit asked for. A recorded deposit is locked (refunds are in
-  /// the booking's "…" menu).
-  List<Widget> _depositRow(
-    BuildContext context,
-    TextInputType money,
-    String? Function(String) moneyCheck,
-  ) {
-    final recorded = _record?['depositPayment'] is Map;
-    final canTick = _canCollect && !recorded;
-    final dateNeeded = _depositPaid && !recorded;
-    return [
-      _label(context, bt('secDeposit')),
-      WsFieldRow(
-        children: [
-          _input(
-            'depositDate',
-            bt('depositDay'),
-            readOnly: recorded,
-            hint: _today.isEmpty ? '2026-10-04' : _today,
-            check: (v) => dateNeeded ? _depositDateProblem(v) : null,
-            suffix: recorded
-                ? null
-                : IconButton(
-                    tooltip: bt('pickDate'),
-                    icon: const Icon(Icons.event_outlined),
-                    onPressed: _formEnabled
-                        ? () => _pickDay(_fields['depositDate']!)
-                        : null,
-                  ),
-          ),
-          _input(
-            'depositAmount',
-            bt('depositAmountShort'),
-            readOnly: recorded,
-            keyboard: money,
-            formatters: appMoneyInput(_inputCurrency),
-            check: (v) => _depositPaid && !recorded && v.isEmpty
-                ? opsText(context, 'required')
-                : moneyCheck(v),
-            onChanged: (_) => setState(() => _message = null),
-          ),
-        ],
-      ),
-      const SizedBox(height: WsSpace.md),
-      WsFieldRow(
-        children: [
-          _input(
-            'depositNote',
-            bt('noteShort'),
-            maxLines: null,
-            check: (v) => v.length > 500 ? opsText(context, 'required') : null,
-          ),
-          Tooltip(
-            message: canTick || recorded ? '' : bt('depositNeedsCollect'),
-            child: InkWell(
-              key: const ValueKey('booking-deposit-paid'),
-              borderRadius: BorderRadius.circular(8),
-              onTap: canTick && _formEnabled
-                  ? () => setState(() {
-                      _depositPaid = !_depositPaid;
-                      _message = null;
-                    })
-                  : null,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: WsSpace.xs),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Checkbox(
-                      value: _depositPaid,
-                      onChanged: canTick && _formEnabled
-                          ? (v) => setState(() {
-                              _depositPaid = v ?? false;
-                              _message = null;
-                            })
-                          : null,
-                    ),
-                    Flexible(child: Text(bt('depositPaidBox'))),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-      if (_depositPaid && !recorded) ...[
-        const SizedBox(height: WsSpace.sm),
-        _methodChips(
-          'booking-deposit',
-          _depositMethod,
-          _formEnabled ? (v) => setState(() => _depositMethod = v) : null,
-        ),
-      ],
-    ];
-  }
-
-  /// The payment row (2026-10-14, Tom): Ngày thanh toán · Số tiền · Ghi chú.
-  /// Part of what is owed is fine; payments already made are listed above.
-  List<Widget> _paymentRow(
-    BuildContext context,
-    TextInputType money,
-    String? Function(String) moneyCheck,
-  ) {
-    final muted = Theme.of(context).textTheme.bodySmall?.copyWith(
-      color: Theme.of(context).colorScheme.onSurfaceVariant,
-    );
-    final earlier = [
-      for (final p in (_record?['rentPayments'] as List? ?? const []))
-        Map<String, dynamic>.from(p as Map),
-    ];
-    final typed = _fields['payAmount']!.text.trim().isNotEmpty;
-    return [
-      _label(context, bt('paymentsHeading')),
-      for (final p in earlier)
-        Padding(
-          padding: const EdgeInsets.only(bottom: WsSpace.xs),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  [
-                    bt('paidLine')
-                        .replaceAll('{amount}', _money(p['amount'] as num?))
-                        .replaceAll('{day}', '${p['paidOn'] ?? ''}'),
-                    _payLabel(p['paymentMethod']),
-                    if ('${p['note'] ?? ''}'.isNotEmpty) '${p['note']}',
-                  ].join(' · '),
-                  style: muted,
-                ),
-              ),
-              if (_record?['canCollect'] == true && p['paymentId'] is String)
-                PaymentCorrectionsButton(
-                  service: widget.service,
-                  organizationId: widget.organizationId,
-                  buildingId: widget.buildingId,
-                  bookingId: _record!['id'] as String,
-                  paymentId: p['paymentId'] as String,
-                  iconOnly: true,
-                  enabled: !_locked,
-                  onSaved: _refreshPaymentRecord,
-                ),
-            ],
-          ),
-        ),
-      if (earlier.isNotEmpty) const SizedBox(height: WsSpace.sm),
-      if (!_canCollect)
-        Text(bt('depositNeedsCollect'), style: muted)
-      else ...[
-        WsFieldRow(
-          children: [
-            _input(
-              'payDate',
-              bt('payDay'),
-              hint: _today.isEmpty ? '2026-10-04' : _today,
-              check: (v) => typed ? _depositDateProblem(v) : null,
-              suffix: IconButton(
-                tooltip: bt('pickDate'),
-                icon: const Icon(Icons.event_outlined),
-                onPressed: _formEnabled
-                    ? () => _pickDay(_fields['payDate']!)
-                    : null,
-              ),
-            ),
-            _input(
-              'payAmount',
-              bt('payAmount'),
-              keyboard: money,
-              formatters: appMoneyInput(_inputCurrency),
-              check: moneyCheck,
-              onChanged: (_) => setState(() => _message = null),
-            ),
-          ],
-        ),
-        const SizedBox(height: WsSpace.md),
-        _input(
-          'payNote',
-          bt('noteShort'),
-          maxLines: null,
-          check: (v) => v.length > 500 ? opsText(context, 'required') : null,
-        ),
-        if (typed) ...[
-          const SizedBox(height: WsSpace.sm),
-          _methodChips(
-            'booking-pay',
-            _payMethod,
-            _formEnabled ? (v) => setState(() => _payMethod = v) : null,
-          ),
-        ],
-      ],
-    ];
-  }
 
   /// The building's saved nightly prices as chips (2026-10-09, Tom), with
   /// the room's own price. A tap fills the price box, or with "Giá khác nhau
@@ -3535,8 +3122,24 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
     final calculated = (q['calculatedMinor'] as num?) ?? agreed;
     final total = (q['totalMinor'] as num?) ?? 0,
         paid = (((_record?['paidAmount'] as num?) ?? 0) * _scale).round(),
-        deposit = _newDepositMinor ?? 0,
-        payment = _newPaymentMinor ?? 0;
+        // Payments added to a new booking before saving (2026-10-24).
+        drafts = _record != null
+            ? 0
+            : settleDrafts(
+                _drafts,
+                (q['totalMinor'] as num?)?.round(),
+              ).fold<int>(0, (a, d) => a + (d['recordedMinor'] as int));
+    final rows = _record != null
+        ? _paymentRows
+        : settleDrafts(_drafts, (q['totalMinor'] as num?)?.round());
+    // Listed one by one only when the list adds up to what was paid.
+    final itemized =
+        rows.isNotEmpty &&
+        rows.fold<int>(
+              0,
+              (a, r) => a + paidEffect(r, draft: _record == null),
+            ) ==
+            (_record != null ? paid : drafts);
     return Card(
       key: const ValueKey('booking-quote'),
       color: theme.colorScheme.primaryContainer.withValues(alpha: 0.35),
@@ -3569,18 +3172,28 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
             ),
             // The deposit (and anything paid before) is taken off the total.
             // Taken off, lined up under the total.
-            if (paid > 0)
-              _paymentLine(bt('alreadyPaid'), '− ${_money(units(paid))}'),
-            if (deposit > 0)
-              _paymentLine(bt('depositLine'), '− ${_money(units(deposit))}'),
-            if (payment > 0)
-              _paymentLine(bt('payAmount'), '− ${_money(units(payment))}'),
-            if (paid > 0 || deposit > 0 || payment > 0)
+            // Each payment listed (2026-10-24, Tom): "1 · Tiền cọc − 200,000",
+            // "2 · Hoàn tiền cọc + 50,000". Older amounts the list does not
+            // explain stay as one "Đã thanh toán" line.
+            if (itemized)
+              for (final (i, r) in rows.indexed)
+                _paymentLine(
+                  '${i + 1} · ${paymentKindLabel(context, r['kind'] as String?, r['refundFrom'] as String?)}',
+                  '${paidEffect(r, draft: _record == null) < 0 ? '+' : '−'} '
+                  '${_money(units(paidEffect(r, draft: _record == null).abs()))}',
+                )
+            else ...[
+              if (paid > 0)
+                _paymentLine(bt('alreadyPaid'), '− ${_money(units(paid))}'),
+              if (drafts > 0)
+                _paymentLine(bt('alreadyPaid'), '− ${_money(units(drafts))}'),
+            ],
+            if (paid > 0 || drafts > 0)
               KeyedSubtree(
                 key: const ValueKey('booking-quote-remaining'),
                 child: _paymentLine(
                   bt('remaining'),
-                  _money(units(total - paid - deposit - payment)),
+                  _money(units(total - paid - drafts)),
                   emphasis: true,
                 ),
               ),
@@ -3593,7 +3206,6 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
   List<Widget> _savedActions(BuildContext context, Map<String, dynamic> r) {
     final active = ['pending', 'confirmed', 'checkedIn'].contains(r['status']);
     final manage = r['canManage'] == true;
-    final refund = r['canRefund'] == true;
     return [
       const SizedBox(height: WsSpace.md),
       _inlineAction(
@@ -3609,20 +3221,8 @@ class _BookingWorkspaceScreenState extends State<BookingWorkspaceScreen> {
         'cancelReason',
         manage && active,
       ),
-      const SizedBox(height: WsSpace.sm),
-      _inlineAction(
-        'refund-rent',
-        opsText(context, 'refundRent'),
-        'refundReason',
-        refund && (r['paidAmount'] as num? ?? 0) > 0,
-      ),
-      if (refund &&
-          (r['depositPaidAmount'] as num? ?? 0) >
-              (r['depositRefundedAmount'] as num? ?? 0))
-        TextButton(
-          onPressed: _locked ? null : () => _startCommand('refund'),
-          child: Text(opsText(context, 'refund')),
-        ),
+      // Refunds are a payment type now (2026-10-24, Tom): "Thêm lần thanh
+      // toán" → Hoàn tiền.
     ];
   }
 

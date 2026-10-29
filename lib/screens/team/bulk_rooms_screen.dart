@@ -1,17 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:uuid/uuid.dart';
+import '../../utils/app_number.dart';
 import '../../services/team_service.dart';
 import '../../utils/localizations/app_localizations.dart';
 import 'property_initial_rooms.dart';
 import 'ws_ui.dart';
-import 'room_batch_generator.dart';
 
 class BulkRoomsScreen extends StatefulWidget {
   final String organizationId, buildingId;
   final TeamService service;
   final VoidCallback onBack, onCreated;
-  final bool openGenerator;
   const BulkRoomsScreen({
     super.key,
     required this.organizationId,
@@ -19,7 +18,6 @@ class BulkRoomsScreen extends StatefulWidget {
     required this.service,
     required this.onBack,
     required this.onCreated,
-    this.openGenerator = false,
   });
   @override
   State<BulkRoomsScreen> createState() => _BulkRoomsScreenState();
@@ -29,8 +27,10 @@ class _BulkRoomsScreenState extends State<BulkRoomsScreen> {
   final _form = GlobalKey<FormState>();
   final _rooms = <InitialRoomDraft>[];
   bool _loading = true, _saving = false, _ready = false, _prices = false;
-  bool _openingGenerator = false;
   String _currency = 'VND';
+
+  /// Building prices new rows start with (PRICE_DEFAULTS.md).
+  Map<String, String> _defaults = const {};
   String? _message;
   Map<String, dynamic>? _pending;
   int _generation = 0;
@@ -84,37 +84,14 @@ class _BulkRoomsScreenState extends State<BulkRoomsScreen> {
       setState(() {
         _currency = r['currency'] as String;
         _prices = r['canSetRoomPrices'] == true;
-        _ready = !widget.openGenerator;
+        final d = r['defaults'] as Map?;
+        _defaults = {
+          for (final k in ['roomPrice', 'nightlyPrice'])
+            if (_prices && d?['${k}Minor'] != null)
+              k: appMoneyInputText(d!['${k}Minor'] as num, _currency),
+        };
+        _ready = true;
       });
-      if (widget.openGenerator) {
-        setState(() {
-          _loading = false;
-          _openingGenerator = true;
-        });
-        final rows = await generateRoomBatch(
-          context,
-          currency: _currency,
-          canSetPrices: _prices,
-          existing: _rooms,
-        );
-        if (!mounted || generation != _generation) {
-          if (rows != null) {
-            for (final row in rows) {
-              row.dispose();
-            }
-          }
-          return;
-        }
-        if (rows == null) {
-          widget.onBack();
-          return;
-        }
-        setState(() {
-          _openingGenerator = false;
-          _rooms.addAll(rows);
-          _ready = true;
-        });
-      }
     } catch (_) {
       if (mounted && generation == _generation) {
         setState(() => _message = 'room_edit_unavailable');
@@ -128,7 +105,12 @@ class _BulkRoomsScreenState extends State<BulkRoomsScreen> {
 
   Future<void> _save() async {
     if (_saving || !_ready || _rooms.isEmpty) return;
-    if (_pending == null && !_form.currentState!.validate()) return;
+    if (_pending == null) {
+      for (final r in _rooms) {
+        r.showRequired = true;
+      }
+      if (!_form.currentState!.validate()) return;
+    }
     _pending ??= {
       'action': 'createBulk',
       'currency': _currency,
@@ -181,7 +163,6 @@ class _BulkRoomsScreenState extends State<BulkRoomsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_openingGenerator) return const SizedBox.shrink();
     final t = AppTranslations.of(context),
         locked = _loading || _saving || _pending != null;
     return WsPage(
@@ -208,7 +189,11 @@ class _BulkRoomsScreenState extends State<BulkRoomsScreen> {
               currency: _currency,
               locked: locked,
               canSetPrices: _prices,
-              onAdd: () => setState(() => _rooms.add(InitialRoomDraft())),
+              defaults: _defaults,
+              autofocusCount: _rooms.isEmpty,
+              onAdd: () => setState(
+                () => _rooms.add(InitialRoomDraft(defaults: _defaults)),
+              ),
               onGenerate: (rows) => setState(() => _rooms.addAll(rows)),
               onRemove: (room) => setState(() {
                 _rooms.remove(room);

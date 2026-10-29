@@ -11,6 +11,7 @@ const {validDate,validContract}=require('./property_contract');
 const {validZone}=require('./booking_settings');
 const {propertyDate,propertyDayStart}=require('./lease_dates');
 const {proratedRent,nextDate}=require('./invoice_math');
+const {loadSchedule}=require('./lease_schedule_io');
 const id=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(v);
 const hash=v=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
 const revision=d=>`${d.updateTime.seconds}:${d.updateTime.nanoseconds}`;
@@ -58,7 +59,7 @@ function createInvoiceHandler({db,Timestamp,HttpsError}){
     return {records:[...known.values()].filter(v=>v.data().isMainTenant===true).map(v=>({id:v.id,fullName:v.data().fullName??'',roomId:v.data().roomId,currency:org.data().displayCurrency??v.data().currency??'VND'})),today,timeZone:zone,currency:org.data().displayCurrency??b.currency??'VND'};
    }
    const datePolicy=date=>{if(date<today&&!allows(m,'backdateRecords',{organizationId:d.organizationId,userId:uid}))fail('permission-denied','invoice_backdate_owner_required');};
-   let ref,snapshot,old,patch,result,utilitySource,serviceSource,periodSource;
+   let ref,snapshot,old,patch,result,utilitySource,serviceSource,periodSource,scheduleRowId=null;
    // The building's invoices of one tenant. Without a tenant (null), every
    // invoice of the building: a record without the field counts as "no
    // tenant" too, which an equality query on null would miss.
@@ -84,12 +85,22 @@ function createInvoiceHandler({db,Timestamp,HttpsError}){
     let lastRent=null;
     for(const v of existing.docs){const x=v.data();if(x.status==='cancelled'||(x.tenantId??null)!==d.tenantId)continue;if((x.invoiceKind==='tenantRent'||(x.invoiceKind==='period'&&x.calculation?.includeRent===true))&&(!lastRent||x.billingEndLocalDate>lastRent))lastRent=x.billingEndLocalDate;}
     const leaseStart=intervals.map(i=>i.startDate).sort()[0];
-    const leaseEnd=t.moveOutDate?propertyDate(t.moveOutDate.toMillis(),zone):typeof t.contractEndLocalDate==='string'?nextDate(t.contractEndLocalDate):null;
-    const startDate=lastRent&&lastRent>leaseStart?lastRent:leaseStart;
+    // The contract end date is the day the tenant leaves (Tom, 2026-10-26).
+    const leaseEnd=t.moveOutDate?propertyDate(t.moveOutDate.toMillis(),zone):typeof t.contractEndLocalDate==='string'?t.contractEndLocalDate:null;
+    let startDate=lastRent&&lastRent>leaseStart?lastRent:leaseStart;
     let endDate=addMonths(startDate,t.paymentPeriodMonths??1);if(leaseEnd&&leaseEnd<endDate)endDate=leaseEnd;
-    const finished=!(endDate>startDate);
+    let finished=!(endDate>startDate);
     let dueDate=startDate;
     if(Number.isSafeInteger(t.paymentDueDay)){const y=Number(startDate.slice(0,4)),mo=Number(startDate.slice(5,7)),last=new Date(Date.UTC(y,mo,0)).getUTCDate(),day=String(Math.min(t.paymentDueDay,last)).padStart(2,'0'),c=`${startDate.slice(0,8)}${day}`;dueDate=c>startDate?c:startDate;}
+    // Bảng thanh toán theo kỳ (2026-10-26): suggest the first kỳ without an invoice.
+    let scheduleRow=null,scheduleRows=[];
+    if(t.buildingId===d.buildingId){
+     const sched=await loadSchedule({tx,db,tenant:await tx.get(db.doc(`tenants/${d.tenantId}`)),organizationId:d.organizationId,buildingId:d.buildingId,zone,today,invoiceDocs:existing.docs});
+     if(sched.rows.length){const next=sched.rows.find(r=>!r.locked);finished=!next;if(next){startDate=next.start;endDate=next.end;dueDate=next.due;scheduleRow={id:next.id,startDate:next.start,endDate:next.end,dueDate:next.due,amountMinor:next.amountMinor,amountEdited:next.amountEdited===true,reason:next.amountEdited?next.reason??null:null};}
+      // Every kỳ without an invoice: the form shows the rent of the one whose
+      // dates are picked (a hand-set amount: rent = amount − phụ thu).
+      scheduleRows=sched.rows.filter(r=>!r.locked).map(r=>({startDate:r.start,endDate:r.end,dueDate:r.due,rentMinor:r.rentMinor,amountMinor:r.amountMinor,amountEdited:r.amountEdited===true,reason:r.amountEdited?r.reason??null:null}));}
+    }
     const defs=(await tx.get(db.doc(`serviceFees/${feesId(d.organizationId,d.buildingId)}`))).data();
     const rates=room?(await tx.get(db.doc(`serviceFeeRooms/${roomFeesId(d.organizationId,room)}`))).data():null;
     // How far each fee is already billed for this tenant in this room (single fee or period invoices).
@@ -114,7 +125,7 @@ function createInvoiceHandler({db,Timestamp,HttpsError}){
     if(viewCurrency!==sourceCurrency){try{rateSnapshot=await readReferenceRates(tx,db,ratesId);}catch(e){fail('failed-precondition',e.message);}}
     const viewMinor=value=>Number.isSafeInteger(value)&&rateSnapshot?convertMinor(value,sourceCurrency,viewCurrency,rateSnapshot):value;
     const surcharges=defsHere.map(x=>({id:x.id,label:x.label,amountMinor:viewMinor(x.amountMinor),basis:x.basis,frequency:x.frequency,...(x.kind?{kind:x.kind}:{}),count:x.basis==='person'?people:1,billed:x.frequency==='once'&&existing.docs.some(v=>surchargeBilled(v.data(),{tenantId:d.tenantId,surchargeId:x.id,frequency:'once'}))}));
-    return {record:{tenantName:t.fullName??'',currency:viewCurrency,roomId:room,today,periodMonths:t.paymentPeriodMonths??1,dueDay:t.paymentDueDay??null,periodRentMinor:viewMinor(t.periodRentMinor??null),monthlyRentMinor:viewMinor(rentForDate(t,startDate)),finished,suggestion:finished?null:{startDate,endDate,dueDate},fees,readings,lastElectricity,surcharges,canPrice:allows(m,'overridePrices',scope),canBackdate:allows(m,'backdateRecords',{organizationId:d.organizationId,userId:uid})}};
+    return {record:{tenantName:t.fullName??'',currency:viewCurrency,roomId:room,today,periodMonths:t.paymentPeriodMonths??1,dueDay:t.paymentDueDay??null,periodRentMinor:viewMinor(t.periodRentMinor??null),monthlyRentMinor:viewMinor(rentForDate(t,startDate)),finished,suggestion:finished?null:{startDate,endDate,dueDate},scheduleRow:finished?null:scheduleRow,scheduleRows:viewCurrency===sourceCurrency?scheduleRows:[],fees,readings,lastElectricity,surcharges,canPrice:allows(m,'overridePrices',scope),canBackdate:allows(m,'backdateRecords',{organizationId:d.organizationId,userId:uid})}};
    }
    if(['quote','create'].includes(d.action)){
     datePolicy(d.startDate);datePolicy(d.dueDate);
@@ -141,6 +152,22 @@ function createInvoiceHandler({db,Timestamp,HttpsError}){
       try{periodSource=await periodInvoiceSource({tx,db,d:{...d,ratesId},tenant:t,intervals,roomId:leaseRoom,ratesId,currency,zone});}catch(e){fail('failed-precondition',e.message);}
       // A surcharge priced differently from the lease is a price change too.
       if(periodSource.surchargeChanged&&!allows(m,'overridePrices',scope))fail('permission-denied','period_lines_need_price_authority');
+      // Bảng thanh toán theo kỳ (2026-10-26): an invoice for exactly a kỳ is
+      // linked to it, and a hand-set kỳ amount is its rent (amount − phụ thu).
+      if(d.includeRent&&t.buildingId===d.buildingId){
+       const sched=await loadSchedule({tx,db,tenant,organizationId:d.organizationId,buildingId:d.buildingId,zone,today});
+       const row=sched.rows.find(r=>!r.locked&&r.start===d.startDate&&r.end===d.endDate);
+       if(row){
+        scheduleRowId=row.id;
+        const rentLine=periodSource.calculation.lines.find(l=>l.type==='rent');
+        if(row.amountEdited&&rentLine&&!rentLine.sourceCalculation&&Number.isSafeInteger(row.rentMinor)&&row.rentMinor>0){
+         rentLine.amountMinor=row.rentMinor;rentLine.basis='schedule';rentLine.scheduleRowId=row.id;if(row.reason)rentLine.reason=row.reason;
+         for(const l of periodSource.calculation.lines)if(l.type==='manual'&&l.percent!==undefined)l.amountMinor=-Math.round(row.rentMinor*l.percent/100);
+         periodSource.calculation.amountMinor=periodSource.calculation.lines.reduce((n,l)=>n+l.amountMinor,0);
+         if(periodSource.calculation.amountMinor<=0)fail('failed-precondition','period_total_not_positive');
+        }
+       }
+      }
       calculation=periodSource.calculation;
      }else if(d.kind==='charge'){
       if(!allows(m,'overridePrices',scope))fail('permission-denied');
@@ -172,7 +199,7 @@ function createInvoiceHandler({db,Timestamp,HttpsError}){
     // Serialize invoice creation against concurrent overlapping periods and property deletion.
     const scale=currency==='USD'?100:1,invoiceId='invoice_'+key;ref=db.doc(`payments/${invoiceId}`);
     const due=propertyDayStart(d.dueDate,zone);if(due===null)fail('invalid-argument');
-    patch={organizationId:d.organizationId,buildingId:d.buildingId,roomId,tenantId:d.tenantId,tenantName,invoiceVersion:2,invoiceKind:d.kind,type:d.kind==='tenantRent'?'rent':['charge','utility'].includes(d.kind)?d.chargeType:d.kind==='service'?'service':d.kind==='period'?'period':'buildingRent',direction,currency,amount:calculation.amountMinor/scale,amountMinor:calculation.amountMinor,totalMinor,paidAmount:0,status:'pending',feesMinor:d.feesMinor,...Object.fromEntries(feeKeys.map(k=>[k,d.feesMinor[k]/scale])),billingStartLocalDate:d.startDate,billingEndLocalDate:d.endDate,dueLocalDate:d.dueDate,dueDate:Timestamp.fromMillis(due),timeZone:zone,calculation,contractSnapshot,description:d.reason.trim(),createdAt:now,createdBy:uid,updatedAt:now,updatedBy:uid};result={invoiceId};
+    patch={organizationId:d.organizationId,buildingId:d.buildingId,roomId,tenantId:d.tenantId,tenantName,invoiceVersion:2,invoiceKind:d.kind,type:d.kind==='tenantRent'?'rent':['charge','utility'].includes(d.kind)?d.chargeType:d.kind==='service'?'service':d.kind==='period'?'period':'buildingRent',direction,currency,amount:calculation.amountMinor/scale,amountMinor:calculation.amountMinor,totalMinor,paidAmount:0,status:'pending',feesMinor:d.feesMinor,...Object.fromEntries(feeKeys.map(k=>[k,d.feesMinor[k]/scale])),billingStartLocalDate:d.startDate,billingEndLocalDate:d.endDate,dueLocalDate:d.dueDate,dueDate:Timestamp.fromMillis(due),timeZone:zone,calculation,contractSnapshot,description:d.reason.trim(),...(scheduleRowId?{scheduleRowId}:{}),createdAt:now,createdBy:uid,updatedAt:now,updatedBy:uid};result={invoiceId};
     if(utilitySource)tx.update(utilitySource.ref,{invoiceId});
     if(periodSource){for(const s of periodSource.utilitySources)tx.update(s.ref,{invoiceId});markBilledAll(tx,periodSource.serviceSources,{organizationId:d.organizationId,buildingId:d.buildingId,roomId,endDate:d.endDate,now});}
     if(serviceSource)markBilled(tx,serviceSource,{organizationId:d.organizationId,buildingId:d.buildingId,roomId:d.roomId,endDate:d.endDate,now});

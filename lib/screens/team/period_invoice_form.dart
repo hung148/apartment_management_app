@@ -18,12 +18,17 @@ class PeriodInvoiceForm extends StatefulWidget {
   final String? tenantId;
   final VoidCallback onDone, onCancel;
   final String backLabel;
+
+  /// A kỳ from the lease's payment table (2026-10-26): startDate, endDate
+  /// (exclusive) and dueDate, used instead of the server's suggestion.
+  final Map<String, String>? initialPeriod;
   const PeriodInvoiceForm({
     super.key,
     required this.service,
     required this.organizationId,
     required this.buildingId,
     this.tenantId,
+    this.initialPeriod,
     required this.onDone,
     required this.onCancel,
     required this.backLabel,
@@ -131,7 +136,7 @@ class _PeriodInvoiceFormState extends State<PeriodInvoiceForm> {
       });
       if (!mounted || generation != _generation) return;
       final p = Map<String, dynamic>.from(data['record'] as Map);
-      final s = p['suggestion'] as Map?;
+      final s = widget.initialPeriod ?? p['suggestion'] as Map?;
       setState(() {
         _preview = p;
         if (s != null) {
@@ -173,6 +178,20 @@ class _PeriodInvoiceFormState extends State<PeriodInvoiceForm> {
   }
 
   static String _currencyOf(Map p) => p['currency'] as String? ?? 'VND';
+
+  /// The rent of the lease's kỳ whose dates are picked (payment table,
+  /// 2026-10-26): a hand-set kỳ amount bills rent = amount − phụ thu.
+  int? _kyRent(Map p) {
+    final start = _start.text.trim(), last = _end.text.trim();
+    if (start.length != 10 || last.length != 10) return null;
+    final end = addDays(last, 1);
+    for (final r in (p['scheduleRows'] as List? ?? const []).cast<Map>()) {
+      if (r['startDate'] == start && r['endDate'] == end) {
+        return r['rentMinor'] as int?;
+      }
+    }
+    return null;
+  }
   List<Map> get _surcharges =>
       (_preview?['surcharges'] as List? ?? const []).cast<Map>();
 
@@ -627,7 +646,12 @@ class _PeriodInvoiceFormState extends State<PeriodInvoiceForm> {
                       const ValueKey('period-rent'),
                       _rent,
                       x.tr('Rent', 'Tiền thuê'),
-                      p['periodRentMinor'] != null
+                      _kyRent(p) != null
+                          ? x.tr(
+                              '${x.money(_kyRent(p)!, _currency)} for this period',
+                              '${x.money(_kyRent(p)!, _currency)} cho kỳ này',
+                            )
+                          : p['periodRentMinor'] != null
                           ? x.tr(
                               '${x.money(p['periodRentMinor'] as num, _currency)} for a whole period',
                               '${x.money(p['periodRentMinor'] as num, _currency)} cho một kỳ đủ',

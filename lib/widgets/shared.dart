@@ -26,6 +26,9 @@ Widget inputField({
   int? maxLength,
   MaxLengthEnforcement? maxLengthEnforcement,
   Color? labelColor,
+  // false while the form is being sent: the field can't be focused or typed
+  // in and is drawn dimmed.
+  bool enabled = true,
 }) {
   return Padding(
     padding: const EdgeInsets.symmetric(vertical: 6.0),
@@ -36,22 +39,23 @@ Widget inputField({
         children: [
           TextFormField(
             controller: controller,
+            enabled: enabled,
             obscureText: obscureText,
             validator: validator,
             onChanged: onChanged,
             maxLength: maxLength,
             maxLengthEnforcement:
                 maxLengthEnforcement ?? MaxLengthEnforcement.enforced,
-            style: const TextStyle(color: Colors.white),
+            style: TextStyle(color: enabled ? Colors.white : Colors.white54),
             decoration: InputDecoration(
               labelText: label,
               labelStyle: TextStyle(
-                color: labelColor ?? Colors.white70,
+                color: enabled ? (labelColor ?? Colors.white70) : Colors.white38,
                 fontSize: 15,
                 fontWeight: FontWeight.bold,
               ),
-              floatingLabelStyle: const TextStyle(
-                color: Colors.white,
+              floatingLabelStyle: TextStyle(
+                color: enabled ? Colors.white : Colors.white54,
                 fontSize: 12,
                 fontWeight: FontWeight.bold,
               ),
@@ -65,6 +69,9 @@ Widget inputField({
               ),
               focusedBorder: const UnderlineInputBorder(
                 borderSide: BorderSide(color: Colors.white, width: 2.5),
+              ),
+              disabledBorder: const UnderlineInputBorder(
+                borderSide: BorderSide(color: Colors.white24, width: 2),
               ),
               errorBorder: const UnderlineInputBorder(
                 borderSide: BorderSide(color: Color(0xFFFF6B6B), width: 2),

@@ -1,9 +1,11 @@
+import 'preview_lease_schedule.dart';
 import '../services/organization_money.dart';
 import 'dart:convert';
 import 'package:cloud_functions/cloud_functions.dart';
 import '../services/team_service.dart';
 import '../models/team_access.dart';
 part 'operational_preview.dart';
+part 'preview_building_prices.dart';
 
 /// Disposable UI fixtures. This transport never contacts Firebase.
 class TeamPreviewStore {
@@ -66,6 +68,9 @@ class TeamPreviewStore {
   final operationalInvoices = <Map<String, dynamic>>[];
   final operationalBookings = <Map<String, dynamic>>[];
 
+  /// The organization's own ways of paying (2026-10-24).
+  final previewPaymentMethods = <Map<String, dynamic>>[];
+
   /// Saved nightly prices per building, in minor units (2026-10-09, Tom: one
   /// list for all rooms of a building). A building without a list shows
   /// [defaultNightPrices] until the list is first changed, like the server.
@@ -111,6 +116,8 @@ class TeamPreviewStore {
   String workspaceRole = 'owner';
   bool assignedOnly = false;
   bool priceOverride = true;
+  // Bảng thanh toán theo kỳ (2026-10-26): kỳ id → invoice id (locked kỳ).
+  final scheduleInvoices = <String, String>{};
   final activity = <Map<String, dynamic>>[
     {
       'id': 'sample-event',
@@ -930,6 +937,19 @@ class TeamPreviewStore {
         reject();
       }
       final building = record(buildings, d['buildingId']);
+      // Bảng thanh toán theo kỳ (2026-10-26): the lease page's payment table.
+      if (d['action'] == 'schedule') {
+        final row = record(tenants, d['tenantId']);
+        if (row['buildingId'] != d['buildingId'] || row['isMainTenant'] != true)
+          reject();
+        return previewSchedule(
+          row,
+          d,
+          canPrice: workspaceRole != 'manager' || priceOverride,
+          canEdit: row['status'] != 'moveOut',
+          invoices: scheduleInvoices,
+        );
+      }
       // 2026-10-04: a lease's surcharges edited later.
       if (d['action'] == 'surcharges') {
         final row = record(tenants, d['tenantId']);
@@ -999,6 +1019,13 @@ class TeamPreviewStore {
             'today': '2026-09-27',
             'canBackdate': workspaceRole != 'manager',
             'canPrice': workspaceRole != 'manager' || priceOverride,
+            'waterDefault': (() {
+              final p = previewDefaults(building);
+              return p['waterMonthMinor'] != null &&
+                      (building['currency'] ?? 'VND') == currency
+                  ? {'amountMinor': p['waterMonthMinor'], 'basis': p['waterBasis']}
+                  : null;
+            })(),
           },
         };
       }
@@ -1396,6 +1423,16 @@ class TeamPreviewStore {
               for (final f in fields)
                 f: stored(f) == null ? null : (stored(f)! * factor).round(),
             },
+            'follows': previewFollows(room),
+            'buildingPrices': (() {
+              final b = record(buildings, room['buildingId']);
+              if ((b['currency'] ?? 'VND') != currency) return null;
+              final p = previewDefaults(b);
+              return {
+                'roomPrice': p['roomPriceMinor'],
+                'nightlyPrice': p['nightlyPriceMinor'],
+              };
+            })(),
           },
         };
       }
@@ -1414,9 +1451,32 @@ class TeamPreviewStore {
       room['dailyPrice'] = null;
       room['overnightPrice'] = null;
       room['dailyPriceThresholdHours'] = null;
+      // Follow the building, or own price (PRICE_DEFAULTS.md).
+      final follow = ((d['followBuilding'] as List?) ?? const []).toSet();
+      final p = previewDefaults(record(buildings, room['buildingId']));
+      final was = previewFollows(room);
+      final before = {for (final f in fields) f: room[f]};
       for (final f in fields) {
+        if (!rates.containsKey(f)) continue;
         room[f] = rates[f] == null ? null : (rates[f] as num) / factor;
       }
+      for (final k in follow) {
+        if (p['${k}Minor'] == null) {
+          throw FirebaseFunctionsException(
+            code: 'failed-precondition',
+            message: 'price_no_building_price',
+          );
+        }
+        room[k] = (p['${k}Minor'] as int) / factor;
+      }
+      room['priceFollows'] = {
+        for (final k in _priceKinds)
+          k:
+              follow.contains(k) ||
+              (!d.containsKey('followBuilding') &&
+                  was[k]! &&
+                  room[k] == before[k]),
+      };
       room['revision'] =
           '${int.parse((room['revision'] as String).split(':').first) + 1}:0';
       activity.insert(0, {
@@ -1496,6 +1556,7 @@ class TeamPreviewStore {
           'record': {
             'currency': building['currency'] ?? 'VND',
             'canSetRoomPrices': true,
+            'defaults': previewDefaults(building),
           },
         };
       if (d['action'] == 'createBulk') {
@@ -1519,6 +1580,10 @@ class TeamPreviewStore {
           ids.add(id);
           final currency = building['currency'] ?? 'VND';
           rooms.add({
+            'priceFollows': previewFollowsFor(
+              r['ratesMinor'] as Map,
+              previewDefaults(building),
+            ),
             'id': id,
             'organizationId': 'preview',
             'buildingId': d['buildingId'],
@@ -1659,6 +1724,9 @@ class TeamPreviewStore {
           message: 'Preview access denied',
         );
       }
+      if (d['action'] == 'readPrices' || d['action'] == 'savePrices') {
+        return buildingPricesPreview(d);
+      }
       if (preparing) {
         return {
           'record': {
@@ -1692,10 +1760,19 @@ class TeamPreviewStore {
           'exploitationCostMinor': d['exploitationCostMinor'],
           'revision': '1:0',
           ...?d['layout'] as Map<String, dynamic>?,
+          if (d['defaultPrices'] != null)
+            'defaultPrices': Map<String, dynamic>.from(d['defaultPrices'] as Map),
+          'electricityPriceMinor': d['electricityPriceMinor'],
         });
+        final newDefaults = previewDefaults(buildings.last);
         for (final (index, room) in ((d['rooms'] as List?) ?? []).indexed) {
           final r = Map<String, dynamic>.from(room as Map);
+          r['ratesMinor'] = previewWithBuildingPrices(
+            r['ratesMinor'] as Map,
+            newDefaults,
+          );
           rooms.add({
+            'priceFollows': previewFollowsFor(r['ratesMinor'] as Map, newDefaults),
             'id': '${d['buildingId']}-initial-$index',
             'buildingId': d['buildingId'],
             'organizationId': 'preview',

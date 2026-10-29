@@ -17,6 +17,8 @@ import 'ws_ui.dart';
 import 'room_problems_section.dart';
 import 'lease_surcharges.dart';
 import 'lease_electricity.dart';
+import 'lease_schedule_section.dart';
+import 'invoice_screen.dart';
 
 class TenantContactsScreen extends StatefulWidget {
   final String organizationId, buildingId;
@@ -31,6 +33,9 @@ class TenantContactsScreen extends StatefulWidget {
   /// Opened over the calendar (C): only [initialRecordId]'s page; "back to
   /// the list" calls this instead, and sub-pages return to that tenant.
   final VoidCallback? onClose;
+
+  /// The signed-in account (for the invoice screen opened from a kỳ).
+  final String accountId;
   const TenantContactsScreen({
     super.key,
     required this.organizationId,
@@ -40,6 +45,7 @@ class TenantContactsScreen extends StatefulWidget {
     this.initialRecordId,
     this.onRecordChanged,
     this.onClose,
+    this.accountId = '',
   });
   @override
   State<TenantContactsScreen> createState() => _TenantContactsScreenState();
@@ -58,6 +64,11 @@ class _TenantContactsScreenState extends State<TenantContactsScreen> {
   bool _showingSaved = false;
   // B6: the period invoice form for this tenant is open.
   String? _periodTenant;
+  // Bảng thanh toán theo kỳ (2026-10-26): the kỳ the period invoice is for,
+  // the invoice opened from a kỳ, and a counter that reloads the table.
+  Map<String, String>? _periodInitial;
+  String? _invoiceOpen;
+  int _scheduleToken = 0;
   // B6b: the move-out settlement for this tenant is open.
   String? _settleTenant;
   int _generation = 0;
@@ -360,7 +371,11 @@ class _TenantContactsScreenState extends State<TenantContactsScreen> {
       // Back and Done both return to this tenant's page.
       final tenant = _periodTenant!;
       void close() {
-        setState(() => _periodTenant = null);
+        setState(() {
+          _periodTenant = null;
+          _periodInitial = null;
+          _scheduleToken++;
+        });
         _read(tenant);
       }
 
@@ -371,9 +386,28 @@ class _TenantContactsScreenState extends State<TenantContactsScreen> {
           organizationId: widget.organizationId,
           buildingId: widget.buildingId,
           tenantId: tenant,
+          initialPeriod: _periodInitial,
           backLabel: AppTranslations.of(context)['tenant_contacts_title'],
           onCancel: close,
           onDone: close,
+        ),
+      );
+    }
+    if (_invoiceOpen != null) {
+      // A kỳ's invoice: Back returns to this tenant's page.
+      void close() => setState(() {
+        _invoiceOpen = null;
+        _scheduleToken++;
+      });
+      return BackStep(
+        onBack: close,
+        child: InvoiceScreen(
+          organizationId: widget.organizationId,
+          buildingId: widget.buildingId,
+          accountId: widget.accountId,
+          service: widget.service,
+          initialInvoiceId: _invoiceOpen,
+          onBack: close,
         ),
       );
     }
@@ -687,6 +721,26 @@ class _TenantContactsScreenState extends State<TenantContactsScreen> {
                 r['staffName'] as String? ?? '',
               ),
             ],
+          ),
+        // Bảng thanh toán theo kỳ (2026-10-26, Tom).
+        if (hasLease)
+          LeaseScheduleSection(
+            key: ValueKey('lease-schedule-$id-$_scheduleToken'),
+            service: widget.service,
+            organizationId: widget.organizationId,
+            buildingId: widget.buildingId,
+            tenantId: id,
+            // Over the calendar: only a button; the table opens in a dialog.
+            summary: widget.onClose != null,
+            onOpenInvoice: (invoice) => setState(() => _invoiceOpen = invoice),
+            onNewInvoice: (start, end, due) => setState(() {
+              _periodTenant = id;
+              _periodInitial = {
+                'startDate': start,
+                'endDate': end,
+                'dueDate': due,
+              };
+            }),
           ),
         // The people living with the main tenant; "Thêm" adds one (2026-10-04).
         if (hasLease)

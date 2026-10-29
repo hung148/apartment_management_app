@@ -82,3 +82,17 @@ project_diagram.excalidraw
 # Local emulator data (tool/local.ps1)
 .local-data*/
 .local-emulators.pid
+.local-save.log
+.local-save.code
+
+# Docs stay local (Tom, 2026-10-28): every md file except README.md.
+# Map of the docs: AGENTS.md / CLAUDE.md (also local).
+*.md
+!README.md
+
+# Command output saved for review (flutter test/analyze, deploys): write it
+# to logs\ (e.g. "*> logs\deploy.txt"). Stray .txt at the root too.
+logs/
+/*.txt
+functions/test_result.txt
+_to_delete/

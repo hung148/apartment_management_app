@@ -9,7 +9,8 @@
 #       hosting deploy when nothing the app is built from changed.
 #
 #   powershell -ExecutionPolicy Bypass -File tool\staging_all.ps1 -Tests booking_form,operational_workflows
-#       Runs only these test files (test\<name>_test.dart) instead of all of
+#       Runs only these test files (<name>_test.dart, found in any folder
+#       under test\, e.g. test\booking\booking_form_test.dart) instead of all of
 #       them. Use for small changes; run the full suite before production and
 #       after changes to shared code (ws_ui, theme, services).
 #
@@ -78,9 +79,14 @@ if ($MarkDeployed) {
 $Tests = @($Tests | ForEach-Object { $_ -split '[,\s]+' } | Where-Object { $_ -and $_ -notmatch '[*?\[\]]' })
 $testCmd = if ($Tests.Count -gt 0) {
   # Always a list: one file name must not be split into letters by @files.
-  # "test\x_test.dart", "x_test.dart" and "x" all name the same file.
-  $files = @($Tests | ForEach-Object { "test/$(($_ -replace '^test[\\/]','') -replace '_test(\.dart)?$','')_test.dart" })
-  foreach ($f in $files) { if (-not (Test-Path -LiteralPath $f)) { Write-Host "No such test file: $f" -ForegroundColor Red; exit 1 } }
+  # "test\booking\x_test.dart", "x_test.dart" and "x" all name the same file;
+  # tests live in area folders (test\booking, test\lease, ... 2026-10-28).
+  $files = @($Tests | ForEach-Object {
+    $name = (Split-Path ($_ -replace '_test(\.dart)?$', '') -Leaf) + '_test.dart'
+    $hit = @(Get-ChildItem test -Recurse -File -Filter $name)
+    if ($hit.Count -ne 1) { Write-Host "No such test file: $name" -ForegroundColor Red; exit 1 }
+    (Resolve-Path -Relative $hit[0].FullName) -replace '\\', '/'
+  })
   { flutter test --concurrency=1 @files }.GetNewClosure()
 } else {
   { flutter test --concurrency=1 }

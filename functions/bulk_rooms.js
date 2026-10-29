@@ -2,6 +2,7 @@
 const {createHash}=require('node:crypto');
 const {allows}=require('./team_access');
 const {validInitialRooms}=require('./property_details');
+const {defaultsOf,followsFor,withBuildingPrices}=require('./building_prices');
 const id=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(v);
 const normalized=v=>String(v??'').trim().normalize('NFKC').toLowerCase();
 const hash=v=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
@@ -26,7 +27,8 @@ function createBulkRoomsHandler({db,Timestamp,HttpsError}) {
       const selected=org.data().displayCurrency??building.data().currency??'VND';
       const currency=creating?(d.currency??building.data().currency??'VND'):selected;
       if(!['VND','USD'].includes(currency))fail('failed-precondition');
-      if(!creating)return {record:{currency,canSetRoomPrices}};
+      // defaults: building prices, only when the rooms use the building's currency.
+      if(!creating)return {record:{currency,canSetRoomPrices,defaults:currency===(building.data().currency??'VND')?defaultsOf(building.data()):null}};
       const key=hash(['bulkRooms',d.organizationId,uid,d.operationId]),fingerprint=hash(keys.map(k=>d[k]));
       const operation=db.doc(`roomOperations/${key}`),prior=await tx.get(operation);
       if(prior.exists){if(prior.data().fingerprint!==fingerprint)fail('failed-precondition');return prior.data().result;}
@@ -40,9 +42,14 @@ function createBulkRoomsHandler({db,Timestamp,HttpsError}) {
       const refs=d.rooms.map((_,index)=>db.doc(`rooms/${hash(['bulkRoom',d.organizationId,uid,d.operationId,index])}`));
       // create() preconditions reject collisions atomically without target reads.
       const now=Timestamp.now(),result={roomIds:refs.map(r=>r.id)};
-      for(const [index,r] of d.rooms.entries()){
+      const sameCurrency=currency===(building.data().currency??'VND'),buildingDefaults=defaultsOf(building.data());
+      for(const [index,r0] of d.rooms.entries()){
+        // A room left without a price takes the building's (2026-10-28).
+        const r=sameCurrency?{...r0,ratesMinor:withBuildingPrices(r0.ratesMinor,buildingDefaults)}:r0;
         const data={organizationId:d.organizationId,buildingId:d.buildingId,roomNumber:r.roomNumber.trim(),roomType:r.roomType.trim(),area:r.area??0,currency,rentalMode:'both',
-          ...Object.fromEntries(prices.map(k=>[k,r.ratesMinor[k]===null?null:r.ratesMinor[k]/(currency==='USD'?100:1)]))};
+          ...Object.fromEntries(prices.map(k=>[k,r.ratesMinor[k]==null?null:r.ratesMinor[k]/(currency==='USD'?100:1)])),
+          // A price equal to the building's follows it (2026-10-26).
+          priceFollows:currency===(building.data().currency??'VND')?followsFor(r.ratesMinor,defaultsOf(building.data())):{roomPrice:false,nightlyPrice:false}};
         tx.create(refs[index],{...data,createdAt:now,createdBy:uid,updatedAt:now,updatedBy:uid});
         tx.create(db.doc(`teamActivity/${key}_${index}`),{organizationId:d.organizationId,actorId:uid,action:'room_created',targetId:refs[index].id,createdAt:now,before:null,after:data});
       }

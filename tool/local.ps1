@@ -5,7 +5,8 @@
 #   powershell -ExecutionPolicy Bypass -File tool\local.ps1
 #       Starts the emulators in a second window (with the saved local data),
 #       creates the local test accounts, builds the app (release, into
-#       build\local-web) and serves it here at http://localhost:5300; it
+#       build\local-web; WebAssembly + JavaScript fallback, same as staging
+#       and production) and serves it here at http://localhost:5300; it
 #       starts in any browser, including the Claude browser pane.
 #       After app code changes: Ctrl+C here and run the command again
 #       (about 1-2 minutes; the emulators keep running).
@@ -23,6 +24,9 @@
 #   -NoApp     start only the emulators (for example to run server checks).
 #   -Debug     debug mode with hot reload (r) for your own Chrome; the Claude
 #              browser pane cannot connect to debug mode.
+#   -NoWasm    build JavaScript only (like staging_all.ps1 -NoWasm). Normally
+#              the local build is WebAssembly too (2026-10-23, Tom), so Chrome
+#              and Edge run what they run on staging/production.
 #   -Java <folder>  use this Java (21 or newer) instead of searching for one.
 param(
   [switch]$Save,
@@ -30,6 +34,7 @@ param(
   [switch]$Fresh,
   [switch]$NoApp,
   [switch]$Debug,
+  [switch]$NoWasm,
   [string]$Java = ''
 )
 $ErrorActionPreference = 'Stop'
@@ -50,9 +55,24 @@ function Test-Port([int]$port) {
 function Save-Data {
   if (-not (Test-Port $hubPort)) { Write-Host 'Emulators are not running: nothing to save.'; return $false }
   Write-Host 'Saving local data into .local-data ...'
-  node $firebase emulators:export $data --config firebase.local.json --project $project --force | Out-Null
-  if ($LASTEXITCODE -eq 0) { Write-Host 'Local data saved.' -ForegroundColor Green; return $true }
-  Write-Host 'Saving the local data FAILED.' -ForegroundColor Red
+  # Own hidden window, one retry. Node on this computer often crashes while
+  # closing, AFTER the export finished ("Assertion failed:
+  # !(handle->flags & UV_HANDLE_CLOSING)", exit code -1073740791), so the
+  # exit code is not trusted: "Export complete" in the log counts as saved
+  # (2026-10-23).
+  # Its output goes to .local-save.log and its result to .local-save.code.
+  $log = Join-Path $root '.local-save.log'
+  $codeFile = Join-Path $root '.local-save.code'
+  $cmd = "Set-Location '$root'; node $firebase emulators:export $data --config firebase.local.json --project $project --force *> '$log'; Set-Content '$codeFile' `$LASTEXITCODE"
+  for ($try = 1; $try -le 2; $try++) {
+    # Old results must not count as this save.
+    foreach ($f in @($codeFile, $log)) { if (Test-Path $f) { Remove-Item $f } }
+    Start-Process powershell -WindowStyle Hidden -ArgumentList '-NoProfile', '-Command', $cmd -Wait | Out-Null
+    $code = if (Test-Path $codeFile) { (Get-Content $codeFile -Raw).Trim() } else { 'none' }
+    $done = (Test-Path $log) -and (Select-String -Path $log -Pattern 'Export complete' -SimpleMatch -Quiet)
+    if ($code -eq '0' -or $done) { Write-Host 'Local data saved.' -ForegroundColor Green; return $true }
+  }
+  Write-Host "Saving the local data FAILED (result: $code; details in .local-save.log). The emulators keep running; try tool\local.ps1 -Save" -ForegroundColor Red
   return $false
 }
 
@@ -179,7 +199,9 @@ if ($Debug) {
 } else {
   # Own folder: a local build must never end up in build\web (production) or
   # build\staging-web. tool\local_serve.cjs serves it and forwards Firebase calls.
-  flutter build web --release --output=build/local-web --dart-define=LOCAL_EMULATORS=true --dart-define=V2_ORG_CREATION=true
+  $wasmArgs = @()
+  if (-not $NoWasm) { $wasmArgs += '--wasm' }
+  flutter build web --release @wasmArgs --output=build/local-web --dart-define=LOCAL_EMULATORS=true --dart-define=V2_ORG_CREATION=true
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
   Write-Host 'App: http://localhost:5300   (after app changes: Ctrl+C, then run this command again)' -ForegroundColor Green
   node tool/local_serve.cjs

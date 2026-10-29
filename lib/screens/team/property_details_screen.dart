@@ -11,6 +11,7 @@ import '../../services/organization_money.dart';
 import 'property_initial_rooms.dart';
 import 'building_room_setup.dart';
 import 'building_existing_rooms.dart';
+import 'building_prices_section.dart';
 import '../../widgets/time_zone_picker.dart';
 
 class PropertyDetailsScreen extends StatefulWidget {
@@ -42,7 +43,24 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
   final _cost = TextEditingController();
   final _rooms = <InitialRoomDraft>[];
   final _roomPlan = BuildingRoomPlan();
+
+  /// Building prices (PRICE_DEFAULTS.md): typed here for a new building;
+  /// for an existing one [BuildingPricesEditor] reports the saved ones.
+  final _prices = BuildingPriceDraft();
+  Map<String, String> _savedDefaults = const {};
+
+  /// Said after creating when some hourly templates could not be saved.
+  String? _note;
   bool _canSetRoomPrices = false;
+
+  /// What new room rows start with (only when rooms use the building's
+  /// currency).
+  Map<String, String> get _roomDefaults =>
+      !_canSetRoomPrices || _roomCurrency != _currency
+      ? const {}
+      : _creating
+      ? _prices.roomDefaults
+      : _savedDefaults;
   void _clearRooms() {
     for (final room in _rooms) {
       room.dispose();
@@ -92,6 +110,7 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
     _address.dispose();
     _zone.dispose();
     _cost.dispose();
+    _prices.dispose();
     _clearRooms();
     super.dispose();
   }
@@ -102,6 +121,7 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
       _loading = true;
       _revision = null;
       _message = null;
+      _note = null;
       _confirmDelete = false;
       _name.clear();
       _address.clear();
@@ -167,7 +187,12 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
 
   Future<void> _save() async {
     if (_saving || _loading || _revision == null) return;
-    if (_pending == null && !(_form.currentState?.validate() ?? false)) return;
+    if (_pending == null) {
+      for (final r in _rooms) {
+        r.showRequired = true;
+      }
+      if (!(_form.currentState?.validate() ?? false)) return;
+    }
     _pending ??= Map.unmodifiable({
       'action': _creating ? 'create' : 'update',
       'organizationId': widget.organizationId,
@@ -184,6 +209,10 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
       'rooms': _rooms.map((r) => r.toMap(_roomCurrency)).toList(),
       if (_rooms.isNotEmpty) 'roomCurrency': _roomCurrency,
       'layout': _roomPlan.toMap(),
+      if (_creating && _canSetRoomPrices) ...{
+        'defaultPrices': _prices.defaults(_currency),
+        'electricityPriceMinor': _prices.electricityMinor(_currency),
+      },
     });
     final generation = _generation;
     setState(() {
@@ -194,6 +223,44 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
       final deleting = _deleting, creating = _creating;
       await widget.service.propertyDetails(Map.of(_pending!));
       if (!mounted || generation != _generation) return;
+      // Hourly templates typed for the new building are saved right after it.
+      var failed = 0;
+      if (creating) {
+        for (final tpl in List.of(_prices.templates)) {
+          try {
+            await widget.service.bookingWorkspace({
+              'action': 'hourTemplates',
+              'organizationId': widget.organizationId,
+              'buildingId': widget.buildingId,
+              ...tpl.toMap(),
+            });
+            _prices.templates.remove(tpl);
+          } catch (_) {
+            failed++;
+          }
+        }
+        if (!mounted || generation != _generation) return;
+      }
+      if (failed > 0) {
+        // The building exists: show it as an existing one, where the
+        // templates can be added again.
+        final vi = AppTranslations.of(context).locale.languageCode == 'vi';
+        setState(() {
+          _saving = false;
+          _pending = null;
+          _created = true;
+          _prices.templates.clear();
+        });
+        await _load(saved: true);
+        if (mounted) {
+          setState(
+            () => _note = vi
+                ? 'Đã tạo cơ sở, nhưng $failed mẫu giá theo giờ chưa lưu được. Thêm lại ở mục Giá của cơ sở.'
+                : 'The building was created, but $failed hourly template(s) were not saved. Add them again under Building prices.',
+          );
+        }
+        return;
+      }
       if (creating && widget.onCreated != null) {
         _pending = null;
         widget.onCreated!();
@@ -409,6 +476,39 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
                           ),
                         ),
                         const SizedBox(height: 24),
+                        if (_creating &&
+                            _revision != null &&
+                            _canSetRoomPrices) ...[
+                          BuildingPriceFields(
+                            draft: _prices,
+                            currency: _currency,
+                            locked: locked,
+                            onRoomDefaultChanged: (field, old, next) =>
+                                setState(() {
+                                  if (_roomCurrency != _currency) return;
+                                  for (final r in _rooms) {
+                                    final c = r.prices[field]!;
+                                    if (c.text == old) c.text = next;
+                                  }
+                                }),
+                            onChanged: () => setState(() {}),
+                          ),
+                          const SizedBox(height: 24),
+                        ],
+                        if (!_creating && _revision != null) ...[
+                          BuildingPricesEditor(
+                            key: ValueKey(
+                              'prices-${widget.buildingId}-$_generation',
+                            ),
+                            organizationId: widget.organizationId,
+                            buildingId: widget.buildingId,
+                            service: widget.service,
+                            onDefaults: (d) {
+                              if (mounted) setState(() => _savedDefaults = d);
+                            },
+                          ),
+                          const SizedBox(height: 24),
+                        ],
                         if (!_creating && _revision != null)
                           BuildingExistingRooms(
                             key: ValueKey(
@@ -418,15 +518,9 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
                             buildingId: widget.buildingId,
                             service: widget.service,
                           ),
-                        BuildingRoomSetup(
-                          plan: _roomPlan,
-                          locked: locked || _revision == null,
-                          canSetPrices: _canSetRoomPrices,
-                          currency: _roomCurrency,
-                          rooms: _rooms,
-                          onGenerate: (rows) =>
-                              setState(() => _rooms.addAll(rows)),
-                        ),
+                        // Rooms: type how many, then fill in each one
+                        // (2026-10-23, Tom). The saved floor layout
+                        // (_roomPlan) is kept as it was, just not shown.
                         PropertyInitialRooms(
                           title: t['building_rooms_to_add'],
                           hint: t['building_rooms_to_add_hint'],
@@ -434,13 +528,14 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
                           currency: _roomCurrency,
                           locked: locked || _revision == null,
                           canSetPrices: _canSetRoomPrices,
+                          defaults: _roomDefaults,
                           onAdd: () => setState(
                             () => _rooms.add(
-                              InitialRoomDraft()
-                                ..type.text = _roomPlan.type.text
-                                ..area.text = _roomPlan.area.text,
+                              InitialRoomDraft(defaults: _roomDefaults),
                             ),
                           ),
+                          onGenerate: (rows) =>
+                              setState(() => _rooms.addAll(rows)),
                           onRemove: (room) => setState(() {
                             _rooms.remove(room);
                             room.dispose();
@@ -462,6 +557,7 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
                                   child: Text(t['property_delete']),
                                 ),
                               FilledButton(
+                                key: const ValueKey('property-save'),
                                 onPressed:
                                     _loading ||
                                         _saving ||
@@ -480,6 +576,15 @@ class _PropertyDetailsScreenState extends State<PropertyDetailsScreen> {
                             ],
                           ),
                       ],
+                    ),
+                  ),
+                if (_note != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: WsNotice(
+                      _note!,
+                      key: const ValueKey('property-template-note'),
+                      tone: WsTone.warning,
                     ),
                   ),
                 if (_message != null)

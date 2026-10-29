@@ -22,6 +22,10 @@ class InvoiceScreen extends StatefulWidget {
   /// Null inside the organization workspace sections (U1): no Back button
   /// on the list; Back still returns from a booking/invoice to the list.
   final VoidCallback? onBack;
+
+  /// Open this invoice directly (a kỳ's invoice from the lease page,
+  /// 2026-10-26); Back then calls [onBack] instead of showing the list.
+  final String? initialInvoiceId;
   const InvoiceScreen({
     super.key,
     required this.organizationId,
@@ -29,6 +33,7 @@ class InvoiceScreen extends StatefulWidget {
     required this.accountId,
     required this.service,
     this.onBack,
+    this.initialInvoiceId,
   });
   @override
   State<InvoiceScreen> createState() => _InvoiceScreenState();
@@ -117,6 +122,10 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
       _quote = null;
     });
     try {
+      if (widget.initialInvoiceId != null) {
+        await _read(widget.initialInvoiceId!);
+        return;
+      }
       final raw = (await SharedPreferences.getInstance()).getString(_journal);
       if (!mounted || generation != _generation) return;
       if (raw != null) {
@@ -580,8 +589,9 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
           ? appMoneyInput(_inputCurrency)
           : null,
     );
+    final direct = widget.initialInvoiceId != null;
     return BackStep(
-      enabled: _mode != 'list',
+      enabled: _mode != 'list' && !direct,
       onBack: () {
         if (!_locked) _list();
       },
@@ -597,7 +607,9 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
                         label: t('back'),
                         onPressed: _locked
                             ? null
-                            : (_mode == 'list' ? widget.onBack : () => _list()),
+                            : (_mode == 'list' || direct
+                                  ? widget.onBack
+                                  : () => _list()),
                       )
                     : null,
                 title: t('invoices'),

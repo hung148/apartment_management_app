@@ -200,15 +200,33 @@ class AuthService {
       }
 
       return newOwner;
-    } catch (e) {
-      // Clean up orphaned Auth account if Firestore write failed
-      // Only delete the Auth account if it was just created (Firestore write failed)
-      if (result != null) {
-        await result.user?.delete();
-        logger.w('Orphaned Auth account deleted');
+    } on FirebaseAuthException catch (e) {
+      // Sign-up itself was refused (email in use, offline, too many tries…):
+      // no account exists, so pass the code on for the screen to explain.
+      // Only the code is used there, never the raw message.
+      if (result == null) {
+        logger.e('Registration refused', error: e);
+        rethrow;
       }
+      await _deleteHalfCreatedAccount(result);
       logger.e('Registration failed', error: e);
       return null;
+    } catch (e) {
+      // The account was created but the profile was not saved: remove it so
+      // the person can try again with the same email.
+      if (result != null) await _deleteHalfCreatedAccount(result);
+      logger.e('Registration failed', error: e);
+      return null;
+    }
+  }
+
+  /// Best effort: a failed clean-up must not hide the original failure.
+  Future<void> _deleteHalfCreatedAccount(UserCredential result) async {
+    try {
+      await result.user?.delete();
+      logger.w('Orphaned Auth account deleted');
+    } catch (e) {
+      logger.e('Orphaned Auth account not deleted', error: e);
     }
   }
 

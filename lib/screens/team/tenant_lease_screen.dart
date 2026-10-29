@@ -54,48 +54,9 @@ String _leaseText(BuildContext context, String key) {
     'period': ['Pay every', 'Thu tiền mỗi'],
     'months': ['{n} months', '{n} tháng'],
     'oneMonth': ['1 month', '1 tháng'],
-    'dueDay': ['Due day of the month (1–31)', 'Ngày thu trong tháng (1–31)'],
-    // 2026-10-04 (Tom): the due day and the amount per period sit behind a
-    // switch; off = the usual (move-in day; rent × months).
-    'ownDueDay': ['Different due day', 'Ngày thu khác ngày dọn vào'],
-    'dueSame': [
-      'Due on day {d} of each month (the move-in day).',
-      'Thu vào ngày {d} hằng tháng (ngày dọn vào).',
-    ],
-    'dueSameNoDate': [
-      'Due on the move-in day of each month.',
-      'Thu vào ngày dọn vào hằng tháng.',
-    ],
-    'ownAmount': ['Different amount per period', 'Số tiền mỗi kỳ khác'],
-    'amountSame': [
-      'Each period: {amount} (rent × {n}).',
-      'Mỗi kỳ: {amount} (tiền thuê × {n}).',
-    ],
-    'periodAmount': ['Agreed rent per period', 'Giá thuê thỏa thuận mỗi kỳ'],
-    'periodTotal': [
-      'Estimated full-period total',
-      'Tổng dự tính cho một kỳ đầy đủ',
-    ],
-    'onceTotal': ['Additional one-time charges', 'Phụ thu một lần'],
-    'depositSummary': [
-      'Deposit recorded separately',
-      'Tiền cọc ghi nhận riêng',
-    ],
-    'paymentHelp': [
-      'Includes recurring surcharges. Metered utilities and partial periods are calculated on the invoice.',
-      'Đã gồm phụ thu định kỳ. Điện nước theo chỉ số và kỳ không đủ tháng được tính trên hóa đơn.',
-    ],
-    // Fix 5 (2026-10-09, Tom): another amount than rent × months needs
-    // "Đổi giá" and a reason; the lease keeps the calculated amount and who.
-    'periodReason': ['Reason for the change', 'Lý do đổi giá'],
-    'periodCalculated': [
-      'Calculated: {amount} (rent × {n}).',
-      'Tính ra: {amount} (tiền thuê × {n}).',
-    ],
-    'periodReasonRequired': [
-      'Enter why the amount differs.',
-      'Nhập lý do số tiền khác.',
-    ],
+    // 2026-10-26 (Tom): no own due day and no "Thanh toán" section any more:
+    // every kỳ starts at rent × months + recurring phụ thu, and is changed
+    // later in the lease page's payment table (lease_schedule_section.dart).
     'deposit': ['Deposit amount (optional)', 'Tiền cọc (không bắt buộc)'],
     'cash': ['Cash', 'Tiền mặt'],
     'transfer': ['Bank transfer', 'Chuyển khoản'],
@@ -149,7 +110,6 @@ String _leaseText(BuildContext context, String key) {
     ],
     'readingReason': ['Reading at move-in', 'Chỉ số lúc dọn vào'],
     'notSet': ['Not set', 'Chưa chọn'],
-    'invalidDay': ['Enter a day from 1 to 31.', 'Nhập ngày từ 1 đến 31.'],
     'staffInvalid': [
       'That staff member is no longer active. Choose someone else.',
       'Nhân viên này không còn làm việc. Hãy chọn người khác.',
@@ -223,9 +183,6 @@ class _TenantLeaseScreenState extends State<TenantLeaseScreen> {
       'reason',
       'idNumber',
       'residenceDate',
-      'dueDay',
-      'periodAmount',
-      'periodReason',
       'deposit',
       'depositNote',
       'electricity',
@@ -252,7 +209,6 @@ class _TenantLeaseScreenState extends State<TenantLeaseScreen> {
   String _depositMethod = 'cash';
   String? _depositAccount;
   int _periodMonths = 1;
-  bool _ownDueDay = false, _ownAmount = false;
   bool _busy = false, _saving = false, _done = false, _residence = false;
   int _generation = 0;
   bool get _roommate => widget.mainTenantId != null;
@@ -289,22 +245,7 @@ class _TenantLeaseScreenState extends State<TenantLeaseScreen> {
   }
 
   void _refresh() {
-    _syncPeriodAmount();
     if (mounted) setState(() {});
-  }
-
-  void _syncPeriodAmount() {
-    if (_ownAmount || _record == null) return;
-    final rent = _conversion.parse(_fields['rent']!, _currency);
-    if (rent != null) {
-      _conversion.set(
-        _fields['periodAmount']!,
-        rent * _periodMonths,
-        _currency,
-      );
-    } else {
-      _fields['periodAmount']!.clear();
-    }
   }
 
   @override
@@ -335,9 +276,6 @@ class _TenantLeaseScreenState extends State<TenantLeaseScreen> {
     _residence = false;
     _staffId = null;
     _periodMonths = 1;
-    _ownDueDay = false;
-    _ownAmount = false;
-    _fields['periodReason']!.clear();
     _startPhoto = null;
     _suggestedRent = null;
     _warning = null;
@@ -546,6 +484,18 @@ class _TenantLeaseScreenState extends State<TenantLeaseScreen> {
             _conversion.set(_fields['rent']!, roomRent, _currency);
             _suggestedRent = _fields['rent']!.text;
           }
+          // The building's water price (PRICE_DEFAULTS.md, 2026-10-26).
+          final water = _record!['waterDefault'];
+          if (_fields['water']!.text.isEmpty &&
+              water is Map &&
+              water['amountMinor'] is int) {
+            _conversion.set(
+              _fields['water']!,
+              water['amountMinor'] as int,
+              _currency,
+            );
+            _waterBasis = water['basis'] == 'room' ? 'room' : 'person';
+          }
           if (_staffId != null && !_staff.any((s) => s['id'] == _staffId)) {
             _staffId = null;
           }
@@ -576,8 +526,6 @@ class _TenantLeaseScreenState extends State<TenantLeaseScreen> {
   List<Map<String, dynamic>> get _staff => _list('staff');
   List<Map<String, dynamic>> get _accounts => _list('accounts');
   String get _currency => _record?['currency'] as String? ?? 'VND';
-  // Grouped for the input box: 5,000,000 (2026-10-05, Tom).
-  String _money(int minor) => appMoneyMinor(minor, _currency);
 
   Map<String, dynamic> _paper(String idNumber, bool registered, String date) =>
       {
@@ -586,49 +534,8 @@ class _TenantLeaseScreenState extends State<TenantLeaseScreen> {
         if (registered && date.trim().isNotEmpty) 'residenceDate': date.trim(),
       };
 
-  List<Widget> _paymentSummary(BuildContext context) {
-    final period = _conversion.parse(_fields['periodAmount']!, _currency);
-    if (period == null || period <= 0) return const [];
-    final details = _details();
-    final charges = (details['surcharges'] as List?) ?? const [];
-    // Do not present an incomplete surcharge as a zero-cost line.
-    if (_surcharges.any((c) => c.toJson(_currency) == null)) return const [];
-    var recurring = 0, once = 0;
-    for (final c in charges) {
-      final people = c['basis'] == 'person' ? 1 + _coTenants.length : 1;
-      final months = c['frequency'] == 'month' ? _periodMonths : 1;
-      final amount = (c['amountMinor'] as int) * people * months;
-      if (c['frequency'] == 'once') {
-        once += amount;
-      } else {
-        recurring += amount;
-      }
-    }
-    Widget line(String key, int value) => Padding(
-      padding: const EdgeInsets.only(top: WsSpace.sm),
-      child: Text('${lt(key)}: ${_money(value)}', key: ValueKey('lease-$key')),
-    );
-    return [
-      line('periodTotal', period + recurring),
-      if (once > 0) line('onceTotal', once),
-      line(
-        'depositSummary',
-        _conversion.parse(_fields['deposit']!, _currency) ?? 0,
-      ),
-      const SizedBox(height: WsSpace.sm),
-      Text(lt('paymentHelp'), style: Theme.of(context).textTheme.bodySmall),
-    ];
-  }
-
   Map<String, dynamic> _details() {
-    final rent = _conversion.parse(_fields['rent']!, _currency);
     final deposit = _conversion.parse(_fields['deposit']!, _currency);
-    final period = _ownAmount
-        ? _conversion.parse(_fields['periodAmount']!, _currency)
-        : null;
-    final due = _ownDueDay
-        ? int.tryParse(_fields['dueDay']!.text.trim())
-        : null;
     final power = _conversion.parse(_fields['electricity']!, _currency);
     final water = _conversion.parse(_fields['water']!, _currency);
     final charges = [
@@ -656,11 +563,6 @@ class _TenantLeaseScreenState extends State<TenantLeaseScreen> {
         ],
       if (_staffId != null) 'staffInChargeId': _staffId,
       'periodMonths': _periodMonths,
-      'dueDay': ?due,
-      if (period != null && rent != null && period != rent * _periodMonths) ...{
-        'periodAmountMinor': period,
-        'periodAmountReason': _fields['periodReason']!.text.trim(),
-      },
       if (deposit != null && deposit > 0) ...{
         'depositMinor': deposit,
         'depositMethod': _depositMethod,
@@ -902,7 +804,6 @@ class _TenantLeaseScreenState extends State<TenantLeaseScreen> {
             inputFormatters:
                 const {
                   'rent',
-                  'periodAmount',
                   'deposit',
                   'electricity',
                   'water',
@@ -953,7 +854,6 @@ class _TenantLeaseScreenState extends State<TenantLeaseScreen> {
       ],
     );
 
-    final rentMinor = _conversion.parse(_fields['rent']!, _currency);
     List<Widget> mainForm(Map<String, dynamic> r) => [
       if (!_roommate)
         WsSection(
@@ -1127,73 +1027,50 @@ class _TenantLeaseScreenState extends State<TenantLeaseScreen> {
           ),
           if (!_roommate) ...[
             const SizedBox(height: WsSpace.md),
-            input(
-              'rent',
-              label: '${t['lease_form_rent']} ($_inputCurrency)',
-              max: 24,
-              keyboard: TextInputType.numberWithOptions(
-                decimal: _inputCurrency == 'USD',
-              ),
-              check: (v) => parseRoomRate(v, _inputCurrency) == null
-                  ? t['lease_form_invalid_rent']
-                  : null,
-            ),
-            const SizedBox(height: WsSpace.md),
-            Text(lt('period'), style: theme.textTheme.labelLarge),
-            const SizedBox(height: WsSpace.xs),
-            Wrap(
-              spacing: WsSpace.sm,
-              runSpacing: WsSpace.sm,
+            // 2026-10-26 (Tom): rent and "Thu tiền mỗi" side by side, the
+            // period as a dropdown (was a row of chips) to save space.
+            WsFieldRow(
               children: [
-                for (final n in [1, 2, 3, 6, 12])
-                  ChoiceChip(
-                    key: ValueKey('lease-period-$n'),
-                    label: Text(
-                      n == 1
-                          ? lt('oneMonth')
-                          : lt('months').replaceAll('{n}', '$n'),
-                    ),
-                    selected: _periodMonths == n,
-                    onSelected: _locked
-                        ? null
-                        : (_) => setState(() {
-                            _periodMonths = n;
-                            _syncPeriodAmount();
-                          }),
+                input(
+                  'rent',
+                  label: '${t['lease_form_rent']} ($_inputCurrency)',
+                  max: 24,
+                  keyboard: TextInputType.numberWithOptions(
+                    decimal: _inputCurrency == 'USD',
                   ),
+                  check: (v) => parseRoomRate(v, _inputCurrency) == null
+                      ? t['lease_form_invalid_rent']
+                      : null,
+                ),
+                // Keyed on the value so a form reset (_clearPeople) shows
+                // 1 month again; the dropdown keeps its own value otherwise.
+                KeyedSubtree(
+                  key: ValueKey('lease-period-at-$_periodMonths'),
+                  child: DropdownButtonFormField<int>(
+                    key: const ValueKey('lease-period'),
+                    initialValue: _periodMonths,
+                    isExpanded: true,
+                    // Regular weight like the other dropdowns (design rule).
+                    style: theme.textTheme.bodyLarge,
+                    decoration: InputDecoration(labelText: lt('period')),
+                    items: [
+                      for (final n in [1, 2, 3, 6, 12])
+                        DropdownMenuItem(
+                          value: n,
+                          child: Text(
+                            n == 1
+                                ? lt('oneMonth')
+                                : lt('months').replaceAll('{n}', '$n'),
+                          ),
+                        ),
+                    ],
+                    onChanged: _locked
+                        ? null
+                        : (n) => setState(() => _periodMonths = n ?? 1),
+                  ),
+                ),
               ],
             ),
-            const SizedBox(height: WsSpace.sm),
-            SwitchListTile(
-              key: const ValueKey('lease-own-due-day'),
-              contentPadding: EdgeInsets.zero,
-              title: Text(lt('ownDueDay')),
-              value: _ownDueDay,
-              onChanged: _locked ? null : (v) => setState(() => _ownDueDay = v),
-            ),
-            if (_ownDueDay)
-              input(
-                'dueDay',
-                label: lt('dueDay'),
-                max: 2,
-                keyboard: TextInputType.number,
-                required: true,
-                check: (v) {
-                  final n = int.tryParse(v);
-                  return n == null || n < 1 || n > 31 ? lt('invalidDay') : null;
-                },
-              )
-            else
-              Text(
-                contractDate(_fields['start']!.text.trim())
-                    ? lt('dueSame').replaceAll(
-                        '{d}',
-                        '${int.parse(_fields['start']!.text.trim().substring(8))}',
-                      )
-                    : lt('dueSameNoDate'),
-                key: const ValueKey('lease-due-same'),
-                style: muted,
-              ),
             const SizedBox(height: WsSpace.sm),
           ],
           if (past && r['canBackdate'] == true) ...[
@@ -1405,59 +1282,6 @@ class _TenantLeaseScreenState extends State<TenantLeaseScreen> {
               ],
               onChanged: _locked ? null : (v) => setState(() => _staffId = v),
             ),
-          ],
-        ),
-      if (!_roommate)
-        WsSection(
-          key: const ValueKey('lease-payment'),
-          title: lt('paymentSection'),
-          icon: Icons.payments_outlined,
-          children: [
-            input(
-              'periodAmount',
-              labelAbove: true,
-              readOnly: r['canPrice'] != true,
-              label: '${lt('periodAmount')} ($_inputCurrency)',
-              max: 24,
-              required: true,
-              keyboard: TextInputType.numberWithOptions(
-                decimal: _inputCurrency == 'USD',
-              ),
-              helper: rentMinor == null
-                  ? null
-                  : lt('periodCalculated')
-                        .replaceAll(
-                          '{amount}',
-                          _money(rentMinor * _periodMonths),
-                        )
-                        .replaceAll('{n}', '$_periodMonths'),
-              onChanged: (_) => setState(() => _ownAmount = true),
-              check: (v) => parseRoomRate(v, _inputCurrency) == null
-                  ? t['lease_form_invalid_rent']
-                  : null,
-            ),
-
-            const SizedBox(height: WsSpace.lg),
-            input(
-              'periodReason',
-              labelAbove: true,
-              readOnly: r['canPrice'] != true,
-              label: lt('periodReason'),
-              max: 1000,
-              check: (v) {
-                final period = _conversion.parse(
-                  _fields['periodAmount']!,
-                  _currency,
-                );
-                final differs =
-                    period != null &&
-                    rentMinor != null &&
-                    period != rentMinor * _periodMonths;
-                return differs && v.isEmpty ? lt('periodReasonRequired') : null;
-              },
-            ),
-            const SizedBox(height: WsSpace.md),
-            ..._paymentSummary(context),
           ],
         ),
       // No "reload" next to save (2026-10-04, Tom): reloading is offered only

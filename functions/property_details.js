@@ -34,6 +34,7 @@ const layoutOf = b => ({
   roomArea: b.roomArea ?? 0,
   floorRoomCounts: b.floorRoomCounts ?? Array(b.floors ?? 1).fill(0),
 });
+const {createBuildingPrices,validDefaults,defaultsOf,followsFor,initialElectricity,withBuildingPrices}=require('./building_prices');
 const id=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(v);
 const revision=doc=>`${doc.updateTime.seconds}:${doc.updateTime.nanoseconds}`;
 const priceFields=['roomPrice','nightlyPrice','hourlyPrice'];
@@ -55,12 +56,15 @@ function validInitialRooms(rooms){
 }
 function createPropertyDetailsHandler({db,Timestamp,HttpsError}) {
   const fail=(code)=>{throw new HttpsError(code,'property_'+code);};
+  const prices=createBuildingPrices({db,Timestamp,HttpsError});
   return async request=>{
     const uid=request.auth?.uid,d=request.data||{};
     if(!uid)fail('unauthenticated');
+    // Building price defaults (PRICE_DEFAULTS.md, 2026-10-26).
+    if(d.action==='readPrices'||d.action==='savePrices')return prices(d,uid);
     const deleting=d.action==='delete';
     const creating=d.action==='create',preparing=d.action==='prepareCreate',editing=d.action==='update'||creating;
-    const keys=['action','organizationId','buildingId',...(deleting?['operationId','revision']:[]),...(editing?['operationId',...(!creating?['revision']:[]),'name','address',...(Object.hasOwn(d,'timeZone')?['timeZone']:[]),...(Object.hasOwn(d,'exploitationCostMinor')?['exploitationCostMinor']:[]),...(creating?['currency']:[]),...(Object.hasOwn(d,'rooms')?['rooms']:[]),...(Object.hasOwn(d,'layout')?['layout']:[]),...(Object.hasOwn(d,'roomCurrency')?['roomCurrency']:[])]:[])];
+    const keys=['action','organizationId','buildingId',...(deleting?['operationId','revision']:[]),...(editing?['operationId',...(!creating?['revision']:[]),'name','address',...(Object.hasOwn(d,'timeZone')?['timeZone']:[]),...(Object.hasOwn(d,'exploitationCostMinor')?['exploitationCostMinor']:[]),...(creating?['currency',...(Object.hasOwn(d,'defaultPrices')?['defaultPrices']:[]),...(Object.hasOwn(d,'electricityPriceMinor')?['electricityPriceMinor']:[])]:[]),...(Object.hasOwn(d,'rooms')?['rooms']:[]),...(Object.hasOwn(d,'layout')?['layout']:[]),...(Object.hasOwn(d,'roomCurrency')?['roomCurrency']:[])]:[])];
     if(editing&&Object.hasOwn(d,'exploitationCostMinor')&&d.exploitationCostMinor!==null&&!validAmount(d.exploitationCostMinor))fail('invalid-argument');
     if(editing&&Object.hasOwn(d,'rooms')&&!validInitialRooms(d.rooms))fail('invalid-argument');
     if(editing&&Object.hasOwn(d,'roomCurrency')&&!['VND','USD'].includes(d.roomCurrency))fail('invalid-argument');
@@ -70,6 +74,8 @@ function createPropertyDetailsHandler({db,Timestamp,HttpsError}) {
     if(editing&&(!id(d.operationId)||(!creating&&(typeof d.revision!=='string'||!/^\d+:\d+$/.test(d.revision)))||typeof d.name!=='string'||!d.name.trim()||d.name.length>160||typeof d.address!=='string'||d.address.length>500))fail('invalid-argument');
     if(deleting&&(!id(d.operationId)||typeof d.revision!=='string'||!/^\d+:\d+$/.test(d.revision)))fail('invalid-argument');
     if(creating&&(!validZone(d.timeZone)||!['VND','USD'].includes(d.currency)))fail('invalid-argument');
+    if(creating&&Object.hasOwn(d,'defaultPrices')&&!validDefaults(d.defaultPrices))fail('invalid-argument');
+    if(creating&&Object.hasOwn(d,'electricityPriceMinor')&&d.electricityPriceMinor!==null&&(!Number.isSafeInteger(d.electricityPriceMinor)||d.electricityPriceMinor<=0||d.electricityPriceMinor>1e9))fail('invalid-argument');
     return db.runTransaction(async tx=>{
       const org=await tx.get(db.doc(`organizations/${d.organizationId}`));
       const member=await tx.get(db.doc(`memberships/${uid}_${d.organizationId}`));
@@ -77,6 +83,8 @@ function createPropertyDetailsHandler({db,Timestamp,HttpsError}) {
       if((creating||preparing)&&member.data().buildingScope!=='all')fail('permission-denied');
       const canSetRoomPrices=allows(member.data(),'overridePrices',{organizationId:d.organizationId,userId:uid,buildingId:d.buildingId});
       if(editing&&(d.rooms??[]).some(r=>priceFields.some(k=>r.ratesMinor[k]!==null))&&!canSetRoomPrices)fail('permission-denied');
+      // Building prices are prices too (2026-10-26).
+      if(creating&&(Object.values(d.defaultPrices??{}).some(v=>typeof v==='number')||d.electricityPriceMinor!=null)&&!canSetRoomPrices)fail('permission-denied');
       if(preparing)return {record:{id:d.buildingId,name:'',address:'',timeZone:'Asia/Ho_Chi_Minh',currency:organizationCurrency(org.data()),exploitationCostMinor:null,canSetRoomPrices,roomCurrency:organizationCurrency(org.data()),layout:layoutOf({}),revision:'new'}};
       const ref=db.doc(`buildings/${d.buildingId}`),doc=await tx.get(ref),old=doc.data();
       if(!creating&&!deleting&&(!old||old.organizationId!==d.organizationId))fail('not-found');
@@ -132,10 +140,17 @@ function createPropertyDetailsHandler({db,Timestamp,HttpsError}) {
       // create() preconditions reject collisions atomically without one read per new room.
       if(creating) {
         patch.currency=d.currency;
+        if(d.defaultPrices)patch.defaultPrices={...d.defaultPrices};
         tx.create(ref,{...patch,organizationId:d.organizationId,createdAt:now,createdBy:uid,updatedAt:now,updatedBy:uid});
+        initialElectricity(tx,db,{organizationId:d.organizationId,buildingId:d.buildingId,priceMinor:d.electricityPriceMinor??null,currency:d.currency,timeZone:d.timeZone,now,uid});
       } else tx.update(ref,{...patch,updatedAt:now,updatedBy:uid});
-      for(const [index,r] of initialRooms.entries()){
-          const room={roomNumber:r.roomNumber.trim(),roomType:r.roomType.trim(),area:r.area??0,currency:roomCurrency,rentalMode:'both',...Object.fromEntries(priceFields.map(k=>[k,r.ratesMinor[k]===null?null:r.ratesMinor[k]/(roomCurrency==='USD'?100:1)]))};
+      const buildingDefaults=defaultsOf(creating?{defaultPrices:d.defaultPrices}:old),sameCurrency=roomCurrency===(creating?d.currency:old.currency??'VND');
+      for(const [index,r0] of initialRooms.entries()){
+          // A room left without a price takes the building's (2026-10-28).
+          const r=sameCurrency?{...r0,ratesMinor:withBuildingPrices(r0.ratesMinor,buildingDefaults)}:r0;
+          const room={roomNumber:r.roomNumber.trim(),roomType:r.roomType.trim(),area:r.area??0,currency:roomCurrency,rentalMode:'both',...Object.fromEntries(priceFields.map(k=>[k,r.ratesMinor[k]==null?null:r.ratesMinor[k]/(roomCurrency==='USD'?100:1)])),
+            // A price equal to the building's follows it (2026-10-26).
+            priceFollows:sameCurrency?followsFor(r.ratesMinor,buildingDefaults):{roomPrice:false,nightlyPrice:false}};
           tx.create(roomRefs[index],{...room,organizationId:d.organizationId,buildingId:d.buildingId,createdAt:now,createdBy:uid,updatedAt:now,updatedBy:uid});
           tx.create(db.doc(`teamActivity/${key}_room_${index}`),{organizationId:d.organizationId,actorId:uid,action:'room_created',targetId:roomRefs[index].id,createdAt:now,before:null,after:{buildingId:d.buildingId,...room}});
         }

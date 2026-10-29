@@ -123,6 +123,7 @@ final List<WorkspaceSection> workspaceSections = [
         organizationId: c.organizationId,
         buildingId: c.buildingId!,
         service: c.service,
+        accountId: c.accountId,
         initialRecordId: c.recordId,
         onRecordChanged: c.onRecord,
       ),

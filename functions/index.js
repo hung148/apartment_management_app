@@ -213,7 +213,7 @@ const calendarTenantHandler = createTenantHandler({
 });
 
 const {createBookingWorkspaceHandler}=require('./booking_workspace');
-const bookingWorkspaceHandler=createBookingWorkspaceHandler({db,Timestamp:Timestamp,HttpsError:functions.https.HttpsError,calendar:calendarBookingHandler});
+const bookingWorkspaceHandler=createBookingWorkspaceHandler({db,Timestamp:Timestamp,FieldValue:FieldValue,HttpsError:functions.https.HttpsError,calendar:calendarBookingHandler});
 secureCallable('bookingWorkspace',{readOnly:d=>['list','read','rooms','quote'].includes(d?.action)},request=>bookingWorkspaceHandler(request));
 
 // Second-generation callable handlers receive data and auth in one request.

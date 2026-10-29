@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import '../staff_editor_test.dart' show openSection, reveal;
+import '../team/staff_editor_test.dart' show openSection, reveal;
 
 /// Building and room pages open from the calendar (2026-10-03): these helpers
 /// get a test there from a mounted RoleWorkspace.

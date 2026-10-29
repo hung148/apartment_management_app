@@ -8,6 +8,10 @@ const {validDate}=require('./property_contract');
 const {propertyDate,propertyDayStart,leaseDatePolicy}=require('./lease_dates');
 const {meterId}=require('./utility_invoice');
 const {addTariff}=require('./utility_tariffs');
+const {defaultsOf}=require('./building_prices');
+const {propertyDate:dateIn}=require('./lease_dates');
+const {applyChange,checkResult,toStored,buildSchedule,ScheduleError}=require('./lease_schedule');
+const {loadSchedule,scheduleInvoices}=require('./lease_schedule_io');
 const id=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(v);
 const revision=doc=>`${doc.updateTime.seconds}:${doc.updateTime.nanoseconds}`;
 // B3 (2026-10-01) lease details. All optional, so older app versions keep working.
@@ -56,6 +60,7 @@ function createTenantLeasesHandler({db,Timestamp,HttpsError}){
   const uid=request.auth?.uid,d=request.data||{},create=d.action==='create',list=d.action==='rooms';
   if(!uid)fail('unauthenticated');
   if(d.action==='surcharges')return editSurcharges(d,uid);
+  if(d.action==='schedule')return schedule(d,uid);
   const keys=['action','organizationId','buildingId',...(list?['cursor']:['roomId']),...(create?['operationId','roomRevision','timeZone','currency','fullName','phoneNumber','moveInDate','contractEndDate','rentMinor','backdateReason',...DETAILS,'periodAmountReason','surcharges','electricityPriceMinor']:[])];
   if(!['rooms','prepare','create'].includes(d.action)||!id(d.organizationId)||!id(d.buildingId)||(!list&&!id(d.roomId))||Object.keys(d).some(k=>!keys.includes(k))||(list&&d.cursor!=null&&!id(d.cursor)))fail('invalid-argument');
   if(create&&(!id(d.operationId)||typeof d.roomRevision!=='string'||!/^\d+:\d+$/.test(d.roomRevision)||!validZone(d.timeZone)||!['VND','USD'].includes(d.currency)||typeof d.fullName!=='string'||!d.fullName.trim()||d.fullName.length>160||typeof d.phoneNumber!=='string'||d.phoneNumber.length>80||!validDate(d.moveInDate)||!validDate(d.contractEndDate)||d.contractEndDate<=d.moveInDate||!Number.isSafeInteger(d.rentMinor)||d.rentMinor<=0||d.rentMinor>1e12||typeof d.backdateReason!=='string'||d.backdateReason.length>1000||!validDetails(d)||(d.surcharges!==undefined&&!validSurcharges(d.surcharges,false))||(d.electricityPriceMinor!==undefined&&(!Number.isSafeInteger(d.electricityPriceMinor)||d.electricityPriceMinor<=0||d.electricityPriceMinor>1e9))))fail('invalid-argument');
@@ -86,7 +91,9 @@ function createTenantLeasesHandler({db,Timestamp,HttpsError}){
     const roomCurrency=r.currency??'VND';
     const roomRent=Number.isFinite(r.roomPrice)&&r.roomPrice>0?{amountMinor:Math.round(r.roomPrice*(roomCurrency==='USD'?100:1)),currency:roomCurrency}:null;
     // Old clients must not treat a VND room price as a USD lease price.
-    return {record:{roomNumber:r.roomNumber??'',roomRevision:revision(room),currency,timeZone:zone,today:propertyDate(now.toMillis(),zone),canBackdate:allows(member,'backdateRecords',{organizationId:d.organizationId,userId:uid}),staff,accounts,canPrice:allows(member,'overridePrices',scope),monthlyRentMinor:roomCurrency===currency?roomRent?.amountMinor??null:null,roomRent}};
+    return {record:{roomNumber:r.roomNumber??'',roomRevision:revision(room),currency,timeZone:zone,today:propertyDate(now.toMillis(),zone),canBackdate:allows(member,'backdateRecords',{organizationId:d.organizationId,userId:uid}),staff,accounts,canPrice:allows(member,'overridePrices',scope),monthlyRentMinor:roomCurrency===currency?roomRent?.amountMinor??null:null,roomRent,
+     // The building's water per month fills the lease form (2026-10-26); still editable.
+     waterDefault:(()=>{const p=defaultsOf(building.data());return p.waterMonthMinor!=null&&(building.data().currency??'VND')===currency?{amountMinor:p.waterMonthMinor,basis:p.waterBasis}:null;})()}};
    }
    if(d.roomRevision!==revision(room)||d.currency!==currency||d.timeZone!==zone)fail('aborted');
    const start=propertyDayStart(d.moveInDate,zone),end=d.contractEndDate===null?null:propertyDayStart(d.contractEndDate,zone);
@@ -139,6 +146,60 @@ function createTenantLeasesHandler({db,Timestamp,HttpsError}){
    return result;
   });
  };
+ // Bảng thanh toán theo kỳ (PAYMENT_SCHEDULE.md, Tom 2026-10-26): read the
+ // table, or change one kỳ (edit dates / Hạn thu / amount, split, merge).
+ // Same permission as the lease page; another amount needs "Đổi giá" and a
+ // reason; dates before today need "Nhập ngày trong quá khứ".
+ async function schedule(d,uid){
+  const ops=['read','edit','split','merge'],write=d.op!=='read';
+  const keys=['action','op','organizationId','buildingId','tenantId',...(write?['revision','rowId']:[]),...(d.op==='edit'?['start','end','due','amountMinor','reason']:[]),...(d.op==='split'?['date']:[])];
+  if(!ops.includes(d.op)||Object.keys(d).some(k=>!keys.includes(k))||!id(d.organizationId)||!id(d.buildingId)||!id(d.tenantId))fail('invalid-argument');
+  if(write&&(typeof d.revision!=='string'||!/^\d+:\d+$/.test(d.revision)||!id(d.rowId)))fail('invalid-argument');
+  for(const k of ['start','end','due','date'])if(d[k]!==undefined&&!validDate(d[k]))fail('invalid-argument');
+  if(d.amountMinor!==undefined&&(!Number.isSafeInteger(d.amountMinor)||d.amountMinor<=0||d.amountMinor>1e12))fail('invalid-argument');
+  if(d.reason!==undefined&&(typeof d.reason!=='string'||d.reason.length>1000))fail('invalid-argument');
+  if(d.op==='edit'&&['start','end','due','amountMinor'].every(k=>d[k]===undefined))fail('invalid-argument');
+  return db.runTransaction(async tx=>{
+   const org=await tx.get(db.doc(`organizations/${d.organizationId}`)),membership=await tx.get(db.doc(`memberships/${uid}_${d.organizationId}`)),m=membership.data(),scope={organizationId:d.organizationId,userId:uid,buildingId:d.buildingId};
+   if(!org.exists||org.data().accessVersion!==2||org.data().closedAt||!allows(m,'manageLease',scope))fail('permission-denied');
+   const building=await tx.get(db.doc(`buildings/${d.buildingId}`));
+   if(!building.exists||building.data().organizationId!==d.organizationId)fail('not-found');
+   const zone=building.data().timeZone;if(!validZone(zone))fail('failed-precondition','lease_property_timezone_required');
+   const ref=db.doc(`tenants/${d.tenantId}`),tenant=await tx.get(ref),t=tenant.data();
+   if(!t||t.organizationId!==d.organizationId||t.buildingId!==d.buildingId||t.isMainTenant!==true)fail('not-found');
+   const now=Timestamp.now(),today=dateIn(now.toMillis(),zone);
+   const invoiceDocs=(await tx.get(db.collection('payments').where('organizationId','==',d.organizationId).where('buildingId','==',d.buildingId).where('tenantId','==',d.tenantId))).docs;
+   const before=await loadSchedule({tx,db,tenant,organizationId:d.organizationId,buildingId:d.buildingId,zone,today,invoiceDocs});
+   const canPrice=allows(m,'overridePrices',scope),canBackdate=allows(m,'backdateRecords',{organizationId:d.organizationId,userId:uid}),canSeePaid=allows(m,'readFinancialReports',scope);
+   const open=t.status!=='moveOut'&&!t.settlementId; // after move-out / settlement: read only
+   if(!write)return {record:{revision:revision(tenant),today,currency:t.currency??'VND',needsEnd:before.needsEnd,canEdit:open,canPrice,canBackdate,canSeePaid,canBill:allows(m,'collectPayments',scope),
+    rows:before.rows.map(r=>({id:r.id,start:r.start,end:r.end,due:r.due,amountMinor:r.amountMinor,defaultMinor:r.defaultMinor,paidMinor:canSeePaid?r.paidMinor:null,leftMinor:canSeePaid?r.leftMinor:null,wholeMonths:r.wholeMonths,days:r.days,datesEdited:r.datesEdited===true,dueEdited:r.dueEdited===true,amountEdited:r.amountEdited===true,reason:r.amountEdited?r.reason??null:null,locked:r.locked,invoiceId:r.invoice?.id??null}))}};
+   if(d.revision!==revision(tenant))fail('aborted','schedule_changed');
+   if(before.needsEnd)fail('failed-precondition','schedule_needs_end');
+   if(!open)fail('failed-precondition','schedule_lease_closed');
+   const row=before.rows.find(r=>r.id===d.rowId);
+   if(!row)fail('not-found','schedule_row_not_found');
+   // Price and back-dating rules, checked against what really changes.
+   if(d.amountMinor!==undefined&&d.amountMinor!==row.amountMinor&&d.amountMinor!==row.defaultMinor&&!canPrice)fail('permission-denied','lease_price_authority');
+   const moved=[['start',row.start],['end',row.end],['due',row.due],['date',null]].some(([k,old])=>d[k]!==undefined&&d[k]!==old&&(d[k]<today||(old!==null&&old<today)));
+   if(moved&&!canBackdate)fail('permission-denied','lease_backdate_owner_admin_required');
+   const by=String(m.displayName||m.email||uid).slice(0,160);
+   let next,after;
+   try{
+    const change=d.op==='edit'?{op:'edit',rowId:d.rowId,start:d.start,end:d.end,due:d.due,amountMinor:d.amountMinor,reason:d.reason}:{op:d.op,rowId:d.rowId,date:d.date};
+    const res=applyChange(before.rows,change,{window:before.window,by,at:now.toDate().toISOString()});
+    next=toStored(res.rows);
+    after=buildSchedule({t,zone,stored:next,invoices:scheduleInvoices(invoiceDocs,d.tenantId),people:before.people,intervals:before.intervals});
+    checkResult(before.rows,after.rows,res.removed);
+    next=toStored(after.rows);
+   }catch(e){if(e instanceof ScheduleError)fail('failed-precondition',e.message);throw e;}
+   tx.update(ref,{paymentSchedule:next,updatedAt:now,updatedBy:uid});
+   const summary=r=>r?{start:r.start,end:r.end,due:r.due,amountMinor:r.amountMinor}:null;
+   tx.create(db.doc(`teamActivity/${createHash('sha256').update(JSON.stringify(['leaseSchedule',d.tenantId,uid,now.toMillis(),d.op,d.rowId])).digest('hex')}`),{organizationId:d.organizationId,actorId:uid,action:'lease_schedule_'+d.op,targetId:d.tenantId,createdAt:now,
+    before:{rowId:d.rowId,...summary(row)},after:{rowId:d.rowId,...summary(after.rows.find(r=>r.id===d.rowId)),rows:after.rows.length,...(d.reason?.trim()?{reason:d.reason.trim().slice(0,1000)}:{})}});
+   return {ok:true};
+  });
+ }
  // Edit a lease's surcharges later. Lines keep their id so invoices that
  // already billed a one-time line still know it.
  async function editSurcharges(d,uid){

@@ -60,12 +60,13 @@ test('new bookings reject stale currency and missing rates before writes',async(
  }
 });
 
-test('staff without price override gets converted standard rate but cannot change it',async()=>{
+// 2026-10-26 (Tom): no room flat hourly price; staff without "Đổi giá" cannot
+// type one (converted or not) — they pick a building template.
+test('staff without price override cannot use a flat hourly price',async()=>{
  const {db,call}=setup();
  Object.assign(db.store.get('rooms/r'),{hourlyPrice:100000});
  Object.assign(db.store.get('memberships/u_o'),{role:'custom',roleGrants:{readBookings:'managed',createBookings:'managed'}});
- const q=await call({pricingType:'hourly',hourlyPriceMinor:400,endLocal:'2026-10-10 16:00'});
- assert.equal(q.record.totalMinor,800);
+ await assert.rejects(call({pricingType:'hourly',hourlyPriceMinor:400,endLocal:'2026-10-10 16:00'}),e=>e.code==='permission-denied');
  await assert.rejects(call({pricingType:'hourly',hourlyPriceMinor:399}),e=>e.code==='permission-denied');
 });
 

@@ -5,6 +5,7 @@ const ACTIVE = new Set(['pending', 'confirmed', 'checkedIn']);
 const {allows} = require('./team_access');
 const {withinHours}=require('./booking_settings');
 const {roomBlocked}=require('./technical_problems');
+const {applyNewReceipts}=require('./booking_receipts');
 const STATUSES = new Set([...ACTIVE, 'checkedOut', 'cancelled', 'noShow']);
 const METHODS = new Set(['cash', 'bankTransfer', 'momo', 'zalopay', 'creditCard', 'other']);
 const EDITABLE = ['guestName', 'guestPhone', 'guestIdNumber', 'numberOfGuests', 'startTime', 'endTime', 'totalPrice', 'depositAmount', 'notes', 'pricingType', 'source',
@@ -155,7 +156,10 @@ function createCalendarHandler({db, Timestamp, FieldValue, HttpsError}) {
         createdAt: Timestamp.now(), createdBy: context.auth.uid,
       };
       const now = Timestamp.now();
-      let paymentRef, payment, originalInput, rentRef, rentDoc;
+      let paymentRef, payment, originalInput, rentRef, rentDoc, receiptDocs = [];
+      // Payments added in the form before a new booking's first save (2026-10-24): only from the bookings workspace.
+      const newReceipts = context.newReceipts ?? null;
+      if (newReceipts && (!serverQuote || action !== 'create' || !id(operationId))) fail('invalid-argument', 'booking_invalid_request');
       if (action === 'create' || action === 'edit') {
         // A checked-out stay can still be edited from the workspace (2026-10-14: staff set the status, and may set it back).
         if (old && !ACTIVE.has(old.status) && !(serverQuote && old.status === 'checkedOut')) fail('failed-precondition','booking_invalid_transition');
@@ -244,6 +248,10 @@ function createCalendarHandler({db, Timestamp, FieldValue, HttpsError}) {
             descriptionKey:'booking_payment', ...(note ? {notes:note} : {}),
           };
         }
+        if (newReceipts) {
+          try { receiptDocs = applyNewReceipts({prepared:newReceipts, next, bookingId, operationId, uid:context.auth.uid, now, Timestamp}); }
+          catch (e) { fail(e.code || 'invalid-argument', e.message); }
+        }
       } else if (action === 'status') {
         const status = input.status;
         // 2026-10-14 (Tom): checking out only changes the status (money is taken separately).
@@ -319,8 +327,9 @@ function createCalendarHandler({db, Timestamp, FieldValue, HttpsError}) {
       else tx.set(ref,{...next,updatedAt:now});
       if (payment) tx.create(paymentRef,payment);
       if (rentDoc) tx.create(rentRef,rentDoc);
+      for (const r of receiptDocs) tx.create(db.collection('payments').doc(r.id), r.data);
       if(v2) auditOperation(db,tx,{organizationId:orgId,actorId:context.auth.uid,action:`booking_${action}`,targetId:bookingId,old,next,createdAt:now});
-      const result={id:bookingId, ...(payment ? {paymentId:paymentRef.id} : {}), ...(rentDoc ? {rentPaymentId:rentRef.id} : {})};
+      const result={id:bookingId, ...(payment ? {paymentId:paymentRef.id} : {}), ...(rentDoc ? {rentPaymentId:rentRef.id} : {}), ...(receiptDocs.length ? {receiptIds:receiptDocs.map(r=>r.id)} : {})};
       if(commandRef)tx.create(commandRef,{organizationId:orgId,actorId:context.auth.uid,createdAt:now,fingerprint:commandFingerprint,...(originalInput?{originalInput}:{}),...(context.workspaceFingerprint?{workspaceFingerprint:context.workspaceFingerprint}:{}),result,...(input.priceOverrideReason?{priceOverrideReason:input.priceOverrideReason}:{}),...(input.reason?{reason:input.reason}:{})});
       return result;
     });

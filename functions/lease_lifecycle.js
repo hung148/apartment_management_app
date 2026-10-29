@@ -70,7 +70,8 @@ function createLeaseLifecycleHandler({db,Timestamp,HttpsError}){
    if(d.action==='terms'){
     if(t.isMainTenant!==true)fail('failed-precondition');
     if(d.contractEndDate!==null){
-     if(d.contractEndDate<propertyDate(t.moveInDate.toMillis(),zone))fail('invalid-argument');
+     // The day the tenant leaves: after the move-in day (2026-10-26).
+     if(d.contractEndDate<=propertyDate(t.moveInDate.toMillis(),zone))fail('invalid-argument');
      if(d.contractEndDate<today&&!allows(m,'backdateRecords',{organizationId:d.organizationId,userId:uid}))fail('permission-denied');
      const end=propertyDayStart(d.contractEndDate,zone);if(end===null)fail('invalid-argument');
      patch={contractEndDate:Timestamp.fromMillis(end),contractEndLocalDate:d.contractEndDate,contractEndTimeZone:zone};

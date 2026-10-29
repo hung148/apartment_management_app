@@ -29,7 +29,7 @@ function createTenantContactsHandler({db,Timestamp,HttpsError}){
     staffName:staff.get(v.staffInChargeId)??'',canReadIds:seeIds,
     // 2026-10-04: lease surcharges and the stay status pill.
     surcharges:Array.isArray(v.surcharges)?v.surcharges:[],moveOutLocalDate:v.moveOutDate?.toMillis?propertyDate(v.moveOutDate.toMillis(),zone)??'':'',
-    stayStatus:stayStatus(v),contractEnded:typeof v.contractEndLocalDate==='string'&&!!today&&v.contractEndLocalDate<today&&!v.settlementId});
+    stayStatus:stayStatus(v),contractEnded:typeof v.contractEndLocalDate==='string'&&!!today&&v.contractEndLocalDate<=today&&!v.settlementId});
    const zone=building.data().timeZone,nowMillis=Timestamp.now().toMillis(),today=validZone(zone)?propertyDate(nowMillis,zone):null;
    const stayStatus=v=>{
     if(v.status==='moveOut'||(v.moveOutDate?.toMillis&&v.moveOutDate.toMillis()<=nowMillis))return 'checkedOut';

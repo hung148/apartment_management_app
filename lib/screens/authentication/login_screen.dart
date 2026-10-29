@@ -417,7 +417,15 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
         });
       }
     } catch (_) {
-      if (mounted) setState(() => login_error = t['auth_google_failed']);
+      if (mounted) {
+        setState(() {
+          if (_displayedChoice == Choices.login) {
+            login_error = t['auth_google_failed'];
+          } else {
+            register_error = t['auth_google_failed'];
+          }
+        });
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -438,40 +446,65 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
     _ => 'auth_google_failed',
   };
 
-  Widget _googleButton(String label) => Padding(
-    padding: const EdgeInsets.only(top: 16),
-    child: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 400),
-      child: SizedBox(
-        width: double.infinity,
-        child: OutlinedButton.icon(
-          key: const ValueKey('login-google'),
-          onPressed: loading ? null : _handleGoogle,
-          style: OutlinedButton.styleFrom(
-            foregroundColor: Colors.white,
-            side: BorderSide(color: Colors.white.withValues(alpha: 0.6)),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ),
-          icon: Container(
-            width: 22,
-            height: 22,
-            alignment: Alignment.center,
-            decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-            child: const Text(
-              'G',
-              style: TextStyle(color: Color(0xFF4285F4), fontWeight: FontWeight.w800, fontSize: 14),
+  Widget _googleButton(String label) {
+    final enabled = !loading;
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 400),
+        child: SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            key: const ValueKey('login-google'),
+            onPressed: enabled ? _handleGoogle : null,
+            // Disabled = the same button, only fainter. Flutter's default
+            // disabled colour is a dark grey that looked muddy on the dark card
+            // while the white "G" stayed bright.
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.white,
+              disabledForegroundColor: Colors.white.withValues(alpha: 0.5),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ).copyWith(
+              side: WidgetStateProperty.resolveWith(
+                (states) => BorderSide(
+                  color: Colors.white.withValues(
+                    alpha: states.contains(WidgetState.disabled) ? 0.25 : 0.6,
+                  ),
+                ),
+              ),
             ),
-          ),
-          label: Text(
-            label,
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: widget.textSize + 2, fontWeight: FontWeight.w600),
+            icon: SizedBox(
+              width: 22,
+              height: 22,
+              child: _googleBusy
+                  ? const Padding(
+                      padding: EdgeInsets.all(2),
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : AnimatedOpacity(
+                      opacity: enabled ? 1 : 0.5,
+                      duration: const Duration(milliseconds: 150),
+                      child: Container(
+                        alignment: Alignment.center,
+                        decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                        child: const Text(
+                          'G',
+                          style: TextStyle(color: Color(0xFF4285F4), fontWeight: FontWeight.w800, fontSize: 14),
+                        ),
+                      ),
+                    ),
+            ),
+            label: Text(
+              label,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: widget.textSize + 2, fontWeight: FontWeight.w600),
+            ),
           ),
         ),
       ),
-    ),
-  );
+    );
+  }
 
   // Register function
   Future<void> _handleRegister() async {
@@ -502,16 +535,15 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
         if (mounted) {
           Navigator.pushNamedAndRemoveUntil(context, AppRouter.dashboardScreen, (_) => false);
         }
-      } else {
+      } else if (mounted) {
         // Registration failed
-        setState(() {
-          register_error = t['auth_register_failed'];
-        },);
+        setState(() => register_error = t['auth_register_failed']);
       }
-    } catch (e) {
-      setState(() {
-        register_error = t.textWithParams('error', {'error': e.toString()});
-      });
+    } on FirebaseAuthException catch (e) {
+      // A short message per known case; never the raw Firebase text.
+      if (mounted) setState(() => register_error = t[_registerErrorKey(e.code)]);
+    } catch (_) {
+      if (mounted) setState(() => register_error = t['auth_register_failed']);
     } finally {
       if (mounted) {
         setState(() {
@@ -520,6 +552,15 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
       }
     }
   }
+
+  static String _registerErrorKey(String code) => switch (code) {
+    'invalid-email' => 'auth_email_invalid',
+    'weak-password' => 'auth_password_too_weak',
+    'network-request-failed' => 'auth_google_offline',
+    'too-many-requests' => 'auth_google_too_many',
+    // email-already-in-use and anything else: the existing vague message.
+    _ => 'auth_register_failed',
+  };
 
   @override
   void dispose() {
@@ -582,6 +623,7 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
               inputField(
                 label: t['email'], 
                 controller: loginEmailController,
+                enabled: !loading,
                 labelColor: Colors.white,
                 maxLength: 100,
                 maxLengthEnforcement: MaxLengthEnforcement.enforced,
@@ -594,6 +636,7 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
               inputField(
                 label: t['auth_field_password'], 
                 controller: loginPasswordController,
+                enabled: !loading,
                 labelColor: Colors.white, 
                 validator: (val) => val!.length < 6 ? val.isEmpty ? t['auth_password_required'] : t['auth_password_too_weak'] : null,
                 obscureText: true, 
@@ -643,6 +686,7 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
               Material(
                 color: Colors.transparent,
                 child: InkWell(
+                  key: const ValueKey('login-submit'),
                   onTap: loading ? null : () => _handleLogin(),
                   borderRadius: BorderRadius.circular(10),
                   splashColor: AppThemePalette.primary.withValues(alpha: 0.9),
@@ -672,7 +716,9 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
                         width: 1,
                       ),
                     ),
-                    child: loading
+                    // Spinner only for this button's own sign-in; while Google
+                    // runs, the Google button shows it and this one is dimmed.
+                    child: loading && !_googleBusy
                         ? const Center(
                             child: SizedBox(
                               width: 22,
@@ -699,8 +745,9 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
         if (AuthService.googleSignInAvailable) _googleButton(t['auth_google_button']),
         const SizedBox(height: 16),
         SwitchAuthLink(
-          current: Choices.login,   // or Choices.register in _buildRegister()
+          current: Choices.login,
           textSize: widget.textSize,
+          enabled: !loading,
         ),
       ],
     );
@@ -727,6 +774,7 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
               inputField(
                 label: t['auth_field_name'], 
                 controller: registerNameController,
+                enabled: !loading,
                 labelColor: Colors.white, 
                 validator: (val) {
                   if (val!.isEmpty) return t['auth_name_required'];
@@ -737,6 +785,7 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
               inputField(
                 label: t['email'], 
                 controller: registerEmailController,
+                enabled: !loading,
                 labelColor: Colors.white, 
                 validator: (val) {
                   if (val!.isEmpty) return t['auth_email_required'];
@@ -747,6 +796,7 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
               inputField(
                 label: t['auth_field_password'], 
                 controller: registerPasswordController,
+                enabled: !loading,
                 labelColor: Colors.white, 
                 validator: (val) {
                   if (val!.isEmpty) return t['auth_password_required'];
@@ -760,6 +810,7 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
                 label: t['auth_field_confirm_password'], 
                 labelColor: Colors.white, 
                 controller: registerComfirmedPassController,
+                enabled: !loading,
                 validator: (val) => val != registerPasswordController.text ? t['auth_password_mismatch'] : null,
                 obscureText: true, 
               ),
@@ -788,6 +839,7 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
               Material(
                 color: Colors.transparent,
                 child: InkWell(
+                  key: const ValueKey('register-submit'),
                   onTap: loading ? null : () => _handleRegister(),
                   borderRadius: BorderRadius.circular(10),
                   splashColor: AppThemePalette.primary.withValues(alpha: 0.9),
@@ -817,7 +869,9 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
                         width: 1,
                       ),
                     ),
-                    child: loading
+                    // Spinner only for this button's own sign-in; while Google
+                    // runs, the Google button shows it and this one is dimmed.
+                    child: loading && !_googleBusy
                         ? const Center(
                             child: SizedBox(
                               width: 22,
@@ -844,8 +898,9 @@ class _ContentState extends State<Content> with AutomaticKeepAliveClientMixin {
         if (AuthService.googleSignInAvailable) _googleButton(t['auth_google_register_button']),
         const SizedBox(height: 16),
         SwitchAuthLink(
-          current: Choices.register,   // or Choices.register in _buildRegister()
+          current: Choices.register,
           textSize: widget.textSize,
+          enabled: !loading,
         ),
       ],
     );
@@ -875,7 +930,13 @@ class ChoicesButton extends StatelessWidget {
 class SwitchAuthLink extends StatefulWidget {
   final Choices current;
   final double textSize;
-  const SwitchAuthLink({super.key, required this.current, required this.textSize});
+  final bool enabled;
+  const SwitchAuthLink({
+    super.key,
+    required this.current,
+    required this.textSize,
+    this.enabled = true,
+  });
 
   @override
   State<SwitchAuthLink> createState() => _SwitchAuthLinkState();
@@ -888,15 +949,21 @@ class _SwitchAuthLinkState extends State<SwitchAuthLink> {
   Widget build(BuildContext context) {
     final t = AppTranslations.of(context);
     final isLogin = widget.current == Choices.login;
+    final hovered = _hovered && widget.enabled;
     return MouseRegion(
-      cursor: SystemMouseCursors.click,
+      cursor: widget.enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
       child: GestureDetector(
-        onTap: () => context.read<ChoiceState>().switchChoice(
-          isLogin ? Choices.register : Choices.login,
-        ),
-        child: RichText(
+        onTap: widget.enabled
+            ? () => context.read<ChoiceState>().switchChoice(
+                  isLogin ? Choices.register : Choices.login,
+                )
+            : null,
+        child: AnimatedOpacity(
+          opacity: widget.enabled ? 1 : 0.5,
+          duration: const Duration(milliseconds: 150),
+          child: RichText(
           text: TextSpan(
             text: isLogin ? t['auth_no_account'] : t['auth_have_account'],
             style: TextStyle(
@@ -913,7 +980,7 @@ class _SwitchAuthLinkState extends State<SwitchAuthLink> {
               TextSpan(
                 text: isLogin ? t['auth_register_title'] : t['auth_login_title'],
                 style: TextStyle(
-                  color: _hovered ? AppThemePalette.primaryMid : Colors.white70,
+                  color: hovered ? AppThemePalette.primaryMid : Colors.white70,
                   fontSize: widget.textSize + 2,
                   shadows: [
                     Shadow(
@@ -924,11 +991,12 @@ class _SwitchAuthLinkState extends State<SwitchAuthLink> {
                   ],
                   fontWeight: FontWeight.bold,
                   decoration: TextDecoration.underline,
-                  decorationColor: _hovered ? AppThemePalette.primaryMid : Colors.white70,
+                  decorationColor: hovered ? AppThemePalette.primaryMid : Colors.white70,
                 ),
               ),
             ],
           ),
+        ),
         ),
       ),
     );

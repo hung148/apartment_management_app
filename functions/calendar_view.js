@@ -35,7 +35,8 @@ const dateStamp=(date,time='12:00')=>date&&validDate(date)?`${date} ${time}`:nul
 function bookingPay(x){
  const cents=v=>Math.round((Number(v)||0)*100),total=cents(x.totalPrice),paid=cents(x.paidAmount),deposit=cents(x.depositPaidAmount)-cents(x.depositRefundedAmount);
  // A deposit taken with the booking (2026-10-04) is in paidAmount: only that paid still reads "Đã cọc".
- const taken=x.depositPayment&&typeof x.depositPayment==='object'?cents(x.depositPayment.amount):0;
+ // 2026-10-24: payments of type "Tiền cọc" keep their total in depositReceivedAmount (it replaces depositPayment).
+ const taken=x.depositReceivedAmount!=null?cents(x.depositReceivedAmount):x.depositPayment&&typeof x.depositPayment==='object'?cents(x.depositPayment.amount):0;
  const pay=total>0&&paid>=total?'paid':(paid===0&&deposit>0)||(taken>0&&paid>0&&paid<=taken)?'deposit':total===0?'paid':'due';
  return {pay,fraction:total>0?Math.min(1,paid/total):1};
 }
@@ -229,7 +230,7 @@ function createCalendarViewHandler({db,Timestamp,HttpsError}){
     if(!visible){bars.push({...bar,kind:'short',name:'',anonymous:true});continue;}
     const {pay,fraction}=bookingPay(x);
     // 2026-10-04: two colours (short/long); a paid deposit is a flag for the status circle.
-    const deposit=(x.depositPayment&&typeof x.depositPayment==='object')||Math.round((Number(x.depositPaidAmount)||0)*100)>Math.round((Number(x.depositRefundedAmount)||0)*100);
+    const deposit=(x.depositReceivedAmount!=null?Math.round((Number(x.depositReceivedAmount)||0)*100)>0:(x.depositPayment&&typeof x.depositPayment==='object'))||Math.round((Number(x.depositPaidAmount)||0)*100)>Math.round((Number(x.depositRefundedAmount)||0)*100);
     bars.push({...bar,recordId:doc.id,kind:'short',deposit,name:String(x.guestName??''),
      phone:typeof x.guestPhone==='string'&&x.guestPhone.trim()!=='',channel:x.contactChannel??null,platform:x.platform&&x.platform!=='direct'?x.platform:null,
      guests:Number.isSafeInteger(x.numberOfGuests)?x.numberOfGuests:null,staffName:staffName(x.staffInChargeId),

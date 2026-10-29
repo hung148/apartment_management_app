@@ -115,11 +115,18 @@ class ServerWrites {
     'destinations',
     'photo',
     'recoveryList',
+    // Building prices page (2026-10-26).
+    'readPrices',
   };
 
   static bool isRead(String name, Object? data) {
     if (_reads.contains(name)) return true;
     final action = data is Map ? data['action'] : null;
+    // Bảng thanh toán theo kỳ (2026-10-26): reading the lease's table is not
+    // a change; its edits (op edit / split / merge) are.
+    if (action == 'schedule' && data is Map && data['op'] == 'read') {
+      return true;
+    }
     return action is String && _readActions.contains(action);
   }
 

@@ -27,21 +27,26 @@ test('list and read return the room number next to the room ID',async()=>{
 });
 
 // Short stays priced per hour (2026-10-03): hours × price, no switch to a day price.
-test('quote: hours × the hourly price; another price needs "Đổi giá"',async()=>{
+// 2026-10-26 (Tom): rooms have no flat hourly price any more; hourly uses the
+// building's templates. A typed flat price needs "Đổi giá".
+test('quote: hours × a typed hourly price needs "Đổi giá"; no room fallback',async()=>{
   const s=seed();Object.assign(s['rooms/r1'],{dailyPrice:500000,dailyPriceThresholdHours:6});
   const q=d=>call(fakeDb(s),{action:'quote',organizationId:'org',buildingId:'b1',roomId:'r1',startLocal:'2026-10-10 14:00',endLocal:'2026-10-10 22:30',occurrence:'first',pricingType:'hourly',...d});
-  // 8.5 hours at the room's 100,000 per hour; no day price even past 6 hours.
+  // 8.5 hours at a typed 100,000 per hour (owner has "Đổi giá"); no day price even past 6 hours.
   const room=await q({hourlyPriceMinor:100000});
   assert.deepEqual([room.record.totalMinor,room.record.pricingType],[850000,'hourly']);
-  // Older apps (no hourly price sent) keep the old rule.
-  assert.equal((await q({})).record.pricingType,'daily');
+  // Nothing to price with: pick a template.
+  await assert.rejects(q({}),e=>e.message==='booking_hour_template_required');
   const own=await q({hourlyPriceMinor:80000});
   assert.equal(own.record.totalMinor,680000);
-  // Without "Đổi giá" only the room's price is accepted.
+  // Without "Đổi giá" no typed flat price at all (the room's old one neither).
   s['memberships/rec_org']={ownerId:'rec',organizationId:'org',accessVersion:2,role:'custom',roleGrants:{readBookings:'managed',createBookings:'managed',manageBookings:'managed'},status:'active',buildingScope:'all',buildingIds:[]};
   const as=(d)=>createBookingWorkspaceHandler({db:fakeDb(s),Timestamp:Ts,HttpsError:CodeError})({auth:{uid:'rec'},data:{action:'quote',organizationId:'org',buildingId:'b1',roomId:'r1',startLocal:'2026-10-10 14:00',endLocal:'2026-10-10 17:00',occurrence:'first',pricingType:'hourly',...d}});
-  assert.equal((await as({hourlyPriceMinor:100000})).record.totalMinor,300000);
+  await assert.rejects(as({hourlyPriceMinor:100000}),e=>e.code==='permission-denied');
   await assert.rejects(as({hourlyPriceMinor:90000}),e=>e.code==='permission-denied');
+  // A building template is fine without "Đổi giá".
+  s['buildingHourTemplates/b1']={organizationId:'org',buildingId:'b1',templates:[{id:'t1',name:'Giờ',currency:'VND',hourPricesMinor:[100000]}]};
+  assert.equal((await as({hourPricesMinor:[100000]})).record.totalMinor,300000);
   // Only with per-hour pricing, and a real amount.
   await assert.rejects(q({pricingType:'nightly',hourlyPriceMinor:100000}),e=>e.code==='invalid-argument');
   await assert.rejects(q({hourlyPriceMinor:0}),e=>e.code==='invalid-argument');

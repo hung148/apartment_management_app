@@ -1,6 +1,7 @@
 'use strict';
 const {createHash}=require('node:crypto');
 const {allows}=require('./team_access');
+const {defaultsOf,followsOf,KINDS}=require('./building_prices');
 const id=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(v);
 // 2026-10-04: a room has a monthly price, a price per night and a price per hour.
 // Day and overnight prices (and the day-price hour threshold) are gone; an older
@@ -13,10 +14,13 @@ function createRoomRatesHandler({db,Timestamp,HttpsError}) {
   return async request=>{
     const uid=request.auth?.uid,d=request.data||{},editing=d.action==='update';
     if(!uid)fail('unauthenticated');
-    const keys=['action','organizationId','buildingId','roomId',...(editing?['operationId','revision','rentalMode','ratesMinor']:[])];
+    // followBuilding (2026-10-26): the prices this room takes from the building
+    // ("Dùng giá của cơ sở"); any other price typed here is the room's own.
+    const keys=['action','organizationId','buildingId','roomId',...(editing?['operationId','revision','rentalMode','ratesMinor',...(Object.hasOwn(d,'followBuilding')?['followBuilding']:[])]:[])];
     if(!['read','update'].includes(d.action)||!id(d.organizationId)||!id(d.buildingId)||!id(d.roomId)||Object.keys(d).some(k=>!keys.includes(k)))fail('invalid-argument');
     if(editing) {
-      if(!id(d.operationId)||typeof d.revision!=='string'||!/^\d+:\d+$/.test(d.revision)||d.rentalMode!==undefined&&!['monthly','hourly','both'].includes(d.rentalMode)||!d.ratesMinor||typeof d.ratesMinor!=='object'||Array.isArray(d.ratesMinor)||Object.keys(d.ratesMinor).length!==fields.length||fields.some(k=>!Object.hasOwn(d.ratesMinor,k)||d.ratesMinor[k]!==null&&(!Number.isSafeInteger(d.ratesMinor[k])||d.ratesMinor[k]<=0||d.ratesMinor[k]>1e12)))fail('invalid-argument');
+      if(!id(d.operationId)||typeof d.revision!=='string'||!/^\d+:\d+$/.test(d.revision)||d.rentalMode!==undefined&&!['monthly','hourly','both'].includes(d.rentalMode)||!d.ratesMinor||typeof d.ratesMinor!=='object'||Array.isArray(d.ratesMinor)||Object.keys(d.ratesMinor).some(k=>!fields.includes(k))||KINDS.some(k=>!Object.hasOwn(d.ratesMinor,k))||Object.values(d.ratesMinor).some(v=>v!==null&&(!Number.isSafeInteger(v)||v<=0||v>1e12)))fail('invalid-argument');
+      if(Object.hasOwn(d,'followBuilding')&&(!Array.isArray(d.followBuilding)||d.followBuilding.some(k=>!KINDS.includes(k))||new Set(d.followBuilding).size!==d.followBuilding.length))fail('invalid-argument');
       // 2026-10-04: every room takes short stays and leases; each price is optional
       // (a booking or a lease without a room price asks for one). rentalMode from older apps is ignored.
     }
@@ -36,13 +40,19 @@ function createRoomRatesHandler({db,Timestamp,HttpsError}) {
         if(typeof value!=='number'||!Number.isFinite(value)||value<0||!Number.isSafeInteger(minor)||Math.abs(value*factor-minor)>0.000001||minor>1e12)fail('failed-precondition');
         return [k,minor===0?null:minor];
       }));
-      if(!editing)return {record:{roomId:d.roomId,roomNumber:old.roomNumber??'',currency,rentalMode:'both',ratesMinor,revision:revision(doc)}};
+      const defaults=defaultsOf(building.data()),sameCurrency=currency===(building.data().currency??'VND');
+      if(!editing)return {record:{roomId:d.roomId,roomNumber:old.roomNumber??'',currency,rentalMode:'both',ratesMinor,revision:revision(doc),follows:followsOf(old),buildingPrices:sameCurrency?{roomPrice:defaults.roomPriceMinor,nightlyPrice:defaults.nightlyPriceMinor}:null}};
       const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
-      const key=hash(['roomRates',d.organizationId,uid,d.operationId]),fingerprint=hash([d.buildingId,d.roomId,d.revision,fields.map(k=>d.ratesMinor[k])]);
+      const key=hash(['roomRates',d.organizationId,uid,d.operationId]),fingerprint=hash([d.buildingId,d.roomId,d.revision,fields.map(k=>d.ratesMinor[k]),d.followBuilding??null]);
       const op=db.doc(`roomRateOperations/${key}`),prior=await tx.get(op);
       if(prior.exists){if(prior.data().fingerprint!==fingerprint)fail('failed-precondition');return prior.data().result;}
       if(revision(doc)!==d.revision)fail('aborted');
-      const now=Timestamp.now(),patch={rentalMode:'both',...Object.fromEntries(fields.map(k=>[k,d.ratesMinor[k]===null?null:d.ratesMinor[k]/factor])),dailyPrice:null,overnightPrice:null,dailyPriceThresholdHours:null},result={roomId:d.roomId};
+      // Follow the building, or own price: a followed price comes from the
+      // building; a typed price that differs makes it the room's own.
+      const follow=new Set(d.followBuilding??[]),wasFollowing=followsOf(old),rates={...ratesMinor,...d.ratesMinor};
+      for(const k of follow){const price=defaults[k+'Minor'];if(price==null||!sameCurrency)fail('failed-precondition','price_no_building_price');rates[k]=price;}
+      const nextFollows=Object.fromEntries(KINDS.map(k=>[k,follow.has(k)||(!Object.hasOwn(d,'followBuilding')&&wasFollowing[k]&&rates[k]===ratesMinor[k])]));
+      const now=Timestamp.now(),patch={rentalMode:'both',...Object.fromEntries(fields.map(k=>[k,rates[k]===null?null:rates[k]/factor])),priceFollows:nextFollows,dailyPrice:null,overnightPrice:null,dailyPriceThresholdHours:null},result={roomId:d.roomId};
       tx.update(ref,{...patch,updatedAt:now,updatedBy:uid});
       tx.create(op,{organizationId:d.organizationId,actorId:uid,fingerprint,result,createdAt:now});
       tx.create(db.doc(`teamActivity/${key}`),{organizationId:d.organizationId,actorId:uid,action:'room_rates_updated',targetId:d.roomId,createdAt:now,before:{buildingId:d.buildingId,currency,rentalMode:mode,...Object.fromEntries(['roomPrice','nightlyPrice','hourlyPrice','dailyPrice','overnightPrice','dailyPriceThresholdHours'].map(k=>[k,old[k]??null]))},after:{buildingId:d.buildingId,currency,...patch}});

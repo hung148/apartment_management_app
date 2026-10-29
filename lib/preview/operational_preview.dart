@@ -388,8 +388,192 @@ extension OperationalPreview on TeamPreviewStore {
         'savedNightPricesMinor': List.of(list),
       };
     }
+    // Short-stay payment list (2026-10-24), like functions/booking_receipts.js.
+    if (d['action'] == 'paymentMethod') {
+      if (!book && workspaceRole != 'accountant') reject();
+      final label = '${d['label']}'.trim();
+      final lower = label.toLowerCase();
+      if (['tiền mặt', 'cash'].contains(lower)) {
+        return {'methodId': 'cash', 'methods': previewPaymentMethods};
+      }
+      final same = previewPaymentMethods
+          .where((m) => '${m['label']}'.toLowerCase() == lower)
+          .firstOrNull;
+      if (same != null) {
+        return {'methodId': same['id'], 'methods': previewPaymentMethods};
+      }
+      final id = 'm_${previewPaymentMethods.length + 1}';
+      previewPaymentMethods.add({'id': id, 'label': label});
+      return {'methodId': id, 'methods': previewPaymentMethods};
+    }
+    if (d['action'] == 'receipts') {
+      final row = record(operationalBookings, d['bookingId']);
+      final scale = row['currency'] == 'USD' ? 100 : 1;
+      final list = [
+        for (final p in (row['previewReceipts'] as List? ?? const []))
+          Map<String, dynamic>.from(p as Map),
+      ];
+      final paid = (((row['paidAmount'] as num?) ?? 0) * scale).round();
+      final total = (((row['totalPrice'] as num?) ?? 0) * scale).round();
+      final deposit = list.fold<int>(
+        0,
+        (a, p) =>
+            a +
+            (p['kind'] == 'deposit'
+                ? p['amountMinor'] as int
+                : p['kind'] == 'refund' && p['refundFrom'] == 'deposit'
+                ? -(p['amountMinor'] as int)
+                : 0),
+      );
+      return {
+        'records': list,
+        'currency': row['currency'] ?? 'VND',
+        'totalMinor': total,
+        'paidMinor': paid,
+        'remainingMinor': total > paid ? total - paid : 0,
+        'depositMinor': deposit,
+        'heldDepositMinor': 0,
+        'canCollect': book || workspaceRole == 'accountant',
+        'canRefund': refund,
+        'canEdit': ['owner', 'administrator'].contains(workspaceRole),
+      };
+    }
+    if (d['action'] == 'removeReceipt') {
+      if (!['owner', 'administrator'].contains(workspaceRole)) reject();
+      final row = record(operationalBookings, d['bookingId']);
+      final scale = row['currency'] == 'USD' ? 100 : 1;
+      final list = [
+        for (final p in (row['previewReceipts'] as List? ?? const []))
+          Map<String, dynamic>.from(p as Map),
+      ];
+      final old = list.firstWhere(
+        (p) => p['paymentId'] == d['paymentId'],
+        orElse: () => reject(),
+      );
+      if (old['revision'] != d['receiptRevision']) {
+        throw FirebaseFunctionsException(
+          code: 'aborted',
+          message: 'booking_changed',
+        );
+      }
+      final paid = (((row['paidAmount'] as num?) ?? 0) * scale).round() -
+          (old['kind'] == 'refund' ? -1 : 1) * (old['amountMinor'] as int);
+      list.remove(old);
+      row['previewReceipts'] = list;
+      row['paidAmount'] = paid / scale;
+      changed(row);
+      return completed[key] = {'paymentId': old['paymentId'], 'removed': true};
+    }
+    if (d['action'] == 'receipt') {
+      final editing = d['paymentId'] != null;
+      if (editing
+          ? !['owner', 'administrator'].contains(workspaceRole)
+          : !book && workspaceRole != 'accountant') {
+        reject();
+      }
+      if (d['kind'] == 'refund' && !refund) reject();
+      final row = record(operationalBookings, d['bookingId']);
+      if (d['paymentId'] == null &&
+          d['kind'] == 'refund' &&
+          d['refundFrom'] == 'deposit' &&
+          !['cancelled', 'noShow'].contains(row['status'])) {
+        throw FirebaseFunctionsException(
+          code: 'failed-precondition',
+          message: 'booking_deposit_refund_cancelled_only',
+        );
+      }
+      if ((d['paidOn'] as String).compareTo(previewToday) > 0) {
+        throw FirebaseFunctionsException(
+          code: 'invalid-argument',
+          message: 'booking_payment_date',
+        );
+      }
+      final scale = row['currency'] == 'USD' ? 100 : 1;
+      final list = [
+        for (final p in (row['previewReceipts'] as List? ?? const []))
+          Map<String, dynamic>.from(p as Map),
+      ];
+      var paid = (((row['paidAmount'] as num?) ?? 0) * scale).round();
+      final total = (((row['totalPrice'] as num?) ?? 0) * scale).round();
+      final old = editing
+          ? list.firstWhere(
+              (p) => p['paymentId'] == d['paymentId'],
+              orElse: () => reject(),
+            )
+          : null;
+      if (old != null) {
+        if (old['revision'] != d['receiptRevision']) {
+          throw FirebaseFunctionsException(
+            code: 'aborted',
+            message: 'booking_changed',
+          );
+        }
+        paid -= (old['kind'] == 'refund' ? -1 : 1) * (old['amountMinor'] as int);
+      }
+      final amount = d['amountMinor'] as int;
+      int recorded = amount, change = 0;
+      if (d['kind'] == 'refund') {
+        if (amount > paid) {
+          throw FirebaseFunctionsException(
+            code: 'invalid-argument',
+            message: 'booking_refund_exceeds_payment',
+          );
+        }
+        paid -= amount;
+      } else {
+        final owed = total - paid;
+        if (owed <= 0) {
+          throw FirebaseFunctionsException(
+            code: 'failed-precondition',
+            message: 'booking_nothing_owed',
+          );
+        }
+        recorded = amount < owed ? amount : owed;
+        change = amount - recorded;
+        paid += recorded;
+      }
+      String? nameOf(List<Map<String, dynamic>> l, Object? id, String key) =>
+          id == null
+          ? null
+          : '${l.where((v) => v['id'] == id).firstOrNull?[key] ?? id}';
+      final next = <String, dynamic>{
+        'paymentId': old?['paymentId'] ?? 'pay-${d['operationId']}',
+        'kind': d['kind'],
+        'refundFrom': d['kind'] == 'refund' ? d['refundFrom'] : null,
+        'paidOn': d['paidOn'],
+        'amountMinor': recorded,
+        'tenderedMinor': d['kind'] == 'refund' ? null : amount,
+        'changeMinor': d['kind'] == 'refund' ? null : change,
+        'methodId': d['methodId'],
+        'methodLabel': d['methodId'] == 'other'
+            ? d['methodLabel']
+            : nameOf(previewPaymentMethods, d['methodId'], 'label'),
+        'receivedById': d['receivedById'],
+        'receivedByName': d['receivedById'],
+        'accountId': d['accountId'],
+        'accountLabel': d['accountId'],
+        'note': '${d['note'] ?? ''}'.trim(),
+        'revision': 'r-${d['operationId']}',
+      };
+      if (old != null) {
+        list[list.indexOf(old)] = next;
+      } else {
+        list.add(next);
+      }
+      row['previewReceipts'] = list;
+      row['paidAmount'] = paid / scale;
+      changed(row);
+      return completed[key] = {
+        'paymentId': next['paymentId'],
+        'recordedMinor': recorded,
+        'changeMinor': change,
+      };
+    }
     if (d['action'] == 'rooms') {
       return {
+        'paymentMethods': previewPaymentMethods,
+        'canRefund': refund,
+        'canEditPayments': ['owner', 'administrator'].contains(workspaceRole),
         'hourTemplates': buildingHourTemplates[b['id']] ?? [],
         'priceListCurrency': b['currency'] ?? 'VND',
         'canPrice': manager && priceOverride,
@@ -455,11 +639,8 @@ extension OperationalPreview on TeamPreviewStore {
                   room['nightlyPrice'] ?? room['dailyPrice'],
                   currency as String,
                 )
-              : _bookingRoomRate(
-                  room,
-                  room['${d['pricingType']}Price'],
-                  currency as String,
-                );
+              // No room price per hour (2026-10-26): a template instead.
+              : null;
       final current = d['bookingId'] == null
           ? null
           : operationalBookings
@@ -493,6 +674,25 @@ extension OperationalPreview on TeamPreviewStore {
             jsonEncode(storedHours) != jsonEncode(hoursList) &&
             !matchesSaved)
           reject();
+      }
+      // Like the server (2026-10-26): hourly needs hour prices (a template,
+      // or own ones with "Đổi giá"); one typed price per hour only with
+      // "Đổi giá" or when it is the booking's own older price.
+      if (d['pricingType'] == 'hourly' &&
+          hoursList == null &&
+          hourlyMinor == null) {
+        throw FirebaseFunctionsException(
+          code: 'failed-precondition',
+          message: 'booking_hour_template_required',
+        );
+      }
+      if (hourlyMinor != null &&
+          !(manager && priceOverride) &&
+          !(current?['pricingType'] == 'hourly' &&
+              current?['hourlyPrice'] is num &&
+              ((current!['hourlyPrice'] as num) * scale).round() ==
+                  hourlyMinor)) {
+        reject();
       }
 
       if (rate == null && hoursList == null) {
@@ -747,6 +947,40 @@ extension OperationalPreview on TeamPreviewStore {
             'note': '${pay['note'] ?? ''}'.trim(),
           },
         ];
+      }
+      // Payments added before the first save (2026-10-24).
+      final drafts = d['receipts'] as List?;
+      if (drafts != null) {
+        var paid = ((row['paidAmount'] as num) * scale).round();
+        final list = <Map<String, dynamic>>[];
+        for (final (i, x) in drafts.indexed) {
+          final owed = amount - paid;
+          if (owed <= 0) {
+            operationalBookings.remove(row);
+            throw FirebaseFunctionsException(
+              code: 'failed-precondition',
+              message: 'booking_nothing_owed',
+            );
+          }
+          final typed = x['amountMinor'] as int;
+          final recorded = typed < owed ? typed : owed;
+          paid += recorded;
+          list.add({
+            'paymentId': 'pay-${d['operationId']}-$i',
+            'kind': x['kind'],
+            'paidOn': x['paidOn'],
+            'amountMinor': recorded,
+            'tenderedMinor': typed,
+            'changeMinor': typed - recorded,
+            'methodId': x['methodId'],
+            'receivedById': x['receivedById'],
+            'accountId': x['accountId'],
+            'note': '${x['note'] ?? ''}',
+            'revision': 'r-${d['operationId']}-$i',
+          });
+        }
+        row['previewReceipts'] = list;
+        row['paidAmount'] = paid / scale;
       }
       // The stay status chosen by staff (2026-10-14).
       switch (d['stayStatus']) {
